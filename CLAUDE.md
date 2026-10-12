@@ -24,7 +24,9 @@ Langue de travail avec l'utilisateur (Paul) : **français**.
 - `Source/YohohoSurvivor/Variant_TwinStick/` : base la plus proche d'un « survivor » (projectiles, ennemis IA via StateTree, spawner, pickups, AoE). **Point de départ du gameplay.**
 - `Source/YohohoSurvivor/Variant_Strategy/` : variante RTS du template, probablement à supprimer.
 - Les dossiers de variantes sont dans `PublicIncludePaths` du `.Build.cs` : à mettre à jour si on déplace/supprime des dossiers.
-- Map par défaut : `/Game/TopDown/Lvl_TopDown` ; GameMode par défaut : `BP_TopDownGameMode` (Blueprint dérivé du C++).
+- Assets du template Top Down rangés dans `Content/PresetProject/` (référence, pas le jeu final).
+- Map par défaut : `/Game/PresetProject/TopDown/Lvl_TopDown` ; GameMode par défaut : `BP_TopDownGameMode` (Blueprint dérivé du C++).
+- **Ne jamais déplacer/renommer des `.uasset` via le système de fichiers** : toujours dans le Content Browser de l'éditeur (il met à jour les références et crée des redirecteurs), puis « Fix Up Redirectors ».
 - `.uasset` / `.umap` sont binaires (Git LFS) : Claude ne peut pas les lire ni les modifier. Toute logique doit vivre en C++ ; les Blueprints servent au paramétrage, aux assets et à l'UI. Quand une étape doit se faire dans l'éditeur, donner à Paul des instructions précises (menu, champ, valeur).
 
 ## Réseau (multijoueur)
