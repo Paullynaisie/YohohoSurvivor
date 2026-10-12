@@ -8,7 +8,10 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Components/WidgetComponent.h"
 #include "Core/YSGameplayTags.h"
+#include "Core/YSGameState.h"
+#include "UI/YSHealthBarWidget.h"
 
 AYSFoeCharacter::AYSFoeCharacter()
 {
@@ -48,13 +51,36 @@ AYSFoeCharacter::AYSFoeCharacter()
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -96.0f), FRotator(0.0f, -90.0f, 0.0f));
 
 	GameplayTags.AddTag(YSTags::Team_Foe);
+
+	// barre de vie en espace écran, juste au-dessus de la tête
+	HealthBar = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
+	HealthBar->SetupAttachment(RootComponent);
+	HealthBar->SetRelativeLocation(FVector(0.0f, 0.0f, 120.0f));
+	HealthBar->SetWidgetSpace(EWidgetSpace::Screen);
+	HealthBar->SetDrawAtDesiredSize(true);
+	HealthBar->SetWidgetClass(UYSHealthBarWidget::StaticClass());
+	HealthBar->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
 void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
+	DOREPLIFETIME(AYSFoeCharacter, MaxHealth);
 	DOREPLIFETIME(AYSFoeCharacter, Health);
+}
+
+void AYSFoeCharacter::OnRep_Health()
+{
+	UpdateHealthBar();
+}
+
+void AYSFoeCharacter::UpdateHealthBar()
+{
+	if (UYSHealthBarWidget* Bar = Cast<UYSHealthBarWidget>(HealthBar->GetUserWidgetObject()))
+	{
+		Bar->SetHealth(Health, MaxHealth);
+	}
 }
 
 float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -66,6 +92,13 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	}
 
 	Health = FMath::Max(0.0f, Health - Damage);
+
+	// chiffre de dégâts chez tous les joueurs, au point d'impact (position du projectile)
+	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator);
+
+	// OnRep n'est pas appelé sur le serveur : mise à jour directe pour le joueur hôte
+	UpdateHealthBar();
+
 	if (Health <= 0.0f)
 	{
 		Die();
@@ -96,6 +129,9 @@ void AYSFoeCharacter::BeginPlay()
 	{
 		Health = MaxHealth;
 	}
+
+	HealthBar->InitWidget();
+	UpdateHealthBar();
 }
 
 void AYSFoeCharacter::Tick(float DeltaSeconds)

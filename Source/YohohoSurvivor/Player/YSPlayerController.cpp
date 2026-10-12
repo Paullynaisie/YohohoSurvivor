@@ -1,6 +1,10 @@
 #include "Player/YSPlayerController.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Blueprint/GameViewportSubsystem.h"
+#include "Enemies/YSFoeCharacter.h"
+#include "Engine/DamageEvents.h"
+#include "EngineUtils.h"
+#include "TimerManager.h"
 #include "GameFramework/Pawn.h"
 #include "UI/YSAbilityIconWidget.h"
 
@@ -48,6 +52,46 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 	{
 		const APawn* ControlledPawn = GetPawn();
 		AbilityIcon->Refresh(ControlledPawn ? ControlledPawn->FindComponentByClass<UYSCoupDPetoirAbility>() : nullptr);
+	}
+}
+
+void AYSPlayerController::YSDamageFoes(float Amount, float Delay, bool bScreenshot)
+{
+	FTimerHandle Timer;
+	GetWorldTimerManager().SetTimer(Timer, FTimerDelegate::CreateWeakLambda(this, [this, Amount, bScreenshot]()
+	{
+		if (HasAuthority())
+		{
+			DamageAllFoes(Amount);
+		}
+		else
+		{
+			ServerDamageFoes(Amount);
+		}
+
+		if (bScreenshot)
+		{
+			// laisse le temps aux chiffres et barres d'apparaître
+			FTimerHandle ShotTimer;
+			GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				ConsoleCommand(TEXT("shot showui"));
+			}), 0.25f, false);
+		}
+	}), FMath::Max(Delay, 0.01f), false);
+}
+
+void AYSPlayerController::ServerDamageFoes_Implementation(float Amount)
+{
+	DamageAllFoes(Amount);
+}
+
+void AYSPlayerController::DamageAllFoes(float Amount)
+{
+	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
+	{
+		// pas de DamageCauser : le chiffre s'affiche sur le NME lui-même
+		It->TakeDamage(Amount, FDamageEvent(), this, nullptr);
 	}
 }
 

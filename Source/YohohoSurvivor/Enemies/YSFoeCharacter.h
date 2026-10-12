@@ -6,6 +6,8 @@
 #include "GameplayTagContainer.h"
 #include "YSFoeCharacter.generated.h"
 
+class UWidgetComponent;
+
 /**
  *  Ennemi de base : attiré en ligne droite vers le joueur le plus proche, sans pathfinding,
  *  et toujours tourné vers lui. Meurt (détruit) quand ses points de vie tombent à 0.
@@ -17,14 +19,20 @@ class AYSFoeCharacter : public ACharacter, public IGameplayTagAssetInterface
 {
 	GENERATED_BODY()
 
+private:
+
+	/** Barre de vie au-dessus de la tête (cachée tant que les PV sont au max) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UWidgetComponent> HealthBar;
+
 protected:
 
 	/** Points de vie au début */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Health", meta=(ClampMin="1"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="Foe|Health", meta=(ClampMin="1"))
 	float MaxHealth = 10.0f;
 
 	/** Points de vie actuels (gérés par le serveur) */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Replicated, Category="Foe|Health")
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="Foe|Health")
 	float Health = 0.0f;
 
 	/** Tags portés par l'ennemi (camp, etc.), lus par les projectiles */
@@ -74,6 +82,12 @@ protected:
 
 	/** Mort de l'ennemi (serveur) */
 	virtual void Die();
+
+	UFUNCTION()
+	void OnRep_Health();
+
+	/** Rafraîchit la barre de vie avec Health / MaxHealth */
+	void UpdateHealthBar();
 
 	/** Retourne le pawn joueur le plus proche (sur le plan horizontal), ou nullptr */
 	APawn* FindNearestPlayer() const;

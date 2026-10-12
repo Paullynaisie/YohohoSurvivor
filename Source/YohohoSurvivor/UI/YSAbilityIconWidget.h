@@ -34,12 +34,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ability Icon")
 	int32 FontSize = 28;
 
+	virtual bool Initialize() override;
+
 	/** Met à jour l'icône et la recharge à partir de la capacité (nullptr = caché) */
 	void Refresh(const UYSAbilityComponent* Ability);
-
-protected:
-
-	virtual TSharedRef<SWidget> RebuildWidget() override;
 
 private:
 

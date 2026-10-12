@@ -46,7 +46,21 @@ public:
 
 	FVector GetAimLocation() const { return AimLocation; }
 
+	/**
+	 *  Debug (console « ² ») : inflige Amount dégâts à tous les NME après Delay secondes.
+	 *  bScreenshot = 1 prend une capture (avec UI) juste après.  Ex : YSDamageFoes 3 0
+	 */
+	UFUNCTION(Exec)
+	void YSDamageFoes(float Amount = 3.0f, float Delay = 0.0f, bool bScreenshot = false);
+
 protected:
+
+	UFUNCTION(Server, Reliable)
+	void ServerDamageFoes(float Amount);
+
+	/** Applique les dégâts de debug (serveur) */
+	void DamageAllFoes(float Amount);
+
 
 	/** Projette la souris sur le plan horizontal du pawn et tourne la rotation de contrôle vers ce point */
 	void UpdateAim();

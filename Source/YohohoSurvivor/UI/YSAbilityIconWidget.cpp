@@ -9,15 +9,17 @@
 #include "Components/TextBlock.h"
 #include "Engine/Texture2D.h"
 
-TSharedRef<SWidget> UYSAbilityIconWidget::RebuildWidget()
+bool UYSAbilityIconWidget::Initialize()
 {
-	// pas de Widget Blueprint : l'arbre est construit ici à la première création
-	if (WidgetTree && !WidgetTree->RootWidget)
+	const bool bSuperInitialized = Super::Initialize();
+
+	// pas de Widget Blueprint : l'arbre est construit dès la création, pour pouvoir être rempli avant l'affichage
+	if (bSuperInitialized && WidgetTree && !WidgetTree->RootWidget)
 	{
 		BuildWidgetTree();
 	}
 
-	return Super::RebuildWidget();
+	return bSuperInitialized;
 }
 
 void UYSAbilityIconWidget::BuildWidgetTree()
