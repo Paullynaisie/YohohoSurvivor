@@ -24,9 +24,18 @@ Langue de travail avec l'utilisateur (Paul) : **français**.
 - `Source/YohohoSurvivor/Variant_TwinStick/` : base la plus proche d'un « survivor » (projectiles, ennemis IA via StateTree, spawner, pickups, AoE). **Point de départ du gameplay.**
 - `Source/YohohoSurvivor/Variant_Strategy/` : variante RTS du template, probablement à supprimer.
 - Les dossiers de variantes sont dans `PublicIncludePaths` du `.Build.cs` : à mettre à jour si on déplace/supprime des dossiers.
-- Assets du template Top Down rangés dans `Content/PresetProject/` (référence, pas le jeu final).
-- Map par défaut : `/Game/PresetProject/TopDown/Lvl_TopDown` ; GameMode par défaut : `BP_TopDownGameMode` (Blueprint dérivé du C++).
-- **Ne jamais déplacer/renommer des `.uasset` via le système de fichiers** : toujours dans le Content Browser de l'éditeur (il met à jour les références et crée des redirecteurs), puis « Fix Up Redirectors ».
+- `Source/YohohoSurvivor/Player/YSPlayerCharacter` : personnage joueur (ZQSD/WASD/flèches, input créé à l'exécution, `MoveSpeed` réglable). Parent du BP `/Game/Placeable/Character/PlayerCharacter_mouss`.
+- `/Game/Core/GameModes/BP_TestGameMode` : GameModeBase, DefaultPawnClass = PlayerCharacter_mouss. GameMode global par défaut.
+- `/Game/Maps/TestMaps/TestGround` : map de test (sol WorldGridMaterial, lumières, 4 PlayerStart). Map de démarrage éditeur + jeu.
+- Assets du template Top Down rangés dans `Content/PresetProject/` (référence, pas le jeu final). Leurs acteurs de map sont dans `Content/__ExternalActors__/PresetProject/...` (c'est normal, ces dossiers doivent rester à la racine de Content).
+- **Ne jamais déplacer/renommer des `.uasset` via le système de fichiers** : toujours dans le Content Browser de l'éditeur (il met à jour les références et crée des redirecteurs), puis « Update Redirector References ».
+
+## Automatisation de l'éditeur (Python)
+
+- Plugins `PythonScriptPlugin` + `EditorScriptingUtilities` activés : Claude crée/modifie des assets via des scripts dans `Tools/EditorScripts/`.
+- Lancer un script qui modifie des assets / maps (éditeur fermé) : `UnrealEditor.exe <uproject> -ExecutePythonScript="<script.py>"` ; le script finit par `unreal.SystemLibrary.quit_editor()` et écrit un rapport dans `Saved/Logs/`. Un crash (0xC0000005) à la toute fin de la fermeture est connu et sans conséquence si les sauvegardes sont dans le log.
+- Lecture seule / vérifications : `UnrealEditor-Cmd.exe <uproject> -run=pythonscript -script="<script.py>" -unattended`.
+- API Python UE 5.8 : `unreal.ObjectRedirector` et `AssetTools.fixup_referencers` ne sont pas exposés ; filtrer les redirecteurs via `asset_data.asset_class_path.asset_name`.
 - `.uasset` / `.umap` sont binaires (Git LFS) : Claude ne peut pas les lire ni les modifier. Toute logique doit vivre en C++ ; les Blueprints servent au paramétrage, aux assets et à l'UI. Quand une étape doit se faire dans l'éditeur, donner à Paul des instructions précises (menu, champ, valeur).
 
 ## Réseau (multijoueur)
