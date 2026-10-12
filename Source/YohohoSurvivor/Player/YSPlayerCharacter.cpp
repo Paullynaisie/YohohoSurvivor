@@ -1,4 +1,6 @@
 #include "Player/YSPlayerCharacter.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Animation/BlendSpace.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -15,16 +17,17 @@
 
 AYSPlayerCharacter::AYSPlayerCharacter()
 {
+	PrimaryActorTick.bCanEverTick = true;
+
 	GetCapsuleComponent()->InitCapsuleSize(42.0f, 96.0f);
 
-	// le personnage s'oriente dans sa direction de déplacement, pas selon le contrôleur
+	// le personnage suit le yaw du contrôleur (= direction du curseur), pas sa direction de déplacement
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
+	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
 
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
-	Movement->bOrientRotationToMovement = true;
-	Movement->RotationRate = FRotator(0.0f, 640.0f, 0.0f);
+	Movement->bOrientRotationToMovement = false;
 	Movement->MaxWalkSpeed = MoveSpeed;
 	Movement->bConstrainToPlane = true;
 	Movement->bSnapToPlaneAtStart = true;
@@ -63,6 +66,53 @@ void AYSPlayerCharacter::BeginPlay()
 
 	// appliqué sur le serveur ET les clients pour que la prédiction de mouvement reste cohérente
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
+
+	if (StrafeBlendSpace)
+	{
+		GetMesh()->PlayAnimation(StrafeBlendSpace, true);
+	}
+}
+
+void AYSPlayerCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	UpdateStrafeAnimation(DeltaSeconds);
+}
+
+void AYSPlayerCharacter::UpdateStrafeAnimation(float DeltaSeconds)
+{
+	UAnimSingleNodeInstance* AnimInstance = StrafeBlendSpace ? GetMesh()->GetSingleNodeInstance() : nullptr;
+	if (!AnimInstance)
+	{
+		return;
+	}
+
+	// la vélocité est disponible sur toutes les machines (répliquée pour les autres joueurs)
+	const FVector Velocity = GetVelocity();
+	const float TargetSpeed = Velocity.Size2D();
+
+	// angle du mouvement par rapport au regard : 0 = avant, 90 = droite, +-180 = arrière
+	float TargetDirection = StrafeBlendPosition.X;
+	if (TargetSpeed > 10.0f)
+	{
+		TargetDirection = FRotator::NormalizeAxis(Velocity.Rotation().Yaw - GetActorRotation().Yaw);
+	}
+
+	if (StrafeBlendSmoothing > 0.0f)
+	{
+		// interpolation de l'angle par le plus court chemin pour éviter un tour complet entre -180 et 180
+		const float DeltaAngle = FRotator::NormalizeAxis(TargetDirection - StrafeBlendPosition.X);
+		const float Alpha = FMath::Clamp(DeltaSeconds * StrafeBlendSmoothing, 0.0f, 1.0f);
+		StrafeBlendPosition.X = FRotator::NormalizeAxis(StrafeBlendPosition.X + DeltaAngle * Alpha);
+		StrafeBlendPosition.Y = FMath::FInterpTo(StrafeBlendPosition.Y, TargetSpeed, DeltaSeconds, StrafeBlendSmoothing);
+	}
+	else
+	{
+		StrafeBlendPosition = FVector2D(TargetDirection, TargetSpeed);
+	}
+
+	AnimInstance->SetBlendSpacePosition(FVector(StrafeBlendPosition.X, StrafeBlendPosition.Y, 0.0f));
 }
 
 void AYSPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

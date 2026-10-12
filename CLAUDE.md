@@ -24,7 +24,10 @@ Langue de travail avec l'utilisateur (Paul) : **français**.
 - `Source/YohohoSurvivor/Variant_TwinStick/` : base la plus proche d'un « survivor » (projectiles, ennemis IA via StateTree, spawner, pickups, AoE). **Point de départ du gameplay.**
 - `Source/YohohoSurvivor/Variant_Strategy/` : variante RTS du template, probablement à supprimer.
 - Les dossiers de variantes sont dans `PublicIncludePaths` du `.Build.cs` : à mettre à jour si on déplace/supprime des dossiers.
-- `Source/YohohoSurvivor/Player/YSPlayerCharacter` : personnage joueur (ZQSD/WASD/flèches, input créé à l'exécution, `MoveSpeed` réglable). Parent du BP `/Game/Placeable/Character/PlayerCharacter_mouss`.
+- `Source/YohohoSurvivor/Player/YSPlayerCharacter` : personnage joueur (ZQSD/WASD/flèches, input créé à l'exécution, `MoveSpeed` réglable). Regarde le curseur (`bUseControllerRotationYaw`), strafe via `StrafeBlendSpace` joué en mode SingleNode (pas d'Anim Blueprint). Parent du BP `/Game/Placeable/Character/PlayerCharacter_mouss`.
+- `Source/YohohoSurvivor/Player/YSPlayerController` : curseur viseur, calcule `AimLocation` (souris projetée sur le plan du pawn) et met la rotation de contrôle vers ce point ; le CMC l'envoie au serveur avec les mouvements.
+- `/Game/Placeable/Character/Anims/BS_Player_Strafe` : BlendSpace 2D (X = direction -180..180 relative au regard, Y = vitesse 0..600 ; idle / marche 200 / course 600 dans 8 directions).
+- `Source/YohohoSurvivor/EditorTools/YSEditorScriptLibrary` : fonctions `WITH_EDITOR` appelées depuis Python pour ce que l'API Python n'expose pas (axes et samples de BlendSpace).
 - `Source/YohohoSurvivor/Enemies/YSFoeCharacter` : ennemi de base, attiré en ligne droite vers le joueur le plus proche (logique serveur dans Tick, pas de pathfinding), tourné vers sa cible, couleur via le paramètre `Paint Tint` des matériaux mannequin. Parent du BP `/Game/Placeable/Character/FoeCharacter_Skull` (3 instances de test dans TestGround).
 - `/Game/Core/GameModes/BP_TestGameMode` : GameModeBase, DefaultPawnClass = PlayerCharacter_mouss. GameMode global par défaut.
 - `/Game/Maps/TestMaps/TestGround` : map de test (sol WorldGridMaterial, lumières, 4 PlayerStart). Map de démarrage éditeur + jeu.
