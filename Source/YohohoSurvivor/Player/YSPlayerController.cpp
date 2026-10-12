@@ -1,5 +1,6 @@
 #include "Player/YSPlayerController.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
+#include "Blueprint/GameViewportSubsystem.h"
 #include "GameFramework/Pawn.h"
 #include "UI/YSAbilityIconWidget.h"
 
@@ -22,14 +23,17 @@ void AYSPlayerController::BeginPlay()
 		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		SetInputMode(InputMode);
 
-		if (AbilityIconClass)
+		UGameViewportSubsystem* ViewportSubsystem = UGameViewportSubsystem::Get();
+		if (AbilityIconClass && ViewportSubsystem)
 		{
 			AbilityIcon = CreateWidget<UYSAbilityIconWidget>(this, AbilityIconClass);
-			AbilityIcon->AddToViewport();
-			AbilityIcon->SetAnchorsInViewport(FAnchors(0.5f, 1.0f));
-			AbilityIcon->SetAlignmentInViewport(FVector2D(0.5f, 1.0f));
-			AbilityIcon->SetDesiredSizeInViewport(FVector2D(AbilityIcon->IconSize));
-			AbilityIcon->SetPositionInViewport(FVector2D(0.0f, -AbilityIconBottomMargin), false);
+
+			// tout le slot en une fois : SetPositionInViewport / SetDesiredSizeInViewport remettent l'ancre en haut à gauche
+			FGameViewportWidgetSlot ViewportSlot;
+			ViewportSlot.Anchors = FAnchors(0.5f, 1.0f);
+			ViewportSlot.Alignment = FVector2D(0.5f, 1.0f);
+			ViewportSlot.Offsets = FMargin(0.0f, -AbilityIconBottomMargin, AbilityIcon->IconSize, AbilityIcon->IconSize);
+			ViewportSubsystem->AddWidgetForPlayer(AbilityIcon, GetLocalPlayer(), ViewportSlot);
 		}
 	}
 }
