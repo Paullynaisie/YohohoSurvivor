@@ -1,6 +1,8 @@
 #include "EditorTools/YSEditorScriptLibrary.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/BlendSpace.h"
+#include "Animation/Skeleton.h"
+#include "Engine/SkeletalMeshSocket.h"
 
 #if WITH_EDITOR
 
@@ -51,6 +53,31 @@ int32 UYSEditorScriptLibrary::SetBlendSpaceSamples(UBlendSpace* BlendSpace, cons
 	BlendSpace->PostEditChange();
 	BlendSpace->MarkPackageDirty();
 	return Added;
+}
+
+bool UYSEditorScriptLibrary::SetSkeletonSocket(USkeleton* Skeleton, FName SocketName, FName BoneName, FVector RelativeLocation, FRotator RelativeRotation)
+{
+	if (!Skeleton || Skeleton->GetReferenceSkeleton().FindBoneIndex(BoneName) == INDEX_NONE)
+	{
+		return false;
+	}
+
+	Skeleton->Modify();
+
+	USkeletalMeshSocket* Socket = Skeleton->FindSocket(SocketName);
+	if (!Socket)
+	{
+		Socket = NewObject<USkeletalMeshSocket>(Skeleton);
+		Socket->SocketName = SocketName;
+		Skeleton->Sockets.Add(Socket);
+	}
+
+	Socket->BoneName = BoneName;
+	Socket->RelativeLocation = RelativeLocation;
+	Socket->RelativeRotation = RelativeRotation;
+
+	Skeleton->MarkPackageDirty();
+	return true;
 }
 
 #endif

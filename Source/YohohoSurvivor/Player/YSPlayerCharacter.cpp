@@ -14,6 +14,12 @@
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Abilities/YSCoupDPetoirAbility.h"
+#include "Components/StaticMeshComponent.h"
+#include "Core/YSGameplayTags.h"
+#include "Player/YSPlayerController.h"
+
+const FName AYSPlayerCharacter::PistolSocketName(TEXT("PistolSocket_L"));
 
 AYSPlayerCharacter::AYSPlayerCharacter()
 {
@@ -58,6 +64,35 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	}
 
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -96.0f), FRotator(0.0f, -90.0f, 0.0f));
+
+	// os mis à jour même hors écran : le serveur a besoin de la vraie position du pistolet pour tirer
+	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+
+	// pistolet par défaut : un cube allongé (remplaçable dans le Blueprint)
+	PistolMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PistolMesh"));
+	PistolMesh->SetupAttachment(GetMesh(), PistolSocketName);
+	PistolMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	PistolMesh->SetRelativeScale3D(FVector(0.25f, 0.06f, 0.1f));
+
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultPistol(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	if (DefaultPistol.Succeeded())
+	{
+		PistolMesh->SetStaticMesh(DefaultPistol.Object);
+	}
+
+	// au bout du cube (le cube fait 100 unités, soit ±50 en local)
+	MuzzlePoint = CreateDefaultSubobject<USceneComponent>(TEXT("MuzzlePoint"));
+	MuzzlePoint->SetupAttachment(PistolMesh);
+	MuzzlePoint->SetRelativeLocation(FVector(60.0f, 0.0f, 0.0f));
+
+	CoupDPetoir = CreateDefaultSubobject<UYSCoupDPetoirAbility>(TEXT("CoupDPetoir"));
+
+	GameplayTags.AddTag(YSTags::Team_Player);
+}
+
+FVector AYSPlayerCharacter::GetMuzzleLocation() const
+{
+	return MuzzlePoint->GetComponentLocation();
 }
 
 void AYSPlayerCharacter::BeginPlay()
@@ -133,12 +168,13 @@ void AYSPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 	if (UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AYSPlayerCharacter::Move);
+		EnhancedInput->BindAction(FireAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Fire);
 	}
 }
 
 void AYSPlayerCharacter::CreateDefaultInput()
 {
-	if (MoveAction && DefaultMappingContext)
+	if (MoveAction && FireAction && DefaultMappingContext)
 	{
 		return;
 	}
@@ -146,7 +182,11 @@ void AYSPlayerCharacter::CreateDefaultInput()
 	MoveAction = NewObject<UInputAction>(this, TEXT("IA_Move"));
 	MoveAction->ValueType = EInputActionValueType::Axis2D;
 
+	FireAction = NewObject<UInputAction>(this, TEXT("IA_Fire"));
+	FireAction->ValueType = EInputActionValueType::Boolean;
+
 	DefaultMappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Default"));
+	DefaultMappingContext->MapKey(FireAction, EKeys::LeftMouseButton);
 
 	// une touche renvoie (1,0) : Swizzle la passe sur Y, Negate l'inverse
 	auto MapKey = [this](const FKey& Key, bool bSwizzle, bool bNegate)
@@ -191,4 +231,12 @@ void AYSPlayerCharacter::Move(const FInputActionValue& Value)
 
 	AddMovementInput(CameraMatrix.GetUnitAxis(EAxis::X), Input.Y);
 	AddMovementInput(CameraMatrix.GetUnitAxis(EAxis::Y), Input.X);
+}
+
+void AYSPlayerCharacter::Fire()
+{
+	if (const AYSPlayerController* PC = Cast<AYSPlayerController>(GetController()))
+	{
+		CoupDPetoir->TryActivate(PC->GetAimLocation());
+	}
 }

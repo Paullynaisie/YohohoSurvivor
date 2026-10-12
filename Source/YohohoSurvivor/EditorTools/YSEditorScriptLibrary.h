@@ -6,6 +6,7 @@
 
 class UAnimSequence;
 class UBlendSpace;
+class USkeleton;
 
 /**
  *  Fonctions éditeur appelées par les scripts Python de Tools/EditorScripts
@@ -26,5 +27,9 @@ public:
 	/** Remplace tous les samples d'un BlendSpace ; retourne le nombre de samples ajoutés */
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static int32 SetBlendSpaceSamples(UBlendSpace* BlendSpace, const TArray<UAnimSequence*>& Animations, const TArray<FVector>& Positions);
+
+	/** Ajoute (ou met à jour) un socket sur un squelette ; retourne false si l'os n'existe pas */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static bool SetSkeletonSocket(USkeleton* Skeleton, FName SocketName, FName BoneName, FVector RelativeLocation, FRotator RelativeRotation);
 #endif
 };

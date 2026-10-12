@@ -1,10 +1,13 @@
 #include "Player/YSPlayerController.h"
+#include "Abilities/YSCoupDPetoirAbility.h"
 #include "GameFramework/Pawn.h"
+#include "UI/YSAbilityIconWidget.h"
 
 AYSPlayerController::AYSPlayerController()
 {
 	bShowMouseCursor = true;
 	DefaultMouseCursor = EMouseCursor::Crosshairs;
+	AbilityIconClass = UYSAbilityIconWidget::StaticClass();
 }
 
 void AYSPlayerController::BeginPlay()
@@ -18,6 +21,16 @@ void AYSPlayerController::BeginPlay()
 		InputMode.SetHideCursorDuringCapture(false);
 		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		SetInputMode(InputMode);
+
+		if (AbilityIconClass)
+		{
+			AbilityIcon = CreateWidget<UYSAbilityIconWidget>(this, AbilityIconClass);
+			AbilityIcon->AddToViewport();
+			AbilityIcon->SetAnchorsInViewport(FAnchors(0.5f, 1.0f));
+			AbilityIcon->SetAlignmentInViewport(FVector2D(0.5f, 1.0f));
+			AbilityIcon->SetDesiredSizeInViewport(FVector2D(AbilityIcon->IconSize));
+			AbilityIcon->SetPositionInViewport(FVector2D(0.0f, -AbilityIconBottomMargin), false);
+		}
 	}
 }
 
@@ -26,6 +39,12 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 	Super::PlayerTick(DeltaTime);
 
 	UpdateAim();
+
+	if (AbilityIcon)
+	{
+		const APawn* ControlledPawn = GetPawn();
+		AbilityIcon->Refresh(ControlledPawn ? ControlledPawn->FindComponentByClass<UYSCoupDPetoirAbility>() : nullptr);
+	}
 }
 
 void AYSPlayerController::UpdateAim()

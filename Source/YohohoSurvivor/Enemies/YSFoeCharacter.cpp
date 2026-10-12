@@ -6,7 +6,9 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Core/YSGameplayTags.h"
 
 AYSFoeCharacter::AYSFoeCharacter()
 {
@@ -44,6 +46,36 @@ AYSFoeCharacter::AYSFoeCharacter()
 	}
 
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -96.0f), FRotator(0.0f, -90.0f, 0.0f));
+
+	GameplayTags.AddTag(YSTags::Team_Foe);
+}
+
+void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AYSFoeCharacter, Health);
+}
+
+float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+	const float Damage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	if (!HasAuthority() || Health <= 0.0f || Damage <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	Health = FMath::Max(0.0f, Health - Damage);
+	if (Health <= 0.0f)
+	{
+		Die();
+	}
+	return Damage;
+}
+
+void AYSFoeCharacter::Die()
+{
+	Destroy();
 }
 
 void AYSFoeCharacter::OnConstruction(const FTransform& Transform)
@@ -59,6 +91,11 @@ void AYSFoeCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
+
+	if (HasAuthority())
+	{
+		Health = MaxHealth;
+	}
 }
 
 void AYSFoeCharacter::Tick(float DeltaSeconds)
