@@ -25,6 +25,7 @@ Langue de travail avec l'utilisateur (Paul) : **français**.
 - `Source/YohohoSurvivor/Variant_Strategy/` : variante RTS du template, probablement à supprimer.
 - Les dossiers de variantes sont dans `PublicIncludePaths` du `.Build.cs` : à mettre à jour si on déplace/supprime des dossiers.
 - `Source/YohohoSurvivor/Player/YSPlayerCharacter` : personnage joueur (ZQSD/WASD/flèches, input créé à l'exécution, `MoveSpeed` réglable). Parent du BP `/Game/Placeable/Character/PlayerCharacter_mouss`.
+- `Source/YohohoSurvivor/Enemies/YSFoeCharacter` : ennemi de base, attiré en ligne droite vers le joueur le plus proche (logique serveur dans Tick, pas de pathfinding), tourné vers sa cible, couleur via le paramètre `Paint Tint` des matériaux mannequin. Parent du BP `/Game/Placeable/Character/FoeCharacter_Skull` (3 instances de test dans TestGround).
 - `/Game/Core/GameModes/BP_TestGameMode` : GameModeBase, DefaultPawnClass = PlayerCharacter_mouss. GameMode global par défaut.
 - `/Game/Maps/TestMaps/TestGround` : map de test (sol WorldGridMaterial, lumières, 4 PlayerStart). Map de démarrage éditeur + jeu.
 - Assets du template Top Down rangés dans `Content/PresetProject/` (référence, pas le jeu final). Leurs acteurs de map sont dans `Content/__ExternalActors__/PresetProject/...` (c'est normal, ces dossiers doivent rester à la racine de Content).
