@@ -1,0 +1,35 @@
+# Dossiers générés par Unreal (régénérables)
+Binaries/
+Intermediate/
+DerivedDataCache/
+Saved/
+Build/
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.sln
+*.slnx
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+UpgradeLog*.htm
+
+# Fichiers compilés
+*.pdb
+*.dll
+*.exe
+*.lib
+
+# Divers
+*.log
+Thumbs.db
+.DS_Store
+
+# Réglages Claude Code propres à cette machine
+.claude/settings.local.json
