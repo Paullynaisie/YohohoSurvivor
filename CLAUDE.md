@@ -75,3 +75,13 @@ Langue de travail avec l'utilisateur (Paul) : **français**.
 - Préfixes Unreal standards (`A`, `U`, `F`, `E`, `I`, `T`), `UPROPERTY`/`UFUNCTION` avec catégories.
 - Nouvelles classes du jeu dans `Source/YohohoSurvivor/` (sous-dossiers par domaine : `Core/`, `Player/`, `Enemies/`, `Weapons/`, `UI/`…).
 - Commits Git en français, petits et fréquents. Auteur : Paul.Ly <lyaudet.paul@gmail.com>.
+
+## Façon de travailler avec Paul
+
+- Paul suit **sa propre roadmap** (documentation perso) : ne pas proposer de roadmap, attendre ses étapes.
+- Tous les paramètres de gameplay / gamefeel doivent être réglables dans les Blueprints, regroupés dans des catégories affichées en tête (`PrioritizeCategories` : 3C, AMMO, Weapon, Akimbo, Recoil…).
+- Rotations données par Paul en X / Y / Z = Roll / Pitch / Yaw (affichage de l'éditeur). Positions en cm.
+- DA actuelle : « primitives partout » (formes de base, matériaux `/Game/Art/Materials/PH_materials`).
+- En début de session : `git status` ; Paul modifie souvent des assets entre les sessions -> les commiter à part (« Modifs de Paul : … ») avant nos changements.
+- Raccourcis éditeur ZQSD (AZERTY) : à régler dans Edit > Editor Preferences > Keyboard Shortcuts > Viewport Navigation (fichier `%LOCALAPPDATA%\UnrealEngine\5.8\Saved\Config\WindowsEditor\EditorKeyBindings.ini`, propre à chaque PC).
+- Bug connu laissé de côté à la demande de Paul : glitch visuel des bandanas en allant vers le nord-ouest (aucune collision en cause).
