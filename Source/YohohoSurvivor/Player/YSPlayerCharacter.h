@@ -94,6 +94,10 @@ private:
 
 protected:
 
+	/** Nom affiché (menu de sélection du personnage, etc.) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C")
+	FText CharacterName;
+
 	/** Vitesse de déplacement maximale */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Movement", meta=(ClampMin="0", Units="CentimetersPerSecond"))
 	float MoveSpeed = 600.0f;
@@ -249,6 +253,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="3C|Weapons")
 	AYSWeapon* GetRightHandWeapon() const;
+
+	/** Nom affiché (repli sur le nom de la classe si CharacterName est vide) */
+	FText GetCharacterName() const { return CharacterName.IsEmpty() ? FText::FromString(GetClass()->GetName().Replace(TEXT("_C"), TEXT(""))) : CharacterName; }
 
 protected:
 

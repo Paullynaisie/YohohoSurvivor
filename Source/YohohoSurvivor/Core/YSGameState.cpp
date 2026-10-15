@@ -5,10 +5,20 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "UI/YSDamageNumber.h"
+#include "Net/UnrealNetwork.h"
+#include "Player/YSPlayerCharacter.h"
 
 AYSGameState::AYSGameState()
 {
 	DamageNumberClass = AYSDamageNumber::StaticClass();
+}
+
+void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AYSGameState, SelectableCharacters);
+	DOREPLIFETIME(AYSGameState, bMatchStarted);
 }
 
 void AYSGameState::ReportDamage(const AActor* Victim, float Amount, const FVector& ImpactLocation, const AController* InstigatorController)

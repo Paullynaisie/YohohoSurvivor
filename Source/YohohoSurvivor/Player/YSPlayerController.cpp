@@ -9,6 +9,10 @@
 #include "TimerManager.h"
 #include "GameFramework/Pawn.h"
 #include "UI/YSAbilityIconWidget.h"
+#include "UI/YSCharacterSelectWidget.h"
+#include "Core/YSGameMode.h"
+#include "Core/YSGameState.h"
+#include "Core/YSPlayerState.h"
 
 AYSPlayerController::AYSPlayerController()
 {
@@ -41,7 +45,84 @@ void AYSPlayerController::BeginPlay()
 			ViewportSlot.Offsets = FMargin(0.0f, -AbilityIconBottomMargin, AbilityIcon->IconSize, AbilityIcon->IconSize);
 			ViewportSubsystem->AddWidgetForPlayer(AbilityIcon, GetLocalPlayer(), ViewportSlot);
 		}
+
+		// menu de sélection plein écran, au-dessus du reste de l'UI
+		if (ViewportSubsystem)
+		{
+			CharacterSelectMenu = CreateWidget<UYSCharacterSelectWidget>(this, UYSCharacterSelectWidget::StaticClass());
+			CharacterSelectMenu->OnCharacterChosen.BindUObject(this, &AYSPlayerController::YSSelectCharacter);
+
+			FGameViewportWidgetSlot MenuSlot;
+			MenuSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
+			MenuSlot.ZOrder = 10;
+			ViewportSubsystem->AddWidgetForPlayer(CharacterSelectMenu, GetLocalPlayer(), MenuSlot);
+		}
 	}
+}
+
+void AYSPlayerController::YSSelectCharacter(int32 CharacterIndex)
+{
+	LocalSelectedCharacter = CharacterIndex;
+	if (CharacterSelectMenu)
+	{
+		CharacterSelectMenu->SetSelectedIndex(CharacterIndex);
+	}
+	ServerSelectCharacter(CharacterIndex);
+}
+
+void AYSPlayerController::ServerSelectCharacter_Implementation(int32 CharacterIndex)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->PlayerSelectedCharacter(this, CharacterIndex);
+	}
+}
+
+void AYSPlayerController::UpdateCharacterSelectMenu()
+{
+	if (!CharacterSelectMenu)
+	{
+		return;
+	}
+
+	// le menu disparaît dès que le joueur a son personnage
+	const bool bHasCharacter = Cast<AYSPlayerCharacter>(GetPawn()) != nullptr;
+	CharacterSelectMenu->SetVisibility(bHasCharacter ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	if (bHasCharacter)
+	{
+		return;
+	}
+
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (!YSGameState)
+	{
+		return;
+	}
+
+	// boutons construits dès que la liste est arrivée du serveur
+	if (!CharacterSelectMenu->HasCharacters() && YSGameState->GetSelectableCharacters().Num() > 0)
+	{
+		TArray<FText> Names;
+		for (const TSubclassOf<AYSPlayerCharacter>& CharacterClass : YSGameState->GetSelectableCharacters())
+		{
+			const AYSPlayerCharacter* Default = CharacterClass ? CharacterClass->GetDefaultObject<AYSPlayerCharacter>() : nullptr;
+			Names.Add(Default ? Default->GetCharacterName() : FText::FromString(TEXT("?")));
+		}
+		CharacterSelectMenu->SetCharacters(Names);
+
+		// choix déjà connu par le serveur (reconnexion, etc.)
+		const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
+		CharacterSelectMenu->SetSelectedIndex(MyState && MyState->HasSelectedCharacter() ? MyState->GetSelectedCharacterIndex() : LocalSelectedCharacter);
+	}
+
+	// combien de joueurs ont déjà choisi
+	int32 Ready = 0;
+	for (const APlayerState* OtherPlayer : YSGameState->PlayerArray)
+	{
+		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(OtherPlayer);
+		Ready += (YSPlayer && YSPlayer->HasSelectedCharacter()) ? 1 : 0;
+	}
+	CharacterSelectMenu->SetStatus(FText::Format(NSLOCTEXT("YS", "CharacterSelectStatus", "Joueurs prêts : {0} / {1}"), Ready, YSGameState->PlayerArray.Num()));
 }
 
 void AYSPlayerController::PlayerTick(float DeltaTime)
@@ -49,6 +130,7 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 	Super::PlayerTick(DeltaTime);
 
 	UpdateAim();
+	UpdateCharacterSelectMenu();
 
 	if (DebugWalkRemaining > 0.0f)
 	{
