@@ -2,6 +2,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 
 namespace
@@ -37,9 +38,44 @@ void UYSAbilityComponent::TryActivate(const FVector& TargetLocation)
 		return;
 	}
 
-	// prédiction locale de la recharge pour une UI réactive, le serveur fait foi
+	// prédiction locale de la recharge et des effets pour un retour immédiat, le serveur fait foi
 	ReadyServerTime = GetServerTime() + Cooldown;
+	NotifyActivated();
 	ServerActivate(TargetLocation);
+}
+
+float UYSAbilityComponent::GetTimeSinceActivation() const
+{
+	const UWorld* World = GetWorld();
+	return World ? static_cast<float>(World->GetTimeSeconds() - LastActivationTime) : TNumericLimits<float>::Max();
+}
+
+void UYSAbilityComponent::MulticastActivated_Implementation()
+{
+	if (!IsLocallyPredicted())
+	{
+		NotifyActivated();
+	}
+}
+
+void UYSAbilityComponent::NotifyActivated()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastActivationTime = World->GetTimeSeconds();
+	}
+}
+
+bool UYSAbilityComponent::IsLocallyPredicted() const
+{
+	// le pawn tireur est le propriétaire direct, ou celui de l'arme qui porte la capacité
+	const AActor* Owner = GetOwner();
+	const APawn* Shooter = Cast<APawn>(Owner);
+	if (!Shooter && Owner)
+	{
+		Shooter = Cast<APawn>(Owner->GetOwner());
+	}
+	return Owner && !Owner->HasAuthority() && Shooter && Shooter->IsLocallyControlled();
 }
 
 float UYSAbilityComponent::GetCooldownRemaining() const
@@ -62,6 +98,7 @@ void UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
 
 	ReadyServerTime = Now + Cooldown;
 	ExecuteAbility(TargetLocation);
+	MulticastActivated();
 }
 
 double UYSAbilityComponent::GetServerTime() const

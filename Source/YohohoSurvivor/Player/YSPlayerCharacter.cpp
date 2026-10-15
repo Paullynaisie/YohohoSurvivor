@@ -260,7 +260,6 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 		{
 			WorldLocation = FMath::VInterpTo(WorldLocation, Target, DeltaSeconds, HandFollowSpeed);
 		}
-		Hand->SetWorldLocation(WorldLocation);
 
 		// la main pivote (yaw) vers la cible de la visée assistée de son arme, pour montrer où partira le tir
 		FRotator Rotation = GetHandTargetRotation(bLeft);
@@ -281,6 +280,19 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 			CurrentYaw = FRotator::NormalizeAxis(CurrentYaw + FRotator::NormalizeAxis(TargetYaw - CurrentYaw) * Alpha);
 		}
 		Rotation.Yaw = CurrentYaw;
+
+		// recul après une activation : main reculée le long de l'axe de l'arme et cabrée (muzzle vers le haut)
+		const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
+		const float Recoil = Weapon ? Weapon->GetRecoilAlpha() : 0.0f;
+		FVector RecoilOffset = FVector::ZeroVector;
+		if (Recoil > 0.0f)
+		{
+			RecoilOffset = PivotTransform.TransformVectorNoScale(-Rotation.Vector() * Weapon->GetRecoilKickBack() * Recoil);
+			Rotation.Pitch += Weapon->GetRecoilPitch() * Recoil;
+		}
+
+		// le recul s'ajoute après le lissage : il reste sec malgré le retard des mains
+		Hand->SetWorldLocation(WorldLocation + RecoilOffset);
 		Hand->SetRelativeRotation(Rotation);
 	};
 

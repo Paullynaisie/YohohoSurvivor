@@ -58,6 +58,27 @@ public:
 	UFUNCTION(BlueprintPure, Category="Ability")
 	bool IsReady() const { return GetCooldownRemaining() <= 0.0f; }
 
+	/** Secondes depuis la dernière activation vue par cette machine (très grand si jamais activée) ; sert aux effets visuels */
+	UFUNCTION(BlueprintPure, Category="Ability")
+	float GetTimeSinceActivation() const;
+
+protected:
+
+	/** Effets visuels de l'activation sur toutes les machines (le client qui tire les a déjà joués par prédiction) */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastActivated();
+
+	/** Note l'instant de l'activation pour les effets visuels locaux */
+	void NotifyActivated();
+
+	/** Vrai sur le client qui contrôle le tireur (hors serveur) : il joue les effets sans attendre le serveur */
+	bool IsLocallyPredicted() const;
+
+private:
+
+	/** Instant (temps local) de la dernière activation vue par cette machine */
+	double LastActivationTime = -1.0e6;
+
 protected:
 
 	/** Effet de la capacité, exécuté uniquement sur le serveur */

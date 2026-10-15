@@ -15,7 +15,7 @@ class UYSAbilityComponent;
  *  avec le personnage comme propriétaire (nécessaire aux RPC de l'action).
  *  Classe de base du Blueprint BP_Arme.
  */
-UCLASS(meta=(PrioritizeCategories="Weapon Akimbo"))
+UCLASS(meta=(PrioritizeCategories="Weapon Akimbo Recoil"))
 class AYSWeapon : public AActor
 {
 	GENERATED_BODY()
@@ -63,7 +63,31 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Akimbo", meta=(ClampMin="0", Units="Seconds"))
 	float AkimboFireDelay = 0.5f;
 
+	/** Recul à chaque activation de l'action : la main se cabre (muzzle vers le haut) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Recoil", meta=(Units="Degrees"))
+	float RecoilPitch = 25.0f;
+
+	/** Recul à chaque activation : la main recule le long de l'axe de l'arme */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Recoil", meta=(ClampMin="0", Units="Centimeters"))
+	float RecoilKickBack = 10.0f;
+
+	/** Durée du coup (montée rapide, courbe EaseOut) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Recoil", meta=(ClampMin="0.001", Units="Seconds"))
+	float RecoilKickDuration = 0.05f;
+
+	/** Durée du retour en place (courbe EaseInOut) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Recoil", meta=(ClampMin="0.001", Units="Seconds"))
+	float RecoilRecoverDuration = 0.25f;
+
 public:
+
+	/** Intensité actuelle du recul (0 = au repos, 1 = pic), d'après la dernière activation de l'action */
+	UFUNCTION(BlueprintPure, Category="Recoil")
+	float GetRecoilAlpha() const;
+
+	float GetRecoilPitch() const { return RecoilPitch; }
+
+	float GetRecoilKickBack() const { return RecoilKickBack; }
 
 	float GetAkimboFireDelay() const { return AkimboFireDelay; }
 
