@@ -23,6 +23,32 @@ UYSAbilityComponent* AYSWeapon::GetAction() const
 	return FindComponentByClass<UYSAbilityComponent>();
 }
 
+UYSAbilityComponent* AYSWeapon::GetActiveAction() const
+{
+	TInlineComponentArray<UYSAbilityComponent*> Actions(this);
+	for (UYSAbilityComponent* Action : Actions)
+	{
+		if (!Action->IsAutomatic())
+		{
+			return Action;
+		}
+	}
+	return nullptr;
+}
+
+UYSAbilityComponent* AYSWeapon::GetAutoAction() const
+{
+	TInlineComponentArray<UYSAbilityComponent*> Actions(this);
+	for (UYSAbilityComponent* Action : Actions)
+	{
+		if (Action->IsAutomatic())
+		{
+			return Action;
+		}
+	}
+	return nullptr;
+}
+
 APawn* AYSWeapon::GetHolder() const
 {
 	return Cast<APawn>(GetOwner());
@@ -30,7 +56,7 @@ APawn* AYSWeapon::GetHolder() const
 
 float AYSWeapon::GetRecoilAlpha() const
 {
-	const UYSAbilityComponent* Action = GetAction();
+	const UYSAbilityComponent* Action = GetActiveAction();
 	if (!Action)
 	{
 		return 0.0f;

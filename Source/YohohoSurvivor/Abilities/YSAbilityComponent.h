@@ -2,14 +2,16 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "GameplayTagContainer.h"
 #include "YSAbilityComponent.generated.h"
 
 class UTexture2D;
 
 /**
  *  Base des capacités du joueur : temps de recharge, activation réseau et données d'UI.
- *  Flux : le client local appelle TryActivate -> RPC serveur -> le serveur vérifie la recharge
- *  et exécute ExecuteAbility. Le temps de recharge est prédit côté client puis corrigé par réplication.
+ *  Attaque active (ex. Coup d'Petoir) : le client local appelle TryActivate -> RPC serveur -> le serveur
+ *  vérifie la recharge et exécute ExecuteAbility. Le temps de recharge est prédit côté client puis corrigé par réplication.
+ *  Attaque automatique (ex. Coup d'sabre) : déclenchée par le serveur lui-même (IsAutomatic).
  *  Les paramètres sont BlueprintReadWrite pour pouvoir être modifiés par les upgrades.
  */
 UCLASS(Abstract, ClassGroup=(YS))
@@ -61,6 +63,21 @@ public:
 	/** Secondes depuis la dernière activation vue par cette machine (très grand si jamais activée) ; sert aux effets visuels */
 	UFUNCTION(BlueprintPure, Category="Ability")
 	float GetTimeSinceActivation() const;
+
+	/** Durée totale d'indisponibilité après une activation (par défaut : Cooldown) */
+	virtual float GetCooldownDuration() const { return Cooldown; }
+
+	/** Vrai pour une attaque automatique (déclenchée par le serveur, pas par une touche) */
+	virtual bool IsAutomatic() const { return false; }
+
+	/**
+	 *  Cible dans un cône horizontal : le pawn le plus proche portant un des Tags, à moins de MaxDistance
+	 *  de Origin et à moins de MaxAngle (de chaque côté) de Direction. Utilisé par la visée assistée et les attaques auto.
+	 */
+	static AActor* FindTargetInCone(const UWorld* World, const FVector& Origin, const FVector& Direction, float MaxDistance, float MaxAngle, const FGameplayTagContainer& Tags, const AActor* IgnoredActor);
+
+	/** Pawn qui utilise la capacité : le propriétaire direct, ou celui de l'arme qui la porte */
+	APawn* GetHolderPawn() const;
 
 protected:
 

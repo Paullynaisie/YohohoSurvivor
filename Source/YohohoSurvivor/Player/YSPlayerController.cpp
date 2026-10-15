@@ -65,10 +65,10 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
 		const AYSWeapon* MainWeapon = PlayerCharacter ? PlayerCharacter->GetRightHandWeapon() : nullptr;
 		const AYSWeapon* OffWeapon = PlayerCharacter ? PlayerCharacter->GetLeftHandWeapon() : nullptr;
-		UYSAbilityComponent* Action = MainWeapon ? MainWeapon->GetAction() : nullptr;
+		UYSAbilityComponent* Action = MainWeapon ? MainWeapon->GetActiveAction() : nullptr;
 		if (!Action && OffWeapon)
 		{
-			Action = OffWeapon->GetAction();
+			Action = OffWeapon->GetActiveAction();
 		}
 		AbilityIcon->Refresh(Action);
 	}

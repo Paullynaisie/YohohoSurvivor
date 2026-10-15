@@ -3,6 +3,8 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/Pawn.h"
+#include "EngineUtils.h"
+#include "GameplayTagAssetInterface.h"
 #include "Net/UnrealNetwork.h"
 
 namespace
@@ -39,7 +41,7 @@ void UYSAbilityComponent::TryActivate(const FVector& TargetLocation)
 	}
 
 	// prédiction locale de la recharge et des effets pour un retour immédiat, le serveur fait foi
-	ReadyServerTime = GetServerTime() + Cooldown;
+	ReadyServerTime = GetServerTime() + GetCooldownDuration();
 	NotifyActivated();
 	ServerActivate(TargetLocation);
 }
@@ -52,7 +54,8 @@ float UYSAbilityComponent::GetTimeSinceActivation() const
 
 void UYSAbilityComponent::MulticastActivated_Implementation()
 {
-	if (!IsLocallyPredicted())
+	// une attaque automatique n'est jamais prédite : tout le monde la joue à réception
+	if (IsAutomatic() || !IsLocallyPredicted())
 	{
 		NotifyActivated();
 	}
@@ -68,14 +71,57 @@ void UYSAbilityComponent::NotifyActivated()
 
 bool UYSAbilityComponent::IsLocallyPredicted() const
 {
-	// le pawn tireur est le propriétaire direct, ou celui de l'arme qui porte la capacité
 	const AActor* Owner = GetOwner();
-	const APawn* Shooter = Cast<APawn>(Owner);
-	if (!Shooter && Owner)
-	{
-		Shooter = Cast<APawn>(Owner->GetOwner());
-	}
+	const APawn* Shooter = GetHolderPawn();
 	return Owner && !Owner->HasAuthority() && Shooter && Shooter->IsLocallyControlled();
+}
+
+APawn* UYSAbilityComponent::GetHolderPawn() const
+{
+	AActor* Owner = GetOwner();
+	APawn* Holder = Cast<APawn>(Owner);
+	if (!Holder && Owner)
+	{
+		Holder = Cast<APawn>(Owner->GetOwner());
+	}
+	return Holder;
+}
+
+AActor* UYSAbilityComponent::FindTargetInCone(const UWorld* World, const FVector& Origin, const FVector& Direction, float MaxDistance, float MaxAngle, const FGameplayTagContainer& Tags, const AActor* IgnoredActor)
+{
+	const FVector FlatDirection = FVector(Direction.X, Direction.Y, 0.0f).GetSafeNormal();
+	if (!World || MaxDistance <= 0.0f || MaxAngle <= 0.0f || FlatDirection.IsNearlyZero() || Tags.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	const float MinCos = FMath::Cos(FMath::DegreesToRadians(MaxAngle));
+	AActor* BestTarget = nullptr;
+	float BestDistanceSq = FMath::Square(MaxDistance);
+
+	for (TActorIterator<APawn> It(World); It; ++It)
+	{
+		APawn* Candidate = *It;
+		const IGameplayTagAssetInterface* TagInterface = Cast<IGameplayTagAssetInterface>(Candidate);
+		if (Candidate == IgnoredActor || !TagInterface || !TagInterface->HasAnyMatchingGameplayTags(Tags))
+		{
+			continue;
+		}
+
+		const FVector ToCandidate = FVector(Candidate->GetActorLocation() - Origin) * FVector(1.0f, 1.0f, 0.0f);
+		const float DistanceSq = ToCandidate.SizeSquared();
+		if (DistanceSq > BestDistanceSq || DistanceSq < KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+
+		if (FVector::DotProduct(ToCandidate.GetSafeNormal(), FlatDirection) >= MinCos)
+		{
+			BestTarget = Candidate;
+			BestDistanceSq = DistanceSq;
+		}
+	}
+	return BestTarget;
 }
 
 float UYSAbilityComponent::GetCooldownRemaining() const
@@ -96,7 +142,7 @@ void UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
 		return;
 	}
 
-	ReadyServerTime = Now + Cooldown;
+	ReadyServerTime = Now + GetCooldownDuration();
 	ExecuteAbility(TargetLocation);
 	MulticastActivated();
 }

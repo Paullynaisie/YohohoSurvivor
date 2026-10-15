@@ -111,6 +111,14 @@ public:
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	UYSAbilityComponent* GetAction() const;
 
+	/** Attaque active (déclenchée par le joueur, ex. Coup d'Petoir), ou nullptr */
+	UFUNCTION(BlueprintPure, Category="Weapon")
+	UYSAbilityComponent* GetActiveAction() const;
+
+	/** Attaque automatique (déclenchée par le serveur, ex. Coup d'sabre), ou nullptr */
+	UFUNCTION(BlueprintPure, Category="Weapon")
+	UYSAbilityComponent* GetAutoAction() const;
+
 	/** Pawn qui tient l'arme */
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	APawn* GetHolder() const;

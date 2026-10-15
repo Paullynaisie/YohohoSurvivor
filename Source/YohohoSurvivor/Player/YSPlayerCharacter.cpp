@@ -15,6 +15,7 @@
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
+#include "Abilities/YSCoupDSabreAbility.h"
 #include "TimerManager.h"
 #include "Components/ChildActorComponent.h"
 #include "Weapons/YSWeapon.h"
@@ -231,7 +232,7 @@ const AActor* AYSPlayerCharacter::GetHandAssistTarget(bool bLeft) const
 
 	// la direction de la souris est celle du regard du personnage (répliquée : identique sur toutes les machines)
 	const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
-	const UYSCoupDPetoirAbility* Petoir = Weapon ? Cast<UYSCoupDPetoirAbility>(Weapon->GetAction()) : nullptr;
+	const UYSCoupDPetoirAbility* Petoir = Weapon ? Cast<UYSCoupDPetoirAbility>(Weapon->GetActiveAction()) : nullptr;
 	return Petoir ? Petoir->FindAssistTarget(GetActorLocation(), GetActorForwardVector()) : nullptr;
 }
 
@@ -292,8 +293,31 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 		}
 
 		// le recul s'ajoute après le lissage : il reste sec malgré le retard des mains
-		Hand->SetWorldLocation(WorldLocation + RecoilOffset);
-		Hand->SetRelativeRotation(Rotation);
+		FVector FinalLocation = WorldLocation + RecoilOffset;
+		FQuat FinalRotation = Rotation.Quaternion();
+
+		// attaque auto (Coup d'sabre) : la pose animée remplace la pose normale, sans retard pour garder la coupe brutale
+		const UYSCoupDSabreAbility* Sabre = Weapon ? Cast<UYSCoupDSabreAbility>(Weapon->GetAutoAction()) : nullptr;
+		float IdleWeight = 1.0f;
+		FVector PoseLocation;
+		FQuat PoseRotation;
+		if (Sabre && Sabre->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation))
+		{
+			// poses exprimées pour la main droite : symétrie pour la gauche (Y, Yaw et Roll inversés)
+			if (bLeft)
+			{
+				PoseLocation.Y = -PoseLocation.Y;
+				FRotator Mirrored = PoseRotation.Rotator();
+				Mirrored.Yaw = -Mirrored.Yaw;
+				Mirrored.Roll = -Mirrored.Roll;
+				PoseRotation = Mirrored.Quaternion();
+			}
+			FinalLocation = FMath::Lerp(PivotTransform.TransformPosition(PoseLocation), FinalLocation, IdleWeight);
+			FinalRotation = FQuat::Slerp(PoseRotation, FinalRotation, IdleWeight);
+		}
+
+		Hand->SetWorldLocation(FinalLocation);
+		Hand->SetRelativeRotation(FinalRotation);
 	};
 
 	UpdateHand(LeftHand, LeftHandWorldLocation, LeftHandYaw, true, 0.0f);
@@ -491,8 +515,8 @@ void AYSPlayerCharacter::Fire()
 {
 	const AYSWeapon* MainWeapon = GetRightHandWeapon();
 	const AYSWeapon* OffWeapon = GetLeftHandWeapon();
-	UYSAbilityComponent* MainAction = MainWeapon ? MainWeapon->GetAction() : nullptr;
-	UYSAbilityComponent* OffAction = OffWeapon ? OffWeapon->GetAction() : nullptr;
+	UYSAbilityComponent* MainAction = MainWeapon ? MainWeapon->GetActiveAction() : nullptr;
+	UYSAbilityComponent* OffAction = OffWeapon ? OffWeapon->GetActiveAction() : nullptr;
 
 	// akimbo : la main droite (principale) tire, puis la gauche après le délai de l'arme
 	const bool bAkimbo = MainAction && OffAction && MainWeapon->GetClass() == OffWeapon->GetClass();

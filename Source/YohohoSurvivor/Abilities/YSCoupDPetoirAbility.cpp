@@ -1,6 +1,5 @@
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Engine/World.h"
-#include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/Pawn.h"
 #include "Weapons/YSWeapon.h"
@@ -28,41 +27,13 @@ void UYSCoupDPetoirAbility::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 
 AActor* UYSCoupDPetoirAbility::FindAssistTarget(const FVector& Origin, const FVector& AimDirection) const
 {
-	const FVector Direction = FVector(AimDirection.X, AimDirection.Y, 0.0f).GetSafeNormal();
+	// cibles : ce que le projectile peut toucher (ses HitTags)
 	const AYSProjectile* Projectile = ProjectileClass ? ProjectileClass->GetDefaultObject<AYSProjectile>() : nullptr;
-	if (!Projectile || AssistAimDistance <= 0.0f || AssistAimAngle <= 0.0f || Direction.IsNearlyZero() || !GetWorld())
+	if (!Projectile)
 	{
 		return nullptr;
 	}
-
-	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
-	const AActor* Holder = Weapon ? Weapon->GetHolder() : GetOwner();
-	const float MinCos = FMath::Cos(FMath::DegreesToRadians(AssistAimAngle));
-
-	AActor* BestTarget = nullptr;
-	float BestDistanceSq = FMath::Square(AssistAimDistance);
-	for (TActorIterator<APawn> It(GetWorld()); It; ++It)
-	{
-		APawn* Candidate = *It;
-		if (Candidate == Holder || !Projectile->CanHit(Candidate))
-		{
-			continue;
-		}
-
-		const FVector ToCandidate = FVector(Candidate->GetActorLocation() - Origin) * FVector(1.0f, 1.0f, 0.0f);
-		const float DistanceSq = ToCandidate.SizeSquared();
-		if (DistanceSq > BestDistanceSq || DistanceSq < KINDA_SMALL_NUMBER)
-		{
-			continue;
-		}
-
-		if (FVector::DotProduct(ToCandidate.GetSafeNormal(), Direction) >= MinCos)
-		{
-			BestTarget = Candidate;
-			BestDistanceSq = DistanceSq;
-		}
-	}
-	return BestTarget;
+	return FindTargetInCone(GetWorld(), Origin, AimDirection, AssistAimDistance, AssistAimAngle, Projectile->GetHitTags(), GetHolderPawn());
 }
 
 void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
