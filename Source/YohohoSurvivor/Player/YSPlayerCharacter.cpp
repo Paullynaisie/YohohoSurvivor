@@ -82,10 +82,30 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	FaceDecal->DecalSize = FVector(12.0f, 28.0f, 28.0f);
 
 	// pistolet par défaut : un cube allongé sur le flanc gauche (remplaçable dans le Blueprint)
+	// mains : un point d'attache par côté (servira aux armes) + une petite sphère visible
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultHand(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	auto CreateHand = [this](const TCHAR* SocketName, const TCHAR* MeshName, float Side, TObjectPtr<USceneComponent>& OutSocket, TObjectPtr<UStaticMeshComponent>& OutMesh)
+	{
+		OutSocket = CreateDefaultSubobject<USceneComponent>(SocketName);
+		OutSocket->SetupAttachment(BodyPivot);
+		OutSocket->SetRelativeLocation(FVector(0.0f, 55.0f * Side, -10.0f));
+
+		OutMesh = CreateDefaultSubobject<UStaticMeshComponent>(MeshName);
+		OutMesh->SetupAttachment(OutSocket);
+		OutMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		OutMesh->SetRelativeScale3D(FVector(0.25f));
+		if (DefaultHand.Succeeded())
+		{
+			OutMesh->SetStaticMesh(DefaultHand.Object);
+		}
+	};
+	CreateHand(TEXT("LeftHand"), TEXT("LeftHandMesh"), -1.0f, LeftHand, LeftHandMesh);
+	CreateHand(TEXT("RightHand"), TEXT("RightHandMesh"), 1.0f, RightHand, RightHandMesh);
+
 	PistolMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PistolMesh"));
-	PistolMesh->SetupAttachment(BodyPivot);
+	PistolMesh->SetupAttachment(LeftHand);
 	PistolMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	PistolMesh->SetRelativeLocation(FVector(20.0f, -50.0f, 0.0f));
+	PistolMesh->SetRelativeLocation(FVector(15.0f, 0.0f, 0.0f));
 	PistolMesh->SetRelativeScale3D(FVector(0.25f, 0.06f, 0.1f));
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultPistol(TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -107,6 +127,23 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 FVector AYSPlayerCharacter::GetMuzzleLocation() const
 {
 	return MuzzlePoint->GetComponentLocation();
+}
+
+void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	// exécuté aussi dans l'éditeur : changer le matériau du corps change celui des mains
+	if (bHandsUseBodyMaterial)
+	{
+		for (UStaticMeshComponent* HandMesh : { LeftHandMesh.Get(), RightHandMesh.Get() })
+		{
+			for (int32 Index = 0; Index < HandMesh->GetNumMaterials(); ++Index)
+			{
+				HandMesh->SetMaterial(Index, BodyMesh->GetMaterial(0));
+			}
+		}
+	}
 }
 
 void AYSPlayerCharacter::BeginPlay()

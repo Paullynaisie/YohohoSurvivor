@@ -54,7 +54,23 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UYSFaceDecalComponent> FaceDecal;
 
-	/** Pistolet, fixé sur le flanc gauche du corps */
+	/** Main gauche : point d'attache (non mis à l'échelle) des armes / objets tenus à gauche */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> LeftHand;
+
+	/** Main droite : point d'attache (non mis à l'échelle) des armes / objets tenus à droite */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> RightHand;
+
+	/** Sphère visible de la main gauche */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UStaticMeshComponent> LeftHandMesh;
+
+	/** Sphère visible de la main droite */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UStaticMeshComponent> RightHandMesh;
+
+	/** Pistolet, tenu dans la main gauche */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UStaticMeshComponent> PistolMesh;
 
@@ -130,6 +146,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hop", meta=(ClampMin="1"))
 	float HopEaseExponent = 2.0f;
 
+	/** Les sphères des mains reprennent le matériau du corps (BodyMesh) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Appearance")
+	bool bHandsUseBodyMaterial = true;
+
 	/** Tags portés par le personnage (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Tags")
 	FGameplayTagContainer GameplayTags;
@@ -154,7 +174,13 @@ public:
 
 	AYSPlayerCharacter();
 
+	virtual void OnConstruction(const FTransform& Transform) override;
+
 	virtual void BeginPlay() override;
+
+	USceneComponent* GetLeftHand() const { return LeftHand.Get(); }
+
+	USceneComponent* GetRightHand() const { return RightHand.Get(); }
 
 	virtual void Tick(float DeltaSeconds) override;
 
