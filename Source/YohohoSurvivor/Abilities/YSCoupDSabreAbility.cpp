@@ -121,8 +121,27 @@ bool UYSCoupDSabreAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLo
 		// coupe : départ immédiat, très rapide
 		const float Alpha = FMath::InterpEaseOut(0.0f, 1.0f, (Elapsed - WindupDuration) / SwingDuration, SwingEaseExponent);
 		OutIdleWeight = 0.0f;
-		OutLocation = FMath::Lerp(WindupHandLocation, SwingEndHandLocation, Alpha);
-		OutRotation = FQuat::Slerp(WindupQuat, SwingEndQuat, Alpha);
+
+		if (bCircularSwing)
+		{
+			// arc autour du corps : angle et rayon (plan horizontal) interpolés, hauteur linéaire
+			const float StartAngle = FMath::Atan2(WindupHandLocation.Y, WindupHandLocation.X);
+			const float EndAngle = FMath::Atan2(SwingEndHandLocation.Y, SwingEndHandLocation.X);
+			const float Angle = StartAngle + FMath::FindDeltaAngleRadians(StartAngle, EndAngle) * Alpha;
+			const float Radius = FMath::Lerp(FVector2D(WindupHandLocation).Size(), FVector2D(SwingEndHandLocation).Size(), Alpha);
+			OutLocation = FVector(FMath::Cos(Angle) * Radius, FMath::Sin(Angle) * Radius, FMath::Lerp(WindupHandLocation.Z, SwingEndHandLocation.Z, Alpha));
+		}
+		else
+		{
+			OutLocation = FMath::Lerp(WindupHandLocation, SwingEndHandLocation, Alpha);
+		}
+
+		// valeur par valeur (pas le plus court chemin) pour respecter les tours complets demandés
+		const FRotator Rotation(
+			FMath::Lerp(WindupHandRotation.Pitch, SwingEndHandRotation.Pitch, Alpha),
+			FMath::Lerp(WindupHandRotation.Yaw, SwingEndHandRotation.Yaw, Alpha),
+			FMath::Lerp(WindupHandRotation.Roll, SwingEndHandRotation.Roll, Alpha));
+		OutRotation = Rotation.Quaternion();
 	}
 	else
 	{

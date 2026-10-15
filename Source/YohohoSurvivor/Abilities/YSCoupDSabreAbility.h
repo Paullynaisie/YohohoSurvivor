@@ -55,19 +55,26 @@ public:
 
 	/** Pose de préparation de la main (main droite, relative au corps) : sur le flanc */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'sabre|Animation")
-	FVector WindupHandLocation = FVector(-10.0f, 70.0f, 0.0f);
+	FVector WindupHandLocation = FVector(-20.0f, 90.0f, 0.0f);
 
-	/** Rotation de préparation (main droite) : lame parallèle au sol pointant vers l'arrière-droite, tranchant devant */
+	/** Rotation de préparation (main droite) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'sabre|Animation")
-	FRotator WindupHandRotation = FRotator(0.0f, 10.0f, 90.0f);
+	FRotator WindupHandRotation = FRotator(180.0f, -115.0f, -90.0f);
 
 	/** Pose de fin de coupe (main droite, relative au corps) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'sabre|Animation")
-	FVector SwingEndHandLocation = FVector(40.0f, 35.0f, 0.0f);
+	FVector SwingEndHandLocation = FVector(40.0f, -65.0f, 0.0f);
 
-	/** Rotation de fin de coupe (main droite) : lame parallèle au sol, pointée vers l'avant */
+	/**
+	 *  Rotation de fin de coupe (main droite). Interpolée valeur par valeur depuis WindupHandRotation :
+	 *  des angles au-delà de 360° (ex. Yaw -400) donnent plus d'un tour, dans le sens indiqué.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'sabre|Animation")
-	FRotator SwingEndHandRotation = FRotator(0.0f, -90.0f, 90.0f);
+	FRotator SwingEndHandRotation = FRotator(180.0f, -400.0f, -90.0f);
+
+	/** Pendant la coupe, la main suit un arc de cercle autour du corps (sinon une ligne droite) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'sabre|Animation")
+	bool bCircularSwing = true;
 
 	/** Courbes : préparation EaseOut, coupe EaseOut très marqué (brutal), retour EaseInOut */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'sabre|Animation", meta=(ClampMin="1"))
