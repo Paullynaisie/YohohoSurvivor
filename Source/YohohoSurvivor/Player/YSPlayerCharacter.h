@@ -9,6 +9,8 @@
 class UCameraComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
+class UDecalComponent;
+class UTexture2D;
 class UBlendSpace;
 class UInputAction;
 class UInputMappingContext;
@@ -19,7 +21,8 @@ struct FInputActionValue;
  *  Personnage joueur top-down, déplacé au clavier (ZQSD sur AZERTY, WASD sur QWERTY).
  *  Il regarde toujours vers le curseur (rotation de contrôle fournie par AYSPlayerController)
  *  et strafe : l'animation dépend de la direction du mouvement par rapport au regard.
- *  Clic gauche : Coup d'Petoir (tir du pistolet tenu dans la main gauche).
+ *  DA « primitives » : le corps est un cylindre (BodyMesh) avec un visage en decal (FaceDecal).
+ *  Clic gauche : Coup d'Petoir (tir du pistolet fixé sur le flanc gauche).
  *  Déplacement et rotation sont répliqués par le CharacterMovementComponent (prédiction client incluse).
  *  Classe de base du Blueprint PlayerCharacter_mouss : les réglages se font dans le Blueprint.
  */
@@ -38,7 +41,15 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UCameraComponent> TopDownCamera;
 
-	/** Pistolet, attaché au socket PistolSocketName du mesh */
+	/** Corps du personnage (cylindre par défaut) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UStaticMeshComponent> BodyMesh;
+
+	/** Visage projeté sur l'avant du corps */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UDecalComponent> FaceDecal;
+
+	/** Pistolet, fixé sur le flanc gauche du corps */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UStaticMeshComponent> PistolMesh;
 
@@ -79,6 +90,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Animation", meta=(ClampMin="0"))
 	float StrafeBlendSmoothing = 10.0f;
 
+	/** Icône du visage (texture appliquée au decal FaceDecal ; vide = texture par défaut du matériau) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Appearance")
+	TObjectPtr<UTexture2D> FaceTexture;
+
+	/** Paramètre texture du matériau du decal qui reçoit FaceTexture */
+	UPROPERTY(EditAnywhere, Category="Mouss|Appearance")
+	FName FaceTextureParameterName = TEXT("FaceTexture");
+
 	/** Tags portés par le personnage (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Tags")
 	FGameplayTagContainer GameplayTags;
@@ -90,10 +109,9 @@ private:
 
 public:
 
-	/** Socket du squelette où est attaché le pistolet (main gauche) */
-	static const FName PistolSocketName;
-
 	AYSPlayerCharacter();
+
+	virtual void OnConstruction(const FTransform& Transform) override;
 
 	virtual void BeginPlay() override;
 

@@ -15,11 +15,11 @@
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
+#include "Components/DecalComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSGameplayTags.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Player/YSPlayerController.h"
-
-const FName AYSPlayerCharacter::PistolSocketName(TEXT("PistolSocket_L"));
 
 AYSPlayerCharacter::AYSPlayerCharacter()
 {
@@ -49,29 +49,33 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	TopDownCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	TopDownCamera->bUsePawnControlRotation = false;
 
-	// mesh et animations par défaut (mannequin du template), remplaçables dans le Blueprint
-	static ConstructorHelpers::FObjectFinder<USkeletalMesh> DefaultMesh(TEXT("/Game/PresetProject/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
-	static ConstructorHelpers::FClassFinder<UAnimInstance> DefaultAnim(TEXT("/Game/PresetProject/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed"));
-
-	if (DefaultMesh.Succeeded())
-	{
-		GetMesh()->SetSkeletalMeshAsset(DefaultMesh.Object);
-	}
-
-	if (DefaultAnim.Succeeded())
-	{
-		GetMesh()->SetAnimInstanceClass(DefaultAnim.Class);
-	}
-
+	// DA « primitives » : pas de mesh squelettique, le corps est un cylindre (BodyMesh)
+	GetMesh()->SetSkeletalMeshAsset(nullptr);
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -96.0f), FRotator(0.0f, -90.0f, 0.0f));
 
-	// os mis à jour même hors écran : le serveur a besoin de la vraie position du pistolet pour tirer
-	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	// cylindre de la taille de la capsule (le cylindre moteur fait 100 x 100 x 100)
+	BodyMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BodyMesh"));
+	BodyMesh->SetupAttachment(RootComponent);
+	BodyMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	BodyMesh->SetRelativeScale3D(FVector(0.84f, 0.84f, 1.92f));
 
-	// pistolet par défaut : un cube allongé (remplaçable dans le Blueprint)
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultBody(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	if (DefaultBody.Succeeded())
+	{
+		BodyMesh->SetStaticMesh(DefaultBody.Object);
+	}
+
+	// visage : decal projeté sur l'avant du cylindre, vers l'arrière (axe X du decal = sens de projection)
+	FaceDecal = CreateDefaultSubobject<UDecalComponent>(TEXT("FaceDecal"));
+	FaceDecal->SetupAttachment(RootComponent);
+	FaceDecal->SetRelativeLocationAndRotation(FVector(42.0f, 0.0f, 50.0f), FRotator(0.0f, 180.0f, 0.0f));
+	FaceDecal->DecalSize = FVector(12.0f, 28.0f, 28.0f);
+
+	// pistolet par défaut : un cube allongé sur le flanc gauche (remplaçable dans le Blueprint)
 	PistolMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PistolMesh"));
-	PistolMesh->SetupAttachment(GetMesh(), PistolSocketName);
+	PistolMesh->SetupAttachment(RootComponent);
 	PistolMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	PistolMesh->SetRelativeLocation(FVector(20.0f, -50.0f, 0.0f));
 	PistolMesh->SetRelativeScale3D(FVector(0.25f, 0.06f, 0.1f));
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultPistol(TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -95,6 +99,20 @@ FVector AYSPlayerCharacter::GetMuzzleLocation() const
 	return MuzzlePoint->GetComponentLocation();
 }
 
+void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	// exécuté aussi dans l'éditeur : le visage choisi est visible dans le viewport du Blueprint
+	if (FaceTexture)
+	{
+		if (UMaterialInstanceDynamic* FaceMaterial = FaceDecal->CreateDynamicMaterialInstance())
+		{
+			FaceMaterial->SetTextureParameterValue(FaceTextureParameterName, FaceTexture);
+		}
+	}
+}
+
 void AYSPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -102,7 +120,8 @@ void AYSPlayerCharacter::BeginPlay()
 	// appliqué sur le serveur ET les clients pour que la prédiction de mouvement reste cohérente
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
 
-	if (StrafeBlendSpace)
+	// le strafe ne s'applique que si un mesh squelettique est renseigné
+	if (StrafeBlendSpace && GetMesh()->GetSkeletalMeshAsset())
 	{
 		GetMesh()->PlayAnimation(StrafeBlendSpace, true);
 	}
