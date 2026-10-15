@@ -27,7 +27,7 @@ struct FInputActionValue;
  *  Déplacement et rotation sont répliqués par le CharacterMovementComponent (prédiction client incluse).
  *  Classe de base du Blueprint PlayerCharacter_mouss : les réglages se font dans le Blueprint.
  */
-UCLASS(abstract)
+UCLASS(abstract, meta=(PrioritizeCategories="3C"))
 class AYSPlayerCharacter : public ACharacter, public IGameplayTagAssetInterface
 {
 	GENERATED_BODY()
@@ -81,38 +81,57 @@ private:
 protected:
 
 	/** Vitesse de déplacement maximale */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Movement", meta=(ClampMin="0", Units="CentimetersPerSecond"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Movement", meta=(ClampMin="0", Units="CentimetersPerSecond"))
 	float MoveSpeed = 600.0f;
 
 	/**
 	 *  BlendSpace 2D de strafe (X = direction -180..180 relative au regard, Y = vitesse).
 	 *  S'il est renseigné, il remplace l'Anim Blueprint du mesh.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Animation")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Animation")
 	TObjectPtr<UBlendSpace> StrafeBlendSpace;
 
 	/** Lissage des paramètres envoyés au BlendSpace (0 = aucun lissage) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Animation", meta=(ClampMin="0"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Animation", meta=(ClampMin="0"))
 	float StrafeBlendSmoothing = 10.0f;
 
 	/** Inclinaison maximale du corps dans la direction du mouvement */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Lean", meta=(ClampMin="0", ClampMax="89", Units="Degrees"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Lean", meta=(ClampMin="0", ClampMax="89", Units="Degrees"))
 	float LeanMaxAngle = 30.0f;
 
 	/** Durée de la transition vers une nouvelle inclinaison */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Lean", meta=(ClampMin="0", Units="Seconds"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Lean", meta=(ClampMin="0", Units="Seconds"))
 	float LeanDuration = 0.14f;
 
 	/** Courbe de la transition */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Lean")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Lean")
 	TEnumAsByte<EEasingFunc::Type> LeanEasing = EEasingFunc::EaseIn;
 
 	/** Exposant de la courbe (EaseIn / EaseOut / EaseInOut) : plus il est grand, plus le départ est lent */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Lean", meta=(ClampMin="1"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Lean", meta=(ClampMin="1"))
 	float LeanEaseExponent = 2.0f;
 
+	/** Hauteur du sautillement du corps pendant le déplacement */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hop", meta=(ClampMin="0", Units="Centimeters"))
+	float HopHeight = 10.0f;
+
+	/**
+	 *  Durée d'un sautillement (montée + retour) quand le personnage avance à MoveSpeed.
+	 *  Proportionnelle à la vitesse réelle : 2x plus lent à MoveSpeed / 2, 2x plus rapide à MoveSpeed x 2.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hop", meta=(ClampMin="0.01", Units="Seconds"))
+	float HopDuration = 0.2f;
+
+	/** Courbe du sautillement */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hop")
+	TEnumAsByte<EEasingFunc::Type> HopEasing = EEasingFunc::EaseInOut;
+
+	/** Exposant de la courbe (EaseIn / EaseOut / EaseInOut) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hop", meta=(ClampMin="1"))
+	float HopEaseExponent = 2.0f;
+
 	/** Tags portés par le personnage (camp, etc.), lus par les projectiles */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Tags")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Tags")
 	FGameplayTagContainer GameplayTags;
 
 private:
@@ -127,6 +146,9 @@ private:
 	FVector2D LeanStart = FVector2D::ZeroVector;
 	FVector2D LeanTarget = FVector2D::ZeroVector;
 	float LeanAlpha = 1.0f;
+
+	/** Progression du sautillement en cours (0..1, 0 = au sol) */
+	float HopPhase = 0.0f;
 
 public:
 
@@ -158,8 +180,14 @@ protected:
 	/** Met à jour la position du BlendSpace de strafe (sur toutes les machines) */
 	void UpdateStrafeAnimation(float DeltaSeconds);
 
-	/** Incline BodyPivot vers la direction du mouvement (visuel, sur toutes les machines) */
-	void UpdateLean(float DeltaSeconds);
+	/** Incline BodyPivot vers la direction du mouvement et le fait sautiller (visuel, sur toutes les machines) */
+	void UpdateBodyPivot(float DeltaSeconds);
+
+	/** Avance l'inclinaison lissée et retourne la rotation monde correspondante */
+	FQuat UpdateLean(float DeltaSeconds, const FVector& Velocity);
+
+	/** Avance le sautillement et retourne la hauteur actuelle */
+	float UpdateHop(float DeltaSeconds, float Speed);
 
 private:
 

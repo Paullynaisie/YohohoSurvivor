@@ -20,6 +20,12 @@
 #include "Core/YSGameplayTags.h"
 #include "Player/YSPlayerController.h"
 
+namespace
+{
+	/** En dessous de cette vitesse, le personnage est considéré à l'arrêt (pas d'inclinaison ni de sautillement) */
+	constexpr float MovingSpeedThreshold = 50.0f;
+}
+
 AYSPlayerCharacter::AYSPlayerCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -122,15 +128,50 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	UpdateStrafeAnimation(DeltaSeconds);
-	UpdateLean(DeltaSeconds);
+	UpdateBodyPivot(DeltaSeconds);
 }
 
-void AYSPlayerCharacter::UpdateLean(float DeltaSeconds)
+void AYSPlayerCharacter::UpdateBodyPivot(float DeltaSeconds)
+{
+	const FVector Velocity = GetVelocity();
+	const FQuat LeanQuat = UpdateLean(DeltaSeconds, Velocity);
+	const float Hop = UpdateHop(DeltaSeconds, Velocity.Size2D());
+
+	// pivot autour des pieds (bas de la capsule) pour que le personnage reste posé au sol, puis sautillement vertical
+	const FVector ActorLocation = GetActorLocation();
+	const FVector Feet = ActorLocation - FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	const FVector PivotLocation = Feet + LeanQuat.RotateVector(ActorLocation - Feet) + FVector(0.0f, 0.0f, Hop);
+	BodyPivot->SetWorldLocationAndRotation(PivotLocation, LeanQuat * GetActorQuat());
+}
+
+float AYSPlayerCharacter::UpdateHop(float DeltaSeconds, float Speed)
+{
+	const bool bMoving = Speed > MovingSpeedThreshold;
+
+	// à l'arrêt : on termine le saut en cours (à la cadence de référence) puis on reste au sol
+	if (!bMoving && HopPhase <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// cadence proportionnelle à la vitesse réelle, MoveSpeed servant de référence
+	const float SpeedRatio = (bMoving && MoveSpeed > 0.0f) ? Speed / MoveSpeed : 1.0f;
+	HopPhase += DeltaSeconds * SpeedRatio / HopDuration;
+	if (HopPhase >= 1.0f)
+	{
+		HopPhase = bMoving ? FMath::Fmod(HopPhase, 1.0f) : 0.0f;
+	}
+
+	// montée sur la première moitié, retour sur la seconde
+	const float Triangle = HopPhase < 0.5f ? HopPhase * 2.0f : (1.0f - HopPhase) * 2.0f;
+	return HopHeight * UKismetMathLibrary::Ease(0.0f, 1.0f, Triangle, HopEasing, HopEaseExponent);
+}
+
+FQuat AYSPlayerCharacter::UpdateLean(float DeltaSeconds, const FVector& Velocity)
 {
 	// cible : MaxAngle dans la direction du déplacement (monde), indépendamment du regard
-	const FVector Velocity = GetVelocity();
 	FVector2D Target = FVector2D::ZeroVector;
-	if (Velocity.SizeSquared2D() > FMath::Square(50.0f))
+	if (Velocity.SizeSquared2D() > FMath::Square(MovingSpeedThreshold))
 	{
 		Target = FVector2D(Velocity.X, Velocity.Y).GetSafeNormal() * LeanMaxAngle;
 	}
@@ -155,11 +196,7 @@ void AYSPlayerCharacter::UpdateLean(float DeltaSeconds)
 		const FVector LeanDirection(CurrentLean.X / Angle, CurrentLean.Y / Angle, 0.0f);
 		LeanQuat = FQuat(FVector::CrossProduct(FVector::UpVector, LeanDirection), FMath::DegreesToRadians(Angle));
 	}
-
-	// pivot autour des pieds (bas de la capsule) pour que le personnage reste posé au sol
-	const FVector ActorLocation = GetActorLocation();
-	const FVector Feet = ActorLocation - FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
-	BodyPivot->SetWorldLocationAndRotation(Feet + LeanQuat.RotateVector(ActorLocation - Feet), LeanQuat * GetActorQuat());
+	return LeanQuat;
 }
 
 void AYSPlayerCharacter::UpdateStrafeAnimation(float DeltaSeconds)
