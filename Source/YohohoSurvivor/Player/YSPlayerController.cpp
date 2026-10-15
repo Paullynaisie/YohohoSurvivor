@@ -1,5 +1,7 @@
 #include "Player/YSPlayerController.h"
-#include "Abilities/YSCoupDPetoirAbility.h"
+#include "Abilities/YSAbilityComponent.h"
+#include "Player/YSPlayerCharacter.h"
+#include "Weapons/YSWeapon.h"
 #include "Blueprint/GameViewportSubsystem.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Engine/DamageEvents.h"
@@ -50,8 +52,10 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 
 	if (AbilityIcon)
 	{
-		const APawn* ControlledPawn = GetPawn();
-		AbilityIcon->Refresh(ControlledPawn ? ControlledPawn->FindComponentByClass<UYSCoupDPetoirAbility>() : nullptr);
+		// icône de l'action de l'arme de la main gauche (clic gauche)
+		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+		const AYSWeapon* Weapon = PlayerCharacter ? PlayerCharacter->GetLeftHandWeapon() : nullptr;
+		AbilityIcon->Refresh(Weapon ? Weapon->GetAction() : nullptr);
 	}
 }
 

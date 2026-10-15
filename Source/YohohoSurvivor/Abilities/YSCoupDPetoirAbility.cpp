@@ -1,7 +1,8 @@
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
-#include "Player/YSPlayerCharacter.h"
+#include "GameFramework/Pawn.h"
+#include "Weapons/YSWeapon.h"
 #include "Weapons/YSProjectile.h"
 
 namespace
@@ -32,20 +33,23 @@ void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
 		return;
 	}
 
-	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Owner);
-	const FVector Muzzle = Character ? Character->GetMuzzleLocation() : Owner->GetActorLocation();
+	// l'action vit sur une arme : on tire depuis sa bouche, au nom du pawn qui la tient
+	const AYSWeapon* Weapon = Cast<AYSWeapon>(Owner);
+	APawn* Shooter = Weapon ? Weapon->GetHolder() : Cast<APawn>(Owner);
+	const FVector Muzzle = Weapon ? Weapon->GetMuzzleLocation() : Owner->GetActorLocation();
+	const AActor* Aimer = Shooter ? static_cast<const AActor*>(Shooter) : Owner;
 
 	// trajectoire parallèle au sol
 	FVector Direction = TargetLocation - Muzzle;
 	Direction.Z = 0.0f;
 	if (Direction.SizeSquared() < FMath::Square(MinAimDistance))
 	{
-		Direction = Owner->GetActorForwardVector();
+		Direction = Aimer->GetActorForwardVector();
 		Direction.Z = 0.0f;
 	}
 
 	const FTransform SpawnTransform(Direction.GetSafeNormal().Rotation(), Muzzle);
-	AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ProjectileClass, SpawnTransform, Owner, Cast<APawn>(Owner), ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ProjectileClass, SpawnTransform, Shooter, Shooter, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (Projectile)
 	{
 		Projectile->SetDamage(Damage);

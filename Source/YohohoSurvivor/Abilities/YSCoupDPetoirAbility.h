@@ -7,7 +7,7 @@
 class AYSProjectile;
 
 /**
- *  « Coup d'Petoir » : tir de pistolet. Lance un projectile depuis la bouche du pistolet,
+ *  « Coup d'Petoir » : tir de pistolet (action de BP_Pistol). Lance un projectile depuis la bouche de l'arme,
  *  parallèle au sol, en direction du point visé. Les dégâts appartiennent à la capacité
  *  (et seront modifiés par les upgrades), pas au projectile.
  */

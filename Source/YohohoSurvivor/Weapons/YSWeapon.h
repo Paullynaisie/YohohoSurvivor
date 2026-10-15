@@ -1,0 +1,57 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "YSWeapon.generated.h"
+
+class UStaticMeshComponent;
+class UYSAbilityComponent;
+
+/**
+ *  Arme tenue dans une main du joueur : un mesh, une bouche (Muzzle) et une action.
+ *  L'action est un composant de capacité (UYSAbilityComponent, ex. Coup d'Petoir) ajouté dans le
+ *  Blueprint de l'arme ; ses réglages (dégâts, recharge, projectile…) se font dans ce Blueprint.
+ *  Créée par les ChildActorComponent des mains du personnage : spawnée par le serveur, répliquée,
+ *  avec le personnage comme propriétaire (nécessaire aux RPC de l'action).
+ *  Classe de base du Blueprint BP_Weapon.
+ */
+UCLASS()
+class AYSWeapon : public AActor
+{
+	GENERATED_BODY()
+
+private:
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> Root;
+
+	/** Visuel de l'arme */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UStaticMeshComponent> Mesh;
+
+	/** Point de départ des projectiles / origine des attaques */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> Muzzle;
+
+protected:
+
+	/** Nom affiché */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon")
+	FText DisplayName;
+
+public:
+
+	AYSWeapon();
+
+	/** Action de l'arme (premier composant de capacité de l'acteur), ou nullptr */
+	UFUNCTION(BlueprintPure, Category="Weapon")
+	UYSAbilityComponent* GetAction() const;
+
+	/** Pawn qui tient l'arme */
+	UFUNCTION(BlueprintPure, Category="Weapon")
+	APawn* GetHolder() const;
+
+	FVector GetMuzzleLocation() const;
+
+	UStaticMeshComponent* GetMesh() const { return Mesh.Get(); }
+};

@@ -14,7 +14,9 @@
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
-#include "Abilities/YSCoupDPetoirAbility.h"
+#include "Abilities/YSAbilityComponent.h"
+#include "Components/ChildActorComponent.h"
+#include "Weapons/YSWeapon.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSGameplayTags.h"
@@ -102,36 +104,40 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	CreateHand(TEXT("LeftHand"), TEXT("LeftHandMesh"), -1.0f, LeftHand, LeftHandMesh);
 	CreateHand(TEXT("RightHand"), TEXT("RightHandMesh"), 1.0f, RightHand, RightHandMesh);
 
-	PistolMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PistolMesh"));
-	PistolMesh->SetupAttachment(LeftHand);
-	PistolMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	PistolMesh->SetRelativeLocation(FVector(15.0f, 0.0f, 0.0f));
-	PistolMesh->SetRelativeScale3D(FVector(0.25f, 0.06f, 0.1f));
+	// armes : acteurs enfants des mains (spawnés par le serveur et répliqués, visibles aussi dans l'éditeur)
+	LeftHandWeapon = CreateDefaultSubobject<UChildActorComponent>(TEXT("LeftHandWeapon"));
+	LeftHandWeapon->SetupAttachment(LeftHand);
+	LeftHandWeapon->SetChildActorOwnerOnCreation(true);
 
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultPistol(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	if (DefaultPistol.Succeeded())
-	{
-		PistolMesh->SetStaticMesh(DefaultPistol.Object);
-	}
-
-	// au bout du cube (le cube fait 100 unités, soit ±50 en local)
-	MuzzlePoint = CreateDefaultSubobject<USceneComponent>(TEXT("MuzzlePoint"));
-	MuzzlePoint->SetupAttachment(PistolMesh);
-	MuzzlePoint->SetRelativeLocation(FVector(60.0f, 0.0f, 0.0f));
-
-	CoupDPetoir = CreateDefaultSubobject<UYSCoupDPetoirAbility>(TEXT("CoupDPetoir"));
+	RightHandWeapon = CreateDefaultSubobject<UChildActorComponent>(TEXT("RightHandWeapon"));
+	RightHandWeapon->SetupAttachment(RightHand);
+	RightHandWeapon->SetChildActorOwnerOnCreation(true);
 
 	GameplayTags.AddTag(YSTags::Team_Player);
 }
 
-FVector AYSPlayerCharacter::GetMuzzleLocation() const
+AYSWeapon* AYSPlayerCharacter::GetLeftHandWeapon() const
 {
-	return MuzzlePoint->GetComponentLocation();
+	return Cast<AYSWeapon>(LeftHandWeapon->GetChildActor());
+}
+
+AYSWeapon* AYSPlayerCharacter::GetRightHandWeapon() const
+{
+	return Cast<AYSWeapon>(RightHandWeapon->GetChildActor());
 }
 
 void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
+
+	// changer l'arme d'une main dans le Blueprint met à jour son visuel immédiatement
+	for (const TPair<UChildActorComponent*, UClass*> Hand : { TPair<UChildActorComponent*, UClass*>(LeftHandWeapon, LeftHandWeaponClass), TPair<UChildActorComponent*, UClass*>(RightHandWeapon, RightHandWeaponClass) })
+	{
+		if (Hand.Key->GetChildActorClass() != Hand.Value)
+		{
+			Hand.Key->SetChildActorClass(Hand.Value);
+		}
+	}
 
 	// exécuté aussi dans l'éditeur : changer le matériau du corps change celui des mains
 	if (bHandsUseBodyMaterial)
@@ -356,8 +362,12 @@ void AYSPlayerCharacter::Move(const FInputActionValue& Value)
 
 void AYSPlayerCharacter::Fire()
 {
-	if (const AYSPlayerController* PC = Cast<AYSPlayerController>(GetController()))
+	// clic gauche : action de l'arme de la main gauche
+	const AYSPlayerController* PC = Cast<AYSPlayerController>(GetController());
+	const AYSWeapon* Weapon = GetLeftHandWeapon();
+	UYSAbilityComponent* Action = Weapon ? Weapon->GetAction() : nullptr;
+	if (PC && Action)
 	{
-		CoupDPetoir->TryActivate(PC->GetAimLocation());
+		Action->TryActivate(PC->GetAimLocation());
 	}
 }

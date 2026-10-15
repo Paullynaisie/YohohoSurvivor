@@ -14,7 +14,8 @@ class UYSFaceDecalComponent;
 class UBlendSpace;
 class UInputAction;
 class UInputMappingContext;
-class UYSCoupDPetoirAbility;
+class UChildActorComponent;
+class AYSWeapon;
 struct FInputActionValue;
 
 /**
@@ -23,7 +24,7 @@ struct FInputActionValue;
  *  et strafe : l'animation dépend de la direction du mouvement par rapport au regard.
  *  DA « primitives » : le corps est un cylindre (BodyMesh) avec un visage en decal (FaceDecal),
  *  portés par BodyPivot qui s'incline dans la direction du mouvement (penché autour des pieds).
- *  Clic gauche : Coup d'Petoir (tir du pistolet fixé sur le flanc gauche).
+ *  Une arme (AYSWeapon) par main via LeftHandWeaponClass / RightHandWeaponClass ; clic gauche = action de l'arme de gauche.
  *  Déplacement et rotation sont répliqués par le CharacterMovementComponent (prédiction client incluse).
  *  Classe de base du Blueprint PlayerCharacter_mouss : les réglages se font dans le Blueprint.
  */
@@ -70,17 +71,13 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UStaticMeshComponent> RightHandMesh;
 
-	/** Pistolet, tenu dans la main gauche */
+	/** Arme de la main gauche (acteur enfant de classe LeftHandWeaponClass) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<UStaticMeshComponent> PistolMesh;
+	TObjectPtr<UChildActorComponent> LeftHandWeapon;
 
-	/** Point de départ des projectiles (bout du pistolet) */
+	/** Arme de la main droite (acteur enfant de classe RightHandWeaponClass) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<USceneComponent> MuzzlePoint;
-
-	/** Capacité de tir principale */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<UYSCoupDPetoirAbility> CoupDPetoir;
+	TObjectPtr<UChildActorComponent> RightHandWeapon;
 
 	/** Action de déplacement (Axis2D), créée à l'exécution */
 	UPROPERTY(Transient)
@@ -146,6 +143,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hop", meta=(ClampMin="1"))
 	float HopEaseExponent = 2.0f;
 
+	/** Arme tenue dans la main gauche (clic gauche = son action) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Weapons")
+	TSubclassOf<AYSWeapon> LeftHandWeaponClass;
+
+	/** Arme tenue dans la main droite */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Weapons")
+	TSubclassOf<AYSWeapon> RightHandWeaponClass;
+
 	/** Les sphères des mains reprennent le matériau du corps (BodyMesh) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Appearance")
 	bool bHandsUseBodyMaterial = true;
@@ -192,8 +197,12 @@ public:
 
 	USpringArmComponent* GetCameraBoom() const { return CameraBoom.Get(); }
 
-	/** Position de départ des projectiles */
-	FVector GetMuzzleLocation() const;
+	/** Arme actuellement tenue dans la main gauche / droite (nullptr si aucune) */
+	UFUNCTION(BlueprintPure, Category="3C|Weapons")
+	AYSWeapon* GetLeftHandWeapon() const;
+
+	UFUNCTION(BlueprintPure, Category="3C|Weapons")
+	AYSWeapon* GetRightHandWeapon() const;
 
 protected:
 
