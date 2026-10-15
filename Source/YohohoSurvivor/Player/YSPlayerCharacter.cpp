@@ -14,7 +14,8 @@
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
-#include "Abilities/YSAbilityComponent.h"
+#include "Abilities/YSCoupDPetoirAbility.h"
+#include "TimerManager.h"
 #include "Components/ChildActorComponent.h"
 #include "Weapons/YSWeapon.h"
 #include "Player/YSFaceDecalComponent.h"
@@ -220,12 +221,26 @@ FRotator AYSPlayerCharacter::GetHandTargetRotation(bool bLeft) const
 	return Rotation;
 }
 
+const AActor* AYSPlayerCharacter::GetHandAssistTarget(bool bLeft) const
+{
+	// seulement en jeu : dans l'éditeur, les mains gardent leur rotation réglée
+	if (!GetWorld() || !GetWorld()->IsGameWorld())
+	{
+		return nullptr;
+	}
+
+	// la direction de la souris est celle du regard du personnage (répliquée : identique sur toutes les machines)
+	const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
+	const UYSCoupDPetoirAbility* Petoir = Weapon ? Cast<UYSCoupDPetoirAbility>(Weapon->GetAction()) : nullptr;
+	return Petoir ? Petoir->FindAssistTarget(GetActorLocation(), GetActorForwardVector()) : nullptr;
+}
+
 void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 {
 	HandSwayTime += DeltaSeconds;
 	const FTransform& PivotTransform = BodyPivot->GetComponentTransform();
 
-	auto UpdateHand = [this, DeltaSeconds, &PivotTransform](USceneComponent* Hand, FVector& WorldLocation, bool bLeft, float NoiseSeed)
+	auto UpdateHand = [this, DeltaSeconds, &PivotTransform](USceneComponent* Hand, FVector& WorldLocation, float& CurrentYaw, bool bLeft, float NoiseSeed)
 	{
 		// oscillation : bruit de Perlin sur chaque axe, limité à HandSwayAmplitude autour de la cible
 		const float NoiseTime = HandSwayTime * HandSwaySpeed + NoiseSeed;
@@ -246,11 +261,31 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 			WorldLocation = FMath::VInterpTo(WorldLocation, Target, DeltaSeconds, HandFollowSpeed);
 		}
 		Hand->SetWorldLocation(WorldLocation);
-		Hand->SetRelativeRotation(GetHandTargetRotation(bLeft));
+
+		// la main pivote (yaw) vers la cible de la visée assistée de son arme, pour montrer où partira le tir
+		FRotator Rotation = GetHandTargetRotation(bLeft);
+		float TargetYaw = Rotation.Yaw;
+		if (const AActor* AssistTarget = GetHandAssistTarget(bLeft))
+		{
+			TargetYaw = FRotator::NormalizeAxis((AssistTarget->GetActorLocation() - WorldLocation).Rotation().Yaw - GetActorRotation().Yaw);
+		}
+
+		if (!bHandsInitialized || HandAimSpeed <= 0.0f)
+		{
+			CurrentYaw = TargetYaw;
+		}
+		else
+		{
+			// interpolation par le plus court chemin
+			const float Alpha = FMath::Clamp(DeltaSeconds * HandAimSpeed, 0.0f, 1.0f);
+			CurrentYaw = FRotator::NormalizeAxis(CurrentYaw + FRotator::NormalizeAxis(TargetYaw - CurrentYaw) * Alpha);
+		}
+		Rotation.Yaw = CurrentYaw;
+		Hand->SetRelativeRotation(Rotation);
 	};
 
-	UpdateHand(LeftHand, LeftHandWorldLocation, true, 0.0f);
-	UpdateHand(RightHand, RightHandWorldLocation, false, 100.0f);
+	UpdateHand(LeftHand, LeftHandWorldLocation, LeftHandYaw, true, 0.0f);
+	UpdateHand(RightHand, RightHandWorldLocation, RightHandYaw, false, 100.0f);
 	bHandsInitialized = true;
 }
 
@@ -442,12 +477,42 @@ void AYSPlayerCharacter::Move(const FInputActionValue& Value)
 
 void AYSPlayerCharacter::Fire()
 {
-	// clic gauche : action de l'arme de la main gauche
-	const AYSPlayerController* PC = Cast<AYSPlayerController>(GetController());
-	const AYSWeapon* Weapon = GetLeftHandWeapon();
-	UYSAbilityComponent* Action = Weapon ? Weapon->GetAction() : nullptr;
-	if (PC && Action)
+	const AYSWeapon* MainWeapon = GetRightHandWeapon();
+	const AYSWeapon* OffWeapon = GetLeftHandWeapon();
+	UYSAbilityComponent* MainAction = MainWeapon ? MainWeapon->GetAction() : nullptr;
+	UYSAbilityComponent* OffAction = OffWeapon ? OffWeapon->GetAction() : nullptr;
+
+	// akimbo : la main droite (principale) tire, puis la gauche après le délai de l'arme
+	const bool bAkimbo = MainAction && OffAction && MainWeapon->GetClass() == OffWeapon->GetClass();
+	if (bAkimbo && MainAction->IsReady())
 	{
-		Action->TryActivate(PC->GetAimLocation());
+		MainAction->TryActivate(GetAimLocation());
+		if (OffAction->IsReady())
+		{
+			TWeakObjectPtr<UYSAbilityComponent> WeakOffAction = OffAction;
+			GetWorldTimerManager().SetTimer(AkimboTimer, FTimerDelegate::CreateWeakLambda(this, [this, WeakOffAction]()
+			{
+				if (WeakOffAction.IsValid())
+				{
+					WeakOffAction->TryActivate(GetAimLocation());
+				}
+			}), FMath::Max(MainWeapon->GetAkimboFireDelay(), KINDA_SMALL_NUMBER), false);
+		}
+		return;
 	}
+
+	// sinon : chaque main déclenche son action si elle est prête
+	for (UYSAbilityComponent* Action : { MainAction, OffAction })
+	{
+		if (Action && Action->IsReady())
+		{
+			Action->TryActivate(GetAimLocation());
+		}
+	}
+}
+
+FVector AYSPlayerCharacter::GetAimLocation() const
+{
+	const AYSPlayerController* PC = Cast<AYSPlayerController>(GetController());
+	return PC ? PC->GetAimLocation() : GetActorLocation() + GetActorForwardVector() * 1000.0f;
 }

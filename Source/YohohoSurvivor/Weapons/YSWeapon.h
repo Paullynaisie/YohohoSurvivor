@@ -15,7 +15,7 @@ class UYSAbilityComponent;
  *  avec le personnage comme propriétaire (nécessaire aux RPC de l'action).
  *  Classe de base du Blueprint BP_Arme.
  */
-UCLASS(meta=(PrioritizeCategories="Weapon"))
+UCLASS(meta=(PrioritizeCategories="Weapon Akimbo"))
 class AYSWeapon : public AActor
 {
 	GENERATED_BODY()
@@ -59,7 +59,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon", meta=(EditCondition="bOverrideHandRotation"))
 	FRotator HandRotation = FRotator::ZeroRotator;
 
+	/** Akimbo (la même arme dans les deux mains) : délai entre l'action de la main gauche et celle de la main droite */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Akimbo", meta=(ClampMin="0", Units="Seconds"))
+	float AkimboFireDelay = 0.5f;
+
 public:
+
+	float GetAkimboFireDelay() const { return AkimboFireDelay; }
 
 	/** Rotation de main imposée par l'arme (si bOverrideHandRotation) */
 	bool GetHandRotationOverride(FRotator& OutRotation) const

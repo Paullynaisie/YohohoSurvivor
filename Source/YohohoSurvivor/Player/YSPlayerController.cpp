@@ -61,10 +61,16 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 
 	if (AbilityIcon)
 	{
-		// icône de l'action de l'arme de la main gauche (clic gauche)
+		// icône de l'action de la main principale (droite), sinon de la main gauche
 		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
-		const AYSWeapon* Weapon = PlayerCharacter ? PlayerCharacter->GetLeftHandWeapon() : nullptr;
-		AbilityIcon->Refresh(Weapon ? Weapon->GetAction() : nullptr);
+		const AYSWeapon* MainWeapon = PlayerCharacter ? PlayerCharacter->GetRightHandWeapon() : nullptr;
+		const AYSWeapon* OffWeapon = PlayerCharacter ? PlayerCharacter->GetLeftHandWeapon() : nullptr;
+		UYSAbilityComponent* Action = MainWeapon ? MainWeapon->GetAction() : nullptr;
+		if (!Action && OffWeapon)
+		{
+			Action = OffWeapon->GetAction();
+		}
+		AbilityIcon->Refresh(Action);
 	}
 }
 

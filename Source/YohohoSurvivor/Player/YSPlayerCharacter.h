@@ -24,7 +24,8 @@ struct FInputActionValue;
  *  et strafe : l'animation dépend de la direction du mouvement par rapport au regard.
  *  DA « primitives » : le corps est un cylindre (BodyMesh) avec un visage en decal (FaceDecal),
  *  portés par BodyPivot qui s'incline dans la direction du mouvement (penché autour des pieds).
- *  Une arme (AYSWeapon) par main via LeftHandWeaponClass / RightHandWeaponClass ; clic gauche = action de l'arme de gauche.
+ *  Une arme (AYSWeapon) par main via LeftHandWeaponClass / RightHandWeaponClass ; clic gauche = actions des deux mains
+ *  (main principale = droite ; en akimbo la gauche suit après AkimboFireDelay).
  *  Déplacement et rotation sont répliqués par le CharacterMovementComponent (prédiction client incluse).
  *  Classe de base du Blueprint PlayerCharacter_mouss : les réglages se font dans le Blueprint.
  */
@@ -173,6 +174,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands", meta=(ClampMin="0"))
 	float HandSwaySpeed = 0.6f;
 
+	/** Vitesse à laquelle une main pivote vers la cible de la visée assistée de son arme (0 = instantané) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands", meta=(ClampMin="0"))
+	float HandAimSpeed = 15.0f;
+
 	/** Réactivité des mains au mouvement du corps : plus petit = plus de retard (0 = aucun retard) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands", meta=(ClampMin="0"))
 	float HandFollowSpeed = 12.0f;
@@ -209,6 +214,13 @@ private:
 	/** Temps écoulé pour le bruit d'oscillation des mains */
 	float HandSwayTime = 0.0f;
 
+	/** Yaw actuel (lissé, relatif au corps) de chaque main : vers la cible de visée assistée, sinon rotation par défaut */
+	float LeftHandYaw = 0.0f;
+	float RightHandYaw = 0.0f;
+
+	/** Tir différé de la main droite en akimbo */
+	FTimerHandle AkimboTimer;
+
 public:
 
 	AYSPlayerCharacter();
@@ -243,8 +255,14 @@ protected:
 	/** Gère l'input de déplacement */
 	void Move(const FInputActionValue& Value);
 
-	/** Clic gauche : déclenche le Coup d'Petoir vers le curseur */
+	/**
+	 *  Clic gauche : déclenche l'action des armes des deux mains vers le curseur.
+	 *  Akimbo (même arme dans les deux mains) : la gauche tout de suite, la droite après son AkimboFireDelay.
+	 */
 	void Fire();
+
+	/** Point visé par le joueur local (souris) */
+	FVector GetAimLocation() const;
 
 	/** Met à jour la position du BlendSpace de strafe (sur toutes les machines) */
 	void UpdateStrafeAnimation(float DeltaSeconds);
@@ -266,6 +284,9 @@ protected:
 
 	/** Rotation cible d'une main, relative à BodyPivot */
 	FRotator GetHandTargetRotation(bool bLeft) const;
+
+	/** Cible de la visée assistée de l'arme d'une main (Coup d'Petoir), ou nullptr */
+	const AActor* GetHandAssistTarget(bool bLeft) const;
 
 private:
 

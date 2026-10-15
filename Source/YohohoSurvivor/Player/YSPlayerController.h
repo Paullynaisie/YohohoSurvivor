@@ -8,7 +8,7 @@ class UYSAbilityIconWidget;
 
 /**
  *  Contrôleur joueur : affiche un curseur de visée, oriente le pawn vers le point visé au sol
- *  et affiche l'icône de recharge de l'action de l'arme de la main gauche.
+ *  et affiche l'icône de recharge de l'action de la main principale (droite, sinon gauche).
  *  La visée est calculée localement puis envoyée au serveur avec chaque mouvement
  *  (rotation de contrôle transmise par le CharacterMovementComponent).
  */

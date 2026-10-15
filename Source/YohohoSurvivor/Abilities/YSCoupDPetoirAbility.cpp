@@ -1,5 +1,6 @@
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/Pawn.h"
 #include "Weapons/YSWeapon.h"
@@ -25,6 +26,45 @@ void UYSCoupDPetoirAbility::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(UYSCoupDPetoirAbility, Damage);
 }
 
+AActor* UYSCoupDPetoirAbility::FindAssistTarget(const FVector& Origin, const FVector& AimDirection) const
+{
+	const FVector Direction = FVector(AimDirection.X, AimDirection.Y, 0.0f).GetSafeNormal();
+	const AYSProjectile* Projectile = ProjectileClass ? ProjectileClass->GetDefaultObject<AYSProjectile>() : nullptr;
+	if (!Projectile || AssistAimDistance <= 0.0f || AssistAimAngle <= 0.0f || Direction.IsNearlyZero() || !GetWorld())
+	{
+		return nullptr;
+	}
+
+	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
+	const AActor* Holder = Weapon ? Weapon->GetHolder() : GetOwner();
+	const float MinCos = FMath::Cos(FMath::DegreesToRadians(AssistAimAngle));
+
+	AActor* BestTarget = nullptr;
+	float BestDistanceSq = FMath::Square(AssistAimDistance);
+	for (TActorIterator<APawn> It(GetWorld()); It; ++It)
+	{
+		APawn* Candidate = *It;
+		if (Candidate == Holder || !Projectile->CanHit(Candidate))
+		{
+			continue;
+		}
+
+		const FVector ToCandidate = FVector(Candidate->GetActorLocation() - Origin) * FVector(1.0f, 1.0f, 0.0f);
+		const float DistanceSq = ToCandidate.SizeSquared();
+		if (DistanceSq > BestDistanceSq || DistanceSq < KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+
+		if (FVector::DotProduct(ToCandidate.GetSafeNormal(), Direction) >= MinCos)
+		{
+			BestTarget = Candidate;
+			BestDistanceSq = DistanceSq;
+		}
+	}
+	return BestTarget;
+}
+
 void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
 {
 	AActor* Owner = GetOwner();
@@ -39,8 +79,15 @@ void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
 	const FVector Muzzle = Weapon ? Weapon->GetMuzzleLocation() : Owner->GetActorLocation();
 	const AActor* Aimer = Shooter ? static_cast<const AActor*>(Shooter) : Owner;
 
+	// visée assistée : un NME proche de la direction de la souris remplace le point visé
+	FVector AimPoint = TargetLocation;
+	if (const AActor* AssistTarget = FindAssistTarget(Aimer->GetActorLocation(), TargetLocation - Aimer->GetActorLocation()))
+	{
+		AimPoint = AssistTarget->GetActorLocation();
+	}
+
 	// trajectoire parallèle au sol
-	FVector Direction = TargetLocation - Muzzle;
+	FVector Direction = AimPoint - Muzzle;
 	Direction.Z = 0.0f;
 	if (Direction.SizeSquared() < FMath::Square(MinAimDistance))
 	{

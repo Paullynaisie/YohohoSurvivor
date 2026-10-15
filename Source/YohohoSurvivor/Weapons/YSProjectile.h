@@ -80,6 +80,12 @@ public:
 
 	void SetDamage(float NewDamage) { Damage = NewDamage; }
 
+	/** Tags des acteurs que ce projectile peut toucher */
+	const FGameplayTagContainer& GetHitTags() const { return HitTags; }
+
+	/** Vrai si l'acteur porte un des HitTags */
+	bool CanHit(const AActor* Target) const;
+
 protected:
 
 	UFUNCTION()
@@ -87,7 +93,4 @@ protected:
 
 	UFUNCTION()
 	void OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
-
-	/** Vrai si l'acteur porte un des HitTags */
-	bool CanHit(const AActor* Target) const;
 };
