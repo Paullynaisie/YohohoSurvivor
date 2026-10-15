@@ -158,6 +158,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands")
 	FVector HandLocation = FVector(0.0f, 55.0f, -10.0f);
 
+	/**
+	 *  Rotation par défaut de la main droite, par rapport au corps ; la main gauche est symétrique (Yaw et Roll inversés).
+	 *  Une arme peut la remplacer (Weapon > Hand Rotation).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands")
+	FRotator HandRotation = FRotator::ZeroRotator;
+
 	/** Écart maximal de l'oscillation des mains autour de leur position */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands", meta=(ClampMin="0", Units="Centimeters"))
 	float HandSwayAmplitude = 5.0f;
@@ -256,6 +263,9 @@ protected:
 
 	/** Position cible d'une main dans l'espace de BodyPivot (sans oscillation) */
 	FVector GetHandTargetLocation(bool bLeft) const;
+
+	/** Rotation cible d'une main, relative à BodyPivot */
+	FRotator GetHandTargetRotation(bool bLeft) const;
 
 private:
 

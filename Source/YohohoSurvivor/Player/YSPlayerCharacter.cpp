@@ -201,6 +201,25 @@ FVector AYSPlayerCharacter::GetHandTargetLocation(bool bLeft) const
 	return Location;
 }
 
+FRotator AYSPlayerCharacter::GetHandTargetRotation(bool bLeft) const
+{
+	FRotator Rotation = HandRotation;
+	const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
+	FRotator WeaponRotation;
+	if (Weapon && Weapon->GetHandRotationOverride(WeaponRotation))
+	{
+		Rotation = WeaponRotation;
+	}
+
+	// symétrie par rapport au plan avant/haut du corps : Yaw et Roll s'inversent
+	if (bLeft)
+	{
+		Rotation.Yaw = -Rotation.Yaw;
+		Rotation.Roll = -Rotation.Roll;
+	}
+	return Rotation;
+}
+
 void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 {
 	HandSwayTime += DeltaSeconds;
@@ -227,6 +246,7 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 			WorldLocation = FMath::VInterpTo(WorldLocation, Target, DeltaSeconds, HandFollowSpeed);
 		}
 		Hand->SetWorldLocation(WorldLocation);
+		Hand->SetRelativeRotation(GetHandTargetRotation(bLeft));
 	};
 
 	UpdateHand(LeftHand, LeftHandWorldLocation, true, 0.0f);

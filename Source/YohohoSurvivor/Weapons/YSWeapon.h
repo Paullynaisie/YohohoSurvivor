@@ -49,7 +49,24 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon", meta=(EditCondition="bOverrideHandLocation"))
 	FVector HandLocation = FVector(0.0f, 55.0f, -10.0f);
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon", meta=(InlineEditConditionToggle))
+	bool bOverrideHandRotation = false;
+
+	/**
+	 *  Rotation de la main qui tient cette arme, par rapport au corps (remplace 3C > Hands > Hand Rotation).
+	 *  Exprimée pour la main droite ; symétrisée automatiquement (Yaw et Roll inversés) dans la main gauche.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon", meta=(EditCondition="bOverrideHandRotation"))
+	FRotator HandRotation = FRotator::ZeroRotator;
+
 public:
+
+	/** Rotation de main imposée par l'arme (si bOverrideHandRotation) */
+	bool GetHandRotationOverride(FRotator& OutRotation) const
+	{
+		OutRotation = HandRotation;
+		return bOverrideHandRotation;
+	}
 
 	/** Position de main imposée par l'arme (si bOverrideHandLocation) */
 	bool GetHandLocationOverride(FVector& OutLocation) const
