@@ -26,6 +26,9 @@ namespace
 {
 	/** En dessous de cette vitesse, le personnage est considéré à l'arrêt (pas d'inclinaison ni de sautillement) */
 	constexpr float MovingSpeedThreshold = 50.0f;
+
+	/** Au-delà de cet écart (téléportation, respawn), une main est replacée directement sur sa cible */
+	constexpr float HandSnapDistance = 300.0f;
 }
 
 AYSPlayerCharacter::AYSPlayerCharacter()
@@ -90,7 +93,8 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	{
 		OutSocket = CreateDefaultSubobject<USceneComponent>(SocketName);
 		OutSocket->SetupAttachment(BodyPivot);
-		OutSocket->SetRelativeLocation(FVector(0.0f, 55.0f * Side, -10.0f));
+		// position monde calculée à chaque image par UpdateHands (retard + oscillation) ; la rotation suit le corps
+		OutSocket->SetUsingAbsoluteLocation(true);
 
 		OutMesh = CreateDefaultSubobject<UStaticMeshComponent>(MeshName);
 		OutMesh->SetupAttachment(OutSocket);
@@ -150,6 +154,10 @@ void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
 			}
 		}
 	}
+
+	// mains à leur position cible (sans retard) : visible dans l'éditeur et point de départ en jeu
+	bHandsInitialized = false;
+	UpdateHands(0.0f);
 }
 
 void AYSPlayerCharacter::BeginPlay()
@@ -172,6 +180,58 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 
 	UpdateStrafeAnimation(DeltaSeconds);
 	UpdateBodyPivot(DeltaSeconds);
+	UpdateHands(DeltaSeconds);
+}
+
+FVector AYSPlayerCharacter::GetHandTargetLocation(bool bLeft) const
+{
+	// l'arme tenue peut imposer sa position de main ; valeurs exprimées pour la main droite
+	FVector Location = HandLocation;
+	const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
+	FVector WeaponLocation;
+	if (Weapon && Weapon->GetHandLocationOverride(WeaponLocation))
+	{
+		Location = WeaponLocation;
+	}
+
+	if (bLeft)
+	{
+		Location.Y = -Location.Y;
+	}
+	return Location;
+}
+
+void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
+{
+	HandSwayTime += DeltaSeconds;
+	const FTransform& PivotTransform = BodyPivot->GetComponentTransform();
+
+	auto UpdateHand = [this, DeltaSeconds, &PivotTransform](USceneComponent* Hand, FVector& WorldLocation, bool bLeft, float NoiseSeed)
+	{
+		// oscillation : bruit de Perlin sur chaque axe, limité à HandSwayAmplitude autour de la cible
+		const float NoiseTime = HandSwayTime * HandSwaySpeed + NoiseSeed;
+		const FVector Sway = FVector(
+			FMath::PerlinNoise1D(NoiseTime),
+			FMath::PerlinNoise1D(NoiseTime + 31.7f),
+			FMath::PerlinNoise1D(NoiseTime + 67.3f)) * HandSwayAmplitude;
+
+		const FVector Target = PivotTransform.TransformPosition(GetHandTargetLocation(bLeft) + Sway.GetClampedToMaxSize(HandSwayAmplitude));
+
+		// retard : la main rejoint sa cible progressivement (téléportation / première image : directement)
+		if (!bHandsInitialized || HandFollowSpeed <= 0.0f || FVector::DistSquared(WorldLocation, Target) > FMath::Square(HandSnapDistance))
+		{
+			WorldLocation = Target;
+		}
+		else
+		{
+			WorldLocation = FMath::VInterpTo(WorldLocation, Target, DeltaSeconds, HandFollowSpeed);
+		}
+		Hand->SetWorldLocation(WorldLocation);
+	};
+
+	UpdateHand(LeftHand, LeftHandWorldLocation, true, 0.0f);
+	UpdateHand(RightHand, RightHandWorldLocation, false, 100.0f);
+	bHandsInitialized = true;
 }
 
 void AYSPlayerCharacter::UpdateBodyPivot(float DeltaSeconds)

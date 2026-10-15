@@ -13,9 +13,9 @@ class UYSAbilityComponent;
  *  Blueprint de l'arme ; ses réglages (dégâts, recharge, projectile…) se font dans ce Blueprint.
  *  Créée par les ChildActorComponent des mains du personnage : spawnée par le serveur, répliquée,
  *  avec le personnage comme propriétaire (nécessaire aux RPC de l'action).
- *  Classe de base du Blueprint BP_Weapon.
+ *  Classe de base du Blueprint BP_Arme.
  */
-UCLASS()
+UCLASS(meta=(PrioritizeCategories="Weapon"))
 class AYSWeapon : public AActor
 {
 	GENERATED_BODY()
@@ -39,7 +39,24 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon")
 	FText DisplayName;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon", meta=(InlineEditConditionToggle))
+	bool bOverrideHandLocation = false;
+
+	/**
+	 *  Position de la main qui tient cette arme, par rapport au corps du personnage (remplace 3C > Hands > Hand Location).
+	 *  Exprimée pour la main droite ; symétrisée automatiquement (Y inversé) quand l'arme est dans la main gauche.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon", meta=(EditCondition="bOverrideHandLocation"))
+	FVector HandLocation = FVector(0.0f, 55.0f, -10.0f);
+
 public:
+
+	/** Position de main imposée par l'arme (si bOverrideHandLocation) */
+	bool GetHandLocationOverride(FVector& OutLocation) const
+	{
+		OutLocation = HandLocation;
+		return bOverrideHandLocation;
+	}
 
 	AYSWeapon();
 

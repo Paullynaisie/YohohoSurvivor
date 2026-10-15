@@ -151,8 +151,27 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Weapons")
 	TSubclassOf<AYSWeapon> RightHandWeaponClass;
 
+	/**
+	 *  Position par défaut de la main droite, par rapport au corps (BodyPivot) ; la main gauche est symétrique (Y inversé).
+	 *  Une arme peut la remplacer (Weapon > Hand Location).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands")
+	FVector HandLocation = FVector(0.0f, 55.0f, -10.0f);
+
+	/** Écart maximal de l'oscillation des mains autour de leur position */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands", meta=(ClampMin="0", Units="Centimeters"))
+	float HandSwayAmplitude = 5.0f;
+
+	/** Vitesse de l'oscillation (bruit de Perlin) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands", meta=(ClampMin="0"))
+	float HandSwaySpeed = 0.6f;
+
+	/** Réactivité des mains au mouvement du corps : plus petit = plus de retard (0 = aucun retard) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands", meta=(ClampMin="0"))
+	float HandFollowSpeed = 12.0f;
+
 	/** Les sphères des mains reprennent le matériau du corps (BodyMesh) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Appearance")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands")
 	bool bHandsUseBodyMaterial = true;
 
 	/** Tags portés par le personnage (camp, etc.), lus par les projectiles */
@@ -174,6 +193,14 @@ private:
 
 	/** Progression du sautillement en cours (0..1, 0 = au sol) */
 	float HopPhase = 0.0f;
+
+	/** Positions monde lissées des mains (retard par rapport au corps) */
+	FVector LeftHandWorldLocation = FVector::ZeroVector;
+	FVector RightHandWorldLocation = FVector::ZeroVector;
+	bool bHandsInitialized = false;
+
+	/** Temps écoulé pour le bruit d'oscillation des mains */
+	float HandSwayTime = 0.0f;
 
 public:
 
@@ -223,6 +250,12 @@ protected:
 
 	/** Avance le sautillement et retourne la hauteur actuelle */
 	float UpdateHop(float DeltaSeconds, float Speed);
+
+	/** Place les mains : position cible (défaut ou arme) + oscillation, suivie avec retard (visuel, toutes machines) */
+	void UpdateHands(float DeltaSeconds);
+
+	/** Position cible d'une main dans l'espace de BodyPivot (sans oscillation) */
+	FVector GetHandTargetLocation(bool bLeft) const;
 
 private:
 

@@ -50,6 +50,15 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 
 	UpdateAim();
 
+	if (DebugWalkRemaining > 0.0f)
+	{
+		DebugWalkRemaining -= DeltaTime;
+		if (APawn* ControlledPawn = GetPawn())
+		{
+			ControlledPawn->AddMovementInput(DebugWalkDirection);
+		}
+	}
+
 	if (AbilityIcon)
 	{
 		// icône de l'action de l'arme de la main gauche (clic gauche)
@@ -83,6 +92,21 @@ void AYSPlayerController::YSDamageFoes(float Amount, float Delay, bool bScreensh
 			}), 0.25f, false);
 		}
 	}), FMath::Max(Delay, 0.01f), false);
+}
+
+void AYSPlayerController::YSDebugWalk(float X, float Y, float Duration, int32 Shots)
+{
+	DebugWalkDirection = FVector(X, Y, 0.0f).GetSafeNormal();
+	DebugWalkRemaining = Duration;
+
+	for (int32 Index = 1; Index <= Shots; ++Index)
+	{
+		FTimerHandle ShotTimer;
+		GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			ConsoleCommand(TEXT("shot showui"));
+		}), Duration * Index / (Shots + 1), false);
+	}
 }
 
 void AYSPlayerController::ServerDamageFoes_Implementation(float Amount)

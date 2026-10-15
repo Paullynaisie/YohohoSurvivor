@@ -15,7 +15,7 @@ class UStaticMeshComponent;
  *  Les dégâts sont fixés par la capacité qui le tire (SetDamage) et appliqués sur le serveur.
  *  Classe de base du Blueprint PetoirAMMO.
  */
-UCLASS(abstract)
+UCLASS(abstract, meta=(PrioritizeCategories="AMMO"))
 class AYSProjectile : public AActor
 {
 	GENERATED_BODY()

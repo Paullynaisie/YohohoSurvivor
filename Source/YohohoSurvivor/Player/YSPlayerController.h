@@ -36,6 +36,10 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UYSAbilityIconWidget> AbilityIcon;
 
+	/** Marche de debug en cours (YSDebugWalk) */
+	FVector DebugWalkDirection = FVector::ZeroVector;
+	float DebugWalkRemaining = 0.0f;
+
 public:
 
 	AYSPlayerController();
@@ -52,6 +56,13 @@ public:
 	 */
 	UFUNCTION(Exec)
 	void YSDamageFoes(float Amount = 3.0f, float Delay = 0.0f, bool bScreenshot = false);
+
+	/**
+	 *  Debug (console « ² ») : fait marcher le pawn dans la direction (X = nord, Y = est) pendant Duration secondes,
+	 *  en prenant Shots captures (avec UI) réparties sur la marche.  Ex : YSDebugWalk 1 -1 2 4  (nord-ouest)
+	 */
+	UFUNCTION(Exec)
+	void YSDebugWalk(float X = 1.0f, float Y = -1.0f, float Duration = 2.0f, int32 Shots = 0);
 
 protected:
 
