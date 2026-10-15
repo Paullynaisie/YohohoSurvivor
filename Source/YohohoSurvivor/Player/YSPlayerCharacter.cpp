@@ -15,10 +15,9 @@
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
-#include "Components/DecalComponent.h"
+#include "Player/YSFaceDecalComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSGameplayTags.h"
-#include "Materials/MaterialInstanceDynamic.h"
 #include "Player/YSPlayerController.h"
 
 AYSPlayerCharacter::AYSPlayerCharacter()
@@ -53,9 +52,14 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	GetMesh()->SetSkeletalMeshAsset(nullptr);
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -96.0f), FRotator(0.0f, -90.0f, 0.0f));
 
+	// pivot à l'origine de la capsule : les positions relatives des visuels restent inchangées,
+	// l'inclinaison est calculée autour des pieds dans UpdateLean
+	BodyPivot = CreateDefaultSubobject<USceneComponent>(TEXT("BodyPivot"));
+	BodyPivot->SetupAttachment(RootComponent);
+
 	// cylindre de la taille de la capsule (le cylindre moteur fait 100 x 100 x 100)
 	BodyMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BodyMesh"));
-	BodyMesh->SetupAttachment(RootComponent);
+	BodyMesh->SetupAttachment(BodyPivot);
 	BodyMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BodyMesh->SetRelativeScale3D(FVector(0.84f, 0.84f, 1.92f));
 
@@ -66,14 +70,14 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	}
 
 	// visage : decal projeté sur l'avant du cylindre, vers l'arrière (axe X du decal = sens de projection)
-	FaceDecal = CreateDefaultSubobject<UDecalComponent>(TEXT("FaceDecal"));
-	FaceDecal->SetupAttachment(RootComponent);
+	FaceDecal = CreateDefaultSubobject<UYSFaceDecalComponent>(TEXT("FaceDecal"));
+	FaceDecal->SetupAttachment(BodyPivot);
 	FaceDecal->SetRelativeLocationAndRotation(FVector(42.0f, 0.0f, 50.0f), FRotator(0.0f, 180.0f, 0.0f));
 	FaceDecal->DecalSize = FVector(12.0f, 28.0f, 28.0f);
 
 	// pistolet par défaut : un cube allongé sur le flanc gauche (remplaçable dans le Blueprint)
 	PistolMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PistolMesh"));
-	PistolMesh->SetupAttachment(RootComponent);
+	PistolMesh->SetupAttachment(BodyPivot);
 	PistolMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	PistolMesh->SetRelativeLocation(FVector(20.0f, -50.0f, 0.0f));
 	PistolMesh->SetRelativeScale3D(FVector(0.25f, 0.06f, 0.1f));
@@ -99,20 +103,6 @@ FVector AYSPlayerCharacter::GetMuzzleLocation() const
 	return MuzzlePoint->GetComponentLocation();
 }
 
-void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
-{
-	Super::OnConstruction(Transform);
-
-	// exécuté aussi dans l'éditeur : le visage choisi est visible dans le viewport du Blueprint
-	if (FaceTexture)
-	{
-		if (UMaterialInstanceDynamic* FaceMaterial = FaceDecal->CreateDynamicMaterialInstance())
-		{
-			FaceMaterial->SetTextureParameterValue(FaceTextureParameterName, FaceTexture);
-		}
-	}
-}
-
 void AYSPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -132,6 +122,44 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	UpdateStrafeAnimation(DeltaSeconds);
+	UpdateLean(DeltaSeconds);
+}
+
+void AYSPlayerCharacter::UpdateLean(float DeltaSeconds)
+{
+	// cible : MaxAngle dans la direction du déplacement (monde), indépendamment du regard
+	const FVector Velocity = GetVelocity();
+	FVector2D Target = FVector2D::ZeroVector;
+	if (Velocity.SizeSquared2D() > FMath::Square(50.0f))
+	{
+		Target = FVector2D(Velocity.X, Velocity.Y).GetSafeNormal() * LeanMaxAngle;
+	}
+
+	// nouvelle transition seulement si la cible change vraiment (sinon on la suit sans relancer la courbe)
+	if (FVector2D::Distance(Target, LeanTarget) > 1.0f)
+	{
+		LeanStart = CurrentLean;
+		LeanAlpha = 0.0f;
+	}
+	LeanTarget = Target;
+
+	LeanAlpha = LeanDuration > 0.0f ? FMath::Min(1.0f, LeanAlpha + DeltaSeconds / LeanDuration) : 1.0f;
+	const float EasedAlpha = UKismetMathLibrary::Ease(0.0f, 1.0f, LeanAlpha, LeanEasing, LeanEaseExponent);
+	CurrentLean = FMath::Lerp(LeanStart, LeanTarget, EasedAlpha);
+
+	// rotation monde : on bascule le haut du corps vers CurrentLean, autour d'un axe horizontal
+	const float Angle = CurrentLean.Size();
+	FQuat LeanQuat = FQuat::Identity;
+	if (Angle > KINDA_SMALL_NUMBER)
+	{
+		const FVector LeanDirection(CurrentLean.X / Angle, CurrentLean.Y / Angle, 0.0f);
+		LeanQuat = FQuat(FVector::CrossProduct(FVector::UpVector, LeanDirection), FMath::DegreesToRadians(Angle));
+	}
+
+	// pivot autour des pieds (bas de la capsule) pour que le personnage reste posé au sol
+	const FVector ActorLocation = GetActorLocation();
+	const FVector Feet = ActorLocation - FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	BodyPivot->SetWorldLocationAndRotation(Feet + LeanQuat.RotateVector(ActorLocation - Feet), LeanQuat * GetActorQuat());
 }
 
 void AYSPlayerCharacter::UpdateStrafeAnimation(float DeltaSeconds)

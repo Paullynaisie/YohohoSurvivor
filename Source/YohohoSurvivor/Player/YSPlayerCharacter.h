@@ -4,13 +4,13 @@
 #include "GameFramework/Character.h"
 #include "GameplayTagAssetInterface.h"
 #include "GameplayTagContainer.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "YSPlayerCharacter.generated.h"
 
 class UCameraComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
-class UDecalComponent;
-class UTexture2D;
+class UYSFaceDecalComponent;
 class UBlendSpace;
 class UInputAction;
 class UInputMappingContext;
@@ -21,7 +21,8 @@ struct FInputActionValue;
  *  Personnage joueur top-down, déplacé au clavier (ZQSD sur AZERTY, WASD sur QWERTY).
  *  Il regarde toujours vers le curseur (rotation de contrôle fournie par AYSPlayerController)
  *  et strafe : l'animation dépend de la direction du mouvement par rapport au regard.
- *  DA « primitives » : le corps est un cylindre (BodyMesh) avec un visage en decal (FaceDecal).
+ *  DA « primitives » : le corps est un cylindre (BodyMesh) avec un visage en decal (FaceDecal),
+ *  portés par BodyPivot qui s'incline dans la direction du mouvement (penché autour des pieds).
  *  Clic gauche : Coup d'Petoir (tir du pistolet fixé sur le flanc gauche).
  *  Déplacement et rotation sont répliqués par le CharacterMovementComponent (prédiction client incluse).
  *  Classe de base du Blueprint PlayerCharacter_mouss : les réglages se font dans le Blueprint.
@@ -41,13 +42,17 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UCameraComponent> TopDownCamera;
 
+	/** Pivot visuel du corps : s'incline pendant le mouvement (corps, visage et pistolet le suivent) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> BodyPivot;
+
 	/** Corps du personnage (cylindre par défaut) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UStaticMeshComponent> BodyMesh;
 
-	/** Visage projeté sur l'avant du corps */
+	/** Visage projeté sur l'avant du corps (texture réglable via Face Texture sur le composant) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<UDecalComponent> FaceDecal;
+	TObjectPtr<UYSFaceDecalComponent> FaceDecal;
 
 	/** Pistolet, fixé sur le flanc gauche du corps */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
@@ -90,13 +95,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Animation", meta=(ClampMin="0"))
 	float StrafeBlendSmoothing = 10.0f;
 
-	/** Icône du visage (texture appliquée au decal FaceDecal ; vide = texture par défaut du matériau) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Appearance")
-	TObjectPtr<UTexture2D> FaceTexture;
+	/** Inclinaison maximale du corps dans la direction du mouvement */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Lean", meta=(ClampMin="0", ClampMax="89", Units="Degrees"))
+	float LeanMaxAngle = 30.0f;
 
-	/** Paramètre texture du matériau du decal qui reçoit FaceTexture */
-	UPROPERTY(EditAnywhere, Category="Mouss|Appearance")
-	FName FaceTextureParameterName = TEXT("FaceTexture");
+	/** Durée de la transition vers une nouvelle inclinaison */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Lean", meta=(ClampMin="0", Units="Seconds"))
+	float LeanDuration = 0.14f;
+
+	/** Courbe de la transition */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Lean")
+	TEnumAsByte<EEasingFunc::Type> LeanEasing = EEasingFunc::EaseIn;
+
+	/** Exposant de la courbe (EaseIn / EaseOut / EaseInOut) : plus il est grand, plus le départ est lent */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Lean", meta=(ClampMin="1"))
+	float LeanEaseExponent = 2.0f;
 
 	/** Tags portés par le personnage (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mouss|Tags")
@@ -107,11 +120,17 @@ private:
 	/** Position actuelle (lissée) dans le BlendSpace : X = direction, Y = vitesse */
 	FVector2D StrafeBlendPosition = FVector2D::ZeroVector;
 
+	/** Inclinaison en espace monde (X, Y) en degrés : direction = sens du penché, norme = angle */
+	FVector2D CurrentLean = FVector2D::ZeroVector;
+
+	/** Transition d'inclinaison en cours : départ, cible et progression (0..1) */
+	FVector2D LeanStart = FVector2D::ZeroVector;
+	FVector2D LeanTarget = FVector2D::ZeroVector;
+	float LeanAlpha = 1.0f;
+
 public:
 
 	AYSPlayerCharacter();
-
-	virtual void OnConstruction(const FTransform& Transform) override;
 
 	virtual void BeginPlay() override;
 
@@ -138,6 +157,9 @@ protected:
 
 	/** Met à jour la position du BlendSpace de strafe (sur toutes les machines) */
 	void UpdateStrafeAnimation(float DeltaSeconds);
+
+	/** Incline BodyPivot vers la direction du mouvement (visuel, sur toutes les machines) */
+	void UpdateLean(float DeltaSeconds);
 
 private:
 
