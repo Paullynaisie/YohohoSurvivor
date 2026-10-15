@@ -78,6 +78,7 @@ Langue de travail avec l'utilisateur (Paul) : **français**.
 
 ## Façon de travailler avec Paul
 
+- **Toujours terminer ses messages par « Yohoho »** tant qu on travaille sur ce projet (demande de Paul).
 - Paul suit **sa propre roadmap** (documentation perso) : ne pas proposer de roadmap, attendre ses étapes.
 - Tous les paramètres de gameplay / gamefeel doivent être réglables dans les Blueprints, regroupés dans des catégories affichées en tête (`PrioritizeCategories` : 3C, AMMO, Weapon, Akimbo, Recoil…).
 - Rotations données par Paul en X / Y / Z = Roll / Pitch / Yaw (affichage de l'éditeur). Positions en cm.
