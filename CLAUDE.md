@@ -5,14 +5,18 @@ Langue de travail avec l'utilisateur (Paul) : **français**.
 
 ## Build
 
-- Moteur : `C:\Program Files\Epic Games\UE_5.8`
+- Paul travaille sur plusieurs PC : **aucun chemin absolu en dur**. Le projet = racine du dépôt (dossier de travail courant, `$PWD`). Le moteur se retrouve via le registre (installation Epic Games Launcher) ; si la clé est absente, demander à Paul où est UE 5.8 sur ce PC.
+  ```
+  $UE = (Get-ItemProperty "HKLM:\SOFTWARE\EpicGames\Unreal Engine\5.8").InstalledDirectory
+  ```
+  Exécutables : `$UE\Engine\Binaries\Win64\UnrealEditor.exe` / `UnrealEditor-Cmd.exe`.
 - Compiler (éditeur fermé, ou sinon utiliser Live Coding Ctrl+Alt+F11 dans l'éditeur) :
   ```
-  & "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" YohohoSurvivorEditor Win64 Development -Project="C:\UnrealProjects\YohohoSurvivor\YohohoSurvivor.uproject" -WaitMutex
+  & "$UE\Engine\Build\BatchFiles\Build.bat" YohohoSurvivorEditor Win64 Development -Project="$PWD\YohohoSurvivor.uproject" -WaitMutex
   ```
 - Régénérer la solution VS (après ajout/suppression de fichiers) :
   ```
-  & "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" -projectfiles -project="C:\UnrealProjects\YohohoSurvivor\YohohoSurvivor.uproject" -game -rocket -progress
+  & "$UE\Engine\Build\BatchFiles\Build.bat" -projectfiles -project="$PWD\YohohoSurvivor.uproject" -game -rocket -progress
   ```
 - Si `UnrealEditor` est ouvert avec Live Coding actif, le build en ligne de commande échoue : demander à Paul de fermer l'éditeur ou de lancer Live Coding.
 - Les warnings C4996 venant de `Engine/` (Niagara, Character.h) sont connus et ne concernent pas notre code.
