@@ -99,7 +99,7 @@ public:
 
 	/** Secondes entre deux vagues */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Waves", meta=(ClampMin="0.1", Units="s"))
-	float WaveInterval = 10.0f;
+	float WaveInterval = 5.0f;
 
 	/** Délai avant la première vague après le démarrage de la partie */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Waves", meta=(ClampMin="0", Units="s"))
