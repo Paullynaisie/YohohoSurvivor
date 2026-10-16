@@ -12,7 +12,7 @@
 #include "Core/YSGameInstance.h"
 #include "Kismet/KismetSystemLibrary.h"
 
-namespace
+namespace YSMainMenu
 {
 	constexpr float MenuWidth = 380.0f;
 
@@ -26,6 +26,11 @@ namespace
 	const FLinearColor StatusColor(0.8f, 0.8f, 0.8f);
 	const FLinearColor ErrorColor(1.0f, 0.35f, 0.3f);
 }
+
+// noms qualifiés : la unity build du packaging fusionne ce fichier avec les autres widgets (SetFontSize existe aussi ailleurs)
+using YSMainMenu::MenuWidth;
+using YSMainMenu::StatusColor;
+using YSMainMenu::ErrorColor;
 
 bool UYSMainMenuWidget::Initialize()
 {
@@ -58,7 +63,7 @@ void UYSMainMenuWidget::BuildWidgetTree()
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
 	Title->SetText(NSLOCTEXT("YS", "MainMenuTitle", "Yohoho Survivor"));
-	SetFontSize(Title, 48);
+	YSMainMenu::SetFontSize(Title, 48);
 	Title->SetColorAndOpacity(FSlateColor(FLinearColor::White));
 	UVerticalBoxSlot* TitleSlot = Column->AddChildToVerticalBox(Title);
 	TitleSlot->SetHorizontalAlignment(HAlign_Center);
@@ -68,7 +73,7 @@ void UYSMainMenuWidget::BuildWidgetTree()
 	HostButton->OnClicked.AddDynamic(this, &UYSMainMenuWidget::HandleHostClicked);
 
 	LocalAddressText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("LocalAddress"));
-	SetFontSize(LocalAddressText, 14);
+	YSMainMenu::SetFontSize(LocalAddressText, 14);
 	LocalAddressText->SetColorAndOpacity(FSlateColor(StatusColor));
 	LocalAddressText->SetJustification(ETextJustify::Center);
 	UVerticalBoxSlot* LocalAddressSlot = Column->AddChildToVerticalBox(LocalAddressText);
@@ -98,7 +103,7 @@ void UYSMainMenuWidget::BuildWidgetTree()
 	}
 
 	StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Status"));
-	SetFontSize(StatusText, 18);
+	YSMainMenu::SetFontSize(StatusText, 18);
 	StatusText->SetColorAndOpacity(FSlateColor(StatusColor));
 	StatusText->SetJustification(ETextJustify::Center);
 	StatusText->SetAutoWrapText(true);
@@ -122,7 +127,7 @@ UButton* UYSMainMenuWidget::AddButton(UVerticalBox* Column, const FText& Label, 
 
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Text->SetText(Label);
-	SetFontSize(Text, 24);
+	YSMainMenu::SetFontSize(Text, 24);
 	Text->SetColorAndOpacity(FSlateColor(FLinearColor::White));
 	Button->AddChild(Text);
 
