@@ -7,8 +7,10 @@ Langue de travail avec l'utilisateur (Paul) : **français**.
 
 - Paul travaille sur plusieurs PC : **aucun chemin absolu en dur**. Le projet = racine du dépôt (dossier de travail courant, `$PWD`). Le moteur se retrouve via le registre (installation Epic Games Launcher) ; si la clé est absente, demander à Paul où est UE 5.8 sur ce PC.
   ```
-  $UE = (Get-ItemProperty "HKLM:\SOFTWARE\EpicGames\Unreal Engine\5.8").InstalledDirectory
+  $UE = (Get-ItemProperty "HKLM:\SOFTWARE\EpicGames\Unreal Engine\5.8" -ErrorAction SilentlyContinue).InstalledDirectory
+  if (-not $UE) { $UE = "C:\Program Files\Epic Games\UE_5.8" }  # clé pas toujours créée par le launcher
   ```
+- Toolchain : UE 5.8 exige **MSVC 14.50** (Visual Studio 2026, composants dans `.vsconfig`). Avec MSVC 14.38/14.44 (VS 2022) le build échoue dans les en-têtes du moteur (erreur C7539 dans `ContainerAllocationPolicies.h`).
   Exécutables : `$UE\Engine\Binaries\Win64\UnrealEditor.exe` / `UnrealEditor-Cmd.exe`.
 - Compiler (éditeur fermé, ou sinon utiliser Live Coding Ctrl+Alt+F11 dans l'éditeur) :
   ```
