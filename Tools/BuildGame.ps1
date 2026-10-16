@@ -33,6 +33,10 @@ $GameDir = Join-Path $BuildDir "Windows"
 Write-Host "Build prête : $GameDir"
 
 if ($Zip) {
+	# logs / captures / config locale d'un lancement de test : pas à distribuer
+	$SavedDir = Join-Path $GameDir "YohohoSurvivor\Saved"
+	if (Test-Path $SavedDir) { Remove-Item -LiteralPath $SavedDir -Recurse -Force }
+
 	$ZipPath = Join-Path $BuildDir ("YohohoSurvivor_{0}.zip" -f (Get-Date -Format "yyyy-MM-dd_HHmm"))
 	Compress-Archive -Path (Join-Path $GameDir "*") -DestinationPath $ZipPath -Force
 	Write-Host "Zip : $ZipPath"
