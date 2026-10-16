@@ -39,6 +39,22 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Match")
 	double MatchStartServerTime = 0.0;
 
+	/** Niveau de l'équipe (partagé par tous les joueurs) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")
+	int32 TeamLevel = 0;
+
+	/** XP accumulée dans le niveau en cours (partagée par tous les joueurs) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")
+	float TeamExperience = 0.0f;
+
+	/** XP nécessaire pour passer au niveau suivant (calculée par le GameMode) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")
+	float ExperienceToNextLevel = 10.0f;
+
+	/** Sélection d'upgrade en cours (partie en pause) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")
+	bool bUpgradeSelectionActive = false;
+
 public:
 
 	AYSGameState();
@@ -52,6 +68,15 @@ public:
 	/** Serveur uniquement (AYSGameMode) */
 	void SetSelectableCharacters(const TArray<TSubclassOf<AYSPlayerCharacter>>& Characters) { SelectableCharacters = Characters; }
 	void SetMatchStarted();
+
+	int32 GetTeamLevel() const { return TeamLevel; }
+	float GetTeamExperience() const { return TeamExperience; }
+	float GetExperienceToNextLevel() const { return ExperienceToNextLevel; }
+	bool IsUpgradeSelectionActive() const { return bUpgradeSelectionActive; }
+
+	/** Serveur uniquement (AYSGameMode) */
+	void SetTeamProgress(int32 Level, float Experience, float ExperienceNeeded) { TeamLevel = Level; TeamExperience = Experience; ExperienceToNextLevel = ExperienceNeeded; }
+	void SetUpgradeSelectionActive(bool bActive) { bUpgradeSelectionActive = bActive; }
 
 	/** Secondes écoulées depuis le démarrage de la partie (0 avant ; valable sur serveur et clients) */
 	UFUNCTION(BlueprintPure, Category="Match")

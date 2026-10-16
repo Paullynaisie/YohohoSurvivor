@@ -15,7 +15,7 @@ class UBlendSpace;
 class UInputAction;
 class UInputMappingContext;
 class UChildActorComponent;
-class UWidgetComponent;
+class UYSUpgrade;
 class AYSWeapon;
 struct FInputActionValue;
 
@@ -81,10 +81,6 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UChildActorComponent> RightHandWeapon;
 
-	/** Barre de vie au-dessus du personnage (comme les NME : cachée tant que les PV sont au max) */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<UWidgetComponent> HealthBar;
-
 	/** Action de déplacement (Axis2D), créée à l'exécution */
 	UPROPERTY(Transient)
 	TObjectPtr<UInputAction> MoveAction;
@@ -108,11 +104,11 @@ protected:
 	float MoveSpeed = 600.0f;
 
 	/** Points de vie au début */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="3C|Health", meta=(ClampMin="1"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category="3C|Health", meta=(ClampMin="1"))
 	float MaxHealth = 20.0f;
 
 	/** Points de vie actuels (gérés par le serveur) */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="3C|Health")
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Replicated, Category="3C|Health")
 	float Health = 0.0f;
 
 	/**
@@ -168,6 +164,13 @@ protected:
 	/** Arme tenue dans la main droite */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Weapons")
 	TSubclassOf<AYSWeapon> RightHandWeaponClass;
+
+	/**
+	 *  Upgrades que ce personnage peut se voir proposer à chaque montée de niveau
+	 *  (choisir le type dans la liste, régler ses paramètres). Placeholder : 3 × « Dégâts +10 ».
+	 */
+	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category="3C|Upgrades")
+	TArray<TObjectPtr<UYSUpgrade>> UpgradePool;
 
 	/**
 	 *  Position par défaut de la main droite, par rapport au corps (BodyPivot) ; la main gauche est symétrique (Y inversé).
@@ -267,6 +270,18 @@ public:
 	UFUNCTION(BlueprintPure, Category="3C|Health")
 	bool IsAlive() const { return Health > 0.0f; }
 
+	UFUNCTION(BlueprintPure, Category="3C|Health")
+	float GetMaxHealth() const { return MaxHealth; }
+
+	/** Upgrades disponibles pour ce personnage */
+	const TArray<TObjectPtr<UYSUpgrade>>& GetUpgradePool() const { return UpgradePool; }
+
+	/** Tire au hasard jusqu'à Count upgrades différentes du pool (index dans UpgradePool) */
+	TArray<int32> PickUpgradeOffers(int32 Count) const;
+
+	/** Applique l'upgrade d'index PoolIndex (serveur) */
+	void ApplyUpgrade(int32 PoolIndex);
+
 	/** Hurtbox : le corps (BodyMesh) */
 	UPrimitiveComponent* GetHurtbox() const;
 
@@ -324,12 +339,6 @@ protected:
 
 	/** PV à 0 (serveur) : PlayerState mort, caméra laissée sur place, personnage détruit */
 	virtual void Die();
-
-	UFUNCTION()
-	void OnRep_Health();
-
-	/** Rafraîchit la barre de vie avec Health / MaxHealth */
-	void UpdateHealthBar();
 
 private:
 

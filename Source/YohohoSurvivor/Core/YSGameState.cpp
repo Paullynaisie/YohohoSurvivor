@@ -20,6 +20,10 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, SelectableCharacters);
 	DOREPLIFETIME(AYSGameState, bMatchStarted);
 	DOREPLIFETIME(AYSGameState, MatchStartServerTime);
+	DOREPLIFETIME(AYSGameState, TeamLevel);
+	DOREPLIFETIME(AYSGameState, TeamExperience);
+	DOREPLIFETIME(AYSGameState, ExperienceToNextLevel);
+	DOREPLIFETIME(AYSGameState, bUpgradeSelectionActive);
 }
 
 void AYSGameState::SetMatchStarted()

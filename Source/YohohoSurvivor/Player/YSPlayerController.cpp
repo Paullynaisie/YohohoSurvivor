@@ -7,9 +7,12 @@
 #include "Engine/DamageEvents.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
+#include "Containers/Ticker.h"
 #include "GameFramework/Pawn.h"
 #include "UI/YSAbilityIconWidget.h"
 #include "UI/YSCharacterSelectWidget.h"
+#include "UI/YSPlayerHUDWidget.h"
+#include "Upgrades/YSUpgrade.h"
 #include "UI/YSDeathScreenWidget.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -68,6 +71,25 @@ void AYSPlayerController::BeginPlay()
 			DeathSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
 			DeathSlot.ZOrder = 20;
 			ViewportSubsystem->AddWidgetForPlayer(DeathScreen, GetLocalPlayer(), DeathSlot);
+
+			// HUD haut gauche (taille automatique)
+			PlayerHUD = CreateWidget<UYSPlayerHUDWidget>(this, UYSPlayerHUDWidget::StaticClass());
+			FGameViewportWidgetSlot HUDSlot;
+			HUDSlot.Anchors = FAnchors(0.0f, 0.0f);
+			HUDSlot.Offsets = FMargin(24.0f, 24.0f, 0.0f, 0.0f);
+			HUDSlot.ZOrder = 1;
+			ViewportSubsystem->AddWidgetForPlayer(PlayerHUD, GetLocalPlayer(), HUDSlot);
+
+			// choix d'upgrade : plein écran comme la sélection de personnage, boutons plus hauts (nom + description)
+			UpgradeMenu = CreateWidget<UYSCharacterSelectWidget>(this, UYSCharacterSelectWidget::StaticClass());
+			UpgradeMenu->ButtonSize = FVector2D(440.0f, 84.0f);
+			UpgradeMenu->ButtonFontSize = 18;
+			UpgradeMenu->OnCharacterChosen.BindUObject(this, &AYSPlayerController::ChooseUpgrade);
+			UpgradeMenu->SetVisibility(ESlateVisibility::Collapsed);
+			FGameViewportWidgetSlot UpgradeSlot;
+			UpgradeSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
+			UpgradeSlot.ZOrder = 15;
+			ViewportSubsystem->AddWidgetForPlayer(UpgradeMenu, GetLocalPlayer(), UpgradeSlot);
 		}
 
 		// debug / tests automatisés : -YSAutoSelect=<index> choisit le personnage dès l'arrivée (y compris en client)
@@ -167,12 +189,151 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	CharacterSelectMenu->SetStatus(FText::Format(NSLOCTEXT("YS", "CharacterSelectStatus", "Joueurs prêts : {0} / {1}"), Ready, YSGameState->PlayerArray.Num()));
 }
 
+void AYSPlayerController::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// en pause (choix d'upgrade), PlayerTick n'est plus appelé mais Tick si : l'UI reste vivante
+	if (IsLocalController())
+	{
+		UpdateCharacterSelectMenu();
+		UpdatePlayerHUD();
+		UpdateUpgradeMenu();
+	}
+}
+
+void AYSPlayerController::UpdatePlayerHUD()
+{
+	if (!PlayerHUD)
+	{
+		return;
+	}
+
+	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const bool bInMatch = YSGameState && YSGameState->IsMatchStarted();
+
+	PlayerHUD->SetVisibility(bInMatch ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	PlayerHUD->SetHealth(PlayerCharacter != nullptr, PlayerCharacter ? PlayerCharacter->GetHealth() : 0.0f, PlayerCharacter ? PlayerCharacter->GetMaxHealth() : 0.0f);
+	if (YSGameState)
+	{
+		PlayerHUD->SetLevel(YSGameState->GetTeamLevel(), YSGameState->GetTeamExperience(), YSGameState->GetExperienceToNextLevel());
+	}
+}
+
+void AYSPlayerController::UpdateUpgradeMenu()
+{
+	if (!UpgradeMenu)
+	{
+		return;
+	}
+
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
+	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const bool bShow = YSGameState && YSGameState->IsUpgradeSelectionActive() && MyState && MyState->GetUpgradeOffers().Num() > 0 && PlayerCharacter;
+
+	UpgradeMenu->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	if (!bShow)
+	{
+		DisplayedUpgradeOffers.Reset();
+		return;
+	}
+
+	// nouvelles propositions : reconstruire les boutons (nom + description de l'upgrade du personnage)
+	if (DisplayedUpgradeOffers != MyState->GetUpgradeOffers())
+	{
+		DisplayedUpgradeOffers = MyState->GetUpgradeOffers();
+		UpgradeMenu->ClearChoices();
+		UpgradeMenu->SetTitle(FText::Format(NSLOCTEXT("YS", "UpgradeTitle", "Niveau {0} ! Choisis une amélioration"), YSGameState->GetTeamLevel()));
+
+		TArray<FText> Labels;
+		for (const int32 PoolIndex : DisplayedUpgradeOffers)
+		{
+			const UYSUpgrade* Upgrade = PlayerCharacter->GetUpgradePool().IsValidIndex(PoolIndex) ? PlayerCharacter->GetUpgradePool()[PoolIndex].Get() : nullptr;
+			Labels.Add(Upgrade
+				? FText::Format(NSLOCTEXT("YS", "UpgradeLabel", "{0}\n{1}"), Upgrade->DisplayName, Upgrade->Description)
+				: FText::FromString(TEXT("?")));
+		}
+		UpgradeMenu->SetCharacters(Labels);
+	}
+
+	UpgradeMenu->SetSelectedIndex(MyState->GetChosenUpgradeOffer());
+
+	// combien de joueurs concernés ont déjà choisi
+	int32 Ready = 0;
+	int32 Concerned = 0;
+	for (const APlayerState* OtherPlayer : YSGameState->PlayerArray)
+	{
+		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(OtherPlayer);
+		if (YSPlayer && YSPlayer->GetUpgradeOffers().Num() > 0)
+		{
+			++Concerned;
+			Ready += YSPlayer->IsChoosingUpgrade() ? 0 : 1;
+		}
+	}
+	UpgradeMenu->SetStatus(FText::Format(NSLOCTEXT("YS", "UpgradeStatus", "Joueurs prêts : {0} / {1}"), Ready, Concerned));
+}
+
+void AYSPlayerController::ChooseUpgrade(int32 OfferIndex)
+{
+	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
+	if (MyState && MyState->IsChoosingUpgrade())
+	{
+		ServerChooseUpgrade(OfferIndex);
+	}
+}
+
+void AYSPlayerController::ServerChooseUpgrade_Implementation(int32 OfferIndex)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->PlayerChoseUpgrade(this, OfferIndex);
+	}
+}
+
+void AYSPlayerController::YSAddXP(float Amount)
+{
+	ServerAddXP(Amount);
+}
+
+void AYSPlayerController::YSChooseUpgrade(int32 OfferIndex)
+{
+	if (UpgradeMenu)
+	{
+		UpgradeMenu->SetSelectedIndex(OfferIndex);
+	}
+	ChooseUpgrade(OfferIndex);
+}
+
+void AYSPlayerController::YSAfter(float Delay, const FString& Command)
+{
+	// ticker hors monde : continue pendant la pause
+	const FString FullCommand = Command.Replace(TEXT("_"), TEXT(" "));
+	TWeakObjectPtr<AYSPlayerController> WeakThis(this);
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([WeakThis, FullCommand](float)
+	{
+		if (WeakThis.IsValid())
+		{
+			WeakThis->ConsoleCommand(FullCommand);
+		}
+		return false;
+	}), Delay);
+}
+
+void AYSPlayerController::ServerAddXP_Implementation(float Amount)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->AddTeamExperience(Amount);
+	}
+}
+
 void AYSPlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 
 	UpdateAim();
-	UpdateCharacterSelectMenu();
 
 	// la destruction du personnage (UnPossess) remet la vue sur le contrôleur : on garde la caméra de mort
 	if (DeathCamera && GetViewTarget() != DeathCamera)

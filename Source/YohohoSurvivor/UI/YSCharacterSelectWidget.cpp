@@ -9,7 +9,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 
-namespace
+namespace YSCharacterSelect
 {
 	void SetFontSize(UTextBlock* Text, int32 Size)
 	{
@@ -57,8 +57,9 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	ColumnSlot->SetVerticalAlignment(VAlign_Center);
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
+	TitleText = Title;
 	Title->SetText(NSLOCTEXT("YS", "CharacterSelectTitle", "Choisis ton Mouss"));
-	SetFontSize(Title, 36);
+	YSCharacterSelect::SetFontSize(Title, 36);
 	Title->SetColorAndOpacity(FSlateColor(FLinearColor::White));
 	UVerticalBoxSlot* TitleSlot = Column->AddChildToVerticalBox(Title);
 	TitleSlot->SetHorizontalAlignment(HAlign_Center);
@@ -69,7 +70,7 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	ListSlot->SetHorizontalAlignment(HAlign_Center);
 
 	StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Status"));
-	SetFontSize(StatusText, 18);
+	YSCharacterSelect::SetFontSize(StatusText, 18);
 	StatusText->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.8f, 0.8f)));
 	UVerticalBoxSlot* StatusSlot = Column->AddChildToVerticalBox(StatusText);
 	StatusSlot->SetHorizontalAlignment(HAlign_Center);
@@ -86,8 +87,8 @@ void UYSCharacterSelectWidget::SetCharacters(const TArray<FText>& Names)
 	for (int32 Index = 0; Index < Names.Num(); ++Index)
 	{
 		USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		Size->SetWidthOverride(380.0f);
-		Size->SetHeightOverride(64.0f);
+		Size->SetWidthOverride(ButtonSize.X);
+		Size->SetHeightOverride(ButtonSize.Y);
 
 		UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
 		Button->SetBackgroundColor(NormalColor);
@@ -95,7 +96,8 @@ void UYSCharacterSelectWidget::SetCharacters(const TArray<FText>& Names)
 
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Label->SetText(Names[Index]);
-		SetFontSize(Label, 24);
+		YSCharacterSelect::SetFontSize(Label, ButtonFontSize);
+		Label->SetJustification(ETextJustify::Center);
 		Label->SetColorAndOpacity(FSlateColor(FLinearColor::White));
 		Button->AddChild(Label);
 
@@ -109,6 +111,24 @@ void UYSCharacterSelectWidget::SetCharacters(const TArray<FText>& Names)
 
 		Buttons.Add(Button);
 		ButtonProxies.Add(Proxy);
+	}
+}
+
+void UYSCharacterSelectWidget::ClearChoices()
+{
+	if (ButtonList)
+	{
+		ButtonList->ClearChildren();
+	}
+	Buttons.Reset();
+	ButtonProxies.Reset();
+}
+
+void UYSCharacterSelectWidget::SetTitle(const FText& Title)
+{
+	if (TitleText)
+	{
+		TitleText->SetText(Title);
 	}
 }
 

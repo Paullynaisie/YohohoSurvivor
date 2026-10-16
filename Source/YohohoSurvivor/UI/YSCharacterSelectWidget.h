@@ -51,6 +51,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
 	FLinearColor BackgroundColor = FLinearColor(0.0f, 0.0f, 0.0f, 0.85f);
 
+	/** Taille des boutons et de leur texte (à régler avant SetCharacters) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	FVector2D ButtonSize = FVector2D(380.0f, 64.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	int32 ButtonFontSize = 24;
+
 	/** Appelé quand le joueur clique sur un personnage */
 	FYSOnCharacterChosen OnCharacterChosen;
 
@@ -60,6 +67,12 @@ public:
 	void SetCharacters(const TArray<FText>& Names);
 
 	bool HasCharacters() const { return Buttons.Num() > 0; }
+
+	/** Supprime les boutons (pour proposer de nouveaux choix) */
+	void ClearChoices();
+
+	/** Titre affiché au-dessus des boutons */
+	void SetTitle(const FText& Title);
 
 	/** Illumine le bouton choisi (INDEX_NONE = aucun) */
 	void SetSelectedIndex(int32 Index);
@@ -78,6 +91,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> StatusText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> TitleText;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UButton>> Buttons;

@@ -70,6 +70,9 @@ public:
 	/** Vrai pour une attaque automatique (déclenchée par le serveur, pas par une touche) */
 	virtual bool IsAutomatic() const { return false; }
 
+	/** Ajoute des dégâts à la capacité (upgrades ; serveur, valeur répliquée par la sous-classe) */
+	virtual void AddBonusDamage(float Amount) {}
+
 	/**
 	 *  Cible dans un cône horizontal : le pawn le plus proche portant un des Tags, à moins de MaxDistance
 	 *  de Origin et à moins de MaxAngle (de chaque côté) de Direction. Utilisé par la visée assistée et les attaques auto.

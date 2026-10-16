@@ -13,7 +13,8 @@ class UYSFaceDecalComponent;
 
 /**
  *  Ennemi de base : attiré en ligne droite vers le joueur le plus proche, sans pathfinding,
- *  et toujours tourné vers lui. Meurt (détruit) quand ses points de vie tombent à 0.
+ *  et toujours tourné vers lui. Meurt (détruit) quand ses points de vie tombent à 0 et donne alors de l'XP à l'équipe.
+ *  Niveau (Level) : PV, dégâts de contact et XP = valeur de base + bonus par niveau (catégorie Foe|Level).
  *  DA « primitives » comme le joueur : cylindre (BodyMesh, aussi sa hurtbox) + visage en decal, sans inclinaison (perf).
  *  Contact : sa Hitbox inflige ContactDamage à la hurtbox (corps) des joueurs, puis toutes les ContactDamageInterval secondes.
  *  La logique tourne uniquement sur le serveur ; position, rotation et vie sont répliquées aux clients.
@@ -44,17 +45,45 @@ private:
 
 protected:
 
-	/** Points de vie au début */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="Foe|Health", meta=(ClampMin="1"))
-	float MaxHealth = 10.0f;
+	/** Niveau du NME : augmente ses PV, ses dégâts et l'XP qu'il donne */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Foe|Level", meta=(ClampMin="0"))
+	int32 Level = 0;
+
+	/** PV au niveau 0 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="1"))
+	float BaseHealth = 100.0f;
+
+	/** PV ajoutés par niveau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0"))
+	float HealthPerLevel = 10.0f;
+
+	/** Dégâts de contact au niveau 0 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0"))
+	float BaseContactDamage = 5.0f;
+
+	/** Dégâts de contact ajoutés par niveau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0"))
+	float ContactDamagePerLevel = 3.0f;
+
+	/** XP donnée à l'équipe à sa mort, au niveau 0 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0"))
+	float BaseExperience = 1.0f;
+
+	/** XP ajoutée par niveau (XP donnée = Base + ParNiveau × niveau) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0"))
+	float ExperiencePerLevel = 1.0f;
+
+	/** PV max, calculés au spawn depuis le niveau */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="Foe|Health")
+	float MaxHealth = 100.0f;
 
 	/** Points de vie actuels (gérés par le serveur) */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="Foe|Health")
 	float Health = 0.0f;
 
-	/** Dégâts infligés à un joueur au contact */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Attack", meta=(ClampMin="0"))
-	float ContactDamage = 1.0f;
+	/** Dégâts infligés à un joueur au contact, calculés au spawn depuis le niveau */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Foe|Attack")
+	float ContactDamage = 5.0f;
 
 	/** Tant que le contact dure, dégâts répétés toutes les N secondes (par joueur touché) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Attack", meta=(ClampMin="0.05", Units="s"))
@@ -96,6 +125,13 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="Foe|Health")
 	float GetHealth() const { return Health; }
+
+	UFUNCTION(BlueprintPure, Category="Foe|Level")
+	int32 GetFoeLevel() const { return Level; }
+
+	/** XP donnée à l'équipe quand ce NME meurt */
+	UFUNCTION(BlueprintPure, Category="Foe|Level")
+	float GetExperienceReward() const { return BaseExperience + ExperiencePerLevel * Level; }
 
 	/** Hurtbox : le corps */
 	UPrimitiveComponent* GetHurtbox() const;

@@ -25,10 +25,9 @@
 #include "Core/YSGameplayTags.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
-#include "Components/WidgetComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerController.h"
-#include "UI/YSHealthBarWidget.h"
+#include "Upgrades/YSUpgrade.h"
 
 namespace
 {
@@ -126,13 +125,11 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	RightHandWeapon->SetChildActorOwnerOnCreation(true);
 
 	// barre de vie en espace écran, au-dessus du personnage (même widget que les NME)
-	HealthBar = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
-	HealthBar->SetupAttachment(RootComponent);
-	HealthBar->SetRelativeLocation(FVector(0.0f, 0.0f, 120.0f));
-	HealthBar->SetWidgetSpace(EWidgetSpace::Screen);
-	HealthBar->SetDrawAtDesiredSize(true);
-	HealthBar->SetWidgetClass(UYSHealthBarWidget::StaticClass());
-	HealthBar->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// placeholder : trois upgrades identiques en attendant les vraies (réglables dans le Blueprint)
+	for (int32 Index = 1; Index <= 3; ++Index)
+	{
+		UpgradePool.Add(CreateDefaultSubobject<UYSDamageUpgrade>(*FString::Printf(TEXT("DamageUpgrade%d"), Index)));
+	}
 
 	GameplayTags.AddTag(YSTags::Team_Player);
 }
@@ -163,9 +160,6 @@ float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Dam
 	// chiffre chez tous les joueurs : rouge pour le joueur touché, orange pour les autres (couleurs sur AYSDamageNumber)
 	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator);
 
-	// OnRep n'est pas appelé sur le serveur : mise à jour directe pour le joueur hôte
-	UpdateHealthBar();
-
 	if (!IsAlive())
 	{
 		Die();
@@ -191,19 +185,6 @@ void AYSPlayerCharacter::Die()
 	Destroy();
 }
 
-void AYSPlayerCharacter::OnRep_Health()
-{
-	UpdateHealthBar();
-}
-
-void AYSPlayerCharacter::UpdateHealthBar()
-{
-	if (UYSHealthBarWidget* Bar = Cast<UYSHealthBarWidget>(HealthBar->GetUserWidgetObject()))
-	{
-		Bar->SetHealth(Health, MaxHealth);
-	}
-}
-
 AYSWeapon* AYSPlayerCharacter::GetLeftHandWeapon() const
 {
 	return Cast<AYSWeapon>(LeftHandWeapon->GetChildActor());
@@ -212,6 +193,34 @@ AYSWeapon* AYSPlayerCharacter::GetLeftHandWeapon() const
 AYSWeapon* AYSPlayerCharacter::GetRightHandWeapon() const
 {
 	return Cast<AYSWeapon>(RightHandWeapon->GetChildActor());
+}
+
+TArray<int32> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
+{
+	TArray<int32> Candidates;
+	for (int32 Index = 0; Index < UpgradePool.Num(); ++Index)
+	{
+		if (UpgradePool[Index])
+		{
+			Candidates.Add(Index);
+		}
+	}
+
+	// mélange puis on garde les premières
+	for (int32 Index = Candidates.Num() - 1; Index > 0; --Index)
+	{
+		Candidates.Swap(Index, FMath::RandRange(0, Index));
+	}
+	Candidates.SetNum(FMath::Min(Count, Candidates.Num()));
+	return Candidates;
+}
+
+void AYSPlayerCharacter::ApplyUpgrade(int32 PoolIndex)
+{
+	if (HasAuthority() && UpgradePool.IsValidIndex(PoolIndex) && UpgradePool[PoolIndex])
+	{
+		UpgradePool[PoolIndex]->Apply(this);
+	}
 }
 
 void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
@@ -258,8 +267,6 @@ void AYSPlayerCharacter::BeginPlay()
 	{
 		Health = MaxHealth;
 	}
-	HealthBar->InitWidget();
-	UpdateHealthBar();
 
 	// le strafe ne s'applique que si un mesh squelettique est renseigné
 	if (StrafeBlendSpace && GetMesh()->GetSkeletalMeshAsset())

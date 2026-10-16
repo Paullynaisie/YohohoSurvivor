@@ -6,6 +6,7 @@
 
 class UYSAbilityIconWidget;
 class UYSCharacterSelectWidget;
+class UYSPlayerHUDWidget;
 class UYSDeathScreenWidget;
 class ACameraActor;
 
@@ -44,6 +45,17 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UYSCharacterSelectWidget> CharacterSelectMenu;
 
+	/** HUD haut gauche : PV, niveau et XP */
+	UPROPERTY(Transient)
+	TObjectPtr<UYSPlayerHUDWidget> PlayerHUD;
+
+	/** Menu de choix d'upgrade (même widget que la sélection de personnage), affiché pendant une montée de niveau */
+	UPROPERTY(Transient)
+	TObjectPtr<UYSCharacterSelectWidget> UpgradeMenu;
+
+	/** Propositions actuellement affichées dans UpgradeMenu (pour reconstruire les boutons quand elles changent) */
+	TArray<int32> DisplayedUpgradeOffers;
+
 	/** Écran « You're dead », affiché quand le PlayerState est mort */
 	UPROPERTY(Transient)
 	TObjectPtr<UYSDeathScreenWidget> DeathScreen;
@@ -68,6 +80,24 @@ public:
 	virtual void SetupInputComponent() override;
 
 	virtual void PlayerTick(float DeltaTime) override;
+
+	/** Tourne aussi pendant la pause (contrairement à PlayerTick) : mise à jour de l'UI */
+	virtual void Tick(float DeltaSeconds) override;
+
+	/** Debug (console) : donne de l'XP à l'équipe.  Ex : YSAddXP 10 */
+	UFUNCTION(Exec)
+	void YSAddXP(float Amount = 10.0f);
+
+	/** Debug (console) : choisit une upgrade comme un clic dans le menu (index dans les propositions).  Ex : YSChooseUpgrade 0 */
+	UFUNCTION(Exec)
+	void YSChooseUpgrade(int32 OfferIndex);
+
+	/**
+	 *  Debug (console) : lance une commande après Delay secondes de temps réel (fonctionne aussi en pause).
+	 *  Les « _ » de Command sont remplacés par des espaces.  Ex : YSAfter 2 shot_showui
+	 */
+	UFUNCTION(Exec)
+	void YSAfter(float Delay, const FString& Command);
 
 	/** Quitte la partie et revient au menu principal (touche Échap). Hôte : les autres joueurs reviennent aussi au menu. */
 	UFUNCTION(Exec)
@@ -109,6 +139,21 @@ protected:
 
 	/** Met à jour le menu de sélection (boutons, illumination, état, visibilité) */
 	void UpdateCharacterSelectMenu();
+
+	/** Met à jour le HUD (PV, niveau, XP) */
+	void UpdatePlayerHUD();
+
+	/** Met à jour le menu de choix d'upgrade */
+	void UpdateUpgradeMenu();
+
+	/** Clic sur une upgrade (index dans les propositions) */
+	void ChooseUpgrade(int32 OfferIndex);
+
+	UFUNCTION(Server, Reliable)
+	void ServerChooseUpgrade(int32 OfferIndex);
+
+	UFUNCTION(Server, Reliable)
+	void ServerAddXP(float Amount);
 
 	UFUNCTION(Server, Reliable)
 	void ServerDamageFoes(float Amount);

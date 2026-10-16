@@ -13,6 +13,7 @@
 #include "Components/WidgetComponent.h"
 #include "Core/YSCombat.h"
 #include "Core/YSGameplayTags.h"
+#include "Core/YSGameMode.h"
 #include "Core/YSGameState.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSPlayerCharacter.h"
@@ -88,6 +89,7 @@ void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 
 	DOREPLIFETIME(AYSFoeCharacter, MaxHealth);
 	DOREPLIFETIME(AYSFoeCharacter, Health);
+	DOREPLIFETIME(AYSFoeCharacter, Level);
 }
 
 void AYSFoeCharacter::OnRep_Health()
@@ -128,6 +130,12 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 
 void AYSFoeCharacter::Die()
 {
+	// XP commune à toute l'équipe
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->AddTeamExperience(GetExperienceReward());
+	}
+
 	Destroy();
 }
 
@@ -148,6 +156,9 @@ void AYSFoeCharacter::BeginPlay()
 
 	if (HasAuthority())
 	{
+		// statistiques du niveau (MaxHealth est répliqué pour les barres de vie)
+		MaxHealth = BaseHealth + HealthPerLevel * Level;
+		ContactDamage = BaseContactDamage + ContactDamagePerLevel * Level;
 		Health = MaxHealth;
 	}
 
