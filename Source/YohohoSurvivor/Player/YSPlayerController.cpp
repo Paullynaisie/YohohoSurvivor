@@ -10,6 +10,9 @@
 #include "GameFramework/Pawn.h"
 #include "UI/YSAbilityIconWidget.h"
 #include "UI/YSCharacterSelectWidget.h"
+#include "UI/YSDeathScreenWidget.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "Core/YSGameInstance.h"
 #include "Core/YSGameMode.h"
 #include "Components/InputComponent.h"
@@ -58,6 +61,13 @@ void AYSPlayerController::BeginPlay()
 			MenuSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
 			MenuSlot.ZOrder = 10;
 			ViewportSubsystem->AddWidgetForPlayer(CharacterSelectMenu, GetLocalPlayer(), MenuSlot);
+
+			DeathScreen = CreateWidget<UYSDeathScreenWidget>(this, UYSDeathScreenWidget::StaticClass());
+			DeathScreen->SetVisibility(ESlateVisibility::Collapsed);
+			FGameViewportWidgetSlot DeathSlot;
+			DeathSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
+			DeathSlot.ZOrder = 20;
+			ViewportSubsystem->AddWidgetForPlayer(DeathScreen, GetLocalPlayer(), DeathSlot);
 		}
 
 		// debug / tests automatisés : -YSAutoSelect=<index> choisit le personnage dès l'arrivée (y compris en client)
@@ -109,10 +119,18 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 		return;
 	}
 
+	// mort : écran « You're dead » à la place du menu (pas de nouveau choix)
+	const AYSPlayerState* MyPlayerState = GetPlayerState<AYSPlayerState>();
+	const bool bDead = MyPlayerState && MyPlayerState->IsDead();
+	if (DeathScreen)
+	{
+		DeathScreen->SetVisibility(bDead ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
+
 	// le menu disparaît dès que le joueur a son personnage
 	const bool bHasCharacter = Cast<AYSPlayerCharacter>(GetPawn()) != nullptr;
-	CharacterSelectMenu->SetVisibility(bHasCharacter ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
-	if (bHasCharacter)
+	CharacterSelectMenu->SetVisibility(bHasCharacter || bDead ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	if (bHasCharacter || bDead)
 	{
 		return;
 	}
@@ -155,6 +173,12 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 
 	UpdateAim();
 	UpdateCharacterSelectMenu();
+
+	// la destruction du personnage (UnPossess) remet la vue sur le contrôleur : on garde la caméra de mort
+	if (DeathCamera && GetViewTarget() != DeathCamera)
+	{
+		SetViewTarget(DeathCamera);
+	}
 
 	if (DebugWalkRemaining > 0.0f)
 	{
@@ -218,6 +242,37 @@ void AYSPlayerController::YSDebugWalk(float X, float Y, float Duration, int32 Sh
 		{
 			ConsoleCommand(TEXT("shot showui"));
 		}), Duration * Index / (Shots + 1), false);
+	}
+}
+
+void AYSPlayerController::YSDamageSelf(float Amount)
+{
+	ServerDamageSelf(Amount);
+}
+
+void AYSPlayerController::ServerDamageSelf_Implementation(float Amount)
+{
+	if (APawn* ControlledPawn = GetPawn())
+	{
+		ControlledPawn->TakeDamage(Amount, FDamageEvent(), nullptr, nullptr);
+	}
+}
+
+void AYSPlayerController::ClientPlayerDied_Implementation(FVector CameraLocation, FRotator CameraRotation, float CameraFOV)
+{
+	if (!DeathCamera)
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		Params.ObjectFlags |= RF_Transient;
+		DeathCamera = GetWorld()->SpawnActor<ACameraActor>(CameraLocation, CameraRotation, Params);
+	}
+
+	if (DeathCamera)
+	{
+		DeathCamera->SetActorLocationAndRotation(CameraLocation, CameraRotation);
+		DeathCamera->GetCameraComponent()->SetFieldOfView(CameraFOV);
+		SetViewTarget(DeathCamera);
 	}
 }
 

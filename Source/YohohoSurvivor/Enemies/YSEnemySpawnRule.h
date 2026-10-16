@@ -65,8 +65,11 @@ protected:
 
 	virtual UWorld* GetWorld() const override;
 
-	/** Pawns des joueurs en jeu (ayant leur personnage) */
+	/** Pawns des joueurs en jeu (ayant leur personnage, vivants) : servent au placement */
 	TArray<APawn*> GetActivePlayers() const;
+
+	/** Joueurs de la partie pour la taille des vagues : vivants + morts (pas ceux qui n'ont pas encore choisi) */
+	int32 GetPlayersInMatchCount() const;
 
 	/** Secondes écoulées depuis le démarrage de la partie */
 	float GetMatchElapsedTime() const;
@@ -85,7 +88,7 @@ protected:
 
 /**
  *  Vagues régulières : toutes les WaveInterval secondes, X NME apparaissent,
- *  X = nb de joueurs en jeu × EnemiesPerPlayer × minute en cours (minute 1 de 0 à 60 s, minute 2 de 60 à 120 s, etc.).
+ *  X = nb de joueurs de la partie (morts compris) × EnemiesPerPlayer × minute en cours (minute 1 de 0 à 60 s, minute 2 de 60 à 120 s, etc.).
  */
 UCLASS(meta=(DisplayName="Vagues par joueur et par minute"))
 class UYSTimedWaveSpawnRule : public UYSEnemySpawnRule

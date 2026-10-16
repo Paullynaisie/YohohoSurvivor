@@ -15,6 +15,7 @@ class UBlendSpace;
 class UInputAction;
 class UInputMappingContext;
 class UChildActorComponent;
+class UWidgetComponent;
 class AYSWeapon;
 struct FInputActionValue;
 
@@ -80,6 +81,10 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UChildActorComponent> RightHandWeapon;
 
+	/** Barre de vie au-dessus du personnage (comme les NME : cachée tant que les PV sont au max) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UWidgetComponent> HealthBar;
+
 	/** Action de déplacement (Axis2D), créée à l'exécution */
 	UPROPERTY(Transient)
 	TObjectPtr<UInputAction> MoveAction;
@@ -101,6 +106,14 @@ protected:
 	/** Vitesse de déplacement maximale */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Movement", meta=(ClampMin="0", Units="CentimetersPerSecond"))
 	float MoveSpeed = 600.0f;
+
+	/** Points de vie au début */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="3C|Health", meta=(ClampMin="1"))
+	float MaxHealth = 20.0f;
+
+	/** Points de vie actuels (gérés par le serveur) */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="3C|Health")
+	float Health = 0.0f;
 
 	/**
 	 *  BlendSpace 2D de strafe (X = direction -180..180 relative au regard, Y = vitesse).
@@ -243,6 +256,20 @@ public:
 
 	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override { TagContainer.AppendTags(GameplayTags); }
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/** Dégâts reçus (serveur) : PV, chiffre de dégâts chez tous les joueurs, barre de vie */
+	virtual float TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
+
+	UFUNCTION(BlueprintPure, Category="3C|Health")
+	float GetHealth() const { return Health; }
+
+	UFUNCTION(BlueprintPure, Category="3C|Health")
+	bool IsAlive() const { return Health > 0.0f; }
+
+	/** Hurtbox : le corps (BodyMesh) */
+	UPrimitiveComponent* GetHurtbox() const;
+
 	UCameraComponent* GetTopDownCamera() const { return TopDownCamera.Get(); }
 
 	USpringArmComponent* GetCameraBoom() const { return CameraBoom.Get(); }
@@ -294,6 +321,15 @@ protected:
 
 	/** Cible de la visée assistée de l'arme d'une main (Coup d'Petoir), ou nullptr */
 	const AActor* GetHandAssistTarget(bool bLeft) const;
+
+	/** PV à 0 (serveur) : PlayerState mort, caméra laissée sur place, personnage détruit */
+	virtual void Die();
+
+	UFUNCTION()
+	void OnRep_Health();
+
+	/** Rafraîchit la barre de vie avec Health / MaxHealth */
+	void UpdateHealthBar();
 
 private:
 

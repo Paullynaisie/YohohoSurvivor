@@ -5,12 +5,17 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
-#include "Materials/MaterialInstanceDynamic.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/DamageEvents.h"
+#include "Engine/StaticMesh.h"
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Components/WidgetComponent.h"
+#include "Core/YSCombat.h"
 #include "Core/YSGameplayTags.h"
 #include "Core/YSGameState.h"
+#include "Player/YSFaceDecalComponent.h"
+#include "Player/YSPlayerCharacter.h"
 #include "UI/YSHealthBarWidget.h"
 
 AYSFoeCharacter::AYSFoeCharacter()
@@ -34,23 +39,38 @@ AYSFoeCharacter::AYSFoeCharacter()
 	Movement->bConstrainToPlane = true;
 	Movement->bSnapToPlaneAtStart = true;
 
-	// mesh et animations par défaut (mannequin du template), remplaçables dans le Blueprint
-	static ConstructorHelpers::FObjectFinder<USkeletalMesh> DefaultMesh(TEXT("/Game/PresetProject/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
-	static ConstructorHelpers::FClassFinder<UAnimInstance> DefaultAnim(TEXT("/Game/PresetProject/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed"));
-
-	if (DefaultMesh.Succeeded())
-	{
-		GetMesh()->SetSkeletalMeshAsset(DefaultMesh.Object);
-	}
-
-	if (DefaultAnim.Succeeded())
-	{
-		GetMesh()->SetAnimInstanceClass(DefaultAnim.Class);
-	}
-
+	// DA « primitives » comme le joueur : pas de mesh squelettique, le corps est un cylindre (BodyMesh), sans inclinaison
+	GetMesh()->SetSkeletalMeshAsset(nullptr);
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -96.0f), FRotator(0.0f, -90.0f, 0.0f));
 
+	// mêmes proportions que le corps de PlayerCharacter_mouss (cylindre moteur 100 x 100 x 100)
+	BodyMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BodyMesh"));
+	BodyMesh->SetupAttachment(RootComponent);
+	BodyMesh->SetRelativeLocation(FVector(0.0f, 0.0f, -20.0f));
+	BodyMesh->SetRelativeScale3D(FVector(0.84f, 0.84f, 1.44f));
+	YSCombat::ConfigureHurtbox(BodyMesh);
+
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultBody(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	if (DefaultBody.Succeeded())
+	{
+		BodyMesh->SetStaticMesh(DefaultBody.Object);
+	}
+
+	// visage : decal projeté sur l'avant du cylindre (même placement que le joueur)
+	FaceDecal = CreateDefaultSubobject<UYSFaceDecalComponent>(TEXT("FaceDecal"));
+	FaceDecal->SetupAttachment(RootComponent);
+	FaceDecal->SetRelativeLocationAndRotation(FVector(42.0f, 0.0f, 10.0f), FRotator(0.0f, 180.0f, 90.0f));
+	FaceDecal->DecalSize = FVector(12.0f, 28.0f, 28.0f);
+
+	// contact : un peu plus large que le corps (rayon 42), sinon les capsules empêchent tout contact
+	Hitbox = CreateDefaultSubobject<UCapsuleComponent>(TEXT("Hitbox"));
+	Hitbox->SetupAttachment(RootComponent);
+	Hitbox->SetRelativeLocation(FVector(0.0f, 0.0f, -20.0f));
+	Hitbox->InitCapsuleSize(55.0f, 72.0f);
+	YSCombat::ConfigureHitbox(Hitbox);
+
 	GameplayTags.AddTag(YSTags::Team_Foe);
+	ContactHitTags.AddTag(YSTags::Team_Player);
 
 	// barre de vie en espace écran, juste au-dessus de la tête
 	HealthBar = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
@@ -111,17 +131,18 @@ void AYSFoeCharacter::Die()
 	Destroy();
 }
 
-void AYSFoeCharacter::OnConstruction(const FTransform& Transform)
+UPrimitiveComponent* AYSFoeCharacter::GetHurtbox() const
 {
-	Super::OnConstruction(Transform);
-
-	// exécuté aussi dans l'éditeur : la couleur est visible dans le viewport du Blueprint
-	ApplyBodyColor();
+	return BodyMesh;
 }
 
 void AYSFoeCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// réappliqué en jeu : les collisions de combat ne dépendent pas de réglages sauvegardés dans le Blueprint
+	YSCombat::ConfigureHurtbox(BodyMesh);
+	YSCombat::ConfigureHitbox(Hitbox);
 
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
 
@@ -143,6 +164,8 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	{
 		return;
 	}
+
+	ApplyContactDamage();
 
 	Target = FindNearestPlayer();
 	if (!Target)
@@ -193,19 +216,34 @@ APawn* AYSFoeCharacter::FindNearestPlayer() const
 	return Nearest;
 }
 
-void AYSFoeCharacter::ApplyBodyColor()
+void AYSFoeCharacter::ApplyContactDamage()
 {
-	USkeletalMeshComponent* MeshComp = GetMesh();
-	if (!MeshComp || !MeshComp->GetSkeletalMeshAsset())
+	if (ContactDamage <= 0.0f || Health <= 0.0f)
 	{
 		return;
 	}
 
-	for (int32 Index = 0; Index < MeshComp->GetNumMaterials(); ++Index)
+	const double Now = GetWorld()->GetTimeSeconds();
+	TArray<UPrimitiveComponent*> Touching;
+	Hitbox->GetOverlappingComponents(Touching);
+
+	for (UPrimitiveComponent* Component : Touching)
 	{
-		if (UMaterialInstanceDynamic* Material = MeshComp->CreateAndSetMaterialInstanceDynamic(Index))
+		// seule la hurtbox (le corps) d'un joueur compte, pas sa capsule de mouvement
+		AYSPlayerCharacter* Player = Component ? Cast<AYSPlayerCharacter>(Component->GetOwner()) : nullptr;
+		if (!Player || Component != Player->GetHurtbox() || !Player->IsAlive() || !Player->HasAnyMatchingGameplayTags(ContactHitTags))
 		{
-			Material->SetVectorParameterValue(ColorParameterName, BodyColor);
+			continue;
 		}
+
+		double& NextTime = NextContactDamageTime.FindOrAdd(Player, 0.0);
+		if (Now < NextTime)
+		{
+			continue;
+		}
+
+		NextTime = Now + ContactDamageInterval;
+		// pas de DamageCauser : le chiffre de dégâts s'affiche sur le joueur
+		Player->TakeDamage(ContactDamage, FDamageEvent(), GetController(), nullptr);
 	}
 }

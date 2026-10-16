@@ -6,6 +6,8 @@
 
 class UYSAbilityIconWidget;
 class UYSCharacterSelectWidget;
+class UYSDeathScreenWidget;
+class ACameraActor;
 
 /**
  *  Contrôleur joueur : affiche un curseur de visée, oriente le pawn vers le point visé au sol
@@ -41,6 +43,14 @@ private:
 	/** Menu de sélection du personnage, affiché tant que le joueur n'a pas de personnage */
 	UPROPERTY(Transient)
 	TObjectPtr<UYSCharacterSelectWidget> CharacterSelectMenu;
+
+	/** Écran « You're dead », affiché quand le PlayerState est mort */
+	UPROPERTY(Transient)
+	TObjectPtr<UYSDeathScreenWidget> DeathScreen;
+
+	/** Caméra fixe laissée à l'endroit de la mort (locale, non répliquée) */
+	UPROPERTY(Transient)
+	TObjectPtr<ACameraActor> DeathCamera;
 
 	/** Choix local (affiché immédiatement, confirmé par le serveur via le PlayerState) */
 	int32 LocalSelectedCharacter = INDEX_NONE;
@@ -83,6 +93,14 @@ public:
 	UFUNCTION(Exec)
 	void YSSelectCharacter(int32 CharacterIndex);
 
+	/** Debug (console) : inflige Amount dégâts à son propre personnage.  Ex : YSDamageSelf 25 */
+	UFUNCTION(Exec)
+	void YSDamageSelf(float Amount = 5.0f);
+
+	/** Envoyé par le serveur juste avant la destruction du personnage mort : la caméra reste sur place */
+	UFUNCTION(Client, Reliable)
+	void ClientPlayerDied(FVector CameraLocation, FRotator CameraRotation, float CameraFOV);
+
 protected:
 
 	/** Envoie le choix de personnage au serveur */
@@ -94,6 +112,9 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerDamageFoes(float Amount);
+
+	UFUNCTION(Server, Reliable)
+	void ServerDamageSelf(float Amount);
 
 	/** Applique les dégâts de debug (serveur) */
 	void DamageAllFoes(float Amount);

@@ -6,4 +6,5 @@ void AYSPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AYSPlayerState, SelectedCharacterIndex);
+	DOREPLIFETIME(AYSPlayerState, bIsDead);
 }

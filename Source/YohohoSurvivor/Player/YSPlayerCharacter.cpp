@@ -21,8 +21,14 @@
 #include "Weapons/YSWeapon.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Core/YSCombat.h"
 #include "Core/YSGameplayTags.h"
+#include "Core/YSGameState.h"
+#include "Core/YSPlayerState.h"
+#include "Components/WidgetComponent.h"
+#include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerController.h"
+#include "UI/YSHealthBarWidget.h"
 
 namespace
 {
@@ -73,7 +79,7 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	// cylindre de la taille de la capsule (le cylindre moteur fait 100 x 100 x 100)
 	BodyMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BodyMesh"));
 	BodyMesh->SetupAttachment(BodyPivot);
-	BodyMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	YSCombat::ConfigureHurtbox(BodyMesh);
 	BodyMesh->SetRelativeScale3D(FVector(0.84f, 0.84f, 1.92f));
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultBody(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
@@ -119,7 +125,83 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	RightHandWeapon->SetupAttachment(RightHand);
 	RightHandWeapon->SetChildActorOwnerOnCreation(true);
 
+	// barre de vie en espace écran, au-dessus du personnage (même widget que les NME)
+	HealthBar = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
+	HealthBar->SetupAttachment(RootComponent);
+	HealthBar->SetRelativeLocation(FVector(0.0f, 0.0f, 120.0f));
+	HealthBar->SetWidgetSpace(EWidgetSpace::Screen);
+	HealthBar->SetDrawAtDesiredSize(true);
+	HealthBar->SetWidgetClass(UYSHealthBarWidget::StaticClass());
+	HealthBar->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
 	GameplayTags.AddTag(YSTags::Team_Player);
+}
+
+void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AYSPlayerCharacter, MaxHealth);
+	DOREPLIFETIME(AYSPlayerCharacter, Health);
+}
+
+UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
+{
+	return BodyMesh;
+}
+
+float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+	const float Damage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	if (!HasAuthority() || !IsAlive() || Damage <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	Health = FMath::Max(0.0f, Health - Damage);
+
+	// chiffre chez tous les joueurs : rouge pour le joueur touché, orange pour les autres (couleurs sur AYSDamageNumber)
+	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator);
+
+	// OnRep n'est pas appelé sur le serveur : mise à jour directe pour le joueur hôte
+	UpdateHealthBar();
+
+	if (!IsAlive())
+	{
+		Die();
+	}
+	return Damage;
+}
+
+void AYSPlayerCharacter::Die()
+{
+	// le joueur reste mort (pas de réapparition) mais compte toujours pour la taille des vagues
+	if (AYSPlayerState* YSPlayerState = GetPlayerState<AYSPlayerState>())
+	{
+		YSPlayerState->SetDead();
+	}
+
+	// la caméra du joueur reste là où il est mort
+	if (AYSPlayerController* PlayerController = Cast<AYSPlayerController>(GetController()))
+	{
+		PlayerController->ClientPlayerDied(TopDownCamera->GetComponentLocation(), TopDownCamera->GetComponentRotation(), TopDownCamera->FieldOfView);
+	}
+
+	// les armes (acteurs enfants) disparaissent avec le personnage
+	Destroy();
+}
+
+void AYSPlayerCharacter::OnRep_Health()
+{
+	UpdateHealthBar();
+}
+
+void AYSPlayerCharacter::UpdateHealthBar()
+{
+	if (UYSHealthBarWidget* Bar = Cast<UYSHealthBarWidget>(HealthBar->GetUserWidgetObject()))
+	{
+		Bar->SetHealth(Health, MaxHealth);
+	}
 }
 
 AYSWeapon* AYSPlayerCharacter::GetLeftHandWeapon() const
@@ -168,6 +250,16 @@ void AYSPlayerCharacter::BeginPlay()
 
 	// appliqué sur le serveur ET les clients pour que la prédiction de mouvement reste cohérente
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
+
+	// réappliqué en jeu : la hurtbox ne dépend pas de réglages de collision sauvegardés dans le Blueprint
+	YSCombat::ConfigureHurtbox(BodyMesh);
+
+	if (HasAuthority())
+	{
+		Health = MaxHealth;
+	}
+	HealthBar->InitWidget();
+	UpdateHealthBar();
 
 	// le strafe ne s'applique que si un mesh squelettique est renseigné
 	if (StrafeBlendSpace && GetMesh()->GetSkeletalMeshAsset())

@@ -2,6 +2,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Core/YSGameMode.h"
 #include "Core/YSGameState.h"
+#include "Core/YSPlayerState.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -47,6 +48,23 @@ TArray<APawn*> UYSEnemySpawnRule::GetActivePlayers() const
 	}
 
 	return Players;
+}
+
+int32 UYSEnemySpawnRule::GetPlayersInMatchCount() const
+{
+	const AGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (!GameState)
+	{
+		return 0;
+	}
+
+	int32 Count = 0;
+	for (const APlayerState* Player : GameState->PlayerArray)
+	{
+		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player);
+		Count += (Player && Cast<AYSPlayerCharacter>(Player->GetPawn())) || (YSPlayer && YSPlayer->IsDead()) ? 1 : 0;
+	}
+	return Count;
 }
 
 float UYSEnemySpawnRule::GetMatchElapsedTime() const
@@ -177,7 +195,7 @@ int32 UYSTimedWaveSpawnRule::GetWaveSize() const
 {
 	// minute en cours : 1 de 0 à 60 s, 2 de 60 à 120 s, ...
 	const int32 Minute = FMath::FloorToInt(GetMatchElapsedTime() / MinuteDuration) + 1;
-	return GetActivePlayers().Num() * EnemiesPerPlayer * Minute;
+	return GetPlayersInMatchCount() * EnemiesPerPlayer * Minute;
 }
 
 void UYSTimedWaveSpawnRule::TickRule(float DeltaSeconds)

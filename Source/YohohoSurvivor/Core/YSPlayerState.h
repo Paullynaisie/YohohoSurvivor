@@ -18,6 +18,10 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
 	int32 SelectedCharacterIndex = INDEX_NONE;
 
+	/** Le personnage du joueur est mort (pas de réapparition) : écran « You're dead », compte toujours pour les vagues */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Health")
+	bool bIsDead = false;
+
 public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -26,6 +30,11 @@ public:
 
 	bool HasSelectedCharacter() const { return SelectedCharacterIndex != INDEX_NONE; }
 
+	bool IsDead() const { return bIsDead; }
+
 	/** Serveur uniquement */
 	void SetSelectedCharacterIndex(int32 Index) { SelectedCharacterIndex = Index; }
+
+	/** Serveur uniquement */
+	void SetDead() { bIsDead = true; }
 };

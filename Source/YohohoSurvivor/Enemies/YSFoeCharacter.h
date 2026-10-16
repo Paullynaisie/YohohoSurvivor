@@ -6,20 +6,37 @@
 #include "GameplayTagContainer.h"
 #include "YSFoeCharacter.generated.h"
 
+class UCapsuleComponent;
+class UStaticMeshComponent;
 class UWidgetComponent;
+class UYSFaceDecalComponent;
 
 /**
  *  Ennemi de base : attiré en ligne droite vers le joueur le plus proche, sans pathfinding,
  *  et toujours tourné vers lui. Meurt (détruit) quand ses points de vie tombent à 0.
+ *  DA « primitives » comme le joueur : cylindre (BodyMesh, aussi sa hurtbox) + visage en decal, sans inclinaison (perf).
+ *  Contact : sa Hitbox inflige ContactDamage à la hurtbox (corps) des joueurs, puis toutes les ContactDamageInterval secondes.
  *  La logique tourne uniquement sur le serveur ; position, rotation et vie sont répliquées aux clients.
  *  Classe de base du Blueprint FoeCharacter_Skull : les réglages se font dans le Blueprint.
  */
-UCLASS(abstract)
+UCLASS(abstract, meta=(PrioritizeCategories="Foe"))
 class AYSFoeCharacter : public ACharacter, public IGameplayTagAssetInterface
 {
 	GENERATED_BODY()
 
 private:
+
+	/** Corps (cylindre par défaut) ; c'est aussi la hurtbox de l'ennemi */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UStaticMeshComponent> BodyMesh;
+
+	/** Visage projeté sur l'avant du corps */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UYSFaceDecalComponent> FaceDecal;
+
+	/** Zone de contact qui blesse les joueurs (un peu plus large que le corps : les capsules empêchent les corps de se toucher) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UCapsuleComponent> Hitbox;
 
 	/** Barre de vie au-dessus de la tête (cachée tant que les PV sont au max) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
@@ -35,6 +52,18 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="Foe|Health")
 	float Health = 0.0f;
 
+	/** Dégâts infligés à un joueur au contact */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Attack", meta=(ClampMin="0"))
+	float ContactDamage = 1.0f;
+
+	/** Tant que le contact dure, dégâts répétés toutes les N secondes (par joueur touché) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Attack", meta=(ClampMin="0.05", Units="s"))
+	float ContactDamageInterval = 1.0f;
+
+	/** Cibles blessées au contact : acteurs portant un de ces tags */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Attack")
+	FGameplayTagContainer ContactHitTags;
+
 	/** Tags portés par l'ennemi (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Tags")
 	FGameplayTagContainer GameplayTags;
@@ -47,14 +76,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement", meta=(ClampMin="0"))
 	float TurnSpeed = 10.0f;
 
-	/** Couleur appliquée au mesh */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Appearance")
-	FLinearColor BodyColor = FLinearColor::Red;
-
-	/** Paramètre vectoriel des matériaux du mesh qui reçoit BodyColor */
-	UPROPERTY(EditAnywhere, Category="Foe|Appearance")
-	FName ColorParameterName = TEXT("Paint Tint");
-
 	/** Joueur actuellement ciblé (renseigné sur le serveur uniquement) */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Foe")
 	TObjectPtr<APawn> Target;
@@ -62,8 +83,6 @@ protected:
 public:
 
 	AYSFoeCharacter();
-
-	virtual void OnConstruction(const FTransform& Transform) override;
 
 	virtual void BeginPlay() override;
 
@@ -77,6 +96,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="Foe|Health")
 	float GetHealth() const { return Health; }
+
+	/** Hurtbox : le corps */
+	UPrimitiveComponent* GetHurtbox() const;
 
 protected:
 
@@ -92,6 +114,11 @@ protected:
 	/** Retourne le pawn joueur le plus proche (sur le plan horizontal), ou nullptr */
 	APawn* FindNearestPlayer() const;
 
-	/** Applique BodyColor sur tous les matériaux du mesh */
-	void ApplyBodyColor();
+	/** Blesse les joueurs dont la hurtbox touche la Hitbox (serveur) */
+	void ApplyContactDamage();
+
+private:
+
+	/** Prochain instant (temps du monde) où chaque joueur touché peut reprendre des dégâts de contact */
+	TMap<TWeakObjectPtr<AActor>, double> NextContactDamageTime;
 };
