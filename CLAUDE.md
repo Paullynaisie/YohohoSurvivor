@@ -84,7 +84,8 @@ Langue de travail avec l'utilisateur (Paul) : **français**.
 
 ## Façon de travailler avec Paul
 
-- **Toujours terminer ses messages par « Yohoho »** tant qu on travaille sur ce projet (demande de Paul).
+- **Toujours terminer ses messages par « Yohoho »** tant qu on travaille sur ce projet (demande de Paul). **Exception : quand on a supprimé quelque chose**, terminer à la place par « parce que je suis un pirate ! ».
+- Nouveau PC : si le `.uproject` refuse de s'ouvrir (« Select Unreal Engine Version ») alors que UE 5.8 est installé, c'est que `C:\ProgramData\Epic\UnrealEngineLauncher\LauncherInstalled.dat` ne le liste pas encore : quitter complètement l'Epic Games Launcher puis le relancer. **Ne pas** choisir le moteur à la main (Unreal crée une copie du projet `YohohoSurvivor 5.8` liée à un GUID propre au PC, à ne pas commiter).
 - Paul suit **sa propre roadmap** (documentation perso) : ne pas proposer de roadmap, attendre ses étapes.
 - Tous les paramètres de gameplay / gamefeel doivent être réglables dans les Blueprints, regroupés dans des catégories affichées en tête (`PrioritizeCategories` : 3C, AMMO, Weapon, Akimbo, Recoil…).
 - Rotations données par Paul en X / Y / Z = Roll / Pitch / Yaw (affichage de l'éditeur). Positions en cm.
