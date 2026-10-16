@@ -93,7 +93,7 @@ void AYSGameMode::StartUpgradeSelection()
 		const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
 		if (PlayerState)
 		{
-			PlayerState->SetUpgradeOffers(Character && Character->IsAlive() ? Character->PickUpgradeOffers(UpgradeChoiceCount) : TArray<int32>());
+			PlayerState->SetUpgradeOffers(Character && Character->IsAlive() ? Character->PickUpgradeOffers(UpgradeChoiceCount) : TArray<FYSUpgradeOffer>());
 		}
 	}
 
@@ -120,7 +120,7 @@ void AYSGameMode::PlayerChoseUpgrade(APlayerController* Player, int32 OfferIndex
 	}
 
 	Character->ApplyUpgrade(PlayerState->GetUpgradeOffers()[OfferIndex]);
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s choisit l'upgrade %d (pool %d)"), *PlayerState->GetPlayerName(), OfferIndex, PlayerState->GetUpgradeOffers()[OfferIndex]);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s choisit l'upgrade %d (pool %d, rareté %d)"), *PlayerState->GetPlayerName(), OfferIndex, PlayerState->GetUpgradeOffers()[OfferIndex].PoolIndex, (int32)PlayerState->GetUpgradeOffers()[OfferIndex].Rarity);
 	PlayerState->SetChosenUpgradeOffer(OfferIndex);
 	TryFinishUpgradeSelection();
 }
@@ -148,7 +148,7 @@ void AYSGameMode::TryFinishUpgradeSelection()
 	{
 		if (AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player))
 		{
-			YSPlayer->SetUpgradeOffers(TArray<int32>());
+			YSPlayer->SetUpgradeOffers(TArray<FYSUpgradeOffer>());
 		}
 	}
 

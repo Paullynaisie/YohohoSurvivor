@@ -179,7 +179,7 @@ void UYSCoupDSabreAbility::ApplySwingHits()
 
 		HitThisSwing.Add(Target);
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible
-		Target->TakeDamage(Damage, FDamageEvent(), Holder ? Holder->GetController() : nullptr, nullptr);
+		Target->TakeDamage(Damage * GetDamageMultiplier(), FDamageEvent(), Holder ? Holder->GetController() : nullptr, nullptr);
 	}
 }
 

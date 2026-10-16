@@ -5,6 +5,7 @@
 #include "GameplayTagAssetInterface.h"
 #include "GameplayTagContainer.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Upgrades/YSUpgrade.h"
 #include "YSPlayerCharacter.generated.h"
 
 class UCameraComponent;
@@ -15,7 +16,6 @@ class UBlendSpace;
 class UInputAction;
 class UInputMappingContext;
 class UChildActorComponent;
-class UYSUpgrade;
 class AYSWeapon;
 struct FInputActionValue;
 
@@ -167,10 +167,21 @@ protected:
 
 	/**
 	 *  Upgrades que ce personnage peut se voir proposer à chaque montée de niveau
-	 *  (choisir le type dans la liste, régler ses paramètres). Placeholder : 3 × « Dégâts +10 ».
+	 *  (choisir le type dans la liste, régler ses paramètres). Défaut : Right hand / Left hand Atk bonus.
 	 */
 	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category="3C|Upgrades")
 	TArray<TObjectPtr<UYSUpgrade>> UpgradePool;
+
+	/** Progression de chaque upgrade du pool (même index que UpgradePool ; répliquée pour l'affichage du menu) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	TArray<FYSUpgradeProgress> UpgradeProgress;
+
+	/** Multiplicateur des dégâts de l'arme de chaque main (Atk Bonus ; serveur) */
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	float RightHandDamageMultiplier = 1.0f;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	float LeftHandDamageMultiplier = 1.0f;
 
 	/**
 	 *  Position par défaut de la main droite, par rapport au corps (BodyPivot) ; la main gauche est symétrique (Y inversé).
@@ -276,11 +287,25 @@ public:
 	/** Upgrades disponibles pour ce personnage */
 	const TArray<TObjectPtr<UYSUpgrade>>& GetUpgradePool() const { return UpgradePool; }
 
-	/** Tire au hasard jusqu'à Count upgrades différentes du pool (index dans UpgradePool) */
-	TArray<int32> PickUpgradeOffers(int32 Count) const;
+	/** Progression de l'upgrade d'index PoolIndex (vide si jamais obtenue) */
+	FYSUpgradeProgress GetUpgradeProgress(int32 PoolIndex) const { return UpgradeProgress.IsValidIndex(PoolIndex) ? UpgradeProgress[PoolIndex] : FYSUpgradeProgress(); }
 
-	/** Applique l'upgrade d'index PoolIndex (serveur) */
-	void ApplyUpgrade(int32 PoolIndex);
+	/**
+	 *  Tire Count propositions parmi les upgrades encore proposables, chacune avec sa rareté :
+	 *  d'abord des upgrades différentes, puis des doublons s'il n'y en a pas assez (vide si aucune).
+	 */
+	TArray<FYSUpgradeOffer> PickUpgradeOffers(int32 Count) const;
+
+	/** Ajoute le bonus proposé à la progression et applique l'upgrade (serveur) */
+	void ApplyUpgrade(const FYSUpgradeOffer& Offer);
+
+	/** Multiplicateur de dégâts d'une main (Atk Bonus) */
+	float GetHandDamageMultiplier(EYSHand Hand) const { return Hand == EYSHand::Left ? LeftHandDamageMultiplier : RightHandDamageMultiplier; }
+
+	void SetHandDamageMultiplier(EYSHand Hand, float Multiplier) { (Hand == EYSHand::Left ? LeftHandDamageMultiplier : RightHandDamageMultiplier) = Multiplier; }
+
+	/** Multiplicateur de dégâts de la main qui tient Weapon (1 si elle n'est pas tenue) */
+	float GetWeaponDamageMultiplier(const AYSWeapon* Weapon) const;
 
 	/** Hurtbox : le corps (BodyMesh) */
 	UPrimitiveComponent* GetHurtbox() const;

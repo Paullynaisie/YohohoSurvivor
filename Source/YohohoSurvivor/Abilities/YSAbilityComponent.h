@@ -70,8 +70,8 @@ public:
 	/** Vrai pour une attaque automatique (déclenchée par le serveur, pas par une touche) */
 	virtual bool IsAutomatic() const { return false; }
 
-	/** Ajoute des dégâts à la capacité (upgrades ; serveur, valeur répliquée par la sous-classe) */
-	virtual void AddBonusDamage(float Amount) {}
+	/** Multiplicateur de dégâts de la main qui tient l'arme de cette capacité (Atk Bonus ; 1 sinon) */
+	float GetDamageMultiplier() const;
 
 	/**
 	 *  Cible dans un cône horizontal : le pawn le plus proche portant un des Tags, à moins de MaxDistance

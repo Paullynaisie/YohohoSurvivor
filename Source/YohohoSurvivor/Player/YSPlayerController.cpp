@@ -82,7 +82,7 @@ void AYSPlayerController::BeginPlay()
 
 			// choix d'upgrade : plein écran comme la sélection de personnage, boutons plus hauts (nom + description)
 			UpgradeMenu = CreateWidget<UYSCharacterSelectWidget>(this, UYSCharacterSelectWidget::StaticClass());
-			UpgradeMenu->ButtonSize = FVector2D(440.0f, 84.0f);
+			UpgradeMenu->ButtonSize = FVector2D(440.0f, 130.0f);
 			UpgradeMenu->ButtonFontSize = 18;
 			UpgradeMenu->OnCharacterChosen.BindUObject(this, &AYSPlayerController::ChooseUpgrade);
 			UpgradeMenu->SetVisibility(ESlateVisibility::Collapsed);
@@ -240,22 +240,35 @@ void AYSPlayerController::UpdateUpgradeMenu()
 		return;
 	}
 
-	// nouvelles propositions : reconstruire les boutons (nom + description de l'upgrade du personnage)
-	if (DisplayedUpgradeOffers != MyState->GetUpgradeOffers())
+	// nouvelles propositions (ou progression changée, pour des propositions identiques enchaînées) : reconstruire les boutons
+	int32 TotalStacks = 0;
+	for (int32 PoolIndex = 0; PoolIndex < PlayerCharacter->GetUpgradePool().Num(); ++PoolIndex)
+	{
+		TotalStacks += PlayerCharacter->GetUpgradeProgress(PoolIndex).Stacks;
+	}
+
+	if (DisplayedUpgradeOffers != MyState->GetUpgradeOffers() || (DisplayedUpgradeStacks != TotalStacks && MyState->IsChoosingUpgrade()))
 	{
 		DisplayedUpgradeOffers = MyState->GetUpgradeOffers();
+		DisplayedUpgradeStacks = TotalStacks;
 		UpgradeMenu->ClearChoices();
 		UpgradeMenu->SetTitle(FText::Format(NSLOCTEXT("YS", "UpgradeTitle", "Niveau {0} ! Choisis une amélioration"), YSGameState->GetTeamLevel()));
 
-		TArray<FText> Labels;
-		for (const int32 PoolIndex : DisplayedUpgradeOffers)
+		TArray<TArray<FYSChoiceLine>> Choices;
+		for (const FYSUpgradeOffer& Offer : DisplayedUpgradeOffers)
 		{
-			const UYSUpgrade* Upgrade = PlayerCharacter->GetUpgradePool().IsValidIndex(PoolIndex) ? PlayerCharacter->GetUpgradePool()[PoolIndex].Get() : nullptr;
-			Labels.Add(Upgrade
-				? FText::Format(NSLOCTEXT("YS", "UpgradeLabel", "{0}\n{1}"), Upgrade->DisplayName, Upgrade->Description)
-				: FText::FromString(TEXT("?")));
+			TArray<FYSChoiceLine>& Lines = Choices.AddDefaulted_GetRef();
+			const UYSUpgrade* Upgrade = PlayerCharacter->GetUpgradePool().IsValidIndex(Offer.PoolIndex) ? PlayerCharacter->GetUpgradePool()[Offer.PoolIndex].Get() : nullptr;
+			if (Upgrade)
+			{
+				Upgrade->GetOfferLines(PlayerCharacter, PlayerCharacter->GetUpgradeProgress(Offer.PoolIndex), Offer.Rarity, Lines);
+			}
+			else
+			{
+				Lines.AddDefaulted_GetRef().Text = FText::FromString(TEXT("?"));
+			}
 		}
-		UpgradeMenu->SetCharacters(Labels);
+		UpgradeMenu->SetChoices(Choices);
 	}
 
 	UpgradeMenu->SetSelectedIndex(MyState->GetChosenUpgradeOffer());

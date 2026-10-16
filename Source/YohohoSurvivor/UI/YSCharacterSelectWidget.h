@@ -11,6 +11,28 @@ class UYSCharacterSelectWidget;
 
 DECLARE_DELEGATE_OneParam(FYSOnCharacterChosen, int32 /*CharacterIndex*/);
 
+/** Une ligne de texte d'un bouton de choix (upgrades : nom, valeur rayée, nouvelle valeur en gras…) */
+USTRUCT(BlueprintType)
+struct FYSChoiceLine
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, Category="Choice")
+	FText Text;
+
+	UPROPERTY(BlueprintReadWrite, Category="Choice")
+	FLinearColor Color = FLinearColor::White;
+
+	UPROPERTY(BlueprintReadWrite, Category="Choice")
+	int32 FontSize = 16;
+
+	UPROPERTY(BlueprintReadWrite, Category="Choice")
+	bool bBold = false;
+
+	UPROPERTY(BlueprintReadWrite, Category="Choice")
+	bool bStrikethrough = false;
+};
+
 /** Relie le clic d'un bouton (sans paramètre) à l'index du personnage correspondant */
 UCLASS()
 class UYSCharacterSelectButtonProxy : public UObject
@@ -66,6 +88,9 @@ public:
 	/** Crée un bouton par nom (une seule fois) */
 	void SetCharacters(const TArray<FText>& Names);
 
+	/** Crée un bouton par choix, chacun avec plusieurs lignes de texte (une seule fois, voir ClearChoices) */
+	void SetChoices(const TArray<TArray<FYSChoiceLine>>& Choices);
+
 	bool HasCharacters() const { return Buttons.Num() > 0; }
 
 	/** Supprime les boutons (pour proposer de nouveaux choix) */
@@ -85,6 +110,9 @@ public:
 private:
 
 	void BuildWidgetTree();
+
+	/** Ajoute un bouton (contenu = Content) relié à son index */
+	void AddChoiceButton(UWidget* Content);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UVerticalBox> ButtonList;

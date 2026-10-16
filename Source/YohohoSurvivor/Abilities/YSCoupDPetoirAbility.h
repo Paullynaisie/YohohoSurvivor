@@ -47,7 +47,6 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	virtual void AddBonusDamage(float Amount) override { Damage += Amount; }
 
 protected:
 

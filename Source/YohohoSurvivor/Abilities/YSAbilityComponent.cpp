@@ -6,6 +6,8 @@
 #include "EngineUtils.h"
 #include "GameplayTagAssetInterface.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/YSPlayerCharacter.h"
+#include "Weapons/YSWeapon.h"
 
 namespace
 {
@@ -157,4 +159,10 @@ double UYSAbilityComponent::GetServerTime() const
 
 	const AGameStateBase* GameState = World->GetGameState();
 	return GameState ? GameState->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+}
+
+float UYSAbilityComponent::GetDamageMultiplier() const
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	return Character ? Character->GetWeaponDamageMultiplier(Cast<AYSWeapon>(GetOwner())) : 1.0f;
 }

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Upgrades/YSUpgrade.h"
 #include "YSPlayerController.generated.h"
 
 class UYSAbilityIconWidget;
@@ -54,7 +55,10 @@ private:
 	TObjectPtr<UYSCharacterSelectWidget> UpgradeMenu;
 
 	/** Propositions actuellement affichées dans UpgradeMenu (pour reconstruire les boutons quand elles changent) */
-	TArray<int32> DisplayedUpgradeOffers;
+	TArray<FYSUpgradeOffer> DisplayedUpgradeOffers;
+
+	/** Nombre total de bonus du personnage quand les boutons ont été construits */
+	int32 DisplayedUpgradeStacks = INDEX_NONE;
 
 	/** Écran « You're dead », affiché quand le PlayerState est mort */
 	UPROPERTY(Transient)

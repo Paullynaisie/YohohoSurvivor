@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
+#include "Upgrades/YSUpgrade.h"
 #include "YSPlayerState.generated.h"
 
 /**
@@ -22,9 +23,9 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Health")
 	bool bIsDead = false;
 
-	/** Upgrades proposées pendant la sélection en cours (index dans l'UpgradePool du personnage ; vide = pas concerné) */
+	/** Upgrades proposées pendant la sélection en cours (index dans l'UpgradePool du personnage + rareté ; vide = pas concerné) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Upgrades")
-	TArray<int32> UpgradeOffers;
+	TArray<FYSUpgradeOffer> UpgradeOffers;
 
 	/** Upgrade choisie parmi UpgradeOffers (index dans UpgradeOffers, INDEX_NONE = pas encore choisi) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Upgrades")
@@ -46,7 +47,7 @@ public:
 	/** Serveur uniquement */
 	void SetDead() { bIsDead = true; }
 
-	const TArray<int32>& GetUpgradeOffers() const { return UpgradeOffers; }
+	const TArray<FYSUpgradeOffer>& GetUpgradeOffers() const { return UpgradeOffers; }
 
 	int32 GetChosenUpgradeOffer() const { return ChosenUpgradeOffer; }
 
@@ -54,7 +55,7 @@ public:
 	bool IsChoosingUpgrade() const { return UpgradeOffers.Num() > 0 && ChosenUpgradeOffer == INDEX_NONE; }
 
 	/** Serveur uniquement : nouvelles propositions (vide = pas concerné par cette sélection) */
-	void SetUpgradeOffers(const TArray<int32>& Offers) { UpgradeOffers = Offers; ChosenUpgradeOffer = INDEX_NONE; }
+	void SetUpgradeOffers(const TArray<FYSUpgradeOffer>& Offers) { UpgradeOffers = Offers; ChosenUpgradeOffer = INDEX_NONE; }
 
 	/** Serveur uniquement */
 	void SetChosenUpgradeOffer(int32 OfferIndex) { ChosenUpgradeOffer = OfferIndex; }

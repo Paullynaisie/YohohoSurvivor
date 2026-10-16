@@ -124,12 +124,16 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	RightHandWeapon->SetupAttachment(RightHand);
 	RightHandWeapon->SetChildActorOwnerOnCreation(true);
 
-	// barre de vie en espace écran, au-dessus du personnage (même widget que les NME)
-	// placeholder : trois upgrades identiques en attendant les vraies (réglables dans le Blueprint)
-	for (int32 Index = 1; Index <= 3; ++Index)
-	{
-		UpgradePool.Add(CreateDefaultSubobject<UYSDamageUpgrade>(*FString::Printf(TEXT("DamageUpgrade%d"), Index)));
-	}
+	// upgrades par défaut (réglables dans le Blueprint)
+	UYSHandAtkBonusUpgrade* RightAtk = CreateDefaultSubobject<UYSHandAtkBonusUpgrade>(TEXT("RightHandAtkBonus"));
+	RightAtk->Hand = EYSHand::Right;
+	RightAtk->DisplayName = NSLOCTEXT("YS", "RightHandAtkBonus", "Right hand Atk bonus");
+	UpgradePool.Add(RightAtk);
+
+	UYSHandAtkBonusUpgrade* LeftAtk = CreateDefaultSubobject<UYSHandAtkBonusUpgrade>(TEXT("LeftHandAtkBonus"));
+	LeftAtk->Hand = EYSHand::Left;
+	LeftAtk->DisplayName = NSLOCTEXT("YS", "LeftHandAtkBonus", "Left hand Atk bonus");
+	UpgradePool.Add(LeftAtk);
 
 	GameplayTags.AddTag(YSTags::Team_Player);
 }
@@ -140,6 +144,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 
 	DOREPLIFETIME(AYSPlayerCharacter, MaxHealth);
 	DOREPLIFETIME(AYSPlayerCharacter, Health);
+	DOREPLIFETIME(AYSPlayerCharacter, UpgradeProgress);
 }
 
 UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
@@ -195,32 +200,68 @@ AYSWeapon* AYSPlayerCharacter::GetRightHandWeapon() const
 	return Cast<AYSWeapon>(RightHandWeapon->GetChildActor());
 }
 
-TArray<int32> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
+TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 {
 	TArray<int32> Candidates;
 	for (int32 Index = 0; Index < UpgradePool.Num(); ++Index)
 	{
-		if (UpgradePool[Index])
+		if (UpgradePool[Index] && UpgradePool[Index]->CanBeOffered(this, GetUpgradeProgress(Index)))
 		{
 			Candidates.Add(Index);
 		}
 	}
 
-	// mélange puis on garde les premières
+	TArray<FYSUpgradeOffer> Offers;
+	if (Candidates.Num() == 0)
+	{
+		return Offers;
+	}
+
+	// mélange : upgrades différentes d'abord, puis doublons tirés au hasard pour compléter
 	for (int32 Index = Candidates.Num() - 1; Index > 0; --Index)
 	{
 		Candidates.Swap(Index, FMath::RandRange(0, Index));
 	}
-	Candidates.SetNum(FMath::Min(Count, Candidates.Num()));
-	return Candidates;
+	for (int32 Slot = 0; Slot < Count; ++Slot)
+	{
+		const int32 PoolIndex = Slot < Candidates.Num() ? Candidates[Slot] : Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
+		FYSUpgradeOffer& Offer = Offers.AddDefaulted_GetRef();
+		Offer.PoolIndex = PoolIndex;
+		Offer.Rarity = UpgradePool[PoolIndex]->RollRarity();
+	}
+	return Offers;
 }
 
-void AYSPlayerCharacter::ApplyUpgrade(int32 PoolIndex)
+void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 {
-	if (HasAuthority() && UpgradePool.IsValidIndex(PoolIndex) && UpgradePool[PoolIndex])
+	if (!HasAuthority() || !UpgradePool.IsValidIndex(Offer.PoolIndex) || !UpgradePool[Offer.PoolIndex])
 	{
-		UpgradePool[PoolIndex]->Apply(this);
+		return;
 	}
+
+	const UYSUpgrade* Upgrade = UpgradePool[Offer.PoolIndex];
+	if (UpgradeProgress.Num() < UpgradePool.Num())
+	{
+		UpgradeProgress.SetNum(UpgradePool.Num());
+	}
+
+	FYSUpgradeProgress& Progress = UpgradeProgress[Offer.PoolIndex];
+	++Progress.Stacks;
+	Progress.TotalValue += Upgrade->GetBonusValue(Offer.Rarity);
+	Upgrade->Apply(this, Progress);
+}
+
+float AYSPlayerCharacter::GetWeaponDamageMultiplier(const AYSWeapon* Weapon) const
+{
+	if (Weapon && Weapon == GetRightHandWeapon())
+	{
+		return RightHandDamageMultiplier;
+	}
+	if (Weapon && Weapon == GetLeftHandWeapon())
+	{
+		return LeftHandDamageMultiplier;
+	}
+	return 1.0f;
 }
 
 void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)

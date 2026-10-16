@@ -84,34 +84,85 @@ void UYSCharacterSelectWidget::SetCharacters(const TArray<FText>& Names)
 		return;
 	}
 
-	for (int32 Index = 0; Index < Names.Num(); ++Index)
+	for (const FText& Name : Names)
 	{
-		USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		Size->SetWidthOverride(ButtonSize.X);
-		Size->SetHeightOverride(ButtonSize.Y);
-
-		UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
-		Button->SetBackgroundColor(NormalColor);
-		Size->AddChild(Button);
-
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		Label->SetText(Names[Index]);
+		Label->SetText(Name);
 		YSCharacterSelect::SetFontSize(Label, ButtonFontSize);
 		Label->SetJustification(ETextJustify::Center);
 		Label->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-		Button->AddChild(Label);
-
-		UYSCharacterSelectButtonProxy* Proxy = NewObject<UYSCharacterSelectButtonProxy>(this);
-		Proxy->Index = Index;
-		Proxy->Menu = this;
-		Button->OnClicked.AddDynamic(Proxy, &UYSCharacterSelectButtonProxy::HandleClicked);
-
-		UVerticalBoxSlot* ButtonSlot = ButtonList->AddChildToVerticalBox(Size);
-		ButtonSlot->SetPadding(FMargin(0.0f, 8.0f));
-
-		Buttons.Add(Button);
-		ButtonProxies.Add(Proxy);
+		AddChoiceButton(Label);
 	}
+}
+
+void UYSCharacterSelectWidget::SetChoices(const TArray<TArray<FYSChoiceLine>>& Choices)
+{
+	if (!ButtonList || Buttons.Num() > 0)
+	{
+		return;
+	}
+
+	for (const TArray<FYSChoiceLine>& Lines : Choices)
+	{
+		UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+		for (const FYSChoiceLine& Line : Lines)
+		{
+			UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+			Label->SetText(Line.Text);
+			FSlateFontInfo Font = Label->GetFont();
+			Font.Size = Line.FontSize;
+			Font.TypefaceFontName = Line.bBold ? FName(TEXT("Bold")) : FName(TEXT("Regular"));
+			Label->SetFont(Font);
+			Label->SetColorAndOpacity(FSlateColor(Line.Color));
+			Label->SetJustification(ETextJustify::Center);
+
+			UWidget* LineWidget = Label;
+			if (Line.bStrikethrough)
+			{
+				// texte rayé : fine barre de la couleur du texte posée par-dessus, sur toute sa largeur
+				UOverlay* Struck = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+				Struck->AddChildToOverlay(Label);
+
+				USizeBox* LineBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+				LineBox->SetHeightOverride(FMath::Max(1.0f, Line.FontSize / 8.0f));
+				UImage* Strike = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+				Strike->SetColorAndOpacity(Line.Color);
+				LineBox->AddChild(Strike);
+
+				UOverlaySlot* StrikeSlot = Struck->AddChildToOverlay(LineBox);
+				StrikeSlot->SetHorizontalAlignment(HAlign_Fill);
+				StrikeSlot->SetVerticalAlignment(VAlign_Center);
+				LineWidget = Struck;
+			}
+
+			UVerticalBoxSlot* LineSlot = Column->AddChildToVerticalBox(LineWidget);
+			LineSlot->SetHorizontalAlignment(HAlign_Center);
+		}
+		AddChoiceButton(Column);
+	}
+}
+
+void UYSCharacterSelectWidget::AddChoiceButton(UWidget* Content)
+{
+	USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	Size->SetWidthOverride(ButtonSize.X);
+	Size->SetHeightOverride(ButtonSize.Y);
+
+	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+	Button->SetBackgroundColor(NormalColor);
+	Size->AddChild(Button);
+	Button->AddChild(Content);
+
+	UYSCharacterSelectButtonProxy* Proxy = NewObject<UYSCharacterSelectButtonProxy>(this);
+	Proxy->Index = Buttons.Num();
+	Proxy->Menu = this;
+	Button->OnClicked.AddDynamic(Proxy, &UYSCharacterSelectButtonProxy::HandleClicked);
+
+	UVerticalBoxSlot* ButtonSlot = ButtonList->AddChildToVerticalBox(Size);
+	ButtonSlot->SetPadding(FMargin(0.0f, 8.0f));
+
+	Buttons.Add(Button);
+	ButtonProxies.Add(Proxy);
 }
 
 void UYSCharacterSelectWidget::ClearChoices()

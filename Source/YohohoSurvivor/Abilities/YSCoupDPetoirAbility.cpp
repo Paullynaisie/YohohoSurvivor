@@ -70,7 +70,7 @@ void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
 	AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ProjectileClass, SpawnTransform, Shooter, Shooter, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (Projectile)
 	{
-		Projectile->SetDamage(Damage);
+		Projectile->SetDamage(Damage * GetDamageMultiplier());
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 }
