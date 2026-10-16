@@ -10,7 +10,9 @@
 #include "GameFramework/Pawn.h"
 #include "UI/YSAbilityIconWidget.h"
 #include "UI/YSCharacterSelectWidget.h"
+#include "Core/YSGameInstance.h"
 #include "Core/YSGameMode.h"
+#include "Components/InputComponent.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
 
@@ -57,6 +59,21 @@ void AYSPlayerController::BeginPlay()
 			MenuSlot.ZOrder = 10;
 			ViewportSubsystem->AddWidgetForPlayer(CharacterSelectMenu, GetLocalPlayer(), MenuSlot);
 		}
+	}
+}
+
+void AYSPlayerController::SetupInputComponent()
+{
+	Super::SetupInputComponent();
+
+	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AYSPlayerController::YSLeaveGame);
+}
+
+void AYSPlayerController::YSLeaveGame()
+{
+	if (UYSGameInstance* GameInstance = GetGameInstance<UYSGameInstance>())
+	{
+		GameInstance->ReturnToMenu();
 	}
 }
 

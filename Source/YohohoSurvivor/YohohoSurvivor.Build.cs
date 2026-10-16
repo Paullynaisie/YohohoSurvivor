@@ -22,7 +22,8 @@ public class YohohoSurvivor : ModuleRules
 			"UMG",
 			"Slate",
 			"SlateCore",
-			"GameplayTags"
+			"GameplayTags",
+			"Sockets"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

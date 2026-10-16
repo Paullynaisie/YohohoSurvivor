@@ -55,7 +55,13 @@ public:
 
 	virtual void BeginPlay() override;
 
+	virtual void SetupInputComponent() override;
+
 	virtual void PlayerTick(float DeltaTime) override;
+
+	/** Quitte la partie et revient au menu principal (touche Échap). Hôte : les autres joueurs reviennent aussi au menu. */
+	UFUNCTION(Exec)
+	void YSLeaveGame();
 
 	FVector GetAimLocation() const { return AimLocation; }
 
