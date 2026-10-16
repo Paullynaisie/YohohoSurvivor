@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UObject/Object.h"
+#include "Engine/DataAsset.h"
 #include "UI/YSCharacterSelectWidget.h"
 #include "YSUpgrade.generated.h"
 
@@ -28,6 +28,13 @@ enum class EYSUpgradeRarity : uint8
 	Gold,
 };
 
+UENUM(BlueprintType)
+enum class EYSHand : uint8
+{
+	Right,
+	Left,
+};
+
 /** Une proposition du menu de montée de niveau */
 USTRUCT(BlueprintType)
 struct FYSUpgradeOffer
@@ -38,17 +45,27 @@ struct FYSUpgradeOffer
 	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
 	int32 PoolIndex = INDEX_NONE;
 
+	/** Variante de l'upgrade (ex. Atk Bonus : 0 = main droite, 1 = main gauche) */
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	int32 Variant = 0;
+
 	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
 	EYSUpgradeRarity Rarity = EYSUpgradeRarity::None;
 
-	bool operator==(const FYSUpgradeOffer& Other) const { return PoolIndex == Other.PoolIndex && Rarity == Other.Rarity; }
+	bool operator==(const FYSUpgradeOffer& Other) const { return PoolIndex == Other.PoolIndex && Variant == Other.Variant && Rarity == Other.Rarity; }
 };
 
-/** Progression d'une upgrade du pool sur un personnage (répliquée) */
+/** Progression d'une variante d'upgrade du pool sur un personnage (répliquée) */
 USTRUCT(BlueprintType)
 struct FYSUpgradeProgress
 {
 	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	int32 PoolIndex = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	int32 Variant = 0;
 
 	/** Nombre de bonus déjà obtenus */
 	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
@@ -61,11 +78,12 @@ struct FYSUpgradeProgress
 
 /**
  *  Amélioration proposée au joueur à chaque montée de niveau de l'équipe.
- *  Les upgrades disponibles sont listées sur le personnage (3C > Upgrades > Upgrade Pool), instanciées
- *  et réglées dans son Blueprint (EditInlineNew : choisir le type dans la liste, régler ses paramètres).
+ *  Chaque upgrade est un Data Asset (Content Browser > clic droit > Miscellaneous > Data Asset, choisir la classe),
+ *  réglé une seule fois pour tous les personnages ; les personnages le référencent dans 3C > Upgrades > Upgrade Pool.
+ *  Une upgrade peut avoir plusieurs variantes proposées et cumulées séparément (ex. Atk Bonus : main droite / gauche).
  */
-UCLASS(Abstract, EditInlineNew, DefaultToInstanced, CollapseCategories)
-class UYSUpgrade : public UObject
+UCLASS(Abstract, BlueprintType)
+class UYSUpgrade : public UDataAsset
 {
 	GENERATED_BODY()
 
@@ -79,8 +97,14 @@ public:
 	UFUNCTION(BlueprintPure, Category="Upgrade")
 	EYSUpgradeType GetUpgradeType() const { return UpgradeType; }
 
-	/** Peut encore être proposée à ce personnage (Progress = ce qu'il a déjà obtenu de cette upgrade) */
-	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress) const { return true; }
+	/** Nombre de variantes (chacune proposée et cumulée séparément) */
+	virtual int32 GetVariantCount() const { return 1; }
+
+	/** Nom affiché d'une variante */
+	virtual FText GetVariantName(int32 Variant) const { return DisplayName; }
+
+	/** Peut encore être proposée à ce personnage (Progress = ce qu'il a déjà obtenu de cette variante) */
+	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const { return true; }
 
 	/** Rareté tirée pour une nouvelle proposition (None si l'upgrade n'en a pas) */
 	virtual EYSUpgradeRarity RollRarity() const { return EYSUpgradeRarity::None; }
@@ -89,10 +113,10 @@ public:
 	virtual float GetBonusValue(EYSUpgradeRarity Rarity) const { return 0.0f; }
 
 	/** Lignes du bouton pour une proposition */
-	virtual void GetOfferLines(const AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const;
+	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const;
 
-	/** Applique l'état de l'upgrade au personnage après un nouveau bonus (serveur ; Progress déjà mis à jour) */
-	virtual void Apply(AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress) const {}
+	/** Applique l'état de la variante au personnage après un nouveau bonus (serveur ; Progress déjà mis à jour) */
+	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const {}
 
 protected:
 
@@ -101,7 +125,7 @@ protected:
 };
 
 /**
- *  Upgrade de stat : modifie une statistique pure du joueur. Cumule jusqu'à MaxStacks bonus
+ *  Upgrade de stat : modifie une statistique pure du joueur. Chaque variante cumule jusqu'à MaxStacks bonus
  *  (ensuite elle n'est plus proposée) ; chaque bonus a une rareté tirée au hasard qui fixe sa valeur.
  *  Nouvelle stat = sous-classe qui surcharge Apply (et GetStatLabel / GetStatValue pour l'affichage).
  */
@@ -114,7 +138,7 @@ public:
 
 	UYSStatUpgrade();
 
-	/** Nombre maximum de bonus cumulables */
+	/** Nombre maximum de bonus cumulables (par variante) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="1"))
 	int32 MaxStacks = 10;
 
@@ -148,13 +172,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
 	FLinearColor GoldColor = FLinearColor(1.0f, 0.8f, 0.1f);
 
-	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress) const override;
+	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
 	virtual EYSUpgradeRarity RollRarity() const override;
 
 	virtual float GetBonusValue(EYSUpgradeRarity Rarity) const override;
 
-	virtual void GetOfferLines(const AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
+	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
 
 protected:
 
@@ -167,18 +191,12 @@ protected:
 	FLinearColor GetRarityColor(EYSUpgradeRarity Rarity) const;
 };
 
-UENUM(BlueprintType)
-enum class EYSHand : uint8
-{
-	Right,
-	Left,
-};
-
 /**
- *  Atk Bonus : multiplie les dégâts de l'arme d'une main par (1 + somme des bonus).
- *  Proposée seulement si la main tient une arme.
+ *  Atk Bonus : deux bonus distincts, « Right hand Atk bonus » (variante 0) et « Left hand Atk bonus » (variante 1),
+ *  cumulés séparément. Multiplie les dégâts de l'arme de la main par (1 + somme des bonus de cette main).
+ *  Une main n'est proposée que si elle tient une arme.
  */
-UCLASS(meta=(DisplayName="Stat : Atk Bonus (main)"))
+UCLASS(meta=(DisplayName="Upgrade de stat : Atk Bonus (par main)"))
 class UYSHandAtkBonusUpgrade : public UYSStatUpgrade
 {
 	GENERATED_BODY()
@@ -187,17 +205,30 @@ public:
 
 	UYSHandAtkBonusUpgrade();
 
-	/** Main concernée */
+	/** Nom du bonus de chaque main */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
-	EYSHand Hand = EYSHand::Right;
+	FText RightHandName;
 
-	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress) const override;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	FText LeftHandName;
 
-	virtual void Apply(AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress) const override;
+	/** Nom de la stat sur le bouton (« Dégât x 1.9 ») */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	FText StatLabel;
+
+	static EYSHand GetHand(int32 Variant) { return Variant == 1 ? EYSHand::Left : EYSHand::Right; }
+
+	virtual int32 GetVariantCount() const override { return 2; }
+
+	virtual FText GetVariantName(int32 Variant) const override { return GetHand(Variant) == EYSHand::Left ? LeftHandName : RightHandName; }
+
+	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
+	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
 protected:
 
-	virtual FText GetStatLabel() const override;
+	virtual FText GetStatLabel() const override { return StatLabel; }
 
 	virtual float GetStatValue(float TotalBonus) const override { return 1.0f + TotalBonus; }
 };

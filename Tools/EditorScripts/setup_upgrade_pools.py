@@ -1,7 +1,9 @@
 """
-Upgrade Pool des personnages joueurs : remet les upgrades par défaut de la classe C++
-(Right hand Atk bonus, Left hand Atk bonus) si le Blueprint a gardé une ancienne liste
-(ex. les placeholders « Dégâts +10 », supprimés).
+Upgrades en Data Assets :
+  - crée /Game/Core/Upgrades/DA_Upgrade_AtkBonus (UYSHandAtkBonusUpgrade : Right / Left hand Atk bonus) s'il n'existe pas
+    (réglages par défaut de la classe C++ ; ensuite à régler dans l'asset)
+  - Upgrade Pool des 3 personnages jouables = [DA_Upgrade_AtkBonus]
+    (les enfants reçoivent la même valeur que le parent : ils en héritent à nouveau)
 
 Lancement (éditeur fermé) :
   UnrealEditor.exe YohohoSurvivor.uproject -ExecutePythonScript="Tools/EditorScripts/setup_upgrade_pools.py"
@@ -10,8 +12,10 @@ Rapport : Saved/Logs/setup_upgrade_pools.txt
 import os
 import unreal
 
+UPGRADE_DIR = "/Game/Core/Upgrades"
+ATK_BONUS = f"{UPGRADE_DIR}/DA_Upgrade_AtkBonus"
 CHARACTERS = [
-    "/Game/Placeable/Character/PlayerCharacter_mouss",
+    "/Game/Placeable/Character/PlayerCharacter_mouss",  # parent d'abord
     "/Game/Placeable/Character/PlayerCharacter_mouss2sabre",
     "/Game/Placeable/Character/PlayerCharacter_mouss2pistol",
 ]
@@ -26,38 +30,32 @@ def log(msg):
 
 
 def describe(pool):
-    return [f"{u.get_class().get_name()}:{u.get_editor_property('display_name')}:{u.get_editor_property('hand')}" if u and isinstance(u, unreal.YSHandAtkBonusUpgrade)
-            else (u.get_class().get_name() if u else None) for u in pool]
-
-
-def is_default(pool):
-    return (len(pool) == 2 and all(u and isinstance(u, unreal.YSHandAtkBonusUpgrade) for u in pool)
-            and pool[0].get_editor_property("hand") == unreal.YSHand.RIGHT
-            and pool[1].get_editor_property("hand") == unreal.YSHand.LEFT)
+    return [u.get_path_name() if u else None for u in pool]
 
 
 try:
-    native = unreal.get_default_object(unreal.YSPlayerCharacter)
-    log(f"C++ : {describe(native.get_editor_property('upgrade_pool'))}")
+    if assets.does_asset_exist(ATK_BONUS):
+        atk = assets.load_asset(ATK_BONUS)
+        log(f"existe déjà : {ATK_BONUS}")
+    else:
+        factory = unreal.DataAssetFactory()
+        factory.set_editor_property("data_asset_class", unreal.YSHandAtkBonusUpgrade)
+        atk = unreal.AssetToolsHelpers.get_asset_tools().create_asset("DA_Upgrade_AtkBonus", UPGRADE_DIR, unreal.YSHandAtkBonusUpgrade, factory)
+        assets.save_asset(ATK_BONUS, only_if_is_dirty=False)
+        log(f"créé : {ATK_BONUS}")
+    log(f"  {atk.get_editor_property('right_hand_name')} / {atk.get_editor_property('left_hand_name')}, "
+        f"max {atk.get_editor_property('max_stacks')}, valeurs {atk.get_editor_property('bronze_value')} / "
+        f"{atk.get_editor_property('silver_value')} / {atk.get_editor_property('gold_value')}")
 
     for path in CHARACTERS:
         cdo = unreal.get_default_object(assets.load_blueprint_class(path))
-        pool = cdo.get_editor_property("upgrade_pool")
-        log(f"{path} : {describe(pool)}")
-        if is_default(pool):
-            continue
-
-        new_pool = []
-        for hand, name in ((unreal.YSHand.RIGHT, "Right hand Atk bonus"), (unreal.YSHand.LEFT, "Left hand Atk bonus")):
-            upgrade = unreal.new_object(unreal.YSHandAtkBonusUpgrade, outer=cdo)
-            upgrade.set_editor_property("hand", hand)
-            upgrade.set_editor_property("display_name", name)
-            new_pool.append(upgrade)
-        cdo.set_editor_property("upgrade_pool", new_pool)
+        log(f"{path} : avant {describe(cdo.get_editor_property('upgrade_pool'))}")
+        cdo.set_editor_property("upgrade_pool", [atk])
         assets.save_asset(path, only_if_is_dirty=False)
 
+    for path in CHARACTERS:
         check = unreal.get_default_object(assets.load_blueprint_class(path)).get_editor_property("upgrade_pool")
-        log(f"  -> remis : {describe(check)}")
+        log(f"{path} : relu {describe(check)}")
     log("OK")
 except Exception as e:
     log(f"ERREUR : {e!r}")

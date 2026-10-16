@@ -124,17 +124,6 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	RightHandWeapon->SetupAttachment(RightHand);
 	RightHandWeapon->SetChildActorOwnerOnCreation(true);
 
-	// upgrades par défaut (réglables dans le Blueprint)
-	UYSHandAtkBonusUpgrade* RightAtk = CreateDefaultSubobject<UYSHandAtkBonusUpgrade>(TEXT("RightHandAtkBonus"));
-	RightAtk->Hand = EYSHand::Right;
-	RightAtk->DisplayName = NSLOCTEXT("YS", "RightHandAtkBonus", "Right hand Atk bonus");
-	UpgradePool.Add(RightAtk);
-
-	UYSHandAtkBonusUpgrade* LeftAtk = CreateDefaultSubobject<UYSHandAtkBonusUpgrade>(TEXT("LeftHandAtkBonus"));
-	LeftAtk->Hand = EYSHand::Left;
-	LeftAtk->DisplayName = NSLOCTEXT("YS", "LeftHandAtkBonus", "Left hand Atk bonus");
-	UpgradePool.Add(LeftAtk);
-
 	GameplayTags.AddTag(YSTags::Team_Player);
 }
 
@@ -200,14 +189,48 @@ AYSWeapon* AYSPlayerCharacter::GetRightHandWeapon() const
 	return Cast<AYSWeapon>(RightHandWeapon->GetChildActor());
 }
 
+FYSUpgradeProgress AYSPlayerCharacter::GetUpgradeProgress(int32 PoolIndex, int32 Variant) const
+{
+	const FYSUpgradeProgress* Found = UpgradeProgress.FindByPredicate([PoolIndex, Variant](const FYSUpgradeProgress& Progress)
+	{
+		return Progress.PoolIndex == PoolIndex && Progress.Variant == Variant;
+	});
+	if (Found)
+	{
+		return *Found;
+	}
+
+	FYSUpgradeProgress Empty;
+	Empty.PoolIndex = PoolIndex;
+	Empty.Variant = Variant;
+	return Empty;
+}
+
+int32 AYSPlayerCharacter::GetTotalUpgradeStacks() const
+{
+	int32 Total = 0;
+	for (const FYSUpgradeProgress& Progress : UpgradeProgress)
+	{
+		Total += Progress.Stacks;
+	}
+	return Total;
+}
+
 TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 {
-	TArray<int32> Candidates;
-	for (int32 Index = 0; Index < UpgradePool.Num(); ++Index)
+	// chaque variante encore proposable de chaque upgrade du pool
+	TArray<FYSUpgradeOffer> Candidates;
+	for (int32 PoolIndex = 0; PoolIndex < UpgradePool.Num(); ++PoolIndex)
 	{
-		if (UpgradePool[Index] && UpgradePool[Index]->CanBeOffered(this, GetUpgradeProgress(Index)))
+		const UYSUpgrade* Upgrade = UpgradePool[PoolIndex];
+		for (int32 Variant = 0; Upgrade && Variant < Upgrade->GetVariantCount(); ++Variant)
 		{
-			Candidates.Add(Index);
+			if (Upgrade->CanBeOffered(this, Variant, GetUpgradeProgress(PoolIndex, Variant)))
+			{
+				FYSUpgradeOffer& Candidate = Candidates.AddDefaulted_GetRef();
+				Candidate.PoolIndex = PoolIndex;
+				Candidate.Variant = Variant;
+			}
 		}
 	}
 
@@ -217,38 +240,41 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		return Offers;
 	}
 
-	// mélange : upgrades différentes d'abord, puis doublons tirés au hasard pour compléter
+	// mélange : bonus différents d'abord, puis doublons tirés au hasard pour compléter ; rareté tirée pour chacun
 	for (int32 Index = Candidates.Num() - 1; Index > 0; --Index)
 	{
 		Candidates.Swap(Index, FMath::RandRange(0, Index));
 	}
 	for (int32 Slot = 0; Slot < Count; ++Slot)
 	{
-		const int32 PoolIndex = Slot < Candidates.Num() ? Candidates[Slot] : Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
-		FYSUpgradeOffer& Offer = Offers.AddDefaulted_GetRef();
-		Offer.PoolIndex = PoolIndex;
-		Offer.Rarity = UpgradePool[PoolIndex]->RollRarity();
+		FYSUpgradeOffer& Offer = Offers.Add_GetRef(Slot < Candidates.Num() ? Candidates[Slot] : Candidates[FMath::RandRange(0, Candidates.Num() - 1)]);
+		Offer.Rarity = UpgradePool[Offer.PoolIndex]->RollRarity();
 	}
 	return Offers;
 }
 
 void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 {
-	if (!HasAuthority() || !UpgradePool.IsValidIndex(Offer.PoolIndex) || !UpgradePool[Offer.PoolIndex])
+	const UYSUpgrade* Upgrade = UpgradePool.IsValidIndex(Offer.PoolIndex) ? UpgradePool[Offer.PoolIndex].Get() : nullptr;
+	if (!HasAuthority() || !Upgrade)
 	{
 		return;
 	}
 
-	const UYSUpgrade* Upgrade = UpgradePool[Offer.PoolIndex];
-	if (UpgradeProgress.Num() < UpgradePool.Num())
+	FYSUpgradeProgress* Progress = UpgradeProgress.FindByPredicate([&Offer](const FYSUpgradeProgress& Entry)
 	{
-		UpgradeProgress.SetNum(UpgradePool.Num());
+		return Entry.PoolIndex == Offer.PoolIndex && Entry.Variant == Offer.Variant;
+	});
+	if (!Progress)
+	{
+		Progress = &UpgradeProgress.AddDefaulted_GetRef();
+		Progress->PoolIndex = Offer.PoolIndex;
+		Progress->Variant = Offer.Variant;
 	}
 
-	FYSUpgradeProgress& Progress = UpgradeProgress[Offer.PoolIndex];
-	++Progress.Stacks;
-	Progress.TotalValue += Upgrade->GetBonusValue(Offer.Rarity);
-	Upgrade->Apply(this, Progress);
+	++Progress->Stacks;
+	Progress->TotalValue += Upgrade->GetBonusValue(Offer.Rarity);
+	Upgrade->Apply(this, Offer.Variant, *Progress);
 }
 
 float AYSPlayerCharacter::GetWeaponDamageMultiplier(const AYSWeapon* Weapon) const

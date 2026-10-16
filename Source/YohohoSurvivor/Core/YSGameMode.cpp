@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Player/YSPlayerController.h"
+#include "Weapons/YSWeapon.h"
 
 AYSGameMode::AYSGameMode()
 {
@@ -94,6 +95,11 @@ void AYSGameMode::StartUpgradeSelection()
 		if (PlayerState)
 		{
 			PlayerState->SetUpgradeOffers(Character && Character->IsAlive() ? Character->PickUpgradeOffers(UpgradeChoiceCount) : TArray<FYSUpgradeOffer>());
+			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s (%s, pool de %d, armes G %s / D %s) : %d proposition(s)"), *PlayerState->GetPlayerName(),
+				Character ? *Character->GetClass()->GetName() : TEXT("pas de perso"), Character ? Character->GetUpgradePool().Num() : 0,
+				Character && Character->GetLeftHandWeapon() ? *Character->GetLeftHandWeapon()->GetName() : TEXT("aucune"),
+				Character && Character->GetRightHandWeapon() ? *Character->GetRightHandWeapon()->GetName() : TEXT("aucune"),
+				PlayerState->GetUpgradeOffers().Num());
 		}
 	}
 
@@ -120,7 +126,7 @@ void AYSGameMode::PlayerChoseUpgrade(APlayerController* Player, int32 OfferIndex
 	}
 
 	Character->ApplyUpgrade(PlayerState->GetUpgradeOffers()[OfferIndex]);
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s choisit l'upgrade %d (pool %d, rareté %d)"), *PlayerState->GetPlayerName(), OfferIndex, PlayerState->GetUpgradeOffers()[OfferIndex].PoolIndex, (int32)PlayerState->GetUpgradeOffers()[OfferIndex].Rarity);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s choisit l'upgrade %d (pool %d, variante %d, rareté %d)"), *PlayerState->GetPlayerName(), OfferIndex, PlayerState->GetUpgradeOffers()[OfferIndex].PoolIndex, PlayerState->GetUpgradeOffers()[OfferIndex].Variant, (int32)PlayerState->GetUpgradeOffers()[OfferIndex].Rarity);
 	PlayerState->SetChosenUpgradeOffer(OfferIndex);
 	TryFinishUpgradeSelection();
 }

@@ -23,10 +23,10 @@ namespace YSUpgradeText
 	}
 }
 
-void UYSUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+void UYSUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
 {
 	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
-	Title.Text = DisplayName;
+	Title.Text = GetVariantName(Variant);
 	Title.FontSize = 20;
 	Title.bBold = true;
 }
@@ -36,7 +36,7 @@ UYSStatUpgrade::UYSStatUpgrade()
 	UpgradeType = EYSUpgradeType::Stat;
 }
 
-bool UYSStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress) const
+bool UYSStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
 	return Progress.Stacks < MaxStacks;
 }
@@ -79,11 +79,11 @@ FLinearColor UYSStatUpgrade::GetRarityColor(EYSUpgradeRarity Rarity) const
 	}
 }
 
-void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
 {
 	// nom (couleur de la rareté) + rareté et nombre de bonus après ce choix
 	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
-	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), DisplayName, YSUpgradeText::RarityName(Rarity));
+	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), GetVariantName(Variant), YSUpgradeText::RarityName(Rarity));
 	Title.Color = GetRarityColor(Rarity);
 	Title.FontSize = 20;
 	Title.bBold = true;
@@ -109,25 +109,23 @@ void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, const FY
 UYSHandAtkBonusUpgrade::UYSHandAtkBonusUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "HandAtkBonusName", "Atk Bonus");
+	RightHandName = NSLOCTEXT("YS", "RightHandAtkBonus", "Right hand Atk bonus");
+	LeftHandName = NSLOCTEXT("YS", "LeftHandAtkBonus", "Left hand Atk bonus");
+	StatLabel = NSLOCTEXT("YS", "HandAtkBonusStat", "Dégât");
 }
 
-bool UYSHandAtkBonusUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress) const
+bool UYSHandAtkBonusUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	const AYSWeapon* Weapon = !Character ? nullptr : Hand == EYSHand::Left ? Character->GetLeftHandWeapon() : Character->GetRightHandWeapon();
-	return Weapon && Super::CanBeOffered(Character, Progress);
+	const AYSWeapon* Weapon = !Character ? nullptr : GetHand(Variant) == EYSHand::Left ? Character->GetLeftHandWeapon() : Character->GetRightHandWeapon();
+	return Weapon && Super::CanBeOffered(Character, Variant, Progress);
 }
 
-void UYSHandAtkBonusUpgrade::Apply(AYSPlayerCharacter* Character, const FYSUpgradeProgress& Progress) const
+void UYSHandAtkBonusUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
 	if (Character)
 	{
-		Character->SetHandDamageMultiplier(Hand, GetStatValue(Progress.TotalValue));
+		Character->SetHandDamageMultiplier(GetHand(Variant), GetStatValue(Progress.TotalValue));
 		UE_LOG(LogTemp, Log, TEXT("[YSHandAtkBonusUpgrade] %s main %s : dégâts x %.2f (%d bonus)"),
-			*Character->GetName(), Hand == EYSHand::Left ? TEXT("gauche") : TEXT("droite"), GetStatValue(Progress.TotalValue), Progress.Stacks);
+			*Character->GetName(), GetHand(Variant) == EYSHand::Left ? TEXT("gauche") : TEXT("droite"), GetStatValue(Progress.TotalValue), Progress.Stacks);
 	}
-}
-
-FText UYSHandAtkBonusUpgrade::GetStatLabel() const
-{
-	return NSLOCTEXT("YS", "HandAtkBonusStat", "Dégât");
 }

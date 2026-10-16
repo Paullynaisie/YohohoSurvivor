@@ -167,12 +167,12 @@ protected:
 
 	/**
 	 *  Upgrades que ce personnage peut se voir proposer à chaque montée de niveau
-	 *  (choisir le type dans la liste, régler ses paramètres). Défaut : Right hand / Left hand Atk bonus.
+	 *  (Data Assets d'upgrade, réglés une seule fois pour tous les personnages, dans /Game/Core/Upgrades).
 	 */
-	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category="3C|Upgrades")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Upgrades")
 	TArray<TObjectPtr<UYSUpgrade>> UpgradePool;
 
-	/** Progression de chaque upgrade du pool (même index que UpgradePool ; répliquée pour l'affichage du menu) */
+	/** Progression de chaque variante d'upgrade obtenue (répliquée pour l'affichage du menu) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TArray<FYSUpgradeProgress> UpgradeProgress;
 
@@ -288,7 +288,10 @@ public:
 	const TArray<TObjectPtr<UYSUpgrade>>& GetUpgradePool() const { return UpgradePool; }
 
 	/** Progression de l'upgrade d'index PoolIndex (vide si jamais obtenue) */
-	FYSUpgradeProgress GetUpgradeProgress(int32 PoolIndex) const { return UpgradeProgress.IsValidIndex(PoolIndex) ? UpgradeProgress[PoolIndex] : FYSUpgradeProgress(); }
+	FYSUpgradeProgress GetUpgradeProgress(int32 PoolIndex, int32 Variant) const;
+
+	/** Nombre total de bonus obtenus (toutes upgrades confondues) */
+	int32 GetTotalUpgradeStacks() const;
 
 	/**
 	 *  Tire Count propositions parmi les upgrades encore proposables, chacune avec sa rareté :

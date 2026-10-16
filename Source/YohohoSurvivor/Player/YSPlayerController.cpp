@@ -241,11 +241,7 @@ void AYSPlayerController::UpdateUpgradeMenu()
 	}
 
 	// nouvelles propositions (ou progression changée, pour des propositions identiques enchaînées) : reconstruire les boutons
-	int32 TotalStacks = 0;
-	for (int32 PoolIndex = 0; PoolIndex < PlayerCharacter->GetUpgradePool().Num(); ++PoolIndex)
-	{
-		TotalStacks += PlayerCharacter->GetUpgradeProgress(PoolIndex).Stacks;
-	}
+	const int32 TotalStacks = PlayerCharacter->GetTotalUpgradeStacks();
 
 	if (DisplayedUpgradeOffers != MyState->GetUpgradeOffers() || (DisplayedUpgradeStacks != TotalStacks && MyState->IsChoosingUpgrade()))
 	{
@@ -261,7 +257,7 @@ void AYSPlayerController::UpdateUpgradeMenu()
 			const UYSUpgrade* Upgrade = PlayerCharacter->GetUpgradePool().IsValidIndex(Offer.PoolIndex) ? PlayerCharacter->GetUpgradePool()[Offer.PoolIndex].Get() : nullptr;
 			if (Upgrade)
 			{
-				Upgrade->GetOfferLines(PlayerCharacter, PlayerCharacter->GetUpgradeProgress(Offer.PoolIndex), Offer.Rarity, Lines);
+				Upgrade->GetOfferLines(PlayerCharacter, Offer.Variant, PlayerCharacter->GetUpgradeProgress(Offer.PoolIndex, Offer.Variant), Offer.Rarity, Lines);
 			}
 			else
 			{
