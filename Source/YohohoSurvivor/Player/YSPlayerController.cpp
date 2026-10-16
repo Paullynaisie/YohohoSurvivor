@@ -59,6 +59,13 @@ void AYSPlayerController::BeginPlay()
 			MenuSlot.ZOrder = 10;
 			ViewportSubsystem->AddWidgetForPlayer(CharacterSelectMenu, GetLocalPlayer(), MenuSlot);
 		}
+
+		// debug / tests automatisés : -YSAutoSelect=<index> choisit le personnage dès l'arrivée (y compris en client)
+		int32 AutoSelectIndex = INDEX_NONE;
+		if (FParse::Value(FCommandLine::Get(), TEXT("YSAutoSelect="), AutoSelectIndex))
+		{
+			YSSelectCharacter(AutoSelectIndex);
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 #include "Core/YSGameMode.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
+#include "Enemies/YSEnemySpawnRule.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/YSPlayerCharacter.h"
@@ -11,6 +12,29 @@ AYSGameMode::AYSGameMode()
 	GameStateClass = AYSGameState::StaticClass();
 	PlayerStateClass = AYSPlayerState::StaticClass();
 	PlayerControllerClass = AYSPlayerController::StaticClass();
+
+	PrimaryActorTick.bCanEverTick = true;
+
+	SpawnRules.Add(CreateDefaultSubobject<UYSTimedWaveSpawnRule>(TEXT("TimedWaveSpawnRule")));
+}
+
+void AYSGameMode::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || !YSGameState->IsMatchStarted())
+	{
+		return;
+	}
+
+	for (UYSEnemySpawnRule* Rule : SpawnRules)
+	{
+		if (Rule)
+		{
+			Rule->Tick(DeltaSeconds);
+		}
+	}
 }
 
 void AYSGameMode::InitGameState()
@@ -95,6 +119,14 @@ void AYSGameMode::TryStartMatch()
 	}
 
 	YSGameState->SetMatchStarted();
+	for (UYSEnemySpawnRule* Rule : SpawnRules)
+	{
+		if (Rule)
+		{
+			Rule->Start(this);
+		}
+	}
+
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		APlayerController* Player = It->Get();

@@ -35,6 +35,10 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
 	bool bMatchStarted = false;
 
+	/** Temps serveur (GetServerWorldTimeSeconds) du démarrage de la partie */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Match")
+	double MatchStartServerTime = 0.0;
+
 public:
 
 	AYSGameState();
@@ -47,7 +51,11 @@ public:
 
 	/** Serveur uniquement (AYSGameMode) */
 	void SetSelectableCharacters(const TArray<TSubclassOf<AYSPlayerCharacter>>& Characters) { SelectableCharacters = Characters; }
-	void SetMatchStarted() { bMatchStarted = true; }
+	void SetMatchStarted();
+
+	/** Secondes écoulées depuis le démarrage de la partie (0 avant ; valable sur serveur et clients) */
+	UFUNCTION(BlueprintPure, Category="Match")
+	float GetMatchElapsedTime() const;
 
 	/**
 	 *  À appeler sur le serveur quand des dégâts sont infligés : affiche le chiffre chez tous les joueurs.

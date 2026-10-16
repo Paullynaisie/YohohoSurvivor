@@ -19,6 +19,18 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 
 	DOREPLIFETIME(AYSGameState, SelectableCharacters);
 	DOREPLIFETIME(AYSGameState, bMatchStarted);
+	DOREPLIFETIME(AYSGameState, MatchStartServerTime);
+}
+
+void AYSGameState::SetMatchStarted()
+{
+	bMatchStarted = true;
+	MatchStartServerTime = GetServerWorldTimeSeconds();
+}
+
+float AYSGameState::GetMatchElapsedTime() const
+{
+	return bMatchStarted ? FMath::Max(0.0, GetServerWorldTimeSeconds() - MatchStartServerTime) : 0.0f;
 }
 
 void AYSGameState::ReportDamage(const AActor* Victim, float Amount, const FVector& ImpactLocation, const AController* InstigatorController)

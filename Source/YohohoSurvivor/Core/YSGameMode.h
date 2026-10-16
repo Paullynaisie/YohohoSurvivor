@@ -5,6 +5,7 @@
 #include "YSGameMode.generated.h"
 
 class AYSPlayerCharacter;
+class UYSEnemySpawnRule;
 
 /**
  *  GameMode du jeu (serveur uniquement), avec sélection du personnage :
@@ -13,12 +14,19 @@ class AYSPlayerCharacter;
  *  Un joueur qui arrive en cours de partie apparaît dès qu'il a choisi.
  *  Classe de base de BP_TestGameMode.
  */
-UCLASS()
+UCLASS(meta=(PrioritizeCategories="Spawn"))
 class AYSGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
 
 protected:
+
+	/**
+	 *  Règles de spawn des NME, actives dès le démarrage de la partie (choisir le type dans la liste, régler ses paramètres).
+	 *  Plusieurs règles peuvent tourner ensemble ; pour d'autres réglages, faire un BP enfant de ce GameMode.
+	 */
+	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category="Spawn")
+	TArray<TObjectPtr<UYSEnemySpawnRule>> SpawnRules;
 
 	/** Personnages proposés dans le menu de sélection (dans l'ordre des boutons) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
@@ -29,6 +37,8 @@ public:
 	AYSGameMode();
 
 	virtual void InitGameState() override;
+
+	virtual void Tick(float DeltaSeconds) override;
 
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 
