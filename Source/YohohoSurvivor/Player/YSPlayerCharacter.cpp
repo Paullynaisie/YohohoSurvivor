@@ -136,6 +136,8 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, UpgradeProgress);
 	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, MaxHealthMultiplier);
+	DOREPLIFETIME(AYSPlayerCharacter, RightHandCooldownMultiplier);
+	DOREPLIFETIME(AYSPlayerCharacter, LeftHandCooldownMultiplier);
 }
 
 UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
@@ -784,4 +786,17 @@ void AYSPlayerCharacter::UpdateHealthRegen(float DeltaSeconds)
 		Health = FMath::Min(Health + HealthRegen, GetMaxHealth());
 		UE_LOG(LogTemp, Verbose, TEXT("[YSHealthRegen] %s +%.1f -> %.1f / %.1f"), *GetName(), HealthRegen, Health, GetMaxHealth());
 	}
+}
+
+float AYSPlayerCharacter::GetWeaponCooldownMultiplier(const AYSWeapon* Weapon) const
+{
+	if (Weapon && Weapon == GetRightHandWeapon())
+	{
+		return RightHandCooldownMultiplier;
+	}
+	if (Weapon && Weapon == GetLeftHandWeapon())
+	{
+		return LeftHandCooldownMultiplier;
+	}
+	return 1.0f;
 }

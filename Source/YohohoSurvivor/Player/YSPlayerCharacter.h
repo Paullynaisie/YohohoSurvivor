@@ -195,6 +195,13 @@ protected:
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float LeftHandDamageMultiplier = 1.0f;
 
+	/** Multiplicateur de recharge de l'arme de chaque main (CD Reduction ; répliqué : le client prédit la recharge) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	float RightHandCooldownMultiplier = 1.0f;
+
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	float LeftHandCooldownMultiplier = 1.0f;
+
 	/** Multiplicateur de la vitesse de déplacement (Move speed bonus ; répliqué : la prédiction de mouvement du client doit le connaître) */
 	UPROPERTY(ReplicatedUsing=OnRep_MoveSpeedMultiplier, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float MoveSpeedMultiplier = 1.0f;
@@ -362,6 +369,11 @@ public:
 	float GetHandDamageMultiplier(EYSHand Hand) const { return Hand == EYSHand::Left ? LeftHandDamageMultiplier : RightHandDamageMultiplier; }
 
 	void SetHandDamageMultiplier(EYSHand Hand, float Multiplier) { (Hand == EYSHand::Left ? LeftHandDamageMultiplier : RightHandDamageMultiplier) = Multiplier; }
+
+	void SetHandCooldownMultiplier(EYSHand Hand, float Multiplier) { (Hand == EYSHand::Left ? LeftHandCooldownMultiplier : RightHandCooldownMultiplier) = Multiplier; }
+
+	/** Multiplicateur de recharge de la main qui tient Weapon (1 si elle n'est pas tenue) */
+	float GetWeaponCooldownMultiplier(const AYSWeapon* Weapon) const;
 
 	/** Multiplicateur de dégâts de la main qui tient Weapon (1 si elle n'est pas tenue) */
 	float GetWeaponDamageMultiplier(const AYSWeapon* Weapon) const;

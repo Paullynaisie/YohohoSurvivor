@@ -6,6 +6,8 @@
 #include "YSUpgrade.generated.h"
 
 class AYSPlayerCharacter;
+class AYSWeapon;
+class UYSAbilityComponent;
 
 /** Catégorie d'upgrade : définit son comportement */
 UENUM(BlueprintType)
@@ -207,18 +209,15 @@ protected:
 };
 
 /**
- *  Atk Bonus : deux bonus distincts, « Right hand Atk bonus » (variante 0) et « Left hand Atk bonus » (variante 1),
- *  cumulés séparément. Dégâts de l'arme de la main x (1 + somme des bonus de cette main).
+ *  Upgrade de stat par main : deux bonus distincts (variante 0 = main droite, 1 = main gauche), cumulés séparément.
  *  Une main n'est proposée que si elle tient une arme.
  */
-UCLASS(meta=(DisplayName="Upgrade de stat : Atk Bonus (par main)"))
-class UYSHandAtkBonusUpgrade : public UYSStatUpgrade
+UCLASS(Abstract)
+class UYSHandStatUpgrade : public UYSStatUpgrade
 {
 	GENERATED_BODY()
 
 public:
-
-	UYSHandAtkBonusUpgrade();
 
 	/** Nom du bonus de chaque main */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
@@ -237,10 +236,58 @@ public:
 
 protected:
 
-	/** Dégâts de base de l'arme de la main (action du clic, sinon attaque auto) */
+	/** Arme tenue par la main de la variante */
+	static AYSWeapon* GetHandWeapon(const AYSPlayerCharacter* Character, int32 Variant);
+
+	/** Action de l'arme de la main qui sert de référence : celle du clic, sinon l'attaque auto */
+	static UYSAbilityComponent* GetHandAction(const AYSPlayerCharacter* Character, int32 Variant);
+};
+
+/** Atk Bonus (par main) : dégâts de l'arme de la main x (1 + somme des bonus de cette main) */
+UCLASS(meta=(DisplayName="Upgrade de stat : Atk Bonus (par main)"))
+class UYSHandAtkBonusUpgrade : public UYSHandStatUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSHandAtkBonusUpgrade();
+
+protected:
+
+	/** Dégâts de base de l'action de la main */
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
+};
+
+/**
+ *  CD Reduction (par main) : temps de recharge de l'arme de la main x (1 - somme des bonus de cette main),
+ *  jamais sous MinCooldownMultiplier. Coup d'Petoir : Cooldown ; Coup d'sabre : Auto Atk Cooldown (pas la durée de l'anim).
+ */
+UCLASS(meta=(DisplayName="Upgrade de stat : CD Reduction (par main)"))
+class UYSHandCooldownReductionUpgrade : public UYSHandStatUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSHandCooldownReductionUpgrade();
+
+	/** Multiplicateur minimum de la recharge (garde-fou) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="0", ClampMax="1"))
+	float MinCooldownMultiplier = 0.1f;
+
+protected:
+
+	/** Recharge de base de l'action de la main */
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue * GetMultiplier(TotalBonus); }
+
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
+
+	float GetMultiplier(float TotalBonus) const { return FMath::Max(MinCooldownMultiplier, 1.0f - TotalBonus); }
 };
 
 /** Move speed bonus : vitesse de déplacement (MoveSpeed du personnage) x (1 + somme des bonus) */

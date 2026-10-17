@@ -95,7 +95,10 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	/** Indisponible pendant l'animation puis pendant Auto Atk CD */
-	virtual float GetCooldownDuration() const override { return GetAttackDuration() + AutoAtkCooldown; }
+	virtual float GetCooldownDuration() const override { return GetAttackDuration() + AutoAtkCooldown * GetCooldownMultiplier(); }
+
+	/** CD Reduction : seule la recharge après l'attaque est réduite, pas la durée de l'anim */
+	virtual float GetBaseCooldown() const override { return AutoAtkCooldown; }
 
 	virtual bool IsAutomatic() const override { return true; }
 

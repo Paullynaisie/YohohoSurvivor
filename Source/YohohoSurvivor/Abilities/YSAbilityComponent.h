@@ -64,8 +64,14 @@ public:
 	UFUNCTION(BlueprintPure, Category="Ability")
 	float GetTimeSinceActivation() const;
 
-	/** Durée totale d'indisponibilité après une activation (par défaut : Cooldown) */
-	virtual float GetCooldownDuration() const { return Cooldown; }
+	/** Durée totale d'indisponibilité après une activation (par défaut : Cooldown x CD Reduction de la main) */
+	virtual float GetCooldownDuration() const { return Cooldown * GetCooldownMultiplier(); }
+
+	/** Recharge de base, sans CD Reduction (affichage des upgrades) */
+	virtual float GetBaseCooldown() const { return Cooldown; }
+
+	/** Multiplicateur de recharge de la main qui tient l'arme de cette capacité (CD Reduction ; 1 sinon) */
+	float GetCooldownMultiplier() const;
 
 	/** Vrai pour une attaque automatique (déclenchée par le serveur, pas par une touche) */
 	virtual bool IsAutomatic() const { return false; }

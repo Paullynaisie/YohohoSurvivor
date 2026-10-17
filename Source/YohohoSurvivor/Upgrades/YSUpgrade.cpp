@@ -9,7 +9,7 @@ namespace YSUpgradeText
 	{
 		FNumberFormattingOptions Format;
 		Format.MinimumFractionalDigits = 0;
-		Format.MaximumFractionalDigits = 1;
+		Format.MaximumFractionalDigits = 3;
 		return FText::AsNumber(Value, &Format);
 	}
 
@@ -115,9 +115,30 @@ void UYSStatUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const F
 	if (Character)
 	{
 		ApplyBonus(Character, Variant, Progress.TotalValue);
-		UE_LOG(LogTemp, Log, TEXT("[YSStatUpgrade] %s : %s, somme des bonus %.3f (%d bonus) -> %.1f"), *Character->GetName(), *GetVariantName(Variant).ToString(),
+		UE_LOG(LogTemp, Log, TEXT("[YSStatUpgrade] %s : %s, somme des bonus %.3f (%d bonus) -> %.3f"), *Character->GetName(), *GetVariantName(Variant).ToString(),
 			Progress.TotalValue, Progress.Stacks, GetStatValue(GetBaseStatValue(Character, Variant), Progress.TotalValue));
 	}
+}
+
+bool UYSHandStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	return GetHandWeapon(Character, Variant) && Super::CanBeOffered(Character, Variant, Progress);
+}
+
+AYSWeapon* UYSHandStatUpgrade::GetHandWeapon(const AYSPlayerCharacter* Character, int32 Variant)
+{
+	return !Character ? nullptr : GetHand(Variant) == EYSHand::Left ? Character->GetLeftHandWeapon() : Character->GetRightHandWeapon();
+}
+
+UYSAbilityComponent* UYSHandStatUpgrade::GetHandAction(const AYSPlayerCharacter* Character, int32 Variant)
+{
+	const AYSWeapon* Weapon = GetHandWeapon(Character, Variant);
+	if (!Weapon)
+	{
+		return nullptr;
+	}
+	UYSAbilityComponent* Action = Weapon->GetActiveAction();
+	return Action ? Action : Weapon->GetAutoAction();
 }
 
 UYSHandAtkBonusUpgrade::UYSHandAtkBonusUpgrade()
@@ -128,31 +149,37 @@ UYSHandAtkBonusUpgrade::UYSHandAtkBonusUpgrade()
 	StatLabel = NSLOCTEXT("YS", "HandAtkBonusStat", "Dégât");
 }
 
-bool UYSHandAtkBonusUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
-{
-	const AYSWeapon* Weapon = !Character ? nullptr : GetHand(Variant) == EYSHand::Left ? Character->GetLeftHandWeapon() : Character->GetRightHandWeapon();
-	return Weapon && Super::CanBeOffered(Character, Variant, Progress);
-}
-
 float UYSHandAtkBonusUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	const AYSWeapon* Weapon = !Character ? nullptr : GetHand(Variant) == EYSHand::Left ? Character->GetLeftHandWeapon() : Character->GetRightHandWeapon();
-	if (!Weapon)
-	{
-		return 0.0f;
-	}
-
-	const UYSAbilityComponent* Action = Weapon->GetActiveAction();
-	if (!Action || Action->GetBaseDamage() <= 0.0f)
-	{
-		Action = Weapon->GetAutoAction();
-	}
+	const UYSAbilityComponent* Action = GetHandAction(Character, Variant);
 	return Action ? Action->GetBaseDamage() : 0.0f;
 }
 
 void UYSHandAtkBonusUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
 	Character->SetHandDamageMultiplier(GetHand(Variant), 1.0f + TotalBonus);
+}
+
+UYSHandCooldownReductionUpgrade::UYSHandCooldownReductionUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "HandCooldownReductionName", "CD Reduction");
+	RightHandName = NSLOCTEXT("YS", "RightHandCooldownReduction", "Right hand CD reduction");
+	LeftHandName = NSLOCTEXT("YS", "LeftHandCooldownReduction", "Left hand CD reduction");
+	StatLabel = NSLOCTEXT("YS", "HandCooldownReductionStat", "Recharge (s)");
+	BronzeValue = 0.03f;
+	SilverValue = 0.045f;
+	GoldValue = 0.06f;
+}
+
+float UYSHandCooldownReductionUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	const UYSAbilityComponent* Action = GetHandAction(Character, Variant);
+	return Action ? Action->GetBaseCooldown() : 0.0f;
+}
+
+void UYSHandCooldownReductionUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
+{
+	Character->SetHandCooldownMultiplier(GetHand(Variant), GetMultiplier(TotalBonus));
 }
 
 UYSMoveSpeedBonusUpgrade::UYSMoveSpeedBonusUpgrade()
