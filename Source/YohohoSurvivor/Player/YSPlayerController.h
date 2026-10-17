@@ -43,8 +43,22 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	float AbilityIconBottomMargin = 40.0f;
 
-	/** Intensité de la lumière de l'aperçu du personnage (écran de sélection) */
+	/** Écran de sélection : Widget Blueprint enfant de YSCharacterSelectWidget (placements dans ses Class Defaults, catégorie Layout) */
 	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<UYSCharacterSelectWidget> CharacterSelectMenuClass;
+
+	/** Aperçu du personnage : distance et hauteur de la caméra, champ de vision */
+	UPROPERTY(EditAnywhere, Category="UI|Preview", meta=(ClampMin="50", Units="cm"))
+	float PreviewCameraDistance = 450.0f;
+
+	UPROPERTY(EditAnywhere, Category="UI|Preview", meta=(Units="cm"))
+	float PreviewCameraHeight = 40.0f;
+
+	UPROPERTY(EditAnywhere, Category="UI|Preview", meta=(ClampMin="5", ClampMax="170", Units="deg"))
+	float PreviewFOV = 40.0f;
+
+	/** Intensité de la lumière de l'aperçu du personnage (écran de sélection) */
+	UPROPERTY(EditAnywhere, Category="UI|Preview")
 	float PreviewLightIntensity = 20000.0f;
 
 private:

@@ -8,6 +8,7 @@
 #include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
+#include "Components/PanelWidget.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -45,8 +46,10 @@ bool UYSCharacterSelectWidget::Initialize()
 {
 	const bool bSuperInitialized = Super::Initialize();
 
-	// pas de Widget Blueprint : l'arbre est construit dès la création
-	if (bSuperInitialized && WidgetTree && !WidgetTree->RootWidget)
+	// arbre construit en C++ ; un Widget Blueprint enfant (WBP_CharacterSelect) sert aux réglages : sa racine vide
+	// éventuelle (Canvas Panel ajouté par défaut à la création) est remplacée
+	const UPanelWidget* DesignerRoot = WidgetTree ? Cast<UPanelWidget>(WidgetTree->RootWidget) : nullptr;
+	if (bSuperInitialized && WidgetTree && (!WidgetTree->RootWidget || (DesignerRoot && DesignerRoot->GetChildrenCount() == 0)))
 	{
 		BuildWidgetTree();
 	}
@@ -72,71 +75,74 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 
 	// pseudo : en haut au centre
 	USizeBox* NicknameSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("NicknameRow"));
-	NicknameSize->SetWidthOverride(340.0f);
+	NicknameSize->SetWidthOverride(NicknameWidth);
 	NicknameRow = NicknameSize;
 	NicknameBox = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("Nickname"));
 	NicknameBox->SetHintText(NSLOCTEXT("YS", "NicknameHint", "Ton pseudo"));
 	NicknameBox->SetJustification(ETextJustify::Center);
 	NicknameBox->OnTextCommitted.AddDynamic(this, &UYSCharacterSelectWidget::HandleNicknameCommitted);
 	FEditableTextBoxStyle NicknameStyle = NicknameBox->WidgetStyle;
-	NicknameStyle.TextStyle.Font.Size = 22;
+	NicknameStyle.TextStyle.Font.Size = NicknameFontSize;
 	NicknameStyle.SetForegroundColor(FSlateColor(FLinearColor(0.05f, 0.05f, 0.05f)));
 	NicknameBox->WidgetStyle = NicknameStyle;
 	NicknameSize->AddChild(NicknameBox);
 	UVerticalBoxSlot* NicknameSlot = Page->AddChildToVerticalBox(NicknameSize);
 	NicknameSlot->SetHorizontalAlignment(HAlign_Center);
-	NicknameSlot->SetPadding(FMargin(0.0f, 32.0f, 0.0f, 0.0f));
+	NicknameSlot->SetPadding(NicknamePadding);
 
 	// 3 colonnes de même largeur
 	UHorizontalBox* Columns = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Columns"));
 	UVerticalBoxSlot* ColumnsSlot = Page->AddChildToVerticalBox(Columns);
 	ColumnsSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	auto AddColumn = [Columns](UWidget* Content)
+	auto AddColumn = [this, Columns](UWidget* Content, float Weight, const FMargin& ColumnPadding)
 	{
 		UHorizontalBoxSlot* ColumnSlot = Columns->AddChildToHorizontalBox(Content);
-		ColumnSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		FSlateChildSize Size(ESlateSizeRule::Fill);
+		Size.Value = Weight;
+		ColumnSlot->SetSize(Size);
+		ColumnSlot->SetPadding(ColumnPadding);
 		ColumnSlot->SetHorizontalAlignment(HAlign_Center);
-		ColumnSlot->SetVerticalAlignment(VAlign_Center);
+		ColumnSlot->SetVerticalAlignment(ColumnVerticalAlignment);
 	};
 
 	// gauche : choix principal (personnage / upgrade)
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
-	AddColumn(Column);
+	AddColumn(Column, LeftColumnWeight, LeftColumnPadding);
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
 	TitleText = Title;
 	Title->SetText(NSLOCTEXT("YS", "CharacterSelectTitle", "Choisis ton Mouss"));
-	YSCharacterSelect::SetFontSize(Title, 36);
+	YSCharacterSelect::SetFontSize(Title, TitleFontSize);
 	Title->SetColorAndOpacity(FSlateColor(FLinearColor::White));
 	UVerticalBoxSlot* TitleSlot = Column->AddChildToVerticalBox(Title);
 	TitleSlot->SetHorizontalAlignment(HAlign_Center);
-	TitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 24.0f));
+	TitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, TitleSpacing));
 
 	ButtonList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Buttons"));
 	UVerticalBoxSlot* ListSlot = Column->AddChildToVerticalBox(ButtonList);
 	ListSlot->SetHorizontalAlignment(HAlign_Center);
 
 	StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Status"));
-	YSCharacterSelect::SetFontSize(StatusText, 18);
+	YSCharacterSelect::SetFontSize(StatusText, StatusFontSize);
 	StatusText->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.8f, 0.8f)));
 	UVerticalBoxSlot* StatusSlot = Column->AddChildToVerticalBox(StatusText);
 	StatusSlot->SetHorizontalAlignment(HAlign_Center);
-	StatusSlot->SetPadding(FMargin(0.0f, 24.0f, 0.0f, 0.0f));
+	StatusSlot->SetPadding(FMargin(0.0f, StatusSpacing, 0.0f, 0.0f));
 
 	// centre : couleur et visage
 	UVerticalBox* Customization = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Customization"));
 	CustomizationColumn = Customization;
-	AddColumn(Customization);
+	AddColumn(Customization, CenterColumnWeight, CenterColumnPadding);
 
-	UVerticalBoxSlot* ColorTitleSlot = Customization->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "ColorTitle", "Choisis ta couleur"), 24));
+	UVerticalBoxSlot* ColorTitleSlot = Customization->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "ColorTitle", "Choisis ta couleur"), SectionTitleFontSize));
 	ColorTitleSlot->SetHorizontalAlignment(HAlign_Center);
-	ColorTitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 12.0f));
+	ColorTitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, SectionTitleSpacing));
 	ColorRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Colors"));
 	Customization->AddChildToVerticalBox(ColorRow)->SetHorizontalAlignment(HAlign_Center);
 
-	UVerticalBoxSlot* FaceTitleSlot = Customization->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "FaceTitle", "Choisis ton visage"), 24));
+	UVerticalBoxSlot* FaceTitleSlot = Customization->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "FaceTitle", "Choisis ton visage"), SectionTitleFontSize));
 	FaceTitleSlot->SetHorizontalAlignment(HAlign_Center);
-	FaceTitleSlot->SetPadding(FMargin(0.0f, 40.0f, 0.0f, 12.0f));
+	FaceTitleSlot->SetPadding(FMargin(0.0f, SectionSpacing, 0.0f, SectionTitleSpacing));
 	FaceRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Faces"));
 	Customization->AddChildToVerticalBox(FaceRow)->SetHorizontalAlignment(HAlign_Center);
 
@@ -148,16 +154,16 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	PreviewImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("PreviewImage"));
 	PreviewImage->SetColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, 0.0f));
 	Preview->AddChild(PreviewImage);
-	AddColumn(Preview);
+	AddColumn(Preview, RightColumnWeight, RightColumnPadding);
 
 	// « Prêt » : en bas au centre, lance la partie quand tout le monde est prêt
 	USizeBox* ReadySize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ReadyRow"));
-	ReadySize->SetWidthOverride(260.0f);
-	ReadySize->SetHeightOverride(64.0f);
+	ReadySize->SetWidthOverride(ReadyButtonSize.X);
+	ReadySize->SetHeightOverride(ReadyButtonSize.Y);
 	ReadyRow = ReadySize;
 	ReadyButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Ready"));
 	ReadyButton->SetBackgroundColor(NormalColor);
-	ReadyButton->AddChild(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "ReadyButton", "Prêt"), 28));
+	ReadyButton->AddChild(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "ReadyButton", "Prêt"), ReadyFontSize));
 	ReadySize->AddChild(ReadyButton);
 	UYSCharacterSelectButtonProxy* ReadyProxy = NewObject<UYSCharacterSelectButtonProxy>(this);
 	ReadyProxy->Group = 3;
@@ -166,7 +172,7 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	ButtonProxies.Add(ReadyProxy);
 	UVerticalBoxSlot* ReadySlot = Page->AddChildToVerticalBox(ReadySize);
 	ReadySlot->SetHorizontalAlignment(HAlign_Center);
-	ReadySlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 40.0f));
+	ReadySlot->SetPadding(ReadyPadding);
 }
 
 void UYSCharacterSelectWidget::SetReady(bool bIsReady)
@@ -183,7 +189,7 @@ void UYSCharacterSelectWidget::SetTakenColors(const TArray<bool>& Taken)
 	{
 		const bool bTaken = Taken.IsValidIndex(Index) && Taken[Index];
 		ColorSwatches[Index]->SetIsEnabled(!bTaken);
-		ColorSwatches[Index]->SetBackgroundColor(bTaken ? ColorValues[Index] * FLinearColor(0.25f, 0.25f, 0.25f, 1.0f) : ColorValues[Index]);
+		ColorSwatches[Index]->SetBackgroundColor(bTaken ? ColorValues[Index] * FLinearColor(TakenColorDim, TakenColorDim, TakenColorDim, 1.0f) : ColorValues[Index]);
 	}
 }
 
@@ -191,7 +197,7 @@ UBorder* UYSCharacterSelectWidget::AddSwatchButton(UHorizontalBox* Row, int32 Gr
 {
 	// cadre (sélection) > bouton carré (couleur) > icône (visage)
 	UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Frame->SetPadding(FMargin(4.0f));
+	Frame->SetPadding(FMargin(SwatchFrameThickness));
 	Frame->SetBrushColor(FLinearColor::Transparent);
 
 	USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -218,7 +224,7 @@ UBorder* UYSCharacterSelectWidget::AddSwatchButton(UHorizontalBox* Row, int32 Gr
 	ButtonProxies.Add(Proxy);
 
 	UHorizontalBoxSlot* FrameSlot = Row->AddChildToHorizontalBox(Frame);
-	FrameSlot->SetPadding(FMargin(6.0f, 0.0f));
+	FrameSlot->SetPadding(FMargin(SwatchSpacing * 0.5f, 0.0f));
 	OutButton = Button;
 	return Frame;
 }
@@ -248,7 +254,7 @@ void UYSCharacterSelectWidget::SetSelectedColor(int32 SelectedIndex)
 {
 	for (int32 Index = 0; Index < ColorButtons.Num(); ++Index)
 	{
-		ColorButtons[Index]->SetBrushColor(Index == SelectedIndex ? FLinearColor::White : FLinearColor::Transparent);
+		ColorButtons[Index]->SetBrushColor(Index == SelectedIndex ? SwatchSelectedFrameColor : FLinearColor::Transparent);
 	}
 }
 
@@ -256,7 +262,7 @@ void UYSCharacterSelectWidget::SetSelectedFace(int32 SelectedIndex)
 {
 	for (int32 Index = 0; Index < FaceButtons.Num(); ++Index)
 	{
-		FaceButtons[Index]->SetBrushColor(Index == SelectedIndex ? FLinearColor::White : FLinearColor::Transparent);
+		FaceButtons[Index]->SetBrushColor(Index == SelectedIndex ? SwatchSelectedFrameColor : FLinearColor::Transparent);
 	}
 }
 
@@ -377,7 +383,7 @@ void UYSCharacterSelectWidget::AddChoiceButton(UWidget* Content)
 	Button->OnClicked.AddDynamic(Proxy, &UYSCharacterSelectButtonProxy::HandleClicked);
 
 	UVerticalBoxSlot* ButtonSlot = ButtonList->AddChildToVerticalBox(Size);
-	ButtonSlot->SetPadding(FMargin(0.0f, 8.0f));
+	ButtonSlot->SetPadding(FMargin(0.0f, ButtonSpacing * 0.5f));
 
 	Buttons.Add(Button);
 	ButtonProxies.Add(Proxy);

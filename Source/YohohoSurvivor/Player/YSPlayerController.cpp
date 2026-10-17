@@ -66,7 +66,7 @@ void AYSPlayerController::BeginPlay()
 		// menu de sélection plein écran, au-dessus du reste de l'UI
 		if (ViewportSubsystem)
 		{
-			CharacterSelectMenu = CreateWidget<UYSCharacterSelectWidget>(this, UYSCharacterSelectWidget::StaticClass());
+			CharacterSelectMenu = CreateWidget<UYSCharacterSelectWidget>(this, CharacterSelectMenuClass ? CharacterSelectMenuClass.Get() : UYSCharacterSelectWidget::StaticClass());
 			CharacterSelectMenu->OnCharacterChosen.BindUObject(this, &AYSPlayerController::YSSelectCharacter);
 			CharacterSelectMenu->OnColorChosen.BindUObject(this, &AYSPlayerController::ChooseColor);
 			CharacterSelectMenu->OnFaceChosen.BindUObject(this, &AYSPlayerController::ChooseFace);
@@ -322,11 +322,13 @@ void AYSPlayerController::UpdateCharacterPreview(bool bShow)
 	{
 		if (!PreviewTarget)
 		{
-			PreviewTarget = UKismetRenderingLibrary::CreateRenderTarget2D(this, 360, 480, RTF_RGBA8, FLinearColor::Transparent);
+			// même proportion que l'image de l'aperçu dans le menu
+			const FVector2D Size = CharacterSelectMenu->PreviewSize;
+			PreviewTarget = UKismetRenderingLibrary::CreateRenderTarget2D(this, FMath::Max(16, FMath::RoundToInt(Size.X)), FMath::Max(16, FMath::RoundToInt(Size.Y)), RTF_RGBA8, FLinearColor::Transparent);
 		}
 
 		// face au personnage (qui regarde vers +X), légèrement au-dessus
-		const FVector CaptureLocation = PreviewLocation + FVector(450.0f, 0.0f, 40.0f);
+		const FVector CaptureLocation = PreviewLocation + FVector(PreviewCameraDistance, 0.0f, PreviewCameraHeight);
 		const FRotator CaptureRotation = (PreviewLocation - CaptureLocation).Rotation();
 		PreviewCapture = GetWorld()->SpawnActor<ASceneCapture2D>(CaptureLocation, CaptureRotation);
 		if (!PreviewCapture)
@@ -335,7 +337,7 @@ void AYSPlayerController::UpdateCharacterPreview(bool bShow)
 		}
 		USceneCaptureComponent2D* Capture = PreviewCapture->GetCaptureComponent2D();
 		Capture->TextureTarget = PreviewTarget;
-		Capture->FOVAngle = 40.0f;
+		Capture->FOVAngle = PreviewFOV;
 		Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
 		Capture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
 		Capture->bCaptureEveryFrame = true;

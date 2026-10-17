@@ -66,41 +66,146 @@ public:
  *  - centre : personnalisation (4 couleurs, 4 visages) ;
  *  - droite : aperçu du personnage (image d'une capture, fournie par AYSPlayerController).
  *  Réutilisé pour le choix d'upgrade : SetCustomizationVisible(false) ne garde que la colonne des choix, centrée.
- *  Construit en C++ (pas de Widget Blueprint nécessaire) ; piloté par AYSPlayerController.
+ *  Arbre construit en C++ ; placements réglables (catégorie Layout) dans un Widget Blueprint enfant
+ *  (WBP_CharacterSelect, Class Defaults) choisi par AYSPlayerController::CharacterSelectMenuClass.
  */
-UCLASS()
+UCLASS(meta=(PrioritizeCategories="Layout"))
 class UYSCharacterSelectWidget : public UUserWidget
 {
 	GENERATED_BODY()
 
 public:
 
-	/** Couleur du bouton choisi */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	// ---- couleurs ----
+
+	/** Couleur du bouton choisi (et du bouton « Prêt » quand le joueur est prêt) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Colors")
 	FLinearColor SelectedColor = FLinearColor(1.0f, 0.7f, 0.15f);
 
 	/** Couleur des autres boutons */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Colors")
 	FLinearColor NormalColor = FLinearColor(0.2f, 0.2f, 0.22f);
 
 	/** Voile derrière le menu */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Colors")
 	FLinearColor BackgroundColor = FLinearColor(0.0f, 0.0f, 0.0f, 0.85f);
 
+	/** Cadre de la couleur / du visage choisi */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Colors")
+	FLinearColor SwatchSelectedFrameColor = FLinearColor::White;
+
+	/** Assombrissement des couleurs prises par les autres joueurs (multiplicateur) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Colors", meta=(ClampMin="0", ClampMax="1"))
+	float TakenColorDim = 0.25f;
+
+	// ---- pseudo (en haut au centre) ----
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Nickname")
+	float NicknameWidth = 340.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Nickname")
+	int32 NicknameFontSize = 22;
+
+	/** Marges autour de la zone de pseudo (haut = distance au bord de l'écran) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Nickname")
+	FMargin NicknamePadding = FMargin(0.0f, 32.0f, 0.0f, 0.0f);
+
+	// ---- 3 colonnes ----
+
+	/** Largeur relative des colonnes gauche (choix) / centre (personnalisation) / droite (aperçu) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns", meta=(ClampMin="0.1"))
+	float LeftColumnWeight = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns", meta=(ClampMin="0.1"))
+	float CenterColumnWeight = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns", meta=(ClampMin="0.1"))
+	float RightColumnWeight = 1.0f;
+
+	/** Marges de chaque colonne (décalage du contenu dans sa colonne) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns")
+	FMargin LeftColumnPadding;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns")
+	FMargin CenterColumnPadding;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns")
+	FMargin RightColumnPadding;
+
+	/** Alignement vertical du contenu des colonnes */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns")
+	TEnumAsByte<EVerticalAlignment> ColumnVerticalAlignment = VAlign_Center;
+
+	// ---- colonne gauche : choix du personnage ----
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
+	int32 TitleFontSize = 36;
+
+	/** Espace entre le titre et les boutons */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
+	float TitleSpacing = 24.0f;
+
 	/** Taille des boutons et de leur texte (à régler avant SetCharacters) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
 	FVector2D ButtonSize = FVector2D(380.0f, 64.0f);
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
 	int32 ButtonFontSize = 24;
 
+	/** Espace vertical entre deux boutons */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
+	float ButtonSpacing = 16.0f;
+
+	/** « Joueurs prêts X / N » */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
+	int32 StatusFontSize = 18;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
+	float StatusSpacing = 24.0f;
+
+	// ---- colonne centre : couleur et visage ----
+
+	/** « Choisis ta couleur » / « Choisis ton visage » */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	int32 SectionTitleFontSize = 24;
+
+	/** Espace entre un titre et ses boutons */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	float SectionTitleSpacing = 12.0f;
+
+	/** Espace entre les couleurs et le titre des visages */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	float SectionSpacing = 40.0f;
+
 	/** Côté des boutons carrés de couleur / visage */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
 	float SwatchSize = 64.0f;
 
-	/** Taille de l'aperçu du personnage */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	/** Espace horizontal entre deux boutons carrés */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	float SwatchSpacing = 12.0f;
+
+	/** Épaisseur du cadre de sélection */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	float SwatchFrameThickness = 4.0f;
+
+	// ---- colonne droite : aperçu ----
+
+	/** Taille de l'aperçu du personnage (l'image capturée a la même proportion : AYSPlayerController) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Preview")
 	FVector2D PreviewSize = FVector2D(360.0f, 480.0f);
+
+	// ---- bouton « Prêt » (en bas au centre) ----
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ready")
+	FVector2D ReadyButtonSize = FVector2D(260.0f, 64.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ready")
+	int32 ReadyFontSize = 28;
+
+	/** Marges autour du bouton (bas = distance au bord de l'écran) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ready")
+	FMargin ReadyPadding = FMargin(0.0f, 0.0f, 0.0f, 40.0f);
 
 	/** Appelé quand le joueur clique sur un personnage (ou une upgrade) */
 	FYSOnCharacterChosen OnCharacterChosen;
