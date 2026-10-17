@@ -154,4 +154,8 @@ protected:
 
 	/** L'élite de la nuit en cours reste à faire apparaître */
 	bool bElitePending = false;
+
+	/** Prochain essai d'apparition de l'élite (temps de partie) et échec déjà signalé dans le log */
+	float NextEliteAttemptTime = 0.0f;
+	bool bEliteFailureLogged = false;
 };

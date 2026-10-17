@@ -60,8 +60,8 @@ void UYSHealthBarWidget::SetHealth(float Current, float Max)
 		return;
 	}
 
-	// PV pleins (sauf élites) ou pas encore reçus du serveur : rien n'est affiché
-	if (Current <= 0.0f || Max <= 0.0f || (Current >= Max && !bAlwaysVisible))
+	// PV pleins (ou pas encore reçus du serveur) : rien n'est affiché
+	if (Current <= 0.0f || Max <= 0.0f || Current >= Max)
 	{
 		SetVisibility(ESlateVisibility::Collapsed);
 		return;

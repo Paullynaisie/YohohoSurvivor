@@ -56,7 +56,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(EditCondition="bLevelFromDay"))
 	int32 LevelFromDayOffset = -1;
 
-	/** Élite : apparaît la nuit, sa mort fait passer au jour suivant ; barre de vie toujours visible */
+	/** Élite : apparaît la nuit, sa mort fait passer au jour suivant ; barre de vie dans le HUD (haut droite) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite")
 	bool bIsElite = false;
 

@@ -244,23 +244,14 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 	DayBannerRemaining = FMath::Max(0.0f, DayBannerRemaining - DeltaSeconds);
 	DayBanner->SetVisibility(DayBannerRemaining > 0.0f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
-	// élite hors écran : sa barre passe dans le HUD (à l'écran, elle est au-dessus de sa tête)
+	// élite : sa barre de vie est toujours dans le HUD (pas au-dessus de sa tête)
 	const AYSFoeCharacter* Elite = YSGameState->GetCurrentElite();
-	bool bShowInHUD = false;
-	if (IsValid(Elite) && Elite->GetHealth() > 0.0f)
+	const bool bShowElite = IsValid(Elite) && Elite->GetHealth() > 0.0f;
+	if (bShowElite)
 	{
-		int32 ViewportX = 0;
-		int32 ViewportY = 0;
-		GetViewportSize(ViewportX, ViewportY);
-		FVector2D ScreenPosition;
-		const bool bProjected = ProjectWorldLocationToScreen(Elite->GetActorLocation(), ScreenPosition);
-		bShowInHUD = !bProjected || ScreenPosition.X < 0.0f || ScreenPosition.Y < 0.0f || ScreenPosition.X > ViewportX || ScreenPosition.Y > ViewportY;
-		if (bShowInHUD)
-		{
-			EliteHealth->SetElite(Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
-		}
+		EliteHealth->SetElite(Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
 	}
-	EliteHealth->SetVisibility(bShowInHUD ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	EliteHealth->SetVisibility(bShowElite ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 }
 
 void AYSPlayerController::YSStartNight()

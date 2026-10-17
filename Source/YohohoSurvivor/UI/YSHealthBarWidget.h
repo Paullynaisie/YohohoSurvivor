@@ -40,9 +40,6 @@ public:
 	/** Met à jour la barre ; cachée si Current >= Max (ou PV pas encore connus) */
 	void SetHealth(float Current, float Max);
 
-	/** Barre affichée même à PV pleins (élites) */
-	bool bAlwaysVisible = false;
-
 private:
 
 	void BuildWidgetTree();

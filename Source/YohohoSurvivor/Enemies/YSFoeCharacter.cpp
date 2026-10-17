@@ -186,10 +186,8 @@ void AYSFoeCharacter::BeginPlay()
 	}
 
 	HealthBar->InitWidget();
-	if (UYSHealthBarWidget* Bar = Cast<UYSHealthBarWidget>(HealthBar->GetUserWidgetObject()))
-	{
-		Bar->bAlwaysVisible = bIsElite;
-	}
+	// élite : barre de vie dans le HUD (AYSPlayerController), pas au-dessus de sa tête
+	HealthBar->SetVisibility(!bIsElite);
 	UpdateHealthBar();
 }
 

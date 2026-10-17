@@ -48,7 +48,7 @@ protected:
 
 	/** Durée du jour ; ensuite la nuit commence et dure tant que l'élite est en vie */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DayNight", meta=(ClampMin="1", Units="s"))
-	float DayDuration = 60.0f;
+	float DayDuration = 30.0f;
 
 public:
 

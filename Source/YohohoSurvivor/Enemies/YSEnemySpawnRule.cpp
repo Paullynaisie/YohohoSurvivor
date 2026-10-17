@@ -208,6 +208,8 @@ void UYSTimedWaveSpawnRule::OnPhaseChanged(bool bNight)
 	// nouvelle phase : vagues avec ses propres réglages, à partir de maintenant ; élite au début de la nuit
 	NextWaveTime = GetMatchElapsedTime() + FirstWaveDelay;
 	bElitePending = bNight;
+	NextEliteAttemptTime = 0.0f;
+	bEliteFailureLogged = false;
 }
 
 bool UYSTimedWaveSpawnRule::IsNight() const
@@ -237,16 +239,27 @@ bool UYSTimedWaveSpawnRule::SpawnElite()
 		return true;
 	}
 
+	// personne autour de qui le placer (tous morts) : on attend sans rien signaler
+	if (GetActivePlayers().Num() == 0)
+	{
+		return false;
+	}
+
 	const AYSFoeCharacter* Elite = SpawnEnemy(Classes[FMath::RandHelper(Classes.Num())]);
-	UE_LOG(LogTemp, Log, TEXT("[YSTimedWaveSpawnRule] Nuit %d : élite %s"), GetDayNumber(), Elite ? *Elite->GetName() : TEXT("pas d'emplacement, nouvel essai"));
+	if (Elite || !bEliteFailureLogged)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSTimedWaveSpawnRule] Nuit %d : élite %s"), GetDayNumber(), Elite ? *Elite->GetName() : TEXT("pas d'emplacement, nouvel essai toutes les 0,5 s"));
+		bEliteFailureLogged = !Elite;
+	}
 	return Elite != nullptr;
 }
 
 void UYSTimedWaveSpawnRule::TickRule(float DeltaSeconds)
 {
-	if (bElitePending && SpawnElite())
+	if (bElitePending && GetMatchElapsedTime() >= NextEliteAttemptTime)
 	{
-		bElitePending = false;
+		NextEliteAttemptTime = GetMatchElapsedTime() + 0.5f;
+		bElitePending = !SpawnElite();
 	}
 
 	const float Elapsed = GetMatchElapsedTime();

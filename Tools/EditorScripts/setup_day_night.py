@@ -1,9 +1,9 @@
 """
 Jour / nuit :
   - crée /Game/Placeable/Character/FoeCharacter_Skull_Elite (BP enfant de FoeCharacter_Skull) s'il n'existe pas :
-    élite, PV x20, dégâts x5, taille x3, nom « Foe Skull Elite »
+    élite, PV x10, dégâts x5, taille x3, nom « Foe Skull Elite »
   - FoeCharacter_Skull : nom « Foe Skull »
-  - BP_TestGameMode, règle « Vagues jour / nuit » : jour 2 NME / joueur / jour (temporaire, pour les tests),
+  - BP_TestGameMode : jour de 30 s ; règle « Vagues jour / nuit » : jour 2 NME / joueur / jour (temporaire, pour les tests),
     nuit toutes les 30 s, 5 NME / joueur / jour, élite = FoeCharacter_Skull_Elite
 
 Lancement (éditeur fermé) :
@@ -48,7 +48,7 @@ try:
     elite = unreal.get_default_object(elite_class)
     elite.set_editor_property("foe_name", "Foe Skull Elite")
     elite.set_editor_property("bIsElite", True)
-    elite.set_editor_property("health_multiplier", 20.0)
+    elite.set_editor_property("health_multiplier", 10.0)
     elite.set_editor_property("damage_multiplier", 5.0)
     elite.set_editor_property("size_multiplier", 3.0)
     assets.save_asset(ELITE_BP, only_if_is_dirty=False)
@@ -63,6 +63,7 @@ try:
     wave.set_editor_property("night_wave_interval", 30.0)
     wave.set_editor_property("night_enemies_per_player", 5)
     wave.set_editor_property("elite_classes", [elite_class])
+    gm.set_editor_property("day_duration", 30.0)
     log(f"durée du jour {gm.get_editor_property('day_duration')} s")
     assets.save_asset(GAME_MODE_BP, only_if_is_dirty=False)
 
