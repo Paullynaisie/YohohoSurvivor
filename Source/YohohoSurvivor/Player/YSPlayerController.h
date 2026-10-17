@@ -113,6 +113,9 @@ private:
 	int32 LastSeenDay = INDEX_NONE;
 	float DayBannerRemaining = 0.0f;
 
+	/** Dernier état de pause vu (log [YSPause]) */
+	bool bWasPaused = false;
+
 	/** Propositions actuellement affichées dans UpgradeMenu (pour reconstruire les boutons quand elles changent) */
 	TArray<FYSUpgradeOffer> DisplayedUpgradeOffers;
 

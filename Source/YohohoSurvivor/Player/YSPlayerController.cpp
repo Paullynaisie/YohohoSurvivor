@@ -423,6 +423,13 @@ void AYSPlayerController::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	// en pause (choix d'upgrade), PlayerTick n'est plus appelé mais Tick si : l'UI reste vivante
+	// suivi de la pause (vérification réseau : les clients doivent aussi être en pause)
+	if (IsLocalController() && IsPaused() != bWasPaused)
+	{
+		bWasPaused = IsPaused();
+		UE_LOG(LogTemp, Log, TEXT("[YSPause] %s : partie %s"), *GetName(), bWasPaused ? TEXT("en pause") : TEXT("reprise"));
+	}
+
 	if (IsLocalController())
 	{
 		UpdateCharacterSelectMenu();

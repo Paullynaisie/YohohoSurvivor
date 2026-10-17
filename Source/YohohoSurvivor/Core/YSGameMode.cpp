@@ -131,6 +131,8 @@ void AYSGameMode::StartUpgradeSelection()
 	if (APlayerController* FirstPlayer = GetWorld()->GetFirstPlayerController())
 	{
 		SetPause(FirstPlayer);
+		// la pause vit sur le WorldSettings (Pauser répliqué) : envoi immédiat, le temps du serveur étant figé
+		GetWorldSettings()->ForceNetUpdate();
 	}
 
 	TryFinishUpgradeSelection();
@@ -188,6 +190,7 @@ void AYSGameMode::TryFinishUpgradeSelection()
 	{
 		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Tous les joueurs ont choisi : la partie reprend"));
 		ClearPause();
+		GetWorldSettings()->ForceNetUpdate();
 	}
 }
 
