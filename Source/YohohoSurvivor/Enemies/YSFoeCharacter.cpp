@@ -107,7 +107,8 @@ void AYSFoeCharacter::UpdateHealthBar()
 
 float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-	const float Damage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	// dégâts toujours entiers (arrondis à l'entier le plus proche)
+	const float Damage = FMath::RoundToFloat(Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser));
 	if (!HasAuthority() || Health <= 0.0f || Damage <= 0.0f)
 	{
 		return 0.0f;

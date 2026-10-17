@@ -169,6 +169,9 @@ float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Dam
 	{
 		Damage = FMath::Max(FMath::Min(Damage, MinDamageAfterArmor), Damage - Armor);
 	}
+
+	// dégâts toujours entiers (arrondis à l'entier le plus proche, après l'armure)
+	Damage = FMath::RoundToFloat(Damage);
 	LastDamageTime = GetWorld()->GetTimeSeconds();
 	HealthRegenTimer = 0.0f;
 	if (Damage <= 0.0f)
