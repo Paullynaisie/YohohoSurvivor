@@ -8,6 +8,7 @@ void AYSPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 
 	DOREPLIFETIME(AYSPlayerState, SelectedCharacterIndex);
 	DOREPLIFETIME(AYSPlayerState, bIsDead);
+	DOREPLIFETIME(AYSPlayerState, bReady);
 	DOREPLIFETIME(AYSPlayerState, UpgradeOffers);
 	DOREPLIFETIME(AYSPlayerState, ChosenUpgradeOffer);
 	DOREPLIFETIME(AYSPlayerState, ColorIndex);

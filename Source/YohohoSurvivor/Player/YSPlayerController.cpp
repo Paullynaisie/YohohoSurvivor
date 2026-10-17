@@ -71,6 +71,7 @@ void AYSPlayerController::BeginPlay()
 			CharacterSelectMenu->OnColorChosen.BindUObject(this, &AYSPlayerController::ChooseColor);
 			CharacterSelectMenu->OnFaceChosen.BindUObject(this, &AYSPlayerController::ChooseFace);
 			CharacterSelectMenu->OnNicknameCommitted.BindUObject(this, &AYSPlayerController::CommitNickname);
+			CharacterSelectMenu->OnReadyClicked.BindUObject(this, &AYSPlayerController::ToggleReady);
 
 			FGameViewportWidgetSlot MenuSlot;
 			MenuSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
@@ -123,11 +124,12 @@ void AYSPlayerController::BeginPlay()
 			ViewportSubsystem->AddWidgetForPlayer(UpgradeMenu, GetLocalPlayer(), UpgradeSlot);
 		}
 
-		// debug / tests automatisés : -YSAutoSelect=<index> choisit le personnage dès l'arrivée (y compris en client)
+		// debug / tests automatisés : -YSAutoSelect=<index> choisit le personnage et se déclare prêt dès l'arrivée (y compris en client)
 		int32 AutoSelectIndex = INDEX_NONE;
 		if (FParse::Value(FCommandLine::Get(), TEXT("YSAutoSelect="), AutoSelectIndex))
 		{
 			YSSelectCharacter(AutoSelectIndex);
+			YSReady();
 		}
 	}
 }
@@ -215,6 +217,20 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 		CharacterSelectMenu->SetSelectedColor(MyPlayerState->GetColorIndex());
 		CharacterSelectMenu->SetSelectedFace(MyPlayerState->GetFaceIndex());
 		CharacterSelectMenu->SetNickname(FText::FromString(MyPlayerState->GetPlayerName()));
+		CharacterSelectMenu->SetReady(MyPlayerState->IsReady());
+
+		// couleurs uniques : celles des autres joueurs sont grisées
+		TArray<bool> TakenColors;
+		TakenColors.SetNumZeroed(YSGameState->GetCustomizationColors().Num());
+		for (const APlayerState* OtherPlayer : YSGameState->PlayerArray)
+		{
+			const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(OtherPlayer);
+			if (YSPlayer && YSPlayer != MyPlayerState && TakenColors.IsValidIndex(YSPlayer->GetColorIndex()))
+			{
+				TakenColors[YSPlayer->GetColorIndex()] = true;
+			}
+		}
+		CharacterSelectMenu->SetTakenColors(TakenColors);
 	}
 
 	// boutons construits dès que la liste est arrivée du serveur
@@ -238,7 +254,7 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	for (const APlayerState* OtherPlayer : YSGameState->PlayerArray)
 	{
 		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(OtherPlayer);
-		Ready += (YSPlayer && YSPlayer->HasSelectedCharacter()) ? 1 : 0;
+		Ready += (YSPlayer && YSPlayer->IsReady()) ? 1 : 0;
 	}
 	CharacterSelectMenu->SetStatus(FText::Format(NSLOCTEXT("YS", "CharacterSelectStatus", "Joueurs prêts : {0} / {1}"), Ready, YSGameState->PlayerArray.Num()));
 }
@@ -837,4 +853,23 @@ void AYSPlayerController::YSSetFace(int32 FaceIndex)
 void AYSPlayerController::YSSetName(const FString& Nickname)
 {
 	CommitNickname(Nickname);
+}
+
+void AYSPlayerController::ToggleReady()
+{
+	const AYSPlayerState* MyPlayerState = GetPlayerState<AYSPlayerState>();
+	ServerSetReady(!(MyPlayerState && MyPlayerState->IsReady()));
+}
+
+void AYSPlayerController::YSReady()
+{
+	ServerSetReady(true);
+}
+
+void AYSPlayerController::ServerSetReady_Implementation(bool bReady)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->PlayerSetReady(this, bReady);
+	}
 }

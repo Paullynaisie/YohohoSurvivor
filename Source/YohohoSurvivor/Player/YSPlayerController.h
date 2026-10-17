@@ -189,6 +189,10 @@ public:
 	UFUNCTION(Exec)
 	void YSSelectCharacter(int32 CharacterIndex);
 
+	/** Debug (console) : clique sur « Prêt » (la partie démarre quand tout le monde est prêt) */
+	UFUNCTION(Exec)
+	void YSReady();
+
 	/** Debug (console) : inflige Amount dégâts à son propre personnage.  Ex : YSDamageSelf 25 */
 	UFUNCTION(Exec)
 	void YSDamageSelf(float Amount = 5.0f);
@@ -213,6 +217,10 @@ protected:
 	void ChooseColor(int32 ColorIndex);
 	void ChooseFace(int32 FaceIndex);
 	void CommitNickname(const FString& Nickname);
+	void ToggleReady();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetReady(bool bReady);
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetCustomization(int32 ColorIndex, int32 FaceIndex);

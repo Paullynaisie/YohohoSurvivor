@@ -49,7 +49,7 @@ class UYSCharacterSelectButtonProxy : public UObject
 
 public:
 
-	/** 0 = choix principal (personnage / upgrade), 1 = couleur, 2 = visage */
+	/** 0 = choix principal (personnage / upgrade), 1 = couleur, 2 = visage, 3 = « Prêt » */
 	int32 Group = 0;
 
 	int32 Index = INDEX_NONE;
@@ -109,6 +109,9 @@ public:
 	FYSOnCharacterChosen OnColorChosen;
 	FYSOnCharacterChosen OnFaceChosen;
 
+	/** Appelé quand le joueur clique sur « Prêt » */
+	FSimpleDelegate OnReadyClicked;
+
 	/** Appelé quand le joueur valide son pseudo (Entrée ou perte du focus) */
 	FYSOnNicknameCommitted OnNicknameCommitted;
 
@@ -148,6 +151,12 @@ public:
 	/** Pseudo affiché (ignoré pendant que le joueur l'édite) */
 	void SetNickname(const FText& Nickname);
 
+	/** Bouton « Prêt » illuminé quand le joueur est prêt */
+	void SetReady(bool bIsReady);
+
+	/** Couleurs prises par d'autres joueurs : grisées et non cliquables */
+	void SetTakenColors(const TArray<bool>& Taken);
+
 	/** Image de l'aperçu du personnage (render target) */
 	void SetPreviewTexture(UTexture* Texture);
 
@@ -162,7 +171,7 @@ private:
 	void AddChoiceButton(UWidget* Content);
 
 	/** Bouton carré encadré (couleur ou visage) ajouté à Row ; renvoie le cadre */
-	UBorder* AddSwatchButton(UHorizontalBox* Row, int32 Group, int32 Index, const FLinearColor& ButtonColor, UTexture2D* Icon);
+	UBorder* AddSwatchButton(UHorizontalBox* Row, int32 Group, int32 Index, const FLinearColor& ButtonColor, UTexture2D* Icon, UButton*& OutButton);
 
 	UFUNCTION()
 	void HandleNicknameCommitted(const FText& Text, ETextCommit::Type CommitMethod);
@@ -211,4 +220,17 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UBorder>> FaceButtons;
+
+	/** Boutons de couleur (pour griser les couleurs prises) et leur couleur */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UButton>> ColorSwatches;
+
+	TArray<FLinearColor> ColorValues;
+
+	/** Bouton « Prêt » (en bas au centre) */
+	UPROPERTY(Transient)
+	TObjectPtr<UWidget> ReadyRow;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> ReadyButton;
 };

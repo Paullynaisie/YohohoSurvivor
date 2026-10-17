@@ -1,6 +1,7 @@
 """
 Personnalisation à l'écran de sélection (BP_TestGameMode, catégorie Character Select) :
-  - couleurs Rouge / Bleu / Vert / Violet : matériaux m_PH_monochrome_Red / Blue / Green / Purple
+  - couleurs Rouge / Bleu / Vert / Violet / Rose / Jaune / Cyan / Noir : matériaux m_PH_monochrome_Red / Blue / Green /
+    Purple / Pink / Yellow / Cyan / Black
     (appliqués au composant « Head Feature » du personnage et à ses sous-composants)
   - visages : textures T_MoussFace_1 à 4 (decal du visage)
 
@@ -20,6 +21,10 @@ COLORS = [
     ("Bleu", unreal.LinearColor(0.1, 0.3, 0.95, 1.0), "m_PH_monochrome_Blue"),
     ("Vert", unreal.LinearColor(0.1, 0.75, 0.2, 1.0), "m_PH_monochrome_Green"),
     ("Violet", unreal.LinearColor(0.55, 0.15, 0.85, 1.0), "m_PH_monochrome_Purple"),
+    ("Rose", unreal.LinearColor(1.0, 0.4, 0.7, 1.0), "m_PH_monochrome_Pink"),
+    ("Jaune", unreal.LinearColor(0.95, 0.85, 0.1, 1.0), "m_PH_monochrome_Yellow"),
+    ("Cyan", unreal.LinearColor(0.1, 0.85, 0.9, 1.0), "m_PH_monochrome_Cyan"),
+    ("Noir", unreal.LinearColor(0.04, 0.04, 0.04, 1.0), "m_PH_monochrome_Black"),
 ]
 FACES = ["T_MoussFace_1", "T_MoussFace_2", "T_MoussFace_3", "T_MoussFace_4"]
 

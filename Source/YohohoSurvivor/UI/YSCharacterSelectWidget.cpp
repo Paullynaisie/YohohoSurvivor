@@ -149,9 +149,45 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	PreviewImage->SetColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, 0.0f));
 	Preview->AddChild(PreviewImage);
 	AddColumn(Preview);
+
+	// « Prêt » : en bas au centre, lance la partie quand tout le monde est prêt
+	USizeBox* ReadySize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ReadyRow"));
+	ReadySize->SetWidthOverride(260.0f);
+	ReadySize->SetHeightOverride(64.0f);
+	ReadyRow = ReadySize;
+	ReadyButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Ready"));
+	ReadyButton->SetBackgroundColor(NormalColor);
+	ReadyButton->AddChild(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "ReadyButton", "Prêt"), 28));
+	ReadySize->AddChild(ReadyButton);
+	UYSCharacterSelectButtonProxy* ReadyProxy = NewObject<UYSCharacterSelectButtonProxy>(this);
+	ReadyProxy->Group = 3;
+	ReadyProxy->Menu = this;
+	ReadyButton->OnClicked.AddDynamic(ReadyProxy, &UYSCharacterSelectButtonProxy::HandleClicked);
+	ButtonProxies.Add(ReadyProxy);
+	UVerticalBoxSlot* ReadySlot = Page->AddChildToVerticalBox(ReadySize);
+	ReadySlot->SetHorizontalAlignment(HAlign_Center);
+	ReadySlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 40.0f));
 }
 
-UBorder* UYSCharacterSelectWidget::AddSwatchButton(UHorizontalBox* Row, int32 Group, int32 Index, const FLinearColor& ButtonColor, UTexture2D* Icon)
+void UYSCharacterSelectWidget::SetReady(bool bIsReady)
+{
+	if (ReadyButton)
+	{
+		ReadyButton->SetBackgroundColor(bIsReady ? SelectedColor : NormalColor);
+	}
+}
+
+void UYSCharacterSelectWidget::SetTakenColors(const TArray<bool>& Taken)
+{
+	for (int32 Index = 0; Index < ColorSwatches.Num(); ++Index)
+	{
+		const bool bTaken = Taken.IsValidIndex(Index) && Taken[Index];
+		ColorSwatches[Index]->SetIsEnabled(!bTaken);
+		ColorSwatches[Index]->SetBackgroundColor(bTaken ? ColorValues[Index] * FLinearColor(0.25f, 0.25f, 0.25f, 1.0f) : ColorValues[Index]);
+	}
+}
+
+UBorder* UYSCharacterSelectWidget::AddSwatchButton(UHorizontalBox* Row, int32 Group, int32 Index, const FLinearColor& ButtonColor, UTexture2D* Icon, UButton*& OutButton)
 {
 	// cadre (sélection) > bouton carré (couleur) > icône (visage)
 	UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
@@ -183,6 +219,7 @@ UBorder* UYSCharacterSelectWidget::AddSwatchButton(UHorizontalBox* Row, int32 Gr
 
 	UHorizontalBoxSlot* FrameSlot = Row->AddChildToHorizontalBox(Frame);
 	FrameSlot->SetPadding(FMargin(6.0f, 0.0f));
+	OutButton = Button;
 	return Frame;
 }
 
@@ -195,11 +232,15 @@ void UYSCharacterSelectWidget::SetCustomizationOptions(const TArray<FLinearColor
 
 	for (int32 Index = 0; Index < Colors.Num(); ++Index)
 	{
-		ColorButtons.Add(AddSwatchButton(ColorRow, 1, Index, Colors[Index], nullptr));
+		UButton* Swatch = nullptr;
+		ColorButtons.Add(AddSwatchButton(ColorRow, 1, Index, Colors[Index], nullptr, Swatch));
+		ColorSwatches.Add(Swatch);
+		ColorValues.Add(Colors[Index]);
 	}
 	for (int32 Index = 0; Index < Faces.Num(); ++Index)
 	{
-		FaceButtons.Add(AddSwatchButton(FaceRow, 2, Index, FLinearColor(0.85f, 0.85f, 0.85f), Faces[Index]));
+		UButton* Swatch = nullptr;
+		FaceButtons.Add(AddSwatchButton(FaceRow, 2, Index, FLinearColor(0.85f, 0.85f, 0.85f), Faces[Index], Swatch));
 	}
 }
 
@@ -222,7 +263,7 @@ void UYSCharacterSelectWidget::SetSelectedFace(int32 SelectedIndex)
 void UYSCharacterSelectWidget::SetCustomizationVisible(bool bVisible)
 {
 	const ESlateVisibility NewVisibility = bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
-	for (UWidget* Widget : { NicknameRow.Get(), CustomizationColumn.Get(), PreviewColumn.Get() })
+	for (UWidget* Widget : { NicknameRow.Get(), CustomizationColumn.Get(), PreviewColumn.Get(), ReadyRow.Get() })
 	{
 		if (Widget)
 		{
@@ -387,6 +428,9 @@ void UYSCharacterSelectWidget::NotifyButtonClicked(int32 Group, int32 Index)
 	case 2:
 		SetSelectedFace(Index);
 		OnFaceChosen.ExecuteIfBound(Index);
+		break;
+	case 3:
+		OnReadyClicked.ExecuteIfBound();
 		break;
 	default:
 		SetSelectedIndex(Index);

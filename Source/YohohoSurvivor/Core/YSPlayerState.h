@@ -23,6 +23,10 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Health")
 	bool bIsDead = false;
 
+	/** Le joueur a cliqué sur « Prêt » (la partie démarre quand tout le monde est prêt) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
+	bool bReady = false;
+
 	/** Upgrades proposées pendant la sélection en cours (index dans l'UpgradePool du personnage + rareté ; vide = pas concerné) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Upgrades")
 	TArray<FYSUpgradeOffer> UpgradeOffers;
@@ -54,6 +58,11 @@ public:
 	bool HasSelectedCharacter() const { return SelectedCharacterIndex != INDEX_NONE; }
 
 	bool IsDead() const { return bIsDead; }
+
+	bool IsReady() const { return bReady; }
+
+	/** Serveur uniquement */
+	void SetReady(bool bNewReady) { bReady = bNewReady; }
 
 	/** Serveur uniquement */
 	void SetSelectedCharacterIndex(int32 Index) { SelectedCharacterIndex = Index; }

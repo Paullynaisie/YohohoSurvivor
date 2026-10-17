@@ -85,6 +85,12 @@ public:
 	/** Choix d'un joueur (reçu par RPC du PlayerController) */
 	void PlayerSelectedCharacter(APlayerController* Player, int32 CharacterIndex);
 
+	/** Bouton « Prêt » d'un joueur (reçu par RPC) : la partie démarre quand tous les joueurs sont prêts */
+	void PlayerSetReady(APlayerController* Player, bool bReady);
+
+	/** Couleur déjà prise par un autre joueur (les couleurs sont uniques) */
+	bool IsColorTaken(int32 ColorIndex, const APlayerState* Except) const;
+
 	/** Personnalisation d'un joueur (reçue par RPC ; index invalides ignorés) */
 	void PlayerSetCustomization(APlayerController* Player, int32 ColorIndex, int32 FaceIndex);
 

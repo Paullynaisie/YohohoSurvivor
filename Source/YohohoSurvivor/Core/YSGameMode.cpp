@@ -193,7 +193,7 @@ void AYSGameMode::TryFinishUpgradeSelection()
 
 void AYSGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
-	// premier passage : numéro d'arrivée (hôte = 1), nom « Player N » et couleur par défaut différente pour chacun
+	// premier passage : numéro d'arrivée (hôte = 1), nom « Player N » et première couleur libre
 	if (AYSPlayerState* NewPlayerState = NewPlayer ? NewPlayer->GetPlayerState<AYSPlayerState>() : nullptr)
 	{
 		if (NewPlayerState->GetPlayerNumber() == 0)
@@ -201,14 +201,20 @@ void AYSGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewP
 			const int32 Number = NextPlayerNumber++;
 			NewPlayerState->SetPlayerNumber(Number);
 			ChangeName(NewPlayer, FString::Printf(TEXT("Player %d"), Number), false);
-			NewPlayerState->SetCustomization(CustomizationColors.Num() > 0 ? (Number - 1) % CustomizationColors.Num() : 0, 0);
+			// couleur par défaut : la première libre (les couleurs sont uniques)
+			int32 FreeColor = 0;
+			while (FreeColor < CustomizationColors.Num() - 1 && IsColorTaken(FreeColor, NewPlayerState))
+			{
+				++FreeColor;
+			}
+			NewPlayerState->SetCustomization(FreeColor, 0);
 		}
 	}
 
-	// pas de pawn tant que le joueur n'a pas choisi (et que la partie n'a pas démarré) : il voit le menu
+	// pas de pawn tant que le joueur n'est pas prêt (et que la partie n'a pas démarré) : il voit le menu
 	const AYSPlayerState* PlayerState = NewPlayer ? NewPlayer->GetPlayerState<AYSPlayerState>() : nullptr;
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
-	if (PlayerState && PlayerState->HasSelectedCharacter() && YSGameState && YSGameState->IsMatchStarted())
+	if (PlayerState && PlayerState->IsReady() && YSGameState && YSGameState->IsMatchStarted())
 	{
 		RestartPlayer(NewPlayer);
 	}
@@ -245,10 +251,33 @@ void AYSGameMode::PlayerSelectedCharacter(APlayerController* Player, int32 Chara
 		return;
 	}
 
+	// simple choix : la partie démarre (ou le joueur apparaît) quand il clique sur « Prêt »
 	PlayerState->SetSelectedCharacterIndex(CharacterIndex);
+}
 
+void AYSGameMode::PlayerSetReady(APlayerController* Player, bool bReady)
+{
+	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!PlayerState || !YSGameState || HasCharacter(Player) || PlayerState->IsDead())
+	{
+		return;
+	}
+
+	// prêt sans avoir cliqué sur un personnage : le premier de la liste (celui de l'aperçu)
+	if (bReady && !PlayerState->HasSelectedCharacter())
+	{
+		PlayerState->SetSelectedCharacterIndex(0);
+	}
+	PlayerState->SetReady(bReady);
+
+	if (!bReady)
+	{
+		return;
+	}
 	if (YSGameState->IsMatchStarted())
 	{
+		// arrivée en cours de partie : apparaît dès qu'il est prêt
 		RestartPlayer(Player);
 	}
 	else
@@ -268,7 +297,7 @@ void AYSGameMode::TryStartMatch()
 	for (const APlayerState* Player : YSGameState->PlayerArray)
 	{
 		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player);
-		if (!YSPlayer || !YSPlayer->HasSelectedCharacter())
+		if (!YSPlayer || !YSPlayer->IsReady())
 		{
 			return;
 		}
@@ -339,7 +368,8 @@ void AYSGameMode::OnEliteKilled(AYSFoeCharacter* Elite)
 void AYSGameMode::PlayerSetCustomization(APlayerController* Player, int32 ColorIndex, int32 FaceIndex)
 {
 	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
-	if (PlayerState && CustomizationColors.IsValidIndex(ColorIndex) && CustomizationFaces.IsValidIndex(FaceIndex))
+	// les visages peuvent être partagés, pas les couleurs
+	if (PlayerState && CustomizationColors.IsValidIndex(ColorIndex) && CustomizationFaces.IsValidIndex(FaceIndex) && !IsColorTaken(ColorIndex, PlayerState))
 	{
 		PlayerState->SetCustomization(ColorIndex, FaceIndex);
 	}
@@ -352,4 +382,23 @@ void AYSGameMode::PlayerSetNickname(APlayerController* Player, const FString& Ni
 	{
 		ChangeName(Player, Trimmed, false);
 	}
+}
+
+bool AYSGameMode::IsColorTaken(int32 ColorIndex, const APlayerState* Except) const
+{
+	const AGameStateBase* CurrentGameState = GetGameState<AGameStateBase>();
+	if (!CurrentGameState)
+	{
+		return false;
+	}
+
+	for (const APlayerState* Player : CurrentGameState->PlayerArray)
+	{
+		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player);
+		if (YSPlayer && YSPlayer != Except && YSPlayer->GetPlayerNumber() > 0 && YSPlayer->GetColorIndex() == ColorIndex)
+		{
+			return true;
+		}
+	}
+	return false;
 }
