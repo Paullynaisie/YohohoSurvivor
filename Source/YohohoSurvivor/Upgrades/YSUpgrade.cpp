@@ -431,3 +431,52 @@ void UYSRicochetUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, EYSH
 	Character->SetHandWeaponStat(Hand, RicochetCountStat, Ricochets);
 	Character->SetHandWeaponStat(Hand, RicochetDamageBonusStat, BonusTotal);
 }
+
+UYSClassUpgrade::UYSClassUpgrade()
+{
+	UpgradeType = EYSUpgradeType::Class;
+	OfferWeight = 0.0f;
+}
+
+FText UYSClassUpgrade::GetVariantName(int32 Variant) const
+{
+	if (!DisplayName.IsEmpty() || !TargetClass)
+	{
+		return DisplayName;
+	}
+	return TargetClass->GetDefaultObject<AYSPlayerCharacter>()->GetCharacterName();
+}
+
+bool UYSClassUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	return Character && TargetClass && Character->GetClass() == SourceClass && Progress.Stacks == 0;
+}
+
+void UYSClassUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+{
+	FYSChoiceLine& Kind = OutLines.AddDefaulted_GetRef();
+	Kind.Text = NSLOCTEXT("YS", "ClassUpgradeKind", "Classe");
+	Kind.Color = FLinearColor(0.7f, 0.7f, 0.7f);
+	Kind.FontSize = 13;
+
+	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
+	Title.Text = GetVariantName(Variant);
+	Title.Color = GoldColor;
+	Title.FontSize = 22;
+	Title.bBold = true;
+
+	if (!Description.IsEmpty())
+	{
+		FYSChoiceLine& Line = OutLines.AddDefaulted_GetRef();
+		Line.Text = Description;
+		Line.FontSize = 14;
+	}
+}
+
+void UYSClassUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	if (Character && TargetClass)
+	{
+		Character->ChangeClass(TargetClass);
+	}
+}

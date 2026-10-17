@@ -91,6 +91,10 @@ void AYSGameMode::StartUpgradeSelection()
 	}
 
 	--PendingLevelUps;
+	// niveau atteint par cette sélection (plusieurs niveaux gagnés d'un coup : sélections enchaînées)
+	const int32 SelectionLevel = YSGameState->GetTeamLevel() - PendingLevelUps;
+	const bool bClassSelection = SelectionLevel == ClassUpgradeLevel;
+	YSGameState->SetUpgradeSelectionLevel(SelectionLevel);
 	YSGameState->SetUpgradeSelectionActive(true);
 
 	// propositions propres à chaque joueur vivant (selon son personnage) ; les autres ne sont pas attendus
@@ -101,7 +105,17 @@ void AYSGameMode::StartUpgradeSelection()
 		const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
 		if (PlayerState)
 		{
-			PlayerState->SetUpgradeOffers(Character && Character->IsAlive() ? Character->PickUpgradeOffers(UpgradeChoiceCount) : TArray<FYSUpgradeOffer>());
+			// niveau de classe : choix de classe (si le personnage en a), sinon upgrades au hasard
+			TArray<FYSUpgradeOffer> Offers;
+			if (Character && Character->IsAlive())
+			{
+				Offers = bClassSelection ? Character->PickClassOffers() : TArray<FYSUpgradeOffer>();
+				if (Offers.Num() == 0)
+				{
+					Offers = Character->PickUpgradeOffers(UpgradeChoiceCount);
+				}
+			}
+			PlayerState->SetUpgradeOffers(Offers);
 			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s (%s, pool de %d, armes G %s / D %s) : %d proposition(s)"), *PlayerState->GetPlayerName(),
 				Character ? *Character->GetClass()->GetName() : TEXT("pas de perso"), Character ? Character->GetUpgradePool().Num() : 0,
 				Character && Character->GetLeftHandWeapon() ? *Character->GetLeftHandWeapon()->GetName() : TEXT("aucune"),
@@ -110,7 +124,7 @@ void AYSGameMode::StartUpgradeSelection()
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Niveau %d : choix d'upgrade (%d niveau(x) en attente)"), YSGameState->GetTeamLevel(), PendingLevelUps);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Niveau %d : choix %s (%d niveau(x) en attente)"), SelectionLevel, bClassSelection ? TEXT("de classe") : TEXT("d'upgrade"), PendingLevelUps);
 
 	// tout le monde s'arrête pendant le choix (pause répliquée aux clients)
 	if (APlayerController* FirstPlayer = GetWorld()->GetFirstPlayerController())

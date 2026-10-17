@@ -405,6 +405,18 @@ public:
 	 */
 	TArray<FYSUpgradeOffer> PickUpgradeOffers(int32 Count) const;
 
+	/** Propositions de classe : toutes les upgrades de classe proposables du pool (vide si aucune) */
+	TArray<FYSUpgradeOffer> PickClassOffers() const;
+
+	/**
+	 *  Remplace ce personnage par un NewClass au même endroit (serveur) : même contrôleur, mêmes upgrades
+	 *  (réappliquées sur le nouveau personnage, y compris sur ses nouvelles armes), même proportion de PV.
+	 */
+	void ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass);
+
+	/** Reprend la progression d'upgrades d'un autre personnage (OldPool = son pool) et la réapplique (serveur) */
+	void RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& OldPool, const TArray<FYSUpgradeProgress>& OldProgress);
+
 	/** Ajoute le bonus proposé à la progression et applique l'upgrade (serveur) */
 	void ApplyUpgrade(const FYSUpgradeOffer& Offer);
 

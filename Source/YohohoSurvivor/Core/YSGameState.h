@@ -56,6 +56,10 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")
 	bool bUpgradeSelectionActive = false;
 
+	/** Niveau atteint par la sélection d'upgrade en cours (plusieurs niveaux gagnés d'un coup : sélections enchaînées) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")
+	int32 UpgradeSelectionLevel = 0;
+
 	/** Jour en cours (1 au départ) : sert aussi de niveau aux NME et de multiplicateur aux vagues */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="DayNight")
 	int32 DayNumber = 1;
@@ -94,6 +98,8 @@ public:
 	/** Serveur uniquement (AYSGameMode) */
 	void SetTeamProgress(int32 Level, float Experience, float ExperienceNeeded) { TeamLevel = Level; TeamExperience = Experience; ExperienceToNextLevel = ExperienceNeeded; }
 	void SetUpgradeSelectionActive(bool bActive) { bUpgradeSelectionActive = bActive; }
+	void SetUpgradeSelectionLevel(int32 Level) { UpgradeSelectionLevel = Level; }
+	int32 GetUpgradeSelectionLevel() const { return UpgradeSelectionLevel; }
 
 	int32 GetDayNumber() const { return DayNumber; }
 	bool IsNight() const { return bNight; }

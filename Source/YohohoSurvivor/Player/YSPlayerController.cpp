@@ -313,7 +313,10 @@ void AYSPlayerController::UpdateUpgradeMenu()
 		DisplayedUpgradeOffers = MyState->GetUpgradeOffers();
 		DisplayedUpgradeStacks = TotalStacks;
 		UpgradeMenu->ClearChoices();
-		UpgradeMenu->SetTitle(FText::Format(NSLOCTEXT("YS", "UpgradeTitle", "Niveau {0} ! Choisis une amélioration"), YSGameState->GetTeamLevel()));
+		// choix de classe (upgrades de classe) ou d'amélioration
+		const UYSUpgrade* FirstUpgrade = DisplayedUpgradeOffers.Num() > 0 && PlayerCharacter->GetUpgradePool().IsValidIndex(DisplayedUpgradeOffers[0].PoolIndex) ? PlayerCharacter->GetUpgradePool()[DisplayedUpgradeOffers[0].PoolIndex].Get() : nullptr;
+		const bool bClassChoice = FirstUpgrade && FirstUpgrade->GetUpgradeType() == EYSUpgradeType::Class;
+		UpgradeMenu->SetTitle(FText::Format(bClassChoice ? NSLOCTEXT("YS", "ClassUpgradeTitle", "Niveau {0} ! Choisis ta classe") : NSLOCTEXT("YS", "UpgradeTitle", "Niveau {0} ! Choisis une amélioration"), YSGameState->GetUpgradeSelectionLevel()));
 
 		TArray<TArray<FYSChoiceLine>> Choices;
 		for (const FYSUpgradeOffer& Offer : DisplayedUpgradeOffers)

@@ -252,7 +252,8 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		const UYSUpgrade* Upgrade = UpgradePool[PoolIndex];
 		for (int32 Variant = 0; Upgrade && Variant < Upgrade->GetVariantCount(); ++Variant)
 		{
-			if (Upgrade->GetOfferWeight(Variant) > 0.0f && Upgrade->CanBeOffered(this, Variant, GetUpgradeProgress(PoolIndex, Variant)))
+			// les upgrades de classe ne sont jamais tirées au hasard (PickClassOffers)
+			if (Upgrade->GetUpgradeType() != EYSUpgradeType::Class && Upgrade->GetOfferWeight(Variant) > 0.0f && Upgrade->CanBeOffered(this, Variant, GetUpgradeProgress(PoolIndex, Variant)))
 			{
 				FYSUpgradeOffer& Candidate = Candidates.AddDefaulted_GetRef();
 				Candidate.PoolIndex = PoolIndex;
@@ -923,4 +924,94 @@ void AYSPlayerCharacter::UpdateDayNight(float DeltaSeconds)
 
 	TopDownCamera->PostProcessSettings = NightPostProcess;
 	TopDownCamera->PostProcessBlendWeight = NightBlend;
+}
+
+TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickClassOffers() const
+{
+	TArray<FYSUpgradeOffer> Offers;
+	for (int32 PoolIndex = 0; PoolIndex < UpgradePool.Num(); ++PoolIndex)
+	{
+		const UYSUpgrade* Upgrade = UpgradePool[PoolIndex];
+		for (int32 Variant = 0; Upgrade && Upgrade->GetUpgradeType() == EYSUpgradeType::Class && Variant < Upgrade->GetVariantCount(); ++Variant)
+		{
+			if (Upgrade->CanBeOffered(this, Variant, GetUpgradeProgress(PoolIndex, Variant)))
+			{
+				FYSUpgradeOffer& Offer = Offers.AddDefaulted_GetRef();
+				Offer.PoolIndex = PoolIndex;
+				Offer.Variant = Variant;
+			}
+		}
+	}
+	return Offers;
+}
+
+void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass)
+{
+	AController* OwningController = GetController();
+	UWorld* World = GetWorld();
+	if (!HasAuthority() || !NewClass || !OwningController || !World)
+	{
+		return;
+	}
+
+	// tout ce qui passe au nouveau personnage
+	const TArray<TObjectPtr<UYSUpgrade>> OldPool = UpgradePool;
+	const TArray<FYSUpgradeProgress> OldProgress = UpgradeProgress;
+	const float HealthRatio = GetMaxHealth() > 0.0f ? Health / GetMaxHealth() : 1.0f;
+	const FTransform SpawnTransform(FRotator(0.0f, GetActorRotation().Yaw, 0.0f), GetActorLocation());
+	const FString OldName = GetName();
+
+	OwningController->UnPossess();
+	Destroy();
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	AYSPlayerCharacter* NewCharacter = World->SpawnActor<AYSPlayerCharacter>(NewClass, SpawnTransform, Params);
+	if (!NewCharacter)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[YSPlayerCharacter] Changement de classe impossible : %s n'a pas pu apparaître"), *NewClass->GetName());
+		return;
+	}
+
+	OwningController->Possess(NewCharacter);
+	NewCharacter->RestoreUpgrades(OldPool, OldProgress);
+	NewCharacter->Health = FMath::Max(1.0f, HealthRatio * NewCharacter->GetMaxHealth());
+	UE_LOG(LogTemp, Log, TEXT("[YSPlayerCharacter] Changement de classe : %s -> %s (%d upgrade(s) conservée(s), PV %.0f / %.0f)"),
+		*OldName, *NewCharacter->GetName(), NewCharacter->UpgradeProgress.Num(), NewCharacter->Health, NewCharacter->GetMaxHealth());
+}
+
+void AYSPlayerCharacter::RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& OldPool, const TArray<FYSUpgradeProgress>& OldProgress)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// même upgrade (même asset) dans le pool du nouveau personnage : la progression est reprise telle quelle
+	UpgradeProgress.Reset();
+	for (const FYSUpgradeProgress& Old : OldProgress)
+	{
+		const UYSUpgrade* Upgrade = OldPool.IsValidIndex(Old.PoolIndex) ? OldPool[Old.PoolIndex].Get() : nullptr;
+		const int32 NewIndex = Upgrade ? UpgradePool.IndexOfByKey(Upgrade) : INDEX_NONE;
+		if (NewIndex == INDEX_NONE)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[YSPlayerCharacter] %s : upgrade %s absente du pool de %s, progression perdue"),
+				*GetName(), Upgrade ? *Upgrade->GetName() : TEXT("?"), *GetClass()->GetName());
+			continue;
+		}
+
+		FYSUpgradeProgress& Entry = UpgradeProgress.Add_GetRef(Old);
+		Entry.PoolIndex = NewIndex;
+	}
+
+	// effets réappliqués une fois toute la progression en place (les upgrades d'arme lisent leurs 3 paliers) ;
+	// pas les upgrades de classe (elles relanceraient un changement de classe)
+	for (const FYSUpgradeProgress& Entry : UpgradeProgress)
+	{
+		const UYSUpgrade* Upgrade = UpgradePool[Entry.PoolIndex];
+		if (Upgrade->GetUpgradeType() != EYSUpgradeType::Class)
+		{
+			Upgrade->Apply(this, Entry.Variant, Entry);
+		}
+	}
 }

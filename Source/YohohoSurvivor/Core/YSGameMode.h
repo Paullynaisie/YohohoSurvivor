@@ -46,6 +46,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))
 	int32 UpgradeChoiceCount = 3;
 
+	/** Niveau d'équipe où chaque joueur choisit sa classe (upgrades de classe de son personnage, sans hasard) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))
+	int32 ClassUpgradeLevel = 5;
+
 	/** Durée du jour ; ensuite la nuit commence et dure tant que l'élite est en vie */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DayNight", meta=(ClampMin="1", Units="s"))
 	float DayDuration = 30.0f;
