@@ -73,6 +73,9 @@ public:
 	/** Multiplicateur de recharge de la main qui tient l'arme de cette capacité (CD Reduction ; 1 sinon) */
 	float GetCooldownMultiplier() const;
 
+	/** Propriété donnée à l'arme de cette capacité par une upgrade d'arme (Default si aucune) */
+	float GetWeaponStat(FName Stat, float Default) const;
+
 	/** Vrai pour une attaque automatique (déclenchée par le serveur, pas par une touche) */
 	virtual bool IsAutomatic() const { return false; }
 

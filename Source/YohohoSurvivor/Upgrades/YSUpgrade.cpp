@@ -1,5 +1,6 @@
 #include "Upgrades/YSUpgrade.h"
 #include "Abilities/YSAbilityComponent.h"
+#include "Abilities/YSCoupDPetoirAbility.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSWeapon.h"
 
@@ -43,7 +44,7 @@ bool UYSStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Var
 	return Progress.Stacks < MaxStacks;
 }
 
-bool UYSUpgrade::SupportsRarity(EYSUpgradeRarity Rarity) const
+bool UYSUpgrade::SupportsRarity(int32 Variant, EYSUpgradeRarity Rarity) const
 {
 	switch (Rarity)
 	{
@@ -54,7 +55,7 @@ bool UYSUpgrade::SupportsRarity(EYSUpgradeRarity Rarity) const
 	}
 }
 
-float UYSStatUpgrade::GetBonusValue(EYSUpgradeRarity Rarity) const
+float UYSStatUpgrade::GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const
 {
 	switch (Rarity)
 	{
@@ -65,7 +66,7 @@ float UYSStatUpgrade::GetBonusValue(EYSUpgradeRarity Rarity) const
 	}
 }
 
-FLinearColor UYSStatUpgrade::GetRarityColor(EYSUpgradeRarity Rarity) const
+FLinearColor UYSUpgrade::GetRarityColor(EYSUpgradeRarity Rarity) const
 {
 	switch (Rarity)
 	{
@@ -100,7 +101,7 @@ void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Va
 	OldValue.bStrikethrough = true;
 
 	FYSChoiceLine& NewValue = OutLines.AddDefaulted_GetRef();
-	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetStatValue(BaseValue, Progress.TotalValue + GetBonusValue(Rarity))));
+	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetStatValue(BaseValue, Progress.TotalValue + GetBonusValue(Variant, Rarity))));
 	NewValue.FontSize = 18;
 	NewValue.bBold = true;
 }
@@ -267,4 +268,166 @@ float UYSLuckUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int3
 void UYSLuckUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
 	Character->SetLuck(TotalBonus);
+}
+
+UYSWeaponUpgrade::UYSWeaponUpgrade()
+{
+	UpgradeType = EYSUpgradeType::Weapon;
+	RightHandLabel = NSLOCTEXT("YS", "WeaponUpgradeRightHand", "Right hand");
+	LeftHandLabel = NSLOCTEXT("YS", "WeaponUpgradeLeftHand", "Left hand");
+}
+
+FText UYSWeaponUpgrade::GetVariantName(int32 Variant) const
+{
+	const FText& TierName = GetTier(Variant) == EYSWeaponUpgradeTier::Unlock ? UnlockName : GetTier(Variant) == EYSWeaponUpgradeTier::Bonus ? BonusName : SuperName;
+	return FText::Format(NSLOCTEXT("YS", "WeaponUpgradeName", "{0} {1}"), GetHand(Variant) == EYSHand::Left ? LeftHandLabel : RightHandLabel, TierName);
+}
+
+UYSAbilityComponent* UYSWeaponUpgrade::GetRequiredAction(const AYSPlayerCharacter* Character, EYSHand Hand) const
+{
+	const AYSWeapon* Weapon = !Character ? nullptr : Hand == EYSHand::Left ? Character->GetLeftHandWeapon() : Character->GetRightHandWeapon();
+	if (!Weapon || !RequiredActionClass)
+	{
+		return nullptr;
+	}
+
+	TInlineComponentArray<UYSAbilityComponent*> Actions(Weapon);
+	for (UYSAbilityComponent* Action : Actions)
+	{
+		if (Action->IsA(RequiredActionClass))
+		{
+			return Action;
+		}
+	}
+	return nullptr;
+}
+
+bool UYSWeaponUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	const EYSHand Hand = GetHand(Variant);
+	if (!Character || !GetRequiredAction(Character, Hand))
+	{
+		return false;
+	}
+
+	// le déblocage d'abord ; ensuite il laisse la place au Bonus (cumulable) et au Super (une fois)
+	const bool bUnlocked = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(Hand, EYSWeaponUpgradeTier::Unlock)).Stacks > 0;
+	switch (GetTier(Variant))
+	{
+	case EYSWeaponUpgradeTier::Unlock:	return !bUnlocked;
+	case EYSWeaponUpgradeTier::Bonus:	return bUnlocked && Progress.Stacks < MaxBonusStacks;
+	default:							return bUnlocked && Progress.Stacks == 0;
+	}
+}
+
+float UYSWeaponUpgrade::GetOfferWeight(int32 Variant) const
+{
+	switch (GetTier(Variant))
+	{
+	case EYSWeaponUpgradeTier::Unlock:	return UnlockWeight;
+	case EYSWeaponUpgradeTier::Bonus:	return BonusWeight;
+	default:							return SuperWeight;
+	}
+}
+
+bool UYSWeaponUpgrade::SupportsRarity(int32 Variant, EYSUpgradeRarity Rarity) const
+{
+	switch (GetTier(Variant))
+	{
+	case EYSWeaponUpgradeTier::Unlock:	return Rarity == EYSUpgradeRarity::Silver;
+	case EYSWeaponUpgradeTier::Bonus:	return Rarity == EYSUpgradeRarity::Silver || Rarity == EYSUpgradeRarity::Gold;
+	default:							return Rarity == EYSUpgradeRarity::Gold;
+	}
+}
+
+float UYSWeaponUpgrade::GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const
+{
+	if (GetTier(Variant) != EYSWeaponUpgradeTier::Bonus)
+	{
+		return 0.0f;
+	}
+	return Rarity == EYSUpgradeRarity::Gold ? BonusGoldValue : Rarity == EYSUpgradeRarity::Silver ? BonusSilverValue : 0.0f;
+}
+
+void UYSWeaponUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+{
+	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
+	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), GetVariantName(Variant), YSUpgradeText::RarityName(Rarity));
+	Title.Color = GetRarityColor(Rarity);
+	Title.FontSize = 20;
+	Title.bBold = true;
+
+	if (GetTier(Variant) != EYSWeaponUpgradeTier::Bonus)
+	{
+		// déblocage / super : description de la propriété
+		FYSChoiceLine& Description = OutLines.AddDefaulted_GetRef();
+		Description.Text = GetTier(Variant) == EYSWeaponUpgradeTier::Unlock ? UnlockDescription : SuperDescription;
+		Description.FontSize = 15;
+		Description.bBold = true;
+		return;
+	}
+
+	// bonus : comme une upgrade de stat (valeur concrète actuelle rayée, nouvelle en gras)
+	FYSChoiceLine& StackLine = OutLines.AddDefaulted_GetRef();
+	StackLine.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeStacks", "Bonus {0} / {1}"), Progress.Stacks + 1, MaxBonusStacks);
+	StackLine.Color = FLinearColor(0.7f, 0.7f, 0.7f);
+	StackLine.FontSize = 13;
+
+	const float BaseValue = GetBonusBaseValue(Character, GetHand(Variant));
+
+	FYSChoiceLine& OldValue = OutLines.AddDefaulted_GetRef();
+	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), BonusStatLabel, YSUpgradeText::FormatStat(BaseValue * (1.0f + Progress.TotalValue)));
+	OldValue.Color = FLinearColor(0.65f, 0.65f, 0.65f);
+	OldValue.FontSize = 16;
+	OldValue.bStrikethrough = true;
+
+	FYSChoiceLine& NewValue = OutLines.AddDefaulted_GetRef();
+	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), BonusStatLabel, YSUpgradeText::FormatStat(BaseValue * (1.0f + Progress.TotalValue + GetBonusValue(Variant, Rarity))));
+	NewValue.FontSize = 18;
+	NewValue.bBold = true;
+}
+
+void UYSWeaponUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	if (!Character)
+	{
+		return;
+	}
+
+	const EYSHand Hand = GetHand(Variant);
+	const bool bUnlocked = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(Hand, EYSWeaponUpgradeTier::Unlock)).Stacks > 0;
+	const float BonusTotal = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(Hand, EYSWeaponUpgradeTier::Bonus)).TotalValue;
+	const bool bSuper = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(Hand, EYSWeaponUpgradeTier::Super)).Stacks > 0;
+	ApplyWeaponProperty(Character, Hand, bUnlocked, BonusTotal, bSuper);
+	UE_LOG(LogTemp, Log, TEXT("[YSWeaponUpgrade] %s : %s (débloqué %d, bonus %.3f, super %d)"), *Character->GetName(), *GetVariantName(Variant).ToString(), bUnlocked, BonusTotal, bSuper);
+}
+
+const FName UYSRicochetUpgrade::RicochetCountStat(TEXT("Ricochets"));
+const FName UYSRicochetUpgrade::RicochetDamageBonusStat(TEXT("RicochetDamageBonus"));
+
+UYSRicochetUpgrade::UYSRicochetUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "RicochetName", "Ricochet");
+	RequiredActionClass = UYSCoupDPetoirAbility::StaticClass();
+	UnlockName = NSLOCTEXT("YS", "RicochetUnlockName", "Ricochet");
+	UnlockDescription = NSLOCTEXT("YS", "RicochetUnlockDesc", "Après avoir touché, la balle ricoche\nvers le NME le plus proche");
+	BonusName = NSLOCTEXT("YS", "RicochetBonusName", "Ricochet bonus");
+	BonusStatLabel = NSLOCTEXT("YS", "RicochetBonusStat", "Dégât après ricochet");
+	BonusSilverValue = 0.15f;
+	BonusGoldValue = 0.25f;
+	SuperName = NSLOCTEXT("YS", "RicochetSuperName", "Golden ricochet");
+	SuperDescription = NSLOCTEXT("YS", "RicochetSuperDesc", "La balle ricoche une fois de plus");
+}
+
+float UYSRicochetUpgrade::GetBonusBaseValue(const AYSPlayerCharacter* Character, EYSHand Hand) const
+{
+	const UYSAbilityComponent* Action = GetRequiredAction(Character, Hand);
+	return Action ? Action->GetBaseDamage() : 0.0f;
+}
+
+void UYSRicochetUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, EYSHand Hand, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	const int32 Ricochets = bUnlocked ? UnlockRicochets + (bSuper ? SuperExtraRicochets : 0) : 0;
+	Character->SetHandWeaponStat(Hand, RicochetCountStat, Ricochets);
+	Character->SetHandWeaponStat(Hand, RicochetDamageBonusStat, BonusTotal);
 }

@@ -8,6 +8,7 @@ ensuite à régler dans l'asset) :
   - DA_Upgrade_Armor           (UYSArmorUpgrade)
   - DA_Upgrade_CDReduction     (UYSHandCooldownReductionUpgrade : Right / Left hand CD reduction)
   - DA_Upgrade_Luck            (UYSLuckUpgrade : Silver uniquement)
+  - DA_Upgrade_Ricochet        (UYSRicochetUpgrade : upgrade d'arme, Coup d'Petoir)
 Upgrade Pool des 3 personnages jouables = ces assets
 (les enfants reçoivent la même valeur que le parent : ils en héritent à nouveau).
 
@@ -27,6 +28,7 @@ UPGRADES = [
     ("DA_Upgrade_Armor", unreal.YSArmorUpgrade),
     ("DA_Upgrade_CDReduction", unreal.YSHandCooldownReductionUpgrade),
     ("DA_Upgrade_Luck", unreal.YSLuckUpgrade),
+    ("DA_Upgrade_Ricochet", unreal.YSRicochetUpgrade),
 ]
 CHARACTERS = [
     "/Game/Placeable/Character/PlayerCharacter_mouss",  # parent d'abord
@@ -41,6 +43,19 @@ report = []
 def log(msg):
     unreal.log(f"[setup_upgrade_pools] {msg}")
     report.append(msg)
+
+
+def describe_settings(upgrade):
+    """Réglages principaux (selon le type d'upgrade)"""
+    values = []
+    for prop in ("offer_weight", "max_stacks", "bronze_value", "silver_value", "gold_value",
+                 "unlock_weight", "bonus_weight", "super_weight", "max_bonus_stacks", "bonus_silver_value", "bonus_gold_value"):
+        try:
+            value = upgrade.get_editor_property(prop)
+            values.append(f"{prop} {value:.3f}" if isinstance(value, float) else f"{prop} {value}")
+        except Exception:
+            pass
+    return ", ".join(values)
 
 
 def describe(pool):
@@ -60,9 +75,7 @@ try:
             upgrade = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, UPGRADE_DIR, cls, factory)
             assets.save_asset(path, only_if_is_dirty=False)
             log(f"créé : {path}")
-        log(f"  {upgrade.get_editor_property('display_name')} : {upgrade.get_editor_property('stat_label')}, "
-            f"poids {upgrade.get_editor_property('offer_weight')}, max {upgrade.get_editor_property('max_stacks')}, valeurs {upgrade.get_editor_property('bronze_value'):.3f} / "
-            f"{upgrade.get_editor_property('silver_value'):.3f} / {upgrade.get_editor_property('gold_value'):.3f}")
+        log(f"  {upgrade.get_editor_property('display_name')} ({upgrade.get_class().get_name()}) : {describe_settings(upgrade)}")
         pool.append(upgrade)
 
     for path in CHARACTERS:

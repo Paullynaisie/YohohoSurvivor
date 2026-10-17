@@ -3,6 +3,8 @@
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSGameplayTags.h"
 #include "Engine/DamageEvents.h"
+#include "EngineUtils.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameplayTagAssetInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -78,14 +80,62 @@ void AYSProjectile::BeginPlay()
 void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	// serveur autoritaire : la destruction est répliquée aux clients
-	if (!HasAuthority() || bHasHit || !OtherActor || OtherActor == GetInstigator() || !CanHit(OtherActor))
+	if (!HasAuthority() || bHasHit || !OtherActor || OtherActor == GetInstigator() || !CanHit(OtherActor) || HitActors.Contains(OtherActor))
 	{
 		return;
 	}
 
-	bHasHit = true;
+	HitActors.Add(OtherActor);
 	OtherActor->TakeDamage(Damage, FDamageEvent(), GetInstigatorController(), this);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s : %.1f dégâts (ricochets restants %d)"), *GetName(), *OtherActor->GetName(), Damage, RemainingRicochets);
+
+	// ricochet vers une autre cible, sinon la balle disparaît
+	if (RemainingRicochets > 0 && Ricochet())
+	{
+		--RemainingRicochets;
+		Damage *= RicochetDamageMultiplier;
+		return;
+	}
+
+	bHasHit = true;
 	Destroy();
+}
+
+bool AYSProjectile::Ricochet()
+{
+	const FVector From = GetActorLocation();
+	AActor* BestTarget = nullptr;
+	float BestDistanceSquared = FMath::Square(RicochetRange);
+	for (TActorIterator<APawn> It(GetWorld()); It; ++It)
+	{
+		APawn* Candidate = *It;
+		if (!IsValid(Candidate) || Candidate == GetInstigator() || !CanHit(Candidate) || HitActors.Contains(Candidate))
+		{
+			continue;
+		}
+
+		const float DistanceSquared = FVector::DistSquared2D(From, Candidate->GetActorLocation());
+		if (DistanceSquared < BestDistanceSquared)
+		{
+			BestDistanceSquared = DistanceSquared;
+			BestTarget = Candidate;
+		}
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s ricochet : %s (%.0f cm)"), *GetName(), BestTarget ? *BestTarget->GetName() : TEXT("aucune cible à portée"), FMath::Sqrt(BestDistanceSquared));
+	if (!BestTarget)
+	{
+		return false;
+	}
+
+	// trajectoire parallèle au sol vers la nouvelle cible ; la durée de vie repart de zéro
+	FVector Direction = BestTarget->GetActorLocation() - From;
+	Direction.Z = 0.0f;
+	Direction = Direction.GetSafeNormal();
+	SetActorRotation(Direction.Rotation());
+	ProjectileMovement->Velocity = Direction * Speed;
+	SetLifeSpan(LifeTime);
+	return true;
 }
 
 void AYSProjectile::OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)

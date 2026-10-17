@@ -63,10 +63,25 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="AMMO")
 	float Damage = 0.0f;
 
+	/** Ricochets restants : après un dégât, la balle repart vers le NME le plus proche pas encore touché (fixé au tir, upgrade Ricochet) */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="AMMO|Ricochet")
+	int32 RemainingRicochets = 0;
+
+	/** Multiplicateur des dégâts appliqué à chaque ricochet (Ricochet bonus) */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="AMMO|Ricochet")
+	float RicochetDamageMultiplier = 1.0f;
+
+	/** Distance max (depuis l'impact) pour trouver la cible d'un ricochet ; sans cible, la balle disparaît */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ricochet", meta=(ClampMin="0", Units="Centimeters"))
+	float RicochetRange = 1500.0f;
+
 private:
 
-	/** Évite de toucher deux cibles dans la même frame */
+	/** Plus de dégâts possibles (balle en cours de destruction) */
 	bool bHasHit = false;
+
+	/** Cibles déjà touchées (un ricochet ne les retouche pas) */
+	TArray<TWeakObjectPtr<AActor>> HitActors;
 
 public:
 
@@ -80,11 +95,19 @@ public:
 
 	void SetDamage(float NewDamage) { Damage = NewDamage; }
 
+	/** Ricochets (upgrade Ricochet) : nombre et multiplicateur de dégâts à chaque ricochet */
+	void SetRicochets(int32 Count, float DamageMultiplier) { RemainingRicochets = Count; RicochetDamageMultiplier = DamageMultiplier; }
+
 	/** Tags des acteurs que ce projectile peut toucher */
 	const FGameplayTagContainer& GetHitTags() const { return HitTags; }
 
 	/** Vrai si l'acteur porte un des HitTags */
 	bool CanHit(const AActor* Target) const;
+
+protected:
+
+	/** Repart vers le NME le plus proche pas encore touché ; faux si aucun à portée */
+	bool Ricochet();
 
 protected:
 

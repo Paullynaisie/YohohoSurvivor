@@ -100,6 +100,10 @@ public:
 	UFUNCTION(Exec)
 	void YSGiveUpgrade(int32 PoolIndex, int32 Variant = 0, int32 Rarity = 1);
 
+	/** Debug (console) : déclenche l'action de clic de l'arme d'une main (0 droite, 1 gauche) vers le NME le plus proche.  Ex : YSFireAtFoe 0 */
+	UFUNCTION(Exec)
+	void YSFireAtFoe(int32 Hand = 0);
+
 	/** Debug (console) : tire Draws fois 3 propositions et logue la fréquence de chaque proposition par position (vérifie les poids) */
 	UFUNCTION(Exec)
 	void YSUpgradeOdds(int32 Draws = 10000);

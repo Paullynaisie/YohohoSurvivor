@@ -242,7 +242,7 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		const UYSUpgrade* Upgrade = UpgradePool[PoolIndex];
 		for (int32 Variant = 0; Upgrade && Variant < Upgrade->GetVariantCount(); ++Variant)
 		{
-			if (Upgrade->OfferWeight > 0.0f && Upgrade->CanBeOffered(this, Variant, GetUpgradeProgress(PoolIndex, Variant)))
+			if (Upgrade->GetOfferWeight(Variant) > 0.0f && Upgrade->CanBeOffered(this, Variant, GetUpgradeProgress(PoolIndex, Variant)))
 			{
 				FYSUpgradeOffer& Candidate = Candidates.AddDefaulted_GetRef();
 				Candidate.PoolIndex = PoolIndex;
@@ -266,7 +266,7 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		{
 			bAvailable[RarityIndex] = Candidates.ContainsByPredicate([this, RarityIndex](const FYSUpgradeOffer& Candidate)
 			{
-				return UpgradePool[Candidate.PoolIndex]->SupportsRarity(Rarities[RarityIndex]);
+				return UpgradePool[Candidate.PoolIndex]->SupportsRarity(Candidate.Variant, Rarities[RarityIndex]);
 			});
 			bAnyAvailable |= bAvailable[RarityIndex];
 			RarityChances[RarityIndex] = bAvailable[RarityIndex] ? GetRarityChance(Rarities[RarityIndex]) : 0.0f;
@@ -313,7 +313,7 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		for (const FYSUpgradeOffer& Candidate : Candidates)
 		{
 			const UYSUpgrade* Upgrade = UpgradePool[Candidate.PoolIndex];
-			TotalWeight += Upgrade->SupportsRarity(Rarity) ? Upgrade->OfferWeight : 0.0f;
+			TotalWeight += Upgrade->SupportsRarity(Candidate.Variant, Rarity) ? Upgrade->GetOfferWeight(Candidate.Variant) : 0.0f;
 		}
 
 		int32 Picked = INDEX_NONE;
@@ -321,10 +321,10 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		for (int32 Index = 0; Index < Candidates.Num(); ++Index)
 		{
 			const UYSUpgrade* Upgrade = UpgradePool[Candidates[Index].PoolIndex];
-			if (Upgrade->SupportsRarity(Rarity))
+			if (Upgrade->SupportsRarity(Candidates[Index].Variant, Rarity))
 			{
 				Picked = Index;
-				Roll -= Upgrade->OfferWeight;
+				Roll -= Upgrade->GetOfferWeight(Candidates[Index].Variant);
 				if (Roll < 0.0f)
 				{
 					break;
@@ -382,7 +382,7 @@ void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 	}
 
 	++Progress->Stacks;
-	Progress->TotalValue += Upgrade->GetBonusValue(Offer.Rarity);
+	Progress->TotalValue += Upgrade->GetBonusValue(Offer.Variant, Offer.Rarity);
 	Upgrade->Apply(this, Offer.Variant, *Progress);
 }
 
@@ -881,4 +881,20 @@ float AYSPlayerCharacter::GetWeaponCooldownMultiplier(const AYSWeapon* Weapon) c
 		return LeftHandCooldownMultiplier;
 	}
 	return 1.0f;
+}
+
+float AYSPlayerCharacter::GetWeaponStat(const AYSWeapon* Weapon, FName Stat, float Default) const
+{
+	const TMap<FName, float>* Stats = nullptr;
+	if (Weapon && Weapon == GetRightHandWeapon())
+	{
+		Stats = &RightHandWeaponStats;
+	}
+	else if (Weapon && Weapon == GetLeftHandWeapon())
+	{
+		Stats = &LeftHandWeaponStats;
+	}
+
+	const float* Value = Stats ? Stats->Find(Stat) : nullptr;
+	return Value ? *Value : Default;
 }

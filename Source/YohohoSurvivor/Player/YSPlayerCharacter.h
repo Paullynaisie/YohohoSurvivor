@@ -212,6 +212,13 @@ protected:
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float LeftHandCooldownMultiplier = 1.0f;
 
+	/** Propriétés données à l'arme de chaque main par les upgrades d'arme (ex. Ricochets ; serveur) */
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	TMap<FName, float> RightHandWeaponStats;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	TMap<FName, float> LeftHandWeaponStats;
+
 	/** Multiplicateur de la vitesse de déplacement (Move speed bonus ; répliqué : la prédiction de mouvement du client doit le connaître) */
 	UPROPERTY(ReplicatedUsing=OnRep_MoveSpeedMultiplier, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float MoveSpeedMultiplier = 1.0f;
@@ -396,6 +403,12 @@ public:
 	void SetHandDamageMultiplier(EYSHand Hand, float Multiplier) { (Hand == EYSHand::Left ? LeftHandDamageMultiplier : RightHandDamageMultiplier) = Multiplier; }
 
 	void SetHandCooldownMultiplier(EYSHand Hand, float Multiplier) { (Hand == EYSHand::Left ? LeftHandCooldownMultiplier : RightHandCooldownMultiplier) = Multiplier; }
+
+	/** Propriété d'arme d'une main (upgrades d'arme ; serveur) */
+	void SetHandWeaponStat(EYSHand Hand, FName Stat, float Value) { (Hand == EYSHand::Left ? LeftHandWeaponStats : RightHandWeaponStats).Add(Stat, Value); }
+
+	/** Propriété d'arme de la main qui tient Weapon (Default si absente ou arme pas tenue) */
+	float GetWeaponStat(const AYSWeapon* Weapon, FName Stat, float Default) const;
 
 	/** Multiplicateur de recharge de la main qui tient Weapon (1 si elle n'est pas tenue) */
 	float GetWeaponCooldownMultiplier(const AYSWeapon* Weapon) const;

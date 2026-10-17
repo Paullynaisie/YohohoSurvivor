@@ -172,3 +172,9 @@ float UYSAbilityComponent::GetCooldownMultiplier() const
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	return Character ? Character->GetWeaponCooldownMultiplier(Cast<AYSWeapon>(GetOwner())) : 1.0f;
 }
+
+float UYSAbilityComponent::GetWeaponStat(FName Stat, float Default) const
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	return Character ? Character->GetWeaponStat(Cast<AYSWeapon>(GetOwner()), Stat, Default) : Default;
+}

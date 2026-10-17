@@ -103,15 +103,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="0"))
 	float OfferWeight = 10.0f;
 
-	/** Nombre de variantes (chacune proposée et cumulée séparément) */
-	virtual int32 GetVariantCount() const { return 1; }
-
-	/** Nom affiché d'une variante */
-	virtual FText GetVariantName(int32 Variant) const { return DisplayName; }
-
-	/** Peut encore être proposée à ce personnage (Progress = ce qu'il a déjà obtenu de cette variante) */
-	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const { return true; }
-
 	/** Raretés dans lesquelles l'upgrade peut être proposée (la rareté est tirée d'abord, selon la Luck du joueur) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
 	bool bCanBeBronze = true;
@@ -122,10 +113,33 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
 	bool bCanBeGold = true;
 
-	bool SupportsRarity(EYSUpgradeRarity Rarity) const;
+	/** Couleur du nom selon la rareté */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
+	FLinearColor BronzeColor = FLinearColor(0.85f, 0.5f, 0.22f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
+	FLinearColor SilverColor = FLinearColor(0.8f, 0.85f, 0.92f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
+	FLinearColor GoldColor = FLinearColor(1.0f, 0.8f, 0.1f);
+
+	/** Nombre de variantes (chacune proposée et cumulée séparément) */
+	virtual int32 GetVariantCount() const { return 1; }
+
+	/** Nom affiché d'une variante */
+	virtual FText GetVariantName(int32 Variant) const { return DisplayName; }
+
+	/** Peut encore être proposée à ce personnage (Progress = ce qu'il a déjà obtenu de cette variante) */
+	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const { return true; }
+
+	/** Poids de tirage d'une variante (par défaut OfferWeight) */
+	virtual float GetOfferWeight(int32 Variant) const { return OfferWeight; }
+
+	/** La variante peut être proposée dans cette rareté (par défaut bCanBeBronze / Silver / Gold) */
+	virtual bool SupportsRarity(int32 Variant, EYSUpgradeRarity Rarity) const;
 
 	/** Valeur ajoutée à Progress.TotalValue par un bonus de cette rareté */
-	virtual float GetBonusValue(EYSUpgradeRarity Rarity) const { return 0.0f; }
+	virtual float GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const { return 0.0f; }
 
 	/** Lignes du bouton pour une proposition */
 	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const;
@@ -133,11 +147,14 @@ public:
 	/** Applique l'état de la variante au personnage après un nouveau bonus (serveur ; Progress déjà mis à jour) */
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const {}
 
+	FLinearColor GetRarityColor(EYSUpgradeRarity Rarity) const;
+
 protected:
 
 	UPROPERTY(VisibleDefaultsOnly, Category="Upgrade")
 	EYSUpgradeType UpgradeType = EYSUpgradeType::Stat;
 };
+
 /**
  *  Upgrade de stat : modifie une statistique pure du joueur, stat = valeur de base x (1 + somme des bonus)
  *  (ou base + somme pour les stats additives : regen, armure).
@@ -172,21 +189,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
 	float GoldValue = 0.9f;
 
-	/** Couleur du nom selon la rareté */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
-	FLinearColor BronzeColor = FLinearColor(0.85f, 0.5f, 0.22f);
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
-	FLinearColor SilverColor = FLinearColor(0.8f, 0.85f, 0.92f);
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
-	FLinearColor GoldColor = FLinearColor(1.0f, 0.8f, 0.1f);
-
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
-	virtual float GetBonusValue(EYSUpgradeRarity Rarity) const override;
+	virtual float GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const override;
 
 	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
+
 	/** Applique la somme des bonus au personnage (ApplyBonus) */
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
@@ -200,8 +208,6 @@ protected:
 
 	/** Applique la somme des bonus au personnage (serveur) */
 	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const {}
-
-	FLinearColor GetRarityColor(EYSUpgradeRarity Rarity) const;
 };
 
 /**
@@ -382,4 +388,149 @@ protected:
 	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
 
 	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
+};
+
+/** Palier d'une upgrade d'arme */
+UENUM(BlueprintType)
+enum class EYSWeaponUpgradeTier : uint8
+{
+	Unlock	UMETA(DisplayName="Déblocage"),
+	Bonus	UMETA(DisplayName="Bonus"),
+	Super	UMETA(DisplayName="Super"),
+};
+
+/**
+ *  Upgrade d'arme, par main, en 3 paliers (variante = main x 3 + palier : 0-2 main droite, 3-5 main gauche) :
+ *  - Déblocage (Silver uniquement, une fois) : donne la propriété à l'arme de la main ; débloque les 2 autres paliers ;
+ *  - Bonus (Silver / Gold, MaxBonusStacks fois) : améliore la propriété, comme une upgrade de stat ;
+ *  - Super (Gold uniquement, une fois) : comportement prédéfini.
+ *  Proposée seulement si l'action de l'arme de la main est une RequiredActionClass (ex. Coup d'Petoir).
+ *  Nouvelle upgrade d'arme = sous-classe qui surcharge ApplyWeaponProperty (et GetBonusBaseValue pour l'affichage).
+ */
+UCLASS(Abstract)
+class UYSWeaponUpgrade : public UYSUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSWeaponUpgrade();
+
+	/** Action d'arme requise dans la main (classe ou sous-classe) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	TSubclassOf<UYSAbilityComponent> RequiredActionClass;
+
+	/** Préfixe des noms selon la main (« Right hand Ricochet ») */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	FText RightHandLabel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	FText LeftHandLabel;
+
+	/** Déblocage : nom et description */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock")
+	FText UnlockName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(MultiLine="true"))
+	FText UnlockDescription;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(ClampMin="0"))
+	float UnlockWeight = 10.0f;
+
+	/** Bonus : nom, nom de la valeur affichée, nombre max, valeurs Silver / Gold */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus")
+	FText BonusName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus")
+	FText BonusStatLabel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus", meta=(ClampMin="1"))
+	int32 MaxBonusStacks = 10;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus")
+	float BonusSilverValue = 0.15f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus")
+	float BonusGoldValue = 0.25f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus", meta=(ClampMin="0"))
+	float BonusWeight = 10.0f;
+
+	/** Super : nom et description */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super")
+	FText SuperName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(MultiLine="true"))
+	FText SuperDescription;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
+	float SuperWeight = 10.0f;
+
+	static EYSHand GetHand(int32 Variant) { return Variant >= 3 ? EYSHand::Left : EYSHand::Right; }
+
+	static EYSWeaponUpgradeTier GetTier(int32 Variant) { return static_cast<EYSWeaponUpgradeTier>(Variant % 3); }
+
+	static int32 MakeVariant(EYSHand Hand, EYSWeaponUpgradeTier Tier) { return (Hand == EYSHand::Left ? 3 : 0) + static_cast<int32>(Tier); }
+
+	virtual int32 GetVariantCount() const override { return 6; }
+
+	virtual FText GetVariantName(int32 Variant) const override;
+
+	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
+	virtual float GetOfferWeight(int32 Variant) const override;
+
+	virtual bool SupportsRarity(int32 Variant, EYSUpgradeRarity Rarity) const override;
+
+	virtual float GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const override;
+
+	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
+
+	/** Recalcule la propriété de la main à partir des 3 paliers obtenus (ApplyWeaponProperty) */
+	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
+protected:
+
+	/** Valeur affichée pour le palier Bonus sans bonus (ex. dégâts de base de l'arme) ; valeur = base x (1 + somme) */
+	virtual float GetBonusBaseValue(const AYSPlayerCharacter* Character, EYSHand Hand) const { return 1.0f; }
+
+	/** Applique la propriété à la main : débloquée ?, somme des bonus, super obtenu ? (serveur) */
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, EYSHand Hand, bool bUnlocked, float BonusTotal, bool bSuper) const {}
+
+	/** Action de l'arme de la main si elle est de la classe requise */
+	UYSAbilityComponent* GetRequiredAction(const AYSPlayerCharacter* Character, EYSHand Hand) const;
+};
+
+/**
+ *  Ricochet (Coup d'Petoir) : la balle repart vers le NME le plus proche pas encore touché après chaque dégât.
+ *  Déblocage : UnlockRicochets ricochet(s) ; Bonus « Ricochet bonus » : dégâts x (1 + somme) après chaque ricochet ;
+ *  Super « Golden ricochet » : SuperExtraRicochets ricochet(s) de plus.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : Ricochet"))
+class UYSRicochetUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSRicochetUpgrade();
+
+	/** Ricochets donnés par le déblocage */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(ClampMin="0"))
+	int32 UnlockRicochets = 1;
+
+	/** Ricochets ajoutés par le Golden ricochet */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
+	int32 SuperExtraRicochets = 1;
+
+	/** Noms des propriétés d'arme posées sur la main (lues par le Coup d'Petoir) */
+	static const FName RicochetCountStat;
+	static const FName RicochetDamageBonusStat;
+
+protected:
+
+	/** Dégâts de base du Coup d'Petoir de la main */
+	virtual float GetBonusBaseValue(const AYSPlayerCharacter* Character, EYSHand Hand) const override;
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, EYSHand Hand, bool bUnlocked, float BonusTotal, bool bSuper) const override;
 };

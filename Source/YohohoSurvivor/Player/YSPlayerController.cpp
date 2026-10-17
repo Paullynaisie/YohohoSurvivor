@@ -347,6 +347,33 @@ void AYSPlayerController::ServerGiveUpgrade_Implementation(int32 PoolIndex, int3
 	}
 }
 
+void AYSPlayerController::YSFireAtFoe(int32 Hand)
+{
+	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSWeapon* Weapon = !PlayerCharacter ? nullptr : Hand == 1 ? PlayerCharacter->GetLeftHandWeapon() : PlayerCharacter->GetRightHandWeapon();
+	UYSAbilityComponent* Action = Weapon ? Weapon->GetActiveAction() : nullptr;
+	if (!Action)
+	{
+		return;
+	}
+
+	const AActor* Nearest = nullptr;
+	float BestDistanceSquared = TNumericLimits<float>::Max();
+	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
+	{
+		const float DistanceSquared = FVector::DistSquared(It->GetActorLocation(), PlayerCharacter->GetActorLocation());
+		if (DistanceSquared < BestDistanceSquared)
+		{
+			BestDistanceSquared = DistanceSquared;
+			Nearest = *It;
+		}
+	}
+	if (Nearest)
+	{
+		Action->TryActivate(Nearest->GetActorLocation());
+	}
+}
+
 void AYSPlayerController::YSUpgradeOdds(int32 Draws)
 {
 	// local : le pool et la progression sont connus du client

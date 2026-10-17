@@ -1,4 +1,5 @@
 #include "Abilities/YSCoupDPetoirAbility.h"
+#include "Upgrades/YSUpgrade.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/Pawn.h"
@@ -71,6 +72,7 @@ void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
 	if (Projectile)
 	{
 		Projectile->SetDamage(Damage * GetDamageMultiplier());
+		Projectile->SetRicochets(FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::RicochetCountStat, 0.0f)), 1.0f + GetWeaponStat(UYSRicochetUpgrade::RicochetDamageBonusStat, 0.0f));
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 }
