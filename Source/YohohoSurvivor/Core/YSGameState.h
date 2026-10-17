@@ -2,11 +2,14 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameStateBase.h"
+#include "Core/YSCustomization.h"
 #include "YSGameState.generated.h"
 
 class AYSDamageNumber;
 class AYSPlayerCharacter;
 class AYSFoeCharacter;
+class UTexture2D;
+class UMaterialInterface;
 
 /**
  *  État de partie partagé. Sert de canal pour les événements visuels globaux
@@ -31,6 +34,13 @@ protected:
 	/** Personnages proposés dans le menu de sélection (copiés depuis AYSGameMode) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
 	TArray<TSubclassOf<AYSPlayerCharacter>> SelectableCharacters;
+
+	/** Couleurs et visages proposés à l'écran de sélection (copiés depuis AYSGameMode) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Customization")
+	TArray<FYSCustomizationColor> CustomizationColors;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Customization")
+	TArray<TObjectPtr<UTexture2D>> CustomizationFaces;
 
 	/** Vrai une fois que tous les joueurs ont choisi leur personnage */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
@@ -88,6 +98,14 @@ public:
 
 	/** Serveur uniquement (AYSGameMode) */
 	void SetSelectableCharacters(const TArray<TSubclassOf<AYSPlayerCharacter>>& Characters) { SelectableCharacters = Characters; }
+	void SetCustomizationOptions(const TArray<FYSCustomizationColor>& Colors, const TArray<TObjectPtr<UTexture2D>>& Faces) { CustomizationColors = Colors; CustomizationFaces = Faces; }
+
+	const TArray<FYSCustomizationColor>& GetCustomizationColors() const { return CustomizationColors; }
+	const TArray<TObjectPtr<UTexture2D>>& GetCustomizationFaces() const { return CustomizationFaces; }
+
+	/** Matériau de couleur / texture de visage d'un index (nullptr si invalide) */
+	UMaterialInterface* GetCustomizationMaterial(int32 ColorIndex) const { return CustomizationColors.IsValidIndex(ColorIndex) ? CustomizationColors[ColorIndex].Material.Get() : nullptr; }
+	UTexture2D* GetCustomizationFace(int32 FaceIndex) const { return CustomizationFaces.IsValidIndex(FaceIndex) ? CustomizationFaces[FaceIndex].Get() : nullptr; }
 	void SetMatchStarted();
 
 	int32 GetTeamLevel() const { return TeamLevel; }

@@ -1,5 +1,6 @@
 #include "Core/YSPlayerState.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/YSPlayerCharacter.h"
 
 void AYSPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
@@ -9,4 +10,22 @@ void AYSPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AYSPlayerState, bIsDead);
 	DOREPLIFETIME(AYSPlayerState, UpgradeOffers);
 	DOREPLIFETIME(AYSPlayerState, ChosenUpgradeOffer);
+	DOREPLIFETIME(AYSPlayerState, ColorIndex);
+	DOREPLIFETIME(AYSPlayerState, FaceIndex);
+}
+
+void AYSPlayerState::SetCustomization(int32 NewColorIndex, int32 NewFaceIndex)
+{
+	ColorIndex = NewColorIndex;
+	FaceIndex = NewFaceIndex;
+	// OnRep n'est pas appelé sur le serveur : application directe pour l'hôte
+	OnRep_Customization();
+}
+
+void AYSPlayerState::OnRep_Customization()
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->RefreshCustomization();
+	}
 }

@@ -17,6 +17,13 @@
 #include "Upgrades/YSUpgrade.h"
 #include "UI/YSDeathScreenWidget.h"
 #include "Camera/CameraActor.h"
+#include "Components/SceneCaptureComponent2D.h"
+#include "Engine/SceneCapture2D.h"
+#include "Engine/PointLight.h"
+#include "Components/PointLightComponent.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Kismet/KismetRenderingLibrary.h"
 #include "Camera/CameraComponent.h"
 #include "Core/YSGameInstance.h"
 #include "Core/YSGameMode.h"
@@ -61,6 +68,9 @@ void AYSPlayerController::BeginPlay()
 		{
 			CharacterSelectMenu = CreateWidget<UYSCharacterSelectWidget>(this, UYSCharacterSelectWidget::StaticClass());
 			CharacterSelectMenu->OnCharacterChosen.BindUObject(this, &AYSPlayerController::YSSelectCharacter);
+			CharacterSelectMenu->OnColorChosen.BindUObject(this, &AYSPlayerController::ChooseColor);
+			CharacterSelectMenu->OnFaceChosen.BindUObject(this, &AYSPlayerController::ChooseFace);
+			CharacterSelectMenu->OnNicknameCommitted.BindUObject(this, &AYSPlayerController::CommitNickname);
 
 			FGameViewportWidgetSlot MenuSlot;
 			MenuSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
@@ -105,6 +115,7 @@ void AYSPlayerController::BeginPlay()
 			UpgradeMenu->ButtonSize = FVector2D(440.0f, 130.0f);
 			UpgradeMenu->ButtonFontSize = 18;
 			UpgradeMenu->OnCharacterChosen.BindUObject(this, &AYSPlayerController::ChooseUpgrade);
+			UpgradeMenu->SetCustomizationVisible(false);
 			UpgradeMenu->SetVisibility(ESlateVisibility::Collapsed);
 			FGameViewportWidgetSlot UpgradeSlot;
 			UpgradeSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
@@ -172,6 +183,7 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	// le menu disparaît dès que le joueur a son personnage
 	const bool bHasCharacter = Cast<AYSPlayerCharacter>(GetPawn()) != nullptr;
 	CharacterSelectMenu->SetVisibility(bHasCharacter || bDead ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	UpdateCharacterPreview(!bHasCharacter && !bDead);
 	if (bHasCharacter || bDead)
 	{
 		return;
@@ -181,6 +193,28 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	if (!YSGameState)
 	{
 		return;
+	}
+
+	// personnalisation : boutons construits dès que les options sont arrivées du serveur, choix et pseudo du PlayerState
+	if (!CharacterSelectMenu->HasCustomizationOptions() && YSGameState->GetCustomizationColors().Num() > 0)
+	{
+		TArray<FLinearColor> Colors;
+		for (const FYSCustomizationColor& Color : YSGameState->GetCustomizationColors())
+		{
+			Colors.Add(Color.ButtonColor);
+		}
+		TArray<UTexture2D*> Faces;
+		for (UTexture2D* Face : YSGameState->GetCustomizationFaces())
+		{
+			Faces.Add(Face);
+		}
+		CharacterSelectMenu->SetCustomizationOptions(Colors, Faces);
+	}
+	if (MyPlayerState)
+	{
+		CharacterSelectMenu->SetSelectedColor(MyPlayerState->GetColorIndex());
+		CharacterSelectMenu->SetSelectedFace(MyPlayerState->GetFaceIndex());
+		CharacterSelectMenu->SetNickname(FText::FromString(MyPlayerState->GetPlayerName()));
 	}
 
 	// boutons construits dès que la liste est arrivée du serveur
@@ -207,6 +241,153 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 		Ready += (YSPlayer && YSPlayer->HasSelectedCharacter()) ? 1 : 0;
 	}
 	CharacterSelectMenu->SetStatus(FText::Format(NSLOCTEXT("YS", "CharacterSelectStatus", "Joueurs prêts : {0} / {1}"), Ready, YSGameState->PlayerArray.Num()));
+}
+
+void AYSPlayerController::UpdateCharacterPreview(bool bShow)
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPlayerState* MyPlayerState = GetPlayerState<AYSPlayerState>();
+
+	// personnage affiché : celui choisi (sinon le premier de la liste)
+	TSubclassOf<AYSPlayerCharacter> PreviewClass;
+	if (YSGameState && YSGameState->GetSelectableCharacters().Num() > 0)
+	{
+		const int32 Index = MyPlayerState && MyPlayerState->HasSelectedCharacter() ? MyPlayerState->GetSelectedCharacterIndex() : FMath::Max(0, LocalSelectedCharacter);
+		PreviewClass = YSGameState->GetSelectableCharacters().IsValidIndex(Index) ? YSGameState->GetSelectableCharacters()[Index] : YSGameState->GetSelectableCharacters()[0];
+	}
+
+	if (!bShow || !PreviewClass)
+	{
+		if (PreviewCharacter)
+		{
+			PreviewCharacter->Destroy();
+			PreviewCharacter = nullptr;
+		}
+		if (PreviewLight)
+		{
+			PreviewLight->Destroy();
+			PreviewLight = nullptr;
+		}
+		if (PreviewCapture)
+		{
+			PreviewCapture->Destroy();
+			PreviewCapture = nullptr;
+		}
+		if (CharacterSelectMenu)
+		{
+			CharacterSelectMenu->SetPreviewTexture(nullptr);
+		}
+		return;
+	}
+
+	// au-dessus de la map (rien ne lui fait d'ombre), loin de tout ; changement de personnage = nouvel aperçu
+	const FVector PreviewLocation(0.0f, 0.0f, 20000.0f);
+	if (PreviewCharacter && PreviewCharacter->GetClass() != PreviewClass)
+	{
+		PreviewCharacter->Destroy();
+		PreviewCharacter = nullptr;
+	}
+	if (!PreviewCharacter)
+	{
+		// local uniquement : ni répliqué, ni contrôlé
+		const FTransform SpawnTransform(FRotator::ZeroRotator, PreviewLocation);
+		PreviewCharacter = GetWorld()->SpawnActorDeferred<AYSPlayerCharacter>(PreviewClass, SpawnTransform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (!PreviewCharacter)
+		{
+			return;
+		}
+		PreviewCharacter->SetReplicates(false);
+		PreviewCharacter->FinishSpawning(SpawnTransform);
+		PreviewCharacter->GetCharacterMovement()->DisableMovement();
+		PreviewCharacter->GetCharacterMovement()->GravityScale = 0.0f;
+	}
+
+	if (!PreviewCapture)
+	{
+		if (!PreviewTarget)
+		{
+			PreviewTarget = UKismetRenderingLibrary::CreateRenderTarget2D(this, 360, 480, RTF_RGBA8, FLinearColor::Transparent);
+		}
+
+		// face au personnage (qui regarde vers +X), légèrement au-dessus
+		const FVector CaptureLocation = PreviewLocation + FVector(450.0f, 0.0f, 40.0f);
+		const FRotator CaptureRotation = (PreviewLocation - CaptureLocation).Rotation();
+		PreviewCapture = GetWorld()->SpawnActor<ASceneCapture2D>(CaptureLocation, CaptureRotation);
+		if (!PreviewCapture)
+		{
+			return;
+		}
+		USceneCaptureComponent2D* Capture = PreviewCapture->GetCaptureComponent2D();
+		Capture->TextureTarget = PreviewTarget;
+		Capture->FOVAngle = 40.0f;
+		Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+		Capture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+		Capture->bCaptureEveryFrame = true;
+		// fond noir et exposition fixe : seul le personnage compte (pas de ciel, pas de brouillard)
+		Capture->ShowFlags.SetAtmosphere(false);
+		Capture->ShowFlags.SetFog(false);
+		Capture->ShowFlags.SetVolumetricFog(false);
+		Capture->ShowFlags.SetCloud(false);
+		Capture->ShowFlags.SetEyeAdaptation(false);
+		Capture->ShowFlags.SetBloom(false);
+		CharacterSelectMenu->SetPreviewTexture(PreviewTarget);
+
+		// éclairage de face, un peu au-dessus de la capture
+		PreviewLight = GetWorld()->SpawnActor<APointLight>(CaptureLocation + FVector(0.0f, 150.0f, 200.0f), FRotator::ZeroRotator);
+		if (PreviewLight)
+		{
+			PreviewLight->PointLightComponent->SetIntensity(PreviewLightIntensity);
+			PreviewLight->PointLightComponent->SetAttenuationRadius(2000.0f);
+			PreviewLight->PointLightComponent->SetCastShadows(false);
+		}
+	}
+
+	// seuls le personnage et ses armes (acteurs enfants) sont filmés
+	USceneCaptureComponent2D* Capture = PreviewCapture->GetCaptureComponent2D();
+	Capture->ShowOnlyActors.Reset();
+	Capture->ShowOnlyActors.Add(PreviewCharacter);
+	TArray<AActor*> Attached;
+	PreviewCharacter->GetAttachedActors(Attached, true, true);
+	Capture->ShowOnlyActors.Append(Attached);
+
+	// personnalisation choisie
+	if (YSGameState && MyPlayerState)
+	{
+		PreviewCharacter->ApplyCustomization(YSGameState->GetCustomizationMaterial(MyPlayerState->GetColorIndex()), YSGameState->GetCustomizationFace(MyPlayerState->GetFaceIndex()));
+	}
+}
+
+void AYSPlayerController::ChooseColor(int32 ColorIndex)
+{
+	const AYSPlayerState* MyPlayerState = GetPlayerState<AYSPlayerState>();
+	ServerSetCustomization(ColorIndex, MyPlayerState ? MyPlayerState->GetFaceIndex() : 0);
+}
+
+void AYSPlayerController::ChooseFace(int32 FaceIndex)
+{
+	const AYSPlayerState* MyPlayerState = GetPlayerState<AYSPlayerState>();
+	ServerSetCustomization(MyPlayerState ? MyPlayerState->GetColorIndex() : 0, FaceIndex);
+}
+
+void AYSPlayerController::CommitNickname(const FString& Nickname)
+{
+	ServerSetNickname(Nickname);
+}
+
+void AYSPlayerController::ServerSetCustomization_Implementation(int32 ColorIndex, int32 FaceIndex)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->PlayerSetCustomization(this, ColorIndex, FaceIndex);
+	}
+}
+
+void AYSPlayerController::ServerSetNickname_Implementation(const FString& Nickname)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->PlayerSetNickname(this, Nickname);
+	}
 }
 
 void AYSPlayerController::Tick(float DeltaSeconds)
@@ -280,6 +461,10 @@ void AYSPlayerController::UpdatePlayerHUD()
 
 	PlayerHUD->SetVisibility(bInMatch ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	PlayerHUD->SetHealth(PlayerCharacter != nullptr, PlayerCharacter ? PlayerCharacter->GetHealth() : 0.0f, PlayerCharacter ? PlayerCharacter->GetMaxHealth() : 0.0f);
+	if (const APlayerState* MyPlayerState = GetPlayerState<APlayerState>())
+	{
+		PlayerHUD->SetPlayerName(FText::FromString(MyPlayerState->GetPlayerName()));
+	}
 	if (YSGameState)
 	{
 		PlayerHUD->SetLevel(YSGameState->GetTeamLevel(), YSGameState->GetTeamExperience(), YSGameState->GetExperienceToNextLevel());
@@ -637,4 +822,19 @@ void AYSPlayerController::UpdateAim()
 	{
 		SetControlRotation(FRotator(0.0f, ToAim.Rotation().Yaw, 0.0f));
 	}
+}
+
+void AYSPlayerController::YSSetColor(int32 ColorIndex)
+{
+	ChooseColor(ColorIndex);
+}
+
+void AYSPlayerController::YSSetFace(int32 FaceIndex)
+{
+	ChooseFace(FaceIndex);
+}
+
+void AYSPlayerController::YSSetName(const FString& Nickname)
+{
+	CommitNickname(Nickname);
 }

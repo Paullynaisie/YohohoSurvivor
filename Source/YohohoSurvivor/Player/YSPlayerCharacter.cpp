@@ -20,6 +20,9 @@
 #include "Components/ChildActorComponent.h"
 #include "Weapons/YSWeapon.h"
 #include "Player/YSFaceDecalComponent.h"
+#include "Player/YSDanglingChainComponent.h"
+#include "Components/WidgetComponent.h"
+#include "UI/YSNameplateWidget.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSCombat.h"
 #include "Core/YSGameplayTags.h"
@@ -133,6 +136,15 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	RightHandWeapon = CreateDefaultSubobject<UChildActorComponent>(TEXT("RightHandWeapon"));
 	RightHandWeapon->SetupAttachment(RightHand);
 	RightHandWeapon->SetChildActorOwnerOnCreation(true);
+
+	Nameplate = CreateDefaultSubobject<UWidgetComponent>(TEXT("Nameplate"));
+	Nameplate->SetupAttachment(RootComponent);
+	Nameplate->SetRelativeLocation(FVector(0.0f, 0.0f, 165.0f));
+	Nameplate->SetWidgetSpace(EWidgetSpace::Screen);
+	Nameplate->SetDrawAtDesiredSize(true);
+	Nameplate->SetWidgetClass(UYSNameplateWidget::StaticClass());
+	Nameplate->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Nameplate->SetVisibility(false);
 
 	GameplayTags.AddTag(YSTags::Team_Player);
 }
@@ -473,6 +485,13 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateBodyPivot(DeltaSeconds);
 	UpdateHands(DeltaSeconds);
 	UpdateDayNight(DeltaSeconds);
+	UpdateNameplate();
+
+	// clients : PlayerState et options de personnalisation peuvent arriver dans n'importe quel ordre
+	if (!bCustomizationApplied)
+	{
+		RefreshCustomization();
+	}
 
 	if (HasAuthority())
 	{
@@ -1016,5 +1035,95 @@ void AYSPlayerCharacter::RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& O
 		{
 			Upgrade->Apply(this, Entry.Variant, Entry);
 		}
+	}
+}
+
+void AYSPlayerCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	// serveur : le PlayerState est connu dès la possession (y compris après un changement de classe)
+	RefreshCustomization();
+}
+
+void AYSPlayerCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+
+	// clients : le PlayerState arrive par réplication
+	RefreshCustomization();
+}
+
+void AYSPlayerCharacter::RefreshCustomization()
+{
+	const AYSPlayerState* YSPlayerState = GetPlayerState<AYSPlayerState>();
+	const AYSGameState* YSGameState = GetWorld() ? GetWorld()->GetGameState<AYSGameState>() : nullptr;
+	if (YSPlayerState && YSGameState)
+	{
+		UMaterialInterface* ColorMaterial = YSGameState->GetCustomizationMaterial(YSPlayerState->GetColorIndex());
+		UTexture2D* FaceTexture = YSGameState->GetCustomizationFace(YSPlayerState->GetFaceIndex());
+		ApplyCustomization(ColorMaterial, FaceTexture);
+		bCustomizationApplied = ColorMaterial && FaceTexture;
+	}
+}
+
+void AYSPlayerCharacter::ApplyCustomization(UMaterialInterface* ColorMaterial, UTexture2D* FaceTexture)
+{
+	if (FaceTexture && FaceDecal)
+	{
+		FaceDecal->SetFaceTexture(FaceTexture);
+	}
+
+	if (!ColorMaterial)
+	{
+		return;
+	}
+
+	// composant du Blueprint (nom de variable, espaces et casse ignorés) puis tous ses sous-composants
+	const FString WantedName = CustomizationColorComponentName.ToString().Replace(TEXT(" "), TEXT(""));
+	TInlineComponentArray<USceneComponent*> Components(this);
+	for (USceneComponent* Component : Components)
+	{
+		if (!Component->GetName().Replace(TEXT(" "), TEXT("")).Equals(WantedName, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		TArray<USceneComponent*> Targets;
+		Component->GetChildrenComponents(true, Targets);
+		Targets.Add(Component);
+		for (USceneComponent* Target : Targets)
+		{
+			if (UYSDanglingChainComponent* Chain = Cast<UYSDanglingChainComponent>(Target))
+			{
+				Chain->SetSegmentMaterial(ColorMaterial);
+				UE_LOG(LogTemp, Verbose, TEXT("[YSCustomization] %s : %s (chaîne)"), *GetName(), *Target->GetName());
+			}
+			else if (UMeshComponent* TargetMesh = Cast<UMeshComponent>(Target))
+			{
+				for (int32 Slot = 0; Slot < TargetMesh->GetNumMaterials(); ++Slot)
+				{
+					TargetMesh->SetMaterial(Slot, ColorMaterial);
+					UE_LOG(LogTemp, Verbose, TEXT("[YSCustomization] %s : %s"), *GetName(), *Target->GetName());
+				}
+			}
+		}
+	}
+}
+
+void AYSPlayerCharacter::UpdateNameplate()
+{
+	// alliés uniquement : pas le joueur local (HUD), ni un personnage sans joueur (aperçu)
+	const APlayerState* OwningPlayerState = GetPlayerState();
+	const bool bShow = OwningPlayerState && !IsLocallyControlled() && IsAlive();
+	Nameplate->SetVisibility(bShow);
+	if (!bShow)
+	{
+		return;
+	}
+
+	if (UYSNameplateWidget* Widget = Cast<UYSNameplateWidget>(Nameplate->GetUserWidgetObject()))
+	{
+		Widget->SetPlayer(FText::FromString(OwningPlayerState->GetPlayerName()), Health, GetMaxHealth());
 	}
 }

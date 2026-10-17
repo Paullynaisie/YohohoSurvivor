@@ -71,6 +71,9 @@ public:
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	/** Change le matériau de tous les segments (personnalisation du joueur) */
+	void SetSegmentMaterial(UMaterialInterface* Material);
+
 protected:
 
 	virtual void OnRegister() override;

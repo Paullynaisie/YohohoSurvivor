@@ -1,6 +1,10 @@
 #include "UI/YSCharacterSelectWidget.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/Border.h"
 #include "Components/Button.h"
+#include "Components/EditableTextBox.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
@@ -8,6 +12,7 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Engine/Texture2D.h"
 
 namespace YSCharacterSelect
 {
@@ -17,13 +22,22 @@ namespace YSCharacterSelect
 		Font.Size = Size;
 		Text->SetFont(Font);
 	}
+
+	UTextBlock* MakeLabel(UWidgetTree* Tree, const FText& Text, int32 Size)
+	{
+		UTextBlock* Label = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Label->SetText(Text);
+		SetFontSize(Label, Size);
+		Label->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		return Label;
+	}
 }
 
 void UYSCharacterSelectButtonProxy::HandleClicked()
 {
 	if (Menu.IsValid())
 	{
-		Menu->NotifyButtonClicked(Index);
+		Menu->NotifyButtonClicked(Group, Index);
 	}
 }
 
@@ -51,10 +65,43 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	BackgroundSlot->SetHorizontalAlignment(HAlign_Fill);
 	BackgroundSlot->SetVerticalAlignment(VAlign_Fill);
 
+	UVerticalBox* Page = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Page"));
+	UOverlaySlot* PageSlot = Root->AddChildToOverlay(Page);
+	PageSlot->SetHorizontalAlignment(HAlign_Fill);
+	PageSlot->SetVerticalAlignment(VAlign_Fill);
+
+	// pseudo : en haut au centre
+	USizeBox* NicknameSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("NicknameRow"));
+	NicknameSize->SetWidthOverride(340.0f);
+	NicknameRow = NicknameSize;
+	NicknameBox = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("Nickname"));
+	NicknameBox->SetHintText(NSLOCTEXT("YS", "NicknameHint", "Ton pseudo"));
+	NicknameBox->SetJustification(ETextJustify::Center);
+	NicknameBox->OnTextCommitted.AddDynamic(this, &UYSCharacterSelectWidget::HandleNicknameCommitted);
+	FEditableTextBoxStyle NicknameStyle = NicknameBox->WidgetStyle;
+	NicknameStyle.TextStyle.Font.Size = 22;
+	NicknameStyle.SetForegroundColor(FSlateColor(FLinearColor(0.05f, 0.05f, 0.05f)));
+	NicknameBox->WidgetStyle = NicknameStyle;
+	NicknameSize->AddChild(NicknameBox);
+	UVerticalBoxSlot* NicknameSlot = Page->AddChildToVerticalBox(NicknameSize);
+	NicknameSlot->SetHorizontalAlignment(HAlign_Center);
+	NicknameSlot->SetPadding(FMargin(0.0f, 32.0f, 0.0f, 0.0f));
+
+	// 3 colonnes de même largeur
+	UHorizontalBox* Columns = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Columns"));
+	UVerticalBoxSlot* ColumnsSlot = Page->AddChildToVerticalBox(Columns);
+	ColumnsSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	auto AddColumn = [Columns](UWidget* Content)
+	{
+		UHorizontalBoxSlot* ColumnSlot = Columns->AddChildToHorizontalBox(Content);
+		ColumnSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		ColumnSlot->SetHorizontalAlignment(HAlign_Center);
+		ColumnSlot->SetVerticalAlignment(VAlign_Center);
+	};
+
+	// gauche : choix principal (personnage / upgrade)
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
-	UOverlaySlot* ColumnSlot = Root->AddChildToOverlay(Column);
-	ColumnSlot->SetHorizontalAlignment(HAlign_Center);
-	ColumnSlot->SetVerticalAlignment(VAlign_Center);
+	AddColumn(Column);
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
 	TitleText = Title;
@@ -75,6 +122,136 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	UVerticalBoxSlot* StatusSlot = Column->AddChildToVerticalBox(StatusText);
 	StatusSlot->SetHorizontalAlignment(HAlign_Center);
 	StatusSlot->SetPadding(FMargin(0.0f, 24.0f, 0.0f, 0.0f));
+
+	// centre : couleur et visage
+	UVerticalBox* Customization = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Customization"));
+	CustomizationColumn = Customization;
+	AddColumn(Customization);
+
+	UVerticalBoxSlot* ColorTitleSlot = Customization->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "ColorTitle", "Choisis ta couleur"), 24));
+	ColorTitleSlot->SetHorizontalAlignment(HAlign_Center);
+	ColorTitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 12.0f));
+	ColorRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Colors"));
+	Customization->AddChildToVerticalBox(ColorRow)->SetHorizontalAlignment(HAlign_Center);
+
+	UVerticalBoxSlot* FaceTitleSlot = Customization->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "FaceTitle", "Choisis ton visage"), 24));
+	FaceTitleSlot->SetHorizontalAlignment(HAlign_Center);
+	FaceTitleSlot->SetPadding(FMargin(0.0f, 40.0f, 0.0f, 12.0f));
+	FaceRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Faces"));
+	Customization->AddChildToVerticalBox(FaceRow)->SetHorizontalAlignment(HAlign_Center);
+
+	// droite : aperçu du personnage
+	USizeBox* Preview = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("Preview"));
+	Preview->SetWidthOverride(PreviewSize.X);
+	Preview->SetHeightOverride(PreviewSize.Y);
+	PreviewColumn = Preview;
+	PreviewImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("PreviewImage"));
+	PreviewImage->SetColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, 0.0f));
+	Preview->AddChild(PreviewImage);
+	AddColumn(Preview);
+}
+
+UBorder* UYSCharacterSelectWidget::AddSwatchButton(UHorizontalBox* Row, int32 Group, int32 Index, const FLinearColor& ButtonColor, UTexture2D* Icon)
+{
+	// cadre (sélection) > bouton carré (couleur) > icône (visage)
+	UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	Frame->SetPadding(FMargin(4.0f));
+	Frame->SetBrushColor(FLinearColor::Transparent);
+
+	USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	Size->SetWidthOverride(SwatchSize);
+	Size->SetHeightOverride(SwatchSize);
+	Frame->SetContent(Size);
+
+	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+	Button->SetBackgroundColor(ButtonColor);
+	Size->AddChild(Button);
+
+	if (Icon)
+	{
+		UImage* Image = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Image->SetBrushFromTexture(Icon);
+		Button->AddChild(Image);
+	}
+
+	UYSCharacterSelectButtonProxy* Proxy = NewObject<UYSCharacterSelectButtonProxy>(this);
+	Proxy->Group = Group;
+	Proxy->Index = Index;
+	Proxy->Menu = this;
+	Button->OnClicked.AddDynamic(Proxy, &UYSCharacterSelectButtonProxy::HandleClicked);
+	ButtonProxies.Add(Proxy);
+
+	UHorizontalBoxSlot* FrameSlot = Row->AddChildToHorizontalBox(Frame);
+	FrameSlot->SetPadding(FMargin(6.0f, 0.0f));
+	return Frame;
+}
+
+void UYSCharacterSelectWidget::SetCustomizationOptions(const TArray<FLinearColor>& Colors, const TArray<UTexture2D*>& Faces)
+{
+	if (!ColorRow || ColorButtons.Num() > 0)
+	{
+		return;
+	}
+
+	for (int32 Index = 0; Index < Colors.Num(); ++Index)
+	{
+		ColorButtons.Add(AddSwatchButton(ColorRow, 1, Index, Colors[Index], nullptr));
+	}
+	for (int32 Index = 0; Index < Faces.Num(); ++Index)
+	{
+		FaceButtons.Add(AddSwatchButton(FaceRow, 2, Index, FLinearColor(0.85f, 0.85f, 0.85f), Faces[Index]));
+	}
+}
+
+void UYSCharacterSelectWidget::SetSelectedColor(int32 SelectedIndex)
+{
+	for (int32 Index = 0; Index < ColorButtons.Num(); ++Index)
+	{
+		ColorButtons[Index]->SetBrushColor(Index == SelectedIndex ? FLinearColor::White : FLinearColor::Transparent);
+	}
+}
+
+void UYSCharacterSelectWidget::SetSelectedFace(int32 SelectedIndex)
+{
+	for (int32 Index = 0; Index < FaceButtons.Num(); ++Index)
+	{
+		FaceButtons[Index]->SetBrushColor(Index == SelectedIndex ? FLinearColor::White : FLinearColor::Transparent);
+	}
+}
+
+void UYSCharacterSelectWidget::SetCustomizationVisible(bool bVisible)
+{
+	const ESlateVisibility NewVisibility = bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	for (UWidget* Widget : { NicknameRow.Get(), CustomizationColumn.Get(), PreviewColumn.Get() })
+	{
+		if (Widget)
+		{
+			Widget->SetVisibility(NewVisibility);
+		}
+	}
+}
+
+void UYSCharacterSelectWidget::SetNickname(const FText& Nickname)
+{
+	// le joueur est en train de taper : on ne touche pas au texte
+	if (NicknameBox && !NicknameBox->HasKeyboardFocus() && !NicknameBox->GetText().EqualTo(Nickname))
+	{
+		NicknameBox->SetText(Nickname);
+	}
+}
+
+void UYSCharacterSelectWidget::SetPreviewTexture(UTexture* Texture)
+{
+	if (PreviewImage)
+	{
+		PreviewImage->SetBrushResourceObject(Texture);
+		PreviewImage->SetColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, Texture ? 1.0f : 0.0f));
+	}
+}
+
+void UYSCharacterSelectWidget::HandleNicknameCommitted(const FText& Text, ETextCommit::Type CommitMethod)
+{
+	OnNicknameCommitted.ExecuteIfBound(Text.ToString());
 }
 
 void UYSCharacterSelectWidget::SetCharacters(const TArray<FText>& Names)
@@ -199,8 +376,21 @@ void UYSCharacterSelectWidget::SetStatus(const FText& Status)
 	}
 }
 
-void UYSCharacterSelectWidget::NotifyButtonClicked(int32 Index)
+void UYSCharacterSelectWidget::NotifyButtonClicked(int32 Group, int32 Index)
 {
-	SetSelectedIndex(Index);
-	OnCharacterChosen.ExecuteIfBound(Index);
+	switch (Group)
+	{
+	case 1:
+		SetSelectedColor(Index);
+		OnColorChosen.ExecuteIfBound(Index);
+		break;
+	case 2:
+		SetSelectedFace(Index);
+		OnFaceChosen.ExecuteIfBound(Index);
+		break;
+	default:
+		SetSelectedIndex(Index);
+		OnCharacterChosen.ExecuteIfBound(Index);
+		break;
+	}
 }

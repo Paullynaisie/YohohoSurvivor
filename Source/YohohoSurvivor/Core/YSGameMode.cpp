@@ -53,6 +53,7 @@ void AYSGameMode::InitGameState()
 	if (AYSGameState* YSGameState = GetGameState<AYSGameState>())
 	{
 		YSGameState->SetSelectableCharacters(SelectableCharacters);
+		YSGameState->SetCustomizationOptions(CustomizationColors, CustomizationFaces);
 		YSGameState->SetTeamProgress(0, 0.0f, GetExperienceForLevel(0));
 	}
 }
@@ -192,6 +193,18 @@ void AYSGameMode::TryFinishUpgradeSelection()
 
 void AYSGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
+	// premier passage : numéro d'arrivée (hôte = 1), nom « Player N » et couleur par défaut différente pour chacun
+	if (AYSPlayerState* NewPlayerState = NewPlayer ? NewPlayer->GetPlayerState<AYSPlayerState>() : nullptr)
+	{
+		if (NewPlayerState->GetPlayerNumber() == 0)
+		{
+			const int32 Number = NextPlayerNumber++;
+			NewPlayerState->SetPlayerNumber(Number);
+			ChangeName(NewPlayer, FString::Printf(TEXT("Player %d"), Number), false);
+			NewPlayerState->SetCustomization(CustomizationColors.Num() > 0 ? (Number - 1) % CustomizationColors.Num() : 0, 0);
+		}
+	}
+
 	// pas de pawn tant que le joueur n'a pas choisi (et que la partie n'a pas démarré) : il voit le menu
 	const AYSPlayerState* PlayerState = NewPlayer ? NewPlayer->GetPlayerState<AYSPlayerState>() : nullptr;
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
@@ -320,5 +333,23 @@ void AYSGameMode::OnEliteKilled(AYSFoeCharacter* Elite)
 		{
 			Rule->NotifyPhaseChanged(false);
 		}
+	}
+}
+
+void AYSGameMode::PlayerSetCustomization(APlayerController* Player, int32 ColorIndex, int32 FaceIndex)
+{
+	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
+	if (PlayerState && CustomizationColors.IsValidIndex(ColorIndex) && CustomizationFaces.IsValidIndex(FaceIndex))
+	{
+		PlayerState->SetCustomization(ColorIndex, FaceIndex);
+	}
+}
+
+void AYSGameMode::PlayerSetNickname(APlayerController* Player, const FString& Nickname)
+{
+	const FString Trimmed = Nickname.TrimStartAndEnd().Left(MaxNicknameLength);
+	if (Player && !Trimmed.IsEmpty())
+	{
+		ChangeName(Player, Trimmed, false);
 	}
 }

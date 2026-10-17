@@ -43,6 +43,9 @@ public:
 	/** Niveau et XP de l'équipe */
 	void SetLevel(int32 Level, float Experience, float ExperienceToNextLevel);
 
+	/** Pseudo du joueur (au-dessus de la barre de PV) */
+	void SetPlayerName(const FText& Name);
+
 private:
 
 	void BuildWidgetTree();
@@ -52,6 +55,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UWidget> HealthGroup;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> NameLabel;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UProgressBar> HealthBar;

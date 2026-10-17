@@ -224,3 +224,15 @@ void UYSDanglingChainComponent::UpdateSegmentTransforms()
 		Segments[Index]->SetWorldScale3D(Scale);
 	}
 }
+
+void UYSDanglingChainComponent::SetSegmentMaterial(UMaterialInterface* Material)
+{
+	SegmentMaterial = Material;
+	for (UStaticMeshComponent* Segment : Segments)
+	{
+		if (Segment && Material)
+		{
+			Segment->SetMaterial(0, Material);
+		}
+	}
+}

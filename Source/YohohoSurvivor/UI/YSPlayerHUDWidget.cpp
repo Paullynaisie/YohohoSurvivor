@@ -77,6 +77,12 @@ void UYSPlayerHUDWidget::BuildWidgetTree()
 	UProgressBar* Bar = nullptr;
 	UTextBlock* Label = nullptr;
 
+	// pseudo du joueur au-dessus de sa barre de PV
+	NameLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("PlayerName"));
+	YSPlayerHUD::StyleText(NameLabel, 18);
+	UVerticalBoxSlot* NameSlot = Column->AddChildToVerticalBox(NameLabel);
+	NameSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 2.0f));
+
 	HealthGroup = CreateBar(TEXT("Health"), HealthBarSize, HealthColor, 14, Bar, Label);
 	HealthBar = Bar;
 	HealthLabel = Label;
@@ -117,4 +123,12 @@ void UYSPlayerHUDWidget::SetLevel(int32 Level, float Experience, float Experienc
 	LevelLabel->SetText(FText::Format(NSLOCTEXT("YS", "HUDLevel", "Lv {0}"), Level));
 	ExperienceBar->SetPercent(ExperienceToNextLevel > 0.0f ? Experience / ExperienceToNextLevel : 0.0f);
 	ExperienceLabel->SetText(FText::Format(NSLOCTEXT("YS", "HUDExperience", "{0} / {1} XP"), YSPlayerHUD::FormatValue(Experience), YSPlayerHUD::FormatValue(ExperienceToNextLevel)));
+}
+
+void UYSPlayerHUDWidget::SetPlayerName(const FText& Name)
+{
+	if (NameLabel && !NameLabel->GetText().EqualTo(Name))
+	{
+		NameLabel->SetText(Name);
+	}
 }

@@ -2,11 +2,13 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "Core/YSCustomization.h"
 #include "YSGameMode.generated.h"
 
 class AYSPlayerCharacter;
 class UYSEnemySpawnRule;
 class AYSFoeCharacter;
+class UTexture2D;
 
 /**
  *  GameMode du jeu (serveur uniquement), avec sélection du personnage :
@@ -33,6 +35,18 @@ protected:
 	/** Personnages proposés dans le menu de sélection (dans l'ordre des boutons) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
 	TArray<TSubclassOf<AYSPlayerCharacter>> SelectableCharacters;
+
+	/** Couleurs proposées à l'écran de sélection (matériau appliqué au « Head Feature » du personnage) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	TArray<FYSCustomizationColor> CustomizationColors;
+
+	/** Visages proposés à l'écran de sélection (texture du decal de visage) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	TArray<TObjectPtr<UTexture2D>> CustomizationFaces;
+
+	/** Longueur max d'un pseudo */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select", meta=(ClampMin="1"))
+	int32 MaxNicknameLength = 16;
 
 	/** XP nécessaire pour passer du niveau 0 au niveau 1 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))
@@ -71,6 +85,12 @@ public:
 	/** Choix d'un joueur (reçu par RPC du PlayerController) */
 	void PlayerSelectedCharacter(APlayerController* Player, int32 CharacterIndex);
 
+	/** Personnalisation d'un joueur (reçue par RPC ; index invalides ignorés) */
+	void PlayerSetCustomization(APlayerController* Player, int32 ColorIndex, int32 FaceIndex);
+
+	/** Pseudo d'un joueur (reçu par RPC ; vide = inchangé, tronqué à MaxNicknameLength) */
+	void PlayerSetNickname(APlayerController* Player, const FString& Nickname);
+
 	/** XP gagnée par l'équipe (NME tué, debug) : gère les montées de niveau et la sélection d'upgrade */
 	void AddTeamExperience(float Amount);
 
@@ -96,6 +116,9 @@ protected:
 
 	/** Montées de niveau pas encore traitées par une sélection d'upgrade */
 	int32 PendingLevelUps = 0;
+
+	/** Prochain numéro de joueur (nom par défaut « Player N », couleur par défaut) */
+	int32 NextPlayerNumber = 1;
 
 	/** Démarre la partie si tous les joueurs connectés ont choisi */
 	void TryStartMatch();

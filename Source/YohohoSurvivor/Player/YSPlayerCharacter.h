@@ -17,6 +17,9 @@ class UInputAction;
 class UInputMappingContext;
 class UChildActorComponent;
 class AYSWeapon;
+class UTexture2D;
+class UWidgetComponent;
+class UMaterialInterface;
 struct FInputActionValue;
 
 /**
@@ -56,6 +59,10 @@ private:
 	/** Visage projeté sur l'avant du corps (texture réglable via Face Texture sur le composant) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UYSFaceDecalComponent> FaceDecal;
+
+	/** Pseudo et PV au-dessus du personnage, visibles pour les autres joueurs (le joueur local les a dans le HUD) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UWidgetComponent> Nameplate;
 
 	/** Main gauche : point d'attache (non mis à l'échelle) des armes / objets tenus à gauche */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
@@ -193,6 +200,13 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Upgrades", meta=(ClampMin="0"))
 	float GoldChance = 10.0f;
+
+	/** Composant qui reçoit la couleur choisie à l'écran de sélection (avec tous ses sous-composants) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Customization")
+	FName CustomizationColorComponentName = TEXT("Head Feature");
+
+	/** Personnalisation appliquée (couleur et visage trouvés) */
+	bool bCustomizationApplied = false;
 
 	/** Post-process de la nuit (appliqué à la caméra du joueur local, mélangé selon le jour / la nuit) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|DayNight")
@@ -337,6 +351,10 @@ public:
 
 	virtual void BeginPlay() override;
 
+	virtual void PossessedBy(AController* NewController) override;
+
+	virtual void OnRep_PlayerState() override;
+
 	USceneComponent* GetLeftHand() const { return LeftHand.Get(); }
 
 	USceneComponent* GetRightHand() const { return RightHand.Get(); }
@@ -414,6 +432,12 @@ public:
 	 */
 	void ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass);
 
+	/** Applique la personnalisation de son joueur (couleur, visage ; AYSPlayerState) */
+	void RefreshCustomization();
+
+	/** Applique un matériau au composant CustomizationColorComponentName et à ses sous-composants, et un visage (nullptr = inchangé) */
+	void ApplyCustomization(UMaterialInterface* ColorMaterial, UTexture2D* FaceTexture);
+
 	/** Reprend la progression d'upgrades d'un autre personnage (OldPool = son pool) et la réapplique (serveur) */
 	void RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& OldPool, const TArray<FYSUpgradeProgress>& OldProgress);
 
@@ -487,6 +511,9 @@ protected:
 
 	/** Mélange le post-process de nuit sur la caméra (joueur local) */
 	void UpdateDayNight(float DeltaSeconds);
+
+	/** Plaque pseudo + PV : cachée pour le joueur local et l'aperçu de l'écran de sélection */
+	void UpdateNameplate();
 
 	/** Position cible d'une main dans l'espace de BodyPivot (sans oscillation) */
 	FVector GetHandTargetLocation(bool bLeft) const;

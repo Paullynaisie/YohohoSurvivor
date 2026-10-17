@@ -10,6 +10,10 @@ class UYSCharacterSelectWidget;
 class UYSPlayerHUDWidget;
 class UYSEliteHealthWidget;
 class UYSDayBannerWidget;
+class ASceneCapture2D;
+class AYSPlayerCharacter;
+class UTextureRenderTarget2D;
+class APointLight;
 class UYSDeathScreenWidget;
 class ACameraActor;
 
@@ -39,6 +43,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	float AbilityIconBottomMargin = 40.0f;
 
+	/** Intensité de la lumière de l'aperçu du personnage (écran de sélection) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	float PreviewLightIntensity = 20000.0f;
+
 private:
 
 	UPROPERTY(Transient)
@@ -63,6 +71,20 @@ private:
 	/** Annonce « Jour X » */
 	UPROPERTY(Transient)
 	TObjectPtr<UYSDayBannerWidget> DayBanner;
+
+	/** Aperçu du personnage à l'écran de sélection : personnage local (non répliqué, non contrôlé) filmé par une capture */
+	UPROPERTY(Transient)
+	TObjectPtr<AYSPlayerCharacter> PreviewCharacter;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ASceneCapture2D> PreviewCapture;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextureRenderTarget2D> PreviewTarget;
+
+	/** Lumière de l'aperçu (rien d'autre ne l'éclaire là-haut sans le ciel) */
+	UPROPERTY(Transient)
+	TObjectPtr<APointLight> PreviewLight;
 
 	/** Dernier jour vu (pour annoncer les nouveaux) et temps d'affichage restant de l'annonce */
 	int32 LastSeenDay = INDEX_NONE;
@@ -117,6 +139,16 @@ public:
 	/** Debug (console) : déclenche l'action de clic de l'arme d'une main (0 droite, 1 gauche) vers le NME le plus proche.  Ex : YSFireAtFoe 0 */
 	UFUNCTION(Exec)
 	void YSFireAtFoe(int32 Hand = 0);
+
+	/** Debug (console) : personnalisation comme à l'écran de sélection.  Ex : YSSetColor 2 / YSSetFace 3 / YSSetName Paul */
+	UFUNCTION(Exec)
+	void YSSetColor(int32 ColorIndex);
+
+	UFUNCTION(Exec)
+	void YSSetFace(int32 FaceIndex);
+
+	UFUNCTION(Exec)
+	void YSSetName(const FString& Nickname);
 
 	/** Debug (console) : termine le jour en cours (la nuit et son élite commencent) */
 	UFUNCTION(Exec)
@@ -173,6 +205,20 @@ protected:
 
 	/** Met à jour le menu de sélection (boutons, illumination, état, visibilité) */
 	void UpdateCharacterSelectMenu();
+
+	/** Crée / met à jour / détruit l'aperçu du personnage (bShow : menu de sélection affiché) */
+	void UpdateCharacterPreview(bool bShow);
+
+	/** Choix de couleur / visage / pseudo à l'écran de sélection */
+	void ChooseColor(int32 ColorIndex);
+	void ChooseFace(int32 FaceIndex);
+	void CommitNickname(const FString& Nickname);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetCustomization(int32 ColorIndex, int32 FaceIndex);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetNickname(const FString& Nickname);
 
 	/** Met à jour le HUD (PV, niveau, XP) */
 	void UpdatePlayerHUD();
