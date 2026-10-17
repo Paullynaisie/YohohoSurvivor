@@ -227,19 +227,16 @@ protected:
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TArray<FYSUpgradeProgress> UpgradeProgress;
 
-	/** Multiplicateur des dégâts de l'arme de chaque main (Atk Bonus ; serveur) */
-	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
-	float RightHandDamageMultiplier = 1.0f;
+	/**
+	 *  Multiplicateurs par main et par type d'action (index = GetActionIndex : 0 main droite Ability, 1 gauche Ability,
+	 *  2 droite Auto atk, 3 gauche Auto atk) : dégâts (Damage bonus ; serveur) et recharge (CD reduction ; répliqués :
+	 *  le client prédit la recharge)
+	 */
+	UPROPERTY(Transient, VisibleInstanceOnly, Category="3C|Upgrades")
+	float DamageMultipliers[4];
 
-	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
-	float LeftHandDamageMultiplier = 1.0f;
-
-	/** Multiplicateur de recharge de l'arme de chaque main (CD Reduction ; répliqué : le client prédit la recharge) */
-	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
-	float RightHandCooldownMultiplier = 1.0f;
-
-	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
-	float LeftHandCooldownMultiplier = 1.0f;
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, Category="3C|Upgrades")
+	float CooldownMultipliers[4];
 
 	/** Propriétés données à l'arme de chaque main par les upgrades d'arme (ex. Ricochets ; serveur) */
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
@@ -448,12 +445,13 @@ public:
 	/** Ajoute le bonus proposé à la progression et applique l'upgrade (serveur) */
 	void ApplyUpgrade(const FYSUpgradeOffer& Offer);
 
-	/** Multiplicateur de dégâts d'une main (Atk Bonus) */
-	float GetHandDamageMultiplier(EYSHand Hand) const { return Hand == EYSHand::Left ? LeftHandDamageMultiplier : RightHandDamageMultiplier; }
+	/** Index des multiplicateurs pour une main et un type d'action */
+	static int32 GetActionIndex(EYSHand Hand, EYSActionSlot Slot) { return (Hand == EYSHand::Left ? 1 : 0) + (Slot == EYSActionSlot::AutoAtk ? 2 : 0); }
 
-	void SetHandDamageMultiplier(EYSHand Hand, float Multiplier) { (Hand == EYSHand::Left ? LeftHandDamageMultiplier : RightHandDamageMultiplier) = Multiplier; }
+	/** Damage bonus / CD reduction d'une main pour un type d'action (serveur) */
+	void SetHandDamageMultiplier(EYSHand Hand, EYSActionSlot Slot, float Multiplier) { DamageMultipliers[GetActionIndex(Hand, Slot)] = Multiplier; }
 
-	void SetHandCooldownMultiplier(EYSHand Hand, float Multiplier) { (Hand == EYSHand::Left ? LeftHandCooldownMultiplier : RightHandCooldownMultiplier) = Multiplier; }
+	void SetHandCooldownMultiplier(EYSHand Hand, EYSActionSlot Slot, float Multiplier) { CooldownMultipliers[GetActionIndex(Hand, Slot)] = Multiplier; ForceNetUpdate(); }
 
 	/** Propriété d'arme d'une main (upgrades d'arme ; serveur) */
 	void SetHandWeaponStat(EYSHand Hand, FName Stat, float Value) { (Hand == EYSHand::Left ? LeftHandWeaponStats : RightHandWeaponStats).Add(Stat, Value); }
@@ -461,11 +459,10 @@ public:
 	/** Propriété d'arme de la main qui tient Weapon (Default si absente ou arme pas tenue) */
 	float GetWeaponStat(const AYSWeapon* Weapon, FName Stat, float Default) const;
 
-	/** Multiplicateur de recharge de la main qui tient Weapon (1 si elle n'est pas tenue) */
-	float GetWeaponCooldownMultiplier(const AYSWeapon* Weapon) const;
+	/** Multiplicateurs de la main qui tient Weapon pour un type d'action (1 si elle n'est pas tenue) */
+	float GetWeaponCooldownMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
 
-	/** Multiplicateur de dégâts de la main qui tient Weapon (1 si elle n'est pas tenue) */
-	float GetWeaponDamageMultiplier(const AYSWeapon* Weapon) const;
+	float GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
 
 	/** Hurtbox : le corps (BodyMesh) */
 	UPrimitiveComponent* GetHurtbox() const;
@@ -483,6 +480,9 @@ public:
 
 	/** Akimbo : la même arme dans les deux mains (recharge unique, CD reduction commune) */
 	bool IsAkimbo() const;
+
+	/** Debug (serveur) : change l'arme d'une main en cours de partie */
+	void DebugEquipWeapon(EYSHand Hand, UClass* WeaponClass) { (Hand == EYSHand::Left ? LeftHandWeapon : RightHandWeapon)->SetChildActorClass(WeaponClass); }
 
 	/** Gaucher : armes échangées entre les mains (miroir), main principale = gauche. À régler avant FinishSpawning (OnConstruction) */
 	void SetLeftHanded(bool bNewLeftHanded) { bLeftHanded = bNewLeftHanded; }

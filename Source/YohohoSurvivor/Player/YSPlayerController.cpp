@@ -1009,3 +1009,18 @@ void AYSPlayerController::ServerSetLeftHanded_Implementation(bool bLeftHanded)
 		GameMode->PlayerSetLeftHanded(this, bLeftHanded);
 	}
 }
+
+void AYSPlayerController::YSEquipWeapon(int32 Hand, const FString& WeaponName)
+{
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	// préfixe BP_ facultatif (YSAfter remplace les _ par des espaces)
+	const FString AssetName = WeaponName.StartsWith(TEXT("BP_")) ? WeaponName : TEXT("BP_") + WeaponName;
+	UClass* WeaponClass = LoadClass<AYSWeapon>(nullptr, *FString::Printf(TEXT("/Game/Placeable/Weapons/%s.%s_C"), *AssetName, *AssetName));
+	if (!PlayerCharacter || !WeaponClass || !HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSEquipWeapon] impossible (perso %d, arme %s trouvée %d, hôte %d)"), PlayerCharacter != nullptr, *WeaponName, WeaponClass != nullptr, HasAuthority());
+		return;
+	}
+	PlayerCharacter->DebugEquipWeapon(Hand == 1 ? EYSHand::Left : EYSHand::Right, WeaponClass);
+	UE_LOG(LogTemp, Log, TEXT("[YSEquipWeapon] %s dans la main %s"), *WeaponName, Hand == 1 ? TEXT("gauche") : TEXT("droite"));
+}

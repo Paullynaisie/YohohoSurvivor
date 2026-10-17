@@ -116,9 +116,29 @@ void UYSStatUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const F
 	}
 }
 
+UYSHandStatUpgrade::UYSHandStatUpgrade()
+{
+	RightHandLabel = NSLOCTEXT("YS", "HandStatRight", "Right hand");
+	LeftHandLabel = NSLOCTEXT("YS", "HandStatLeft", "Left hand");
+	AkimboLabel = NSLOCTEXT("YS", "HandStatAkimbo", "Akimbo");
+	AbilityLabel = NSLOCTEXT("YS", "HandStatAbility", "Ability");
+	AutoAtkLabel = NSLOCTEXT("YS", "HandStatAutoAtk", "Auto atk");
+}
+
+FText UYSHandStatUpgrade::MakeName(const FText& HandText, int32 Variant) const
+{
+	return FText::Format(NSLOCTEXT("YS", "HandStatName", "{0} {1} {2}"), HandText, GetSlot(Variant) == EYSActionSlot::AutoAtk ? AutoAtkLabel : AbilityLabel, BonusName);
+}
+
+FText UYSHandStatUpgrade::GetVariantName(int32 Variant) const
+{
+	return MakeName(GetHand(Variant) == EYSHand::Left ? LeftHandLabel : RightHandLabel, Variant);
+}
+
 bool UYSHandStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	return GetHandWeapon(Character, Variant) && Super::CanBeOffered(Character, Variant, Progress);
+	// l'arme de la main doit avoir une action de ce type (Ability = clic, Auto atk = attaque auto)
+	return GetHandAction(Character, Variant) && Super::CanBeOffered(Character, Variant, Progress);
 }
 
 AYSWeapon* UYSHandStatUpgrade::GetHandWeapon(const AYSPlayerCharacter* Character, int32 Variant)
@@ -133,15 +153,13 @@ UYSAbilityComponent* UYSHandStatUpgrade::GetHandAction(const AYSPlayerCharacter*
 	{
 		return nullptr;
 	}
-	UYSAbilityComponent* Action = Weapon->GetActiveAction();
-	return Action ? Action : Weapon->GetAutoAction();
+	return GetSlot(Variant) == EYSActionSlot::AutoAtk ? Weapon->GetAutoAction() : Weapon->GetActiveAction();
 }
 
 UYSHandAtkBonusUpgrade::UYSHandAtkBonusUpgrade()
 {
-	DisplayName = NSLOCTEXT("YS", "HandAtkBonusName", "Atk Bonus");
-	RightHandName = NSLOCTEXT("YS", "RightHandAtkBonus", "Right hand Atk bonus");
-	LeftHandName = NSLOCTEXT("YS", "LeftHandAtkBonus", "Left hand Atk bonus");
+	DisplayName = NSLOCTEXT("YS", "HandAtkBonusName", "Damage bonus");
+	BonusName = NSLOCTEXT("YS", "HandAtkBonusBonus", "Damage bonus");
 	StatLabel = NSLOCTEXT("YS", "HandAtkBonusStat", "Dégât");
 }
 
@@ -153,15 +171,13 @@ float UYSHandAtkBonusUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Charact
 
 void UYSHandAtkBonusUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
-	Character->SetHandDamageMultiplier(GetHand(Variant), 1.0f + TotalBonus);
+	Character->SetHandDamageMultiplier(GetHand(Variant), GetSlot(Variant), 1.0f + TotalBonus);
 }
 
 UYSHandCooldownReductionUpgrade::UYSHandCooldownReductionUpgrade()
 {
-	DisplayName = NSLOCTEXT("YS", "HandCooldownReductionName", "CD Reduction");
-	RightHandName = NSLOCTEXT("YS", "RightHandCooldownReduction", "Right hand CD reduction");
-	LeftHandName = NSLOCTEXT("YS", "LeftHandCooldownReduction", "Left hand CD reduction");
-	AkimboName = NSLOCTEXT("YS", "AkimboCooldownReduction", "Akimbo CD reduction");
+	DisplayName = NSLOCTEXT("YS", "HandCooldownReductionName", "CD reduction");
+	BonusName = NSLOCTEXT("YS", "HandCooldownReductionBonus", "CD reduction");
 	StatLabel = NSLOCTEXT("YS", "HandCooldownReductionStat", "Recharge (s)");
 	BronzeValue = 0.03f;
 	SilverValue = 0.045f;
@@ -176,14 +192,14 @@ float UYSHandCooldownReductionUpgrade::GetBaseStatValue(const AYSPlayerCharacter
 
 void UYSHandCooldownReductionUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
-	// akimbo : une seule CD reduction (variante 0) pour les deux mains
+	// akimbo : une seule CD reduction par type d'action (variante de la main droite) pour les deux mains
 	if (Character->IsAkimbo())
 	{
-		Character->SetHandCooldownMultiplier(EYSHand::Right, GetMultiplier(TotalBonus));
-		Character->SetHandCooldownMultiplier(EYSHand::Left, GetMultiplier(TotalBonus));
+		Character->SetHandCooldownMultiplier(EYSHand::Right, GetSlot(Variant), GetMultiplier(TotalBonus));
+		Character->SetHandCooldownMultiplier(EYSHand::Left, GetSlot(Variant), GetMultiplier(TotalBonus));
 		return;
 	}
-	Character->SetHandCooldownMultiplier(GetHand(Variant), GetMultiplier(TotalBonus));
+	Character->SetHandCooldownMultiplier(GetHand(Variant), GetSlot(Variant), GetMultiplier(TotalBonus));
 }
 
 UYSMoveSpeedBonusUpgrade::UYSMoveSpeedBonusUpgrade()
@@ -302,7 +318,7 @@ UYSAbilityComponent* UYSWeaponUpgrade::GetRequiredAction(const AYSPlayerCharacte
 	TInlineComponentArray<UYSAbilityComponent*> Actions(Weapon);
 	for (UYSAbilityComponent* Action : Actions)
 	{
-		if (Action->IsA(RequiredActionClass))
+		if (Action->IsA(RequiredActionClass) && Action->GetActionSlot() == RequiredSlot)
 		{
 			return Action;
 		}
@@ -500,7 +516,7 @@ bool UYSHandCooldownReductionUpgrade::CanBeOffered(const AYSPlayerCharacter* Cha
 
 FText UYSHandCooldownReductionUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	return Character && Character->IsAkimbo() ? AkimboName : GetVariantName(Variant);
+	return Character && Character->IsAkimbo() ? MakeName(AkimboLabel, Variant) : GetVariantName(Variant);
 }
 
 void UYSHandCooldownReductionUpgrade::MergeProgress(const AYSPlayerCharacter* Character, int32 PoolIndex, TArray<FYSUpgradeProgress>& Progress) const
@@ -510,48 +526,51 @@ void UYSHandCooldownReductionUpgrade::MergeProgress(const AYSPlayerCharacter* Ch
 		return;
 	}
 
-	// tous les bonus des deux mains, du meilleur au moins bon ; les MaxStacks meilleurs restent (variante 0)
-	TArray<float> Values;
-	for (int32 Index = Progress.Num() - 1; Index >= 0; --Index)
+	// par type d'action : tous les bonus des deux mains, du meilleur au moins bon ; les MaxStacks meilleurs restent (main droite)
+	for (const EYSActionSlot Slot : { EYSActionSlot::Ability, EYSActionSlot::AutoAtk })
 	{
-		const FYSUpgradeProgress& Entry = Progress[Index];
-		if (Entry.PoolIndex != PoolIndex)
+		TArray<float> Values;
+		for (int32 Index = Progress.Num() - 1; Index >= 0; --Index)
+		{
+			const FYSUpgradeProgress& Entry = Progress[Index];
+			if (Entry.PoolIndex != PoolIndex || GetSlot(Entry.Variant) != Slot)
+			{
+				continue;
+			}
+
+			if (Entry.BonusValues.Num() > 0)
+			{
+				Values.Append(Entry.BonusValues);
+			}
+			else
+			{
+				// progression sans détail : bonus de valeur moyenne
+				for (int32 Stack = 0; Stack < Entry.Stacks; ++Stack)
+				{
+					Values.Add(Entry.TotalValue / FMath::Max(1, Entry.Stacks));
+				}
+			}
+			Progress.RemoveAt(Index);
+		}
+		if (Values.Num() == 0)
 		{
 			continue;
 		}
 
-		if (Entry.BonusValues.Num() > 0)
-		{
-			Values.Append(Entry.BonusValues);
-		}
-		else
-		{
-			// progression sans détail : bonus de valeur moyenne
-			for (int32 Stack = 0; Stack < Entry.Stacks; ++Stack)
-			{
-				Values.Add(Entry.TotalValue / FMath::Max(1, Entry.Stacks));
-			}
-		}
-		Progress.RemoveAt(Index);
-	}
-	if (Values.Num() == 0)
-	{
-		return;
-	}
+		Values.Sort(TGreater<float>());
+		const int32 Dropped = FMath::Max(0, Values.Num() - MaxStacks);
+		Values.SetNum(FMath::Min(Values.Num(), MaxStacks));
 
-	Values.Sort(TGreater<float>());
-	const int32 Dropped = FMath::Max(0, Values.Num() - MaxStacks);
-	Values.SetNum(FMath::Min(Values.Num(), MaxStacks));
-
-	FYSUpgradeProgress& Merged = Progress.AddDefaulted_GetRef();
-	Merged.PoolIndex = PoolIndex;
-	Merged.Variant = 0;
-	Merged.BonusValues = Values;
-	Merged.Stacks = Values.Num();
-	for (const float Value : Values)
-	{
-		Merged.TotalValue += Value;
+		FYSUpgradeProgress& Merged = Progress.AddDefaulted_GetRef();
+		Merged.PoolIndex = PoolIndex;
+		Merged.Variant = MakeVariant(EYSHand::Right, Slot);
+		Merged.BonusValues = Values;
+		Merged.Stacks = Values.Num();
+		for (const float Value : Values)
+		{
+			Merged.TotalValue += Value;
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSHandCooldownReduction] %s passe en akimbo (%s) : %d bonus gardés (somme %.3f), %d en trop jetés"),
+			*Character->GetName(), Slot == EYSActionSlot::AutoAtk ? TEXT("Auto atk") : TEXT("Ability"), Merged.Stacks, Merged.TotalValue, Dropped);
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSHandCooldownReduction] %s passe en akimbo : %d bonus gardés (somme %.3f), %d en trop jetés"),
-		*Character->GetName(), Merged.Stacks, Merged.TotalValue, Dropped);
 }

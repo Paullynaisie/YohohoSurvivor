@@ -146,6 +146,12 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	Nameplate->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Nameplate->SetVisibility(false);
 
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		DamageMultipliers[Index] = 1.0f;
+		CooldownMultipliers[Index] = 1.0f;
+	}
+
 	GameplayTags.AddTag(YSTags::Team_Player);
 }
 
@@ -158,8 +164,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, UpgradeProgress);
 	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, MaxHealthMultiplier);
-	DOREPLIFETIME(AYSPlayerCharacter, RightHandCooldownMultiplier);
-	DOREPLIFETIME(AYSPlayerCharacter, LeftHandCooldownMultiplier);
+	DOREPLIFETIME(AYSPlayerCharacter, CooldownMultipliers);
 	DOREPLIFETIME(AYSPlayerCharacter, Luck);
 	DOREPLIFETIME(AYSPlayerCharacter, bLeftHanded);
 }
@@ -417,15 +422,15 @@ void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 	Upgrade->Apply(this, Offer.Variant, *Progress);
 }
 
-float AYSPlayerCharacter::GetWeaponDamageMultiplier(const AYSWeapon* Weapon) const
+float AYSPlayerCharacter::GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const
 {
 	if (Weapon && Weapon == GetRightHandWeapon())
 	{
-		return RightHandDamageMultiplier;
+		return DamageMultipliers[GetActionIndex(EYSHand::Right, Slot)];
 	}
 	if (Weapon && Weapon == GetLeftHandWeapon())
 	{
-		return LeftHandDamageMultiplier;
+		return DamageMultipliers[GetActionIndex(EYSHand::Left, Slot)];
 	}
 	return 1.0f;
 }
@@ -912,15 +917,15 @@ void AYSPlayerCharacter::UpdateHealthRegen(float DeltaSeconds)
 	}
 }
 
-float AYSPlayerCharacter::GetWeaponCooldownMultiplier(const AYSWeapon* Weapon) const
+float AYSPlayerCharacter::GetWeaponCooldownMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const
 {
 	if (Weapon && Weapon == GetRightHandWeapon())
 	{
-		return RightHandCooldownMultiplier;
+		return CooldownMultipliers[GetActionIndex(EYSHand::Right, Slot)];
 	}
 	if (Weapon && Weapon == GetLeftHandWeapon())
 	{
-		return LeftHandCooldownMultiplier;
+		return CooldownMultipliers[GetActionIndex(EYSHand::Left, Slot)];
 	}
 	return 1.0f;
 }

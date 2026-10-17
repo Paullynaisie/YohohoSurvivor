@@ -72,7 +72,11 @@ void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
 	if (Projectile)
 	{
 		Projectile->SetDamage(Damage * GetDamageMultiplier());
-		Projectile->SetRicochets(FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::RicochetCountStat, 0.0f)), 1.0f + GetWeaponStat(UYSRicochetUpgrade::RicochetDamageBonusStat, 0.0f));
+		// upgrades d'arme (Ricochet) : seulement pour l'Ability, pas pour l'Auto shot
+		if (!IsAutomatic())
+		{
+			Projectile->SetRicochets(FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::RicochetCountStat, 0.0f)), 1.0f + GetWeaponStat(UYSRicochetUpgrade::RicochetDamageBonusStat, 0.0f));
+		}
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 }

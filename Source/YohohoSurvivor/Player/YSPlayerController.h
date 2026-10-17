@@ -170,6 +170,10 @@ public:
 	UFUNCTION(Exec)
 	void YSFire();
 
+	/** Debug (console, hôte) : met l'arme BP de /Game/Placeable/Weapons dans une main (0 droite, 1 gauche).  Ex : YSEquipWeapon 0 BattlePetoir (préfixe BP_ facultatif) */
+	UFUNCTION(Exec)
+	void YSEquipWeapon(int32 Hand, const FString& WeaponName);
+
 	/** Debug (console) : personnalisation comme à l'écran de sélection.  Ex : YSSetColor 2 / YSSetFace 3 / YSSetName Paul */
 	UFUNCTION(Exec)
 	void YSSetColor(int32 ColorIndex);

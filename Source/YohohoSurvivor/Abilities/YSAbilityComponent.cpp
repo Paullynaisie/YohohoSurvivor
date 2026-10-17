@@ -165,13 +165,13 @@ double UYSAbilityComponent::GetServerTime() const
 float UYSAbilityComponent::GetDamageMultiplier() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	return Character ? Character->GetWeaponDamageMultiplier(Cast<AYSWeapon>(GetOwner())) : 1.0f;
+	return Character ? Character->GetWeaponDamageMultiplier(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 1.0f;
 }
 
 float UYSAbilityComponent::GetCooldownMultiplier() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	return Character ? Character->GetWeaponCooldownMultiplier(Cast<AYSWeapon>(GetOwner())) : 1.0f;
+	return Character ? Character->GetWeaponCooldownMultiplier(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 1.0f;
 }
 
 float UYSAbilityComponent::GetWeaponStat(FName Stat, float Default) const

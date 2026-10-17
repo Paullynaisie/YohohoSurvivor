@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "Abilities/YSAbilityComponent.h"
 #include "UI/YSCharacterSelectWidget.h"
 #include "YSUpgrade.generated.h"
 
@@ -221,8 +222,10 @@ protected:
 };
 
 /**
- *  Upgrade de stat par main : deux bonus distincts (variante 0 = main droite, 1 = main gauche), cumulés séparément.
- *  Une main n'est proposée que si elle tient une arme.
+ *  Upgrade de stat par main ET par type d'action : 4 bonus distincts cumulés séparément
+ *  (variante = main + 2 × type : 0 main droite Ability, 1 main gauche Ability, 2 main droite Auto atk, 3 main gauche Auto atk).
+ *  Une variante n'est proposée que si l'arme de la main a une action de ce type (Ability = action du clic, Auto atk = attaque auto).
+ *  Nom affiché : « <main> <type> <BonusName> » (ex. « Left hand Auto atk Damage bonus »).
  */
 UCLASS(Abstract)
 class UYSHandStatUpgrade : public UYSStatUpgrade
@@ -231,18 +234,38 @@ class UYSHandStatUpgrade : public UYSStatUpgrade
 
 public:
 
-	/** Nom du bonus de chaque main */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
-	FText RightHandName;
+	UYSHandStatUpgrade();
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
-	FText LeftHandName;
+	/** Morceaux du nom affiché */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText RightHandLabel;
 
-	static EYSHand GetHand(int32 Variant) { return Variant == 1 ? EYSHand::Left : EYSHand::Right; }
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText LeftHandLabel;
 
-	virtual int32 GetVariantCount() const override { return 2; }
+	/** Remplace la main quand le bonus est commun aux deux mains (CD reduction en akimbo) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText AkimboLabel;
 
-	virtual FText GetVariantName(int32 Variant) const override { return GetHand(Variant) == EYSHand::Left ? LeftHandName : RightHandName; }
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText AbilityLabel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText AutoAtkLabel;
+
+	/** Nom du bonus (« Damage bonus », « CD reduction ») */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText BonusName;
+
+	static EYSHand GetHand(int32 Variant) { return Variant % 2 == 1 ? EYSHand::Left : EYSHand::Right; }
+
+	static EYSActionSlot GetSlot(int32 Variant) { return Variant >= 2 ? EYSActionSlot::AutoAtk : EYSActionSlot::Ability; }
+
+	static int32 MakeVariant(EYSHand Hand, EYSActionSlot Slot) { return (Hand == EYSHand::Left ? 1 : 0) + (Slot == EYSActionSlot::AutoAtk ? 2 : 0); }
+
+	virtual int32 GetVariantCount() const override { return 4; }
+
+	virtual FText GetVariantName(int32 Variant) const override;
 
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
@@ -251,12 +274,15 @@ protected:
 	/** Arme tenue par la main de la variante */
 	static AYSWeapon* GetHandWeapon(const AYSPlayerCharacter* Character, int32 Variant);
 
-	/** Action de l'arme de la main qui sert de référence : celle du clic, sinon l'attaque auto */
+	/** Action de l'arme de la main pour le type de la variante (nullptr si l'arme n'en a pas) */
 	static UYSAbilityComponent* GetHandAction(const AYSPlayerCharacter* Character, int32 Variant);
+
+	/** « <main ou Akimbo> <type> <BonusName> » */
+	FText MakeName(const FText& HandText, int32 Variant) const;
 };
 
-/** Atk Bonus (par main) : dégâts de l'arme de la main x (1 + somme des bonus de cette main) */
-UCLASS(meta=(DisplayName="Upgrade de stat : Atk Bonus (par main)"))
+/** Damage bonus (par main et par type d'action) : dégâts de l'action x (1 + somme des bonus) */
+UCLASS(meta=(DisplayName="Upgrade de stat : Damage bonus (par main et type d'action)"))
 class UYSHandAtkBonusUpgrade : public UYSHandStatUpgrade
 {
 	GENERATED_BODY()
@@ -267,17 +293,18 @@ public:
 
 protected:
 
-	/** Dégâts de base de l'action de la main */
+	/** Dégâts de base de l'action */
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
 };
 
 /**
- *  CD Reduction (par main ; une seule commune en akimbo) : temps de recharge de l'arme de la main x (1 - somme des bonus),
+ *  CD reduction (par main et par type d'action ; en akimbo, une seule commune aux deux mains par type :
+ *  « Akimbo Ability CD reduction » / « Akimbo Auto atk CD reduction ») : recharge de l'action x (1 - somme des bonus),
  *  jamais sous MinCooldownMultiplier. Coup d'Petoir : Cooldown ; Coup d'sabre : Auto Atk Cooldown (pas la durée de l'anim).
  */
-UCLASS(meta=(DisplayName="Upgrade de stat : CD Reduction (par main)"))
+UCLASS(meta=(DisplayName="Upgrade de stat : CD reduction (par main et type d'action)"))
 class UYSHandCooldownReductionUpgrade : public UYSHandStatUpgrade
 {
 	GENERATED_BODY()
@@ -290,21 +317,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="0", ClampMax="1"))
 	float MinCooldownMultiplier = 0.1f;
 
-	/** Nom en akimbo (une seule CD reduction pour les deux mains) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
-	FText AkimboName;
-
-	/** Akimbo : seule la variante 0 est proposée et s'applique aux deux mains */
+	/** Akimbo : seules les variantes de la main droite sont proposées (« Akimbo ... ») et s'appliquent aux deux mains */
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
 	virtual FText GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
-	/** Passage en akimbo : les bonus des deux mains fusionnent dans la variante 0, les MaxStacks meilleurs sont gardés */
+	/** Passage en akimbo : pour chaque type d'action, les bonus des deux mains fusionnent, les MaxStacks meilleurs sont gardés */
 	virtual void MergeProgress(const AYSPlayerCharacter* Character, int32 PoolIndex, TArray<FYSUpgradeProgress>& Progress) const override;
 
 protected:
 
-	/** Recharge de base de l'action de la main */
+	/** Recharge de base de l'action */
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue * GetMultiplier(TotalBonus); }
@@ -441,6 +464,10 @@ public:
 	/** Action d'arme requise dans la main (classe ou sous-classe) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
 	TSubclassOf<UYSAbilityComponent> RequiredActionClass;
+
+	/** Type d'action concerné : Ability (clic) ou Auto atk (ex. le Ricochet ne touche que le Coup d'Petoir en Ability, pas l'Auto shot) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	EYSActionSlot RequiredSlot = EYSActionSlot::Ability;
 
 	/** Préfixe des noms selon la main (« Right hand Ricochet ») */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")

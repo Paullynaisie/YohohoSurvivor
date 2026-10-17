@@ -5,6 +5,14 @@
 #include "GameplayTagContainer.h"
 #include "YSAbilityComponent.generated.h"
 
+/** Type d'action d'une arme : Ability (active, déclenchée par le joueur) ou Auto atk (passive, automatique) */
+UENUM(BlueprintType)
+enum class EYSActionSlot : uint8
+{
+	Ability,
+	AutoAtk	UMETA(DisplayName="Auto atk"),
+};
+
 class UTexture2D;
 
 /**
@@ -78,6 +86,9 @@ public:
 
 	/** Vrai pour une attaque automatique (déclenchée par le serveur, pas par une touche) */
 	virtual bool IsAutomatic() const { return false; }
+
+	/** Type d'action pour les upgrades : Ability (déclenchée par le joueur) ou Auto atk (automatique) */
+	EYSActionSlot GetActionSlot() const { return IsAutomatic() ? EYSActionSlot::AutoAtk : EYSActionSlot::Ability; }
 
 	/** Multiplicateur de dégâts de la main qui tient l'arme de cette capacité (Atk Bonus ; 1 sinon) */
 	float GetDamageMultiplier() const;
