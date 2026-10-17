@@ -102,42 +102,53 @@ int32 UYSEnemySpawnRule::SpawnEnemies(int32 Count)
 	int32 Spawned = 0;
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
-		const TSubclassOf<AYSFoeCharacter> EnemyClass = Classes[FMath::RandHelper(Classes.Num())];
-		const AYSFoeCharacter* Default = EnemyClass->GetDefaultObject<AYSFoeCharacter>();
-		const float HalfHeight = Default->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		Spawned += SpawnEnemy(Classes[FMath::RandHelper(Classes.Num())]) ? 1 : 0;
+	}
+	return Spawned;
+}
 
-		FActorSpawnParameters Params;
-		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
-
-		for (int32 Attempt = 0; Attempt < MaxPlacementAttempts; ++Attempt)
-		{
-			FVector Location;
-			if (!FindSpawnLocation(Players, HalfHeight, Location))
-			{
-				continue;
-			}
-
-			// tourné vers le joueur le plus proche dès son apparition
-			const APawn* Nearest = Players[0];
-			for (const APawn* Player : Players)
-			{
-				if (FVector::DistSquared2D(Player->GetActorLocation(), Location) < FVector::DistSquared2D(Nearest->GetActorLocation(), Location))
-				{
-					Nearest = Player;
-				}
-			}
-			const FRotator Rotation(0.0f, (Nearest->GetActorLocation() - Location).Rotation().Yaw, 0.0f);
-
-			if (World->SpawnActor<AYSFoeCharacter>(EnemyClass, Location, Rotation, Params))
-			{
-				UE_LOG(LogTemp, Verbose, TEXT("[YSEnemySpawnRule] %s à %.0f cm du joueur le plus proche"), *EnemyClass->GetName(), FVector::Dist2D(Nearest->GetActorLocation(), Location));
-				++Spawned;
-				break;
-			}
-		}
+AYSFoeCharacter* UYSEnemySpawnRule::SpawnEnemy(TSubclassOf<AYSFoeCharacter> EnemyClass)
+{
+	UWorld* World = GetWorld();
+	const TArray<APawn*> Players = GetActivePlayers();
+	if (!World || !EnemyClass || Players.Num() == 0)
+	{
+		return nullptr;
 	}
 
-	return Spawned;
+	// la taille du NME (élite x3) est appliquée à son BeginPlay : on la prévoit pour le poser sur le sol
+	const AYSFoeCharacter* Default = EnemyClass->GetDefaultObject<AYSFoeCharacter>();
+	const float HalfHeight = Default->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * Default->GetSizeMultiplier();
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
+
+	for (int32 Attempt = 0; Attempt < MaxPlacementAttempts; ++Attempt)
+	{
+		FVector Location;
+		if (!FindSpawnLocation(Players, HalfHeight, Location))
+		{
+			continue;
+		}
+
+		// tourné vers le joueur le plus proche dès son apparition
+		const APawn* Nearest = Players[0];
+		for (const APawn* Player : Players)
+		{
+			if (FVector::DistSquared2D(Player->GetActorLocation(), Location) < FVector::DistSquared2D(Nearest->GetActorLocation(), Location))
+			{
+				Nearest = Player;
+			}
+		}
+		const FRotator Rotation(0.0f, (Nearest->GetActorLocation() - Location).Rotation().Yaw, 0.0f);
+
+		if (AYSFoeCharacter* Enemy = World->SpawnActor<AYSFoeCharacter>(EnemyClass, Location, Rotation, Params))
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[YSEnemySpawnRule] %s à %.0f cm du joueur le plus proche"), *EnemyClass->GetName(), FVector::Dist2D(Nearest->GetActorLocation(), Location));
+			return Enemy;
+		}
+	}
+	return nullptr;
 }
 
 bool UYSEnemySpawnRule::FindSpawnLocation(const TArray<APawn*>& Players, float CapsuleHalfHeight, FVector& OutLocation) const
@@ -188,18 +199,56 @@ bool UYSEnemySpawnRule::FindSpawnLocation(const TArray<APawn*>& Players, float C
 
 void UYSTimedWaveSpawnRule::StartRule()
 {
-	NextWaveTime = FirstWaveDelay;
+	NextWaveTime = GetMatchElapsedTime() + FirstWaveDelay;
+	bElitePending = false;
+}
+
+void UYSTimedWaveSpawnRule::OnPhaseChanged(bool bNight)
+{
+	// nouvelle phase : vagues avec ses propres réglages, à partir de maintenant ; élite au début de la nuit
+	NextWaveTime = GetMatchElapsedTime() + FirstWaveDelay;
+	bElitePending = bNight;
+}
+
+bool UYSTimedWaveSpawnRule::IsNight() const
+{
+	const AYSGameState* GameState = GetWorld() ? GetWorld()->GetGameState<AYSGameState>() : nullptr;
+	return GameState && GameState->IsNight();
+}
+
+int32 UYSTimedWaveSpawnRule::GetDayNumber() const
+{
+	const AYSGameState* GameState = GetWorld() ? GetWorld()->GetGameState<AYSGameState>() : nullptr;
+	return GameState ? GameState->GetDayNumber() : 1;
 }
 
 int32 UYSTimedWaveSpawnRule::GetWaveSize() const
 {
-	// minute en cours : 1 de 0 à 60 s, 2 de 60 à 120 s, ...
-	const int32 Minute = FMath::FloorToInt(GetMatchElapsedTime() / MinuteDuration) + 1;
-	return GetPlayersInMatchCount() * EnemiesPerPlayer * Minute;
+	return GetPlayersInMatchCount() * (IsNight() ? NightEnemiesPerPlayer : EnemiesPerPlayer) * GetDayNumber();
+}
+
+bool UYSTimedWaveSpawnRule::SpawnElite()
+{
+	TArray<TSubclassOf<AYSFoeCharacter>> Classes = EliteClasses;
+	Classes.RemoveAll([](const TSubclassOf<AYSFoeCharacter>& Class) { return !Class; });
+	if (Classes.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSTimedWaveSpawnRule] Nuit sans élite : EliteClasses est vide (la nuit ne pourra pas se terminer)"));
+		return true;
+	}
+
+	const AYSFoeCharacter* Elite = SpawnEnemy(Classes[FMath::RandHelper(Classes.Num())]);
+	UE_LOG(LogTemp, Log, TEXT("[YSTimedWaveSpawnRule] Nuit %d : élite %s"), GetDayNumber(), Elite ? *Elite->GetName() : TEXT("pas d'emplacement, nouvel essai"));
+	return Elite != nullptr;
 }
 
 void UYSTimedWaveSpawnRule::TickRule(float DeltaSeconds)
 {
+	if (bElitePending && SpawnElite())
+	{
+		bElitePending = false;
+	}
+
 	const float Elapsed = GetMatchElapsedTime();
 	if (Elapsed < NextWaveTime)
 	{
@@ -207,13 +256,14 @@ void UYSTimedWaveSpawnRule::TickRule(float DeltaSeconds)
 	}
 
 	// une seule vague même après une longue pause (pas de rattrapage)
-	NextWaveTime += WaveInterval;
+	const float Interval = IsNight() ? NightWaveInterval : WaveInterval;
+	NextWaveTime += Interval;
 	if (NextWaveTime <= Elapsed)
 	{
-		NextWaveTime = Elapsed + WaveInterval;
+		NextWaveTime = Elapsed + Interval;
 	}
 
 	const int32 WaveSize = GetWaveSize();
 	const int32 Spawned = SpawnEnemies(WaveSize);
-	UE_LOG(LogTemp, Log, TEXT("[YSTimedWaveSpawnRule] %.1f s : vague de %d NME (%d apparus)"), Elapsed, WaveSize, Spawned);
+	UE_LOG(LogTemp, Log, TEXT("[YSTimedWaveSpawnRule] %.1f s, jour %d%s : vague de %d NME (%d apparus)"), Elapsed, GetDayNumber(), IsNight() ? TEXT(" (nuit)") : TEXT(""), WaveSize, Spawned);
 }

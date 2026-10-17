@@ -66,6 +66,16 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	TopDownCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	TopDownCamera->bUsePawnControlRotation = false;
 
+	// nuit : image plus sombre et bleutée, vignette (réglable dans 3C > DayNight)
+	NightPostProcess.bOverride_ColorGain = true;
+	NightPostProcess.ColorGain = FVector4(0.55f, 0.65f, 1.0f, 1.0f);
+	NightPostProcess.bOverride_ColorSaturation = true;
+	NightPostProcess.ColorSaturation = FVector4(0.7f, 0.7f, 0.7f, 1.0f);
+	NightPostProcess.bOverride_AutoExposureBias = true;
+	NightPostProcess.AutoExposureBias = -1.5f;
+	NightPostProcess.bOverride_VignetteIntensity = true;
+	NightPostProcess.VignetteIntensity = 0.9f;
+
 	// DA « primitives » : pas de mesh squelettique, le corps est un cylindre (BodyMesh)
 	GetMesh()->SetSkeletalMeshAsset(nullptr);
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -96.0f), FRotator(0.0f, -90.0f, 0.0f));
@@ -458,6 +468,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateStrafeAnimation(DeltaSeconds);
 	UpdateBodyPivot(DeltaSeconds);
 	UpdateHands(DeltaSeconds);
+	UpdateDayNight(DeltaSeconds);
 
 	if (HasAuthority())
 	{
@@ -897,4 +908,19 @@ float AYSPlayerCharacter::GetWeaponStat(const AYSWeapon* Weapon, FName Stat, flo
 
 	const float* Value = Stats ? Stats->Find(Stat) : nullptr;
 	return Value ? *Value : Default;
+}
+
+void AYSPlayerCharacter::UpdateDayNight(float DeltaSeconds)
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const float Target = YSGameState && YSGameState->IsNight() ? 1.0f : 0.0f;
+	NightBlend = DayNightBlendDuration > 0.0f ? FMath::FInterpConstantTo(NightBlend, Target, DeltaSeconds, 1.0f / DayNightBlendDuration) : Target;
+
+	TopDownCamera->PostProcessSettings = NightPostProcess;
+	TopDownCamera->PostProcessBlendWeight = NightBlend;
 }

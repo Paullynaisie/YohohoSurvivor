@@ -6,6 +6,7 @@
 
 class AYSPlayerCharacter;
 class UYSEnemySpawnRule;
+class AYSFoeCharacter;
 
 /**
  *  GameMode du jeu (serveur uniquement), avec sélection du personnage :
@@ -15,7 +16,7 @@ class UYSEnemySpawnRule;
  *  XP commune à l'équipe (AddTeamExperience) : à chaque niveau, partie en pause et choix d'une upgrade par joueur.
  *  Classe de base de BP_TestGameMode.
  */
-UCLASS(meta=(PrioritizeCategories="Spawn Level"))
+UCLASS(meta=(PrioritizeCategories="Spawn DayNight Level"))
 class AYSGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
@@ -45,6 +46,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))
 	int32 UpgradeChoiceCount = 3;
 
+	/** Durée du jour ; ensuite la nuit commence et dure tant que l'élite est en vie */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DayNight", meta=(ClampMin="1", Units="s"))
+	float DayDuration = 60.0f;
+
 public:
 
 	AYSGameMode();
@@ -67,6 +72,12 @@ public:
 
 	/** Choix d'upgrade d'un joueur (reçu par RPC du PlayerController ; index dans ses propositions) */
 	void PlayerChoseUpgrade(APlayerController* Player, int32 OfferIndex);
+
+	/** Fin du jour : la nuit commence (élite et vagues de nuit via les règles de spawn) */
+	void StartNight();
+
+	/** Mort de l'élite : la nuit se termine, jour suivant */
+	void OnEliteKilled(AYSFoeCharacter* Elite);
 
 protected:
 

@@ -194,6 +194,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Upgrades", meta=(ClampMin="0"))
 	float GoldChance = 10.0f;
 
+	/** Post-process de la nuit (appliqué à la caméra du joueur local, mélangé selon le jour / la nuit) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|DayNight")
+	FPostProcessSettings NightPostProcess;
+
+	/** Durée de la transition jour <-> nuit */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|DayNight", meta=(ClampMin="0", Units="s"))
+	float DayNightBlendDuration = 2.0f;
+
+	/** Poids actuel du post-process de nuit (0 jour, 1 nuit) */
+	float NightBlend = 0.0f;
+
 	/** Progression de chaque variante d'upgrade obtenue (répliquée pour l'affichage du menu) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TArray<FYSUpgradeProgress> UpgradeProgress;
@@ -461,6 +472,9 @@ protected:
 
 	/** Place les mains : position cible (défaut ou arme) + oscillation, suivie avec retard (visuel, toutes machines) */
 	void UpdateHands(float DeltaSeconds);
+
+	/** Mélange le post-process de nuit sur la caméra (joueur local) */
+	void UpdateDayNight(float DeltaSeconds);
 
 	/** Position cible d'une main dans l'espace de BodyPivot (sans oscillation) */
 	FVector GetHandTargetLocation(bool bLeft) const;

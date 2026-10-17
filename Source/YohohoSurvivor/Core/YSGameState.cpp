@@ -24,17 +24,35 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, TeamExperience);
 	DOREPLIFETIME(AYSGameState, ExperienceToNextLevel);
 	DOREPLIFETIME(AYSGameState, bUpgradeSelectionActive);
+	DOREPLIFETIME(AYSGameState, DayNumber);
+	DOREPLIFETIME(AYSGameState, bNight);
+	DOREPLIFETIME(AYSGameState, DayStartServerTime);
+	DOREPLIFETIME(AYSGameState, CurrentElite);
 }
 
 void AYSGameState::SetMatchStarted()
 {
 	bMatchStarted = true;
 	MatchStartServerTime = GetServerWorldTimeSeconds();
+	StartDay(1);
 }
 
 float AYSGameState::GetMatchElapsedTime() const
 {
 	return bMatchStarted ? FMath::Max(0.0, GetServerWorldTimeSeconds() - MatchStartServerTime) : 0.0f;
+}
+
+void AYSGameState::StartDay(int32 Day)
+{
+	DayNumber = Day;
+	bNight = false;
+	CurrentElite = nullptr;
+	DayStartServerTime = GetServerWorldTimeSeconds();
+}
+
+float AYSGameState::GetDayElapsedTime() const
+{
+	return bMatchStarted ? FMath::Max(0.0, GetServerWorldTimeSeconds() - DayStartServerTime) : 0.0f;
 }
 
 void AYSGameState::ReportDamage(const AActor* Victim, float Amount, const FVector& ImpactLocation, const AController* InstigatorController)

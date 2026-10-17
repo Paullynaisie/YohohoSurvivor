@@ -45,6 +45,28 @@ private:
 
 protected:
 
+	/** Nom affiché (barre de vie de l'élite dans le HUD) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe")
+	FText FoeName;
+
+	/** Le niveau suit le numéro du jour en cours au moment de l'apparition */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level")
+	bool bLevelFromDay = true;
+
+	/** Élite : apparaît la nuit, sa mort fait passer au jour suivant ; barre de vie toujours visible */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite")
+	bool bIsElite = false;
+
+	/** Multiplicateurs (élites) : PV, dégâts de contact, taille (appliquée au BeginPlay sur toutes les machines) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(ClampMin="0"))
+	float HealthMultiplier = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(ClampMin="0"))
+	float DamageMultiplier = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(ClampMin="0.1"))
+	float SizeMultiplier = 1.0f;
+
 	/** Niveau du NME : augmente ses PV, ses dégâts et l'XP qu'il donne */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Foe|Level", meta=(ClampMin="0"))
 	int32 Level = 0;
@@ -128,6 +150,15 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="Foe|Level")
 	int32 GetFoeLevel() const { return Level; }
+
+	bool IsElite() const { return bIsElite; }
+
+	float GetMaxHealth() const { return MaxHealth; }
+
+	float GetSizeMultiplier() const { return SizeMultiplier; }
+
+	/** Nom affiché (repli sur le nom de la classe) */
+	FText GetFoeName() const { return FoeName.IsEmpty() ? FText::FromString(GetClass()->GetName().Replace(TEXT("_C"), TEXT(""))) : FoeName; }
 
 	/** XP donnée à l'équipe quand ce NME meurt */
 	UFUNCTION(BlueprintPure, Category="Foe|Level")

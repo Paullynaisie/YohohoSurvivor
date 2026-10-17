@@ -2,6 +2,7 @@
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
 #include "Enemies/YSEnemySpawnRule.h"
+#include "Enemies/YSFoeCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/YSPlayerCharacter.h"
@@ -27,6 +28,12 @@ void AYSGameMode::Tick(float DeltaSeconds)
 	if (!YSGameState || !YSGameState->IsMatchStarted())
 	{
 		return;
+	}
+
+	// fin du jour : la nuit commence (elle ne se termine qu'à la mort de l'élite)
+	if (!YSGameState->IsNight() && YSGameState->GetDayElapsedTime() >= DayDuration)
+	{
+		StartNight();
 	}
 
 	for (UYSEnemySpawnRule* Rule : SpawnRules)
@@ -262,4 +269,42 @@ void AYSGameMode::TryStartMatch()
 bool AYSGameMode::HasCharacter(const AController* Controller)
 {
 	return Controller && Cast<AYSPlayerCharacter>(Controller->GetPawn()) != nullptr;
+}
+
+void AYSGameMode::StartNight()
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || !YSGameState->IsMatchStarted() || YSGameState->IsNight())
+	{
+		return;
+	}
+
+	YSGameState->StartNight();
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Nuit %d"), YSGameState->GetDayNumber());
+	for (UYSEnemySpawnRule* Rule : SpawnRules)
+	{
+		if (Rule)
+		{
+			Rule->NotifyPhaseChanged(true);
+		}
+	}
+}
+
+void AYSGameMode::OnEliteKilled(AYSFoeCharacter* Elite)
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || !YSGameState->IsNight())
+	{
+		return;
+	}
+
+	YSGameState->StartDay(YSGameState->GetDayNumber() + 1);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Élite %s tué : jour %d"), Elite ? *Elite->GetName() : TEXT("?"), YSGameState->GetDayNumber());
+	for (UYSEnemySpawnRule* Rule : SpawnRules)
+	{
+		if (Rule)
+		{
+			Rule->NotifyPhaseChanged(false);
+		}
+	}
 }

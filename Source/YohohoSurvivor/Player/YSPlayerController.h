@@ -8,6 +8,8 @@
 class UYSAbilityIconWidget;
 class UYSCharacterSelectWidget;
 class UYSPlayerHUDWidget;
+class UYSEliteHealthWidget;
+class UYSDayBannerWidget;
 class UYSDeathScreenWidget;
 class ACameraActor;
 
@@ -53,6 +55,18 @@ private:
 	/** Menu de choix d'upgrade (même widget que la sélection de personnage), affiché pendant une montée de niveau */
 	UPROPERTY(Transient)
 	TObjectPtr<UYSCharacterSelectWidget> UpgradeMenu;
+
+	/** Barre de vie de l'élite dans le HUD (haut droite), quand il est hors écran */
+	UPROPERTY(Transient)
+	TObjectPtr<UYSEliteHealthWidget> EliteHealth;
+
+	/** Annonce « Jour X » */
+	UPROPERTY(Transient)
+	TObjectPtr<UYSDayBannerWidget> DayBanner;
+
+	/** Dernier jour vu (pour annoncer les nouveaux) et temps d'affichage restant de l'annonce */
+	int32 LastSeenDay = INDEX_NONE;
+	float DayBannerRemaining = 0.0f;
 
 	/** Propositions actuellement affichées dans UpgradeMenu (pour reconstruire les boutons quand elles changent) */
 	TArray<FYSUpgradeOffer> DisplayedUpgradeOffers;
@@ -103,6 +117,10 @@ public:
 	/** Debug (console) : déclenche l'action de clic de l'arme d'une main (0 droite, 1 gauche) vers le NME le plus proche.  Ex : YSFireAtFoe 0 */
 	UFUNCTION(Exec)
 	void YSFireAtFoe(int32 Hand = 0);
+
+	/** Debug (console) : termine le jour en cours (la nuit et son élite commencent) */
+	UFUNCTION(Exec)
+	void YSStartNight();
 
 	/** Debug (console) : tire Draws fois 3 propositions et logue la fréquence de chaque proposition par position (vérifie les poids) */
 	UFUNCTION(Exec)
@@ -161,6 +179,12 @@ protected:
 
 	/** Met à jour le menu de choix d'upgrade */
 	void UpdateUpgradeMenu();
+
+	/** Barre de l'élite hors écran et annonce des jours */
+	void UpdateDayNightUI(float DeltaSeconds);
+
+	UFUNCTION(Server, Reliable)
+	void ServerStartNight();
 
 	/** Clic sur une upgrade (index dans les propositions) */
 	void ChooseUpgrade(int32 OfferIndex);

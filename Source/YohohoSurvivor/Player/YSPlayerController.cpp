@@ -12,6 +12,8 @@
 #include "UI/YSAbilityIconWidget.h"
 #include "UI/YSCharacterSelectWidget.h"
 #include "UI/YSPlayerHUDWidget.h"
+#include "UI/YSEliteHealthWidget.h"
+#include "UI/YSDayBannerWidget.h"
 #include "Upgrades/YSUpgrade.h"
 #include "UI/YSDeathScreenWidget.h"
 #include "Camera/CameraActor.h"
@@ -79,6 +81,24 @@ void AYSPlayerController::BeginPlay()
 			HUDSlot.Offsets = FMargin(24.0f, 24.0f, 0.0f, 0.0f);
 			HUDSlot.ZOrder = 1;
 			ViewportSubsystem->AddWidgetForPlayer(PlayerHUD, GetLocalPlayer(), HUDSlot);
+
+			// barre de l'élite : haut droite (symétrique du HUD du joueur)
+			EliteHealth = CreateWidget<UYSEliteHealthWidget>(this, UYSEliteHealthWidget::StaticClass());
+			EliteHealth->SetVisibility(ESlateVisibility::Collapsed);
+			FGameViewportWidgetSlot EliteSlot;
+			EliteSlot.Anchors = FAnchors(1.0f, 0.0f);
+			EliteSlot.Alignment = FVector2D(1.0f, 0.0f);
+			EliteSlot.Offsets = FMargin(-24.0f, 24.0f, 0.0f, 0.0f);
+			EliteSlot.ZOrder = 1;
+			ViewportSubsystem->AddWidgetForPlayer(EliteHealth, GetLocalPlayer(), EliteSlot);
+
+			// annonce « Jour X » : plein écran, texte centré
+			DayBanner = CreateWidget<UYSDayBannerWidget>(this, UYSDayBannerWidget::StaticClass());
+			DayBanner->SetVisibility(ESlateVisibility::Collapsed);
+			FGameViewportWidgetSlot BannerSlot;
+			BannerSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
+			BannerSlot.ZOrder = 5;
+			ViewportSubsystem->AddWidgetForPlayer(DayBanner, GetLocalPlayer(), BannerSlot);
 
 			// choix d'upgrade : plein écran comme la sélection de personnage, boutons plus hauts (nom + description)
 			UpgradeMenu = CreateWidget<UYSCharacterSelectWidget>(this, UYSCharacterSelectWidget::StaticClass());
@@ -199,6 +219,60 @@ void AYSPlayerController::Tick(float DeltaSeconds)
 		UpdateCharacterSelectMenu();
 		UpdatePlayerHUD();
 		UpdateUpgradeMenu();
+		UpdateDayNightUI(DeltaSeconds);
+	}
+}
+
+void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (!YSGameState || !EliteHealth || !DayBanner)
+	{
+		return;
+	}
+
+	// annonce d'un nouveau jour (pas du jour en cours à l'arrivée dans la partie)
+	if (YSGameState->IsMatchStarted())
+	{
+		if (LastSeenDay != INDEX_NONE && YSGameState->GetDayNumber() > LastSeenDay)
+		{
+			DayBanner->SetDay(YSGameState->GetDayNumber());
+			DayBannerRemaining = DayBanner->DisplayDuration;
+		}
+		LastSeenDay = YSGameState->GetDayNumber();
+	}
+	DayBannerRemaining = FMath::Max(0.0f, DayBannerRemaining - DeltaSeconds);
+	DayBanner->SetVisibility(DayBannerRemaining > 0.0f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+
+	// élite hors écran : sa barre passe dans le HUD (à l'écran, elle est au-dessus de sa tête)
+	const AYSFoeCharacter* Elite = YSGameState->GetCurrentElite();
+	bool bShowInHUD = false;
+	if (IsValid(Elite) && Elite->GetHealth() > 0.0f)
+	{
+		int32 ViewportX = 0;
+		int32 ViewportY = 0;
+		GetViewportSize(ViewportX, ViewportY);
+		FVector2D ScreenPosition;
+		const bool bProjected = ProjectWorldLocationToScreen(Elite->GetActorLocation(), ScreenPosition);
+		bShowInHUD = !bProjected || ScreenPosition.X < 0.0f || ScreenPosition.Y < 0.0f || ScreenPosition.X > ViewportX || ScreenPosition.Y > ViewportY;
+		if (bShowInHUD)
+		{
+			EliteHealth->SetElite(Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
+		}
+	}
+	EliteHealth->SetVisibility(bShowInHUD ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+}
+
+void AYSPlayerController::YSStartNight()
+{
+	ServerStartNight();
+}
+
+void AYSPlayerController::ServerStartNight_Implementation()
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->StartNight();
 	}
 }
 

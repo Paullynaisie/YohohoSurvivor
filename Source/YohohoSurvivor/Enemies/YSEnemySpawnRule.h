@@ -54,6 +54,9 @@ public:
 	/** Appelé par le GameMode au démarrage de la partie */
 	void Start(AYSGameMode* InGameMode);
 
+	/** Appelé par le GameMode au passage du jour à la nuit (bNight) ou de la nuit au jour */
+	void NotifyPhaseChanged(bool bNight) { OnPhaseChanged(bNight); }
+
 	/** Appelé par le GameMode à chaque tick tant que la partie est en cours */
 	void Tick(float DeltaSeconds);
 
@@ -62,6 +65,11 @@ protected:
 	virtual void StartRule() {}
 
 	virtual void TickRule(float DeltaSeconds) {}
+
+	virtual void OnPhaseChanged(bool bNight) {}
+
+	/** Fait apparaître un NME de Class hors écran ; nullptr si aucun emplacement trouvé */
+	AYSFoeCharacter* SpawnEnemy(TSubclassOf<AYSFoeCharacter> EnemyClass);
 
 	virtual UWorld* GetWorld() const override;
 
@@ -87,33 +95,43 @@ protected:
 };
 
 /**
- *  Vagues régulières : toutes les WaveInterval secondes, X NME apparaissent,
- *  X = nb de joueurs de la partie (morts compris) × EnemiesPerPlayer × minute en cours (minute 1 de 0 à 60 s, minute 2 de 60 à 120 s, etc.).
+ *  Vagues jour / nuit : toutes les WaveInterval secondes (NightWaveInterval la nuit), X NME apparaissent,
+ *  X = nb de joueurs de la partie (morts compris) × EnemiesPerPlayer (NightEnemiesPerPlayer la nuit) × jour en cours.
+ *  Au début de chaque nuit, un élite (EliteClasses) apparaît ; sa mort fait passer au jour suivant (AYSGameMode).
+ *  La première vague d'une phase arrive FirstWaveDelay secondes après son début.
  */
-UCLASS(meta=(DisplayName="Vagues par joueur et par minute"))
+UCLASS(meta=(DisplayName="Vagues jour / nuit (par joueur et par jour)"))
 class UYSTimedWaveSpawnRule : public UYSEnemySpawnRule
 {
 	GENERATED_BODY()
 
 public:
 
-	/** Secondes entre deux vagues */
+	/** Jour : secondes entre deux vagues */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Waves", meta=(ClampMin="0.1", Units="s"))
 	float WaveInterval = 5.0f;
 
-	/** Délai avant la première vague après le démarrage de la partie */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Waves", meta=(ClampMin="0", Units="s"))
-	float FirstWaveDelay = 0.0f;
-
-	/** NME par joueur et par minute en cours */
+	/** Jour : NME par joueur et par jour */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Waves", meta=(ClampMin="0"))
 	int32 EnemiesPerPlayer = 1;
 
-	/** Durée d'une « minute » de progression (raccourcir pour tester la montée en difficulté) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Waves", meta=(ClampMin="1", Units="s"))
-	float MinuteDuration = 60.0f;
+	/** Délai avant la première vague d'une phase (jour ou nuit) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Waves", meta=(ClampMin="0", Units="s"))
+	float FirstWaveDelay = 0.0f;
 
-	/** Taille de vague calculée maintenant (nb de joueurs × EnemiesPerPlayer × minute en cours) */
+	/** Nuit : secondes entre deux vagues */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night", meta=(ClampMin="0.1", Units="s"))
+	float NightWaveInterval = 30.0f;
+
+	/** Nuit : NME par joueur et par jour */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night", meta=(ClampMin="0"))
+	int32 NightEnemiesPerPlayer = 5;
+
+	/** Nuit : élite qui apparaît au début de la nuit (un tiré au hasard) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night")
+	TArray<TSubclassOf<AYSFoeCharacter>> EliteClasses;
+
+	/** Taille de vague calculée maintenant (nb de joueurs × NME par joueur (jour ou nuit) × jour en cours) */
 	int32 GetWaveSize() const;
 
 protected:
@@ -122,5 +140,18 @@ protected:
 
 	virtual void TickRule(float DeltaSeconds) override;
 
+	virtual void OnPhaseChanged(bool bNight) override;
+
+	/** Fait apparaître l'élite ; faux si aucun emplacement trouvé (réessayé au tick suivant) */
+	bool SpawnElite();
+
+	bool IsNight() const;
+
+	int32 GetDayNumber() const;
+
+	/** Temps de partie de la prochaine vague */
 	float NextWaveTime = 0.0f;
+
+	/** L'élite de la nuit en cours reste à faire apparaître */
+	bool bElitePending = false;
 };

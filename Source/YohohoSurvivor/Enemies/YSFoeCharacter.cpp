@@ -134,6 +134,12 @@ void AYSFoeCharacter::Die()
 	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
 	{
 		GameMode->AddTeamExperience(GetExperienceReward());
+
+		// la mort de l'élite termine la nuit
+		if (bIsElite)
+		{
+			GameMode->OnEliteKilled(this);
+		}
 	}
 
 	Destroy();
@@ -154,15 +160,36 @@ void AYSFoeCharacter::BeginPlay()
 
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
 
+	// taille (élites) : réglage du Blueprint, appliqué à l'identique sur toutes les machines
+	if (!FMath::IsNearlyEqual(SizeMultiplier, 1.0f))
+	{
+		SetActorScale3D(GetActorScale3D() * SizeMultiplier);
+	}
+
 	if (HasAuthority())
 	{
+		AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+		if (bLevelFromDay && YSGameState)
+		{
+			Level = YSGameState->GetDayNumber();
+		}
+
 		// statistiques du niveau (MaxHealth est répliqué pour les barres de vie)
-		MaxHealth = BaseHealth + HealthPerLevel * Level;
-		ContactDamage = BaseContactDamage + ContactDamagePerLevel * Level;
+		MaxHealth = (BaseHealth + HealthPerLevel * Level) * HealthMultiplier;
+		ContactDamage = (BaseContactDamage + ContactDamagePerLevel * Level) * DamageMultiplier;
 		Health = MaxHealth;
+
+		if (bIsElite && YSGameState)
+		{
+			YSGameState->SetCurrentElite(this);
+		}
 	}
 
 	HealthBar->InitWidget();
+	if (UYSHealthBarWidget* Bar = Cast<UYSHealthBarWidget>(HealthBar->GetUserWidgetObject()))
+	{
+		Bar->bAlwaysVisible = bIsElite;
+	}
 	UpdateHealthBar();
 }
 

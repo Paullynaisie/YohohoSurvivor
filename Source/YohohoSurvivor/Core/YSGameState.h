@@ -6,6 +6,7 @@
 
 class AYSDamageNumber;
 class AYSPlayerCharacter;
+class AYSFoeCharacter;
 
 /**
  *  État de partie partagé. Sert de canal pour les événements visuels globaux
@@ -55,6 +56,22 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")
 	bool bUpgradeSelectionActive = false;
 
+	/** Jour en cours (1 au départ) : sert aussi de niveau aux NME et de multiplicateur aux vagues */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="DayNight")
+	int32 DayNumber = 1;
+
+	/** Nuit en cours (dure tant que l'élite est en vie) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="DayNight")
+	bool bNight = false;
+
+	/** Temps serveur du début du jour en cours */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="DayNight")
+	double DayStartServerTime = 0.0;
+
+	/** Élite de la nuit en cours (nullptr hors nuit ou une fois mort) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="DayNight")
+	TObjectPtr<AYSFoeCharacter> CurrentElite;
+
 public:
 
 	AYSGameState();
@@ -77,6 +94,18 @@ public:
 	/** Serveur uniquement (AYSGameMode) */
 	void SetTeamProgress(int32 Level, float Experience, float ExperienceNeeded) { TeamLevel = Level; TeamExperience = Experience; ExperienceToNextLevel = ExperienceNeeded; }
 	void SetUpgradeSelectionActive(bool bActive) { bUpgradeSelectionActive = bActive; }
+
+	int32 GetDayNumber() const { return DayNumber; }
+	bool IsNight() const { return bNight; }
+	AYSFoeCharacter* GetCurrentElite() const { return CurrentElite; }
+
+	/** Secondes écoulées depuis le début du jour en cours */
+	float GetDayElapsedTime() const;
+
+	/** Serveur uniquement (AYSGameMode / élite) */
+	void StartDay(int32 Day);
+	void StartNight() { bNight = true; }
+	void SetCurrentElite(AYSFoeCharacter* Elite) { CurrentElite = Elite; }
 
 	/** Secondes écoulées depuis le démarrage de la partie (0 avant ; valable sur serveur et clients) */
 	UFUNCTION(BlueprintPure, Category="Match")
