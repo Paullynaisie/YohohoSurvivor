@@ -97,6 +97,12 @@ public:
 	/** Pseudo d'un joueur (reçu par RPC ; vide = inchangé, tronqué à MaxNicknameLength) */
 	void PlayerSetNickname(APlayerController* Player, const FString& Nickname);
 
+	/** Droitier / gaucher d'un joueur (reçu par RPC ; seulement avant d'avoir son personnage) */
+	void PlayerSetLeftHanded(APlayerController* Player, bool bLeftHanded);
+
+	/** Le personnage est réglé droitier / gaucher selon le joueur avant sa construction (armes échangées pour un gaucher) */
+	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
+
 	/** XP gagnée par l'équipe (NME tué, debug) : gère les montées de niveau et la sélection d'upgrade */
 	void AddTeamExperience(float Amount);
 

@@ -405,3 +405,40 @@ bool AYSGameMode::IsColorTaken(int32 ColorIndex, const APlayerState* Except) con
 	}
 	return false;
 }
+
+void AYSGameMode::PlayerSetLeftHanded(APlayerController* Player, bool bLeftHanded)
+{
+	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
+	if (PlayerState && !HasCharacter(Player))
+	{
+		PlayerState->SetLeftHanded(bLeftHanded);
+	}
+}
+
+APawn* AYSGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform)
+{
+	UClass* PawnClass = GetDefaultPawnClassForController(NewPlayer);
+	if (!PawnClass)
+	{
+		return nullptr;
+	}
+
+	FActorSpawnParameters SpawnInfo;
+	SpawnInfo.Instigator = GetInstigator();
+	SpawnInfo.ObjectFlags |= RF_Transient;
+	SpawnInfo.bDeferConstruction = true;
+	APawn* Pawn = GetWorld()->SpawnActor<APawn>(PawnClass, SpawnTransform, SpawnInfo);
+	if (!Pawn)
+	{
+		return nullptr;
+	}
+
+	// gaucher : à connaître avant la construction (OnConstruction crée les armes des mains)
+	const AYSPlayerState* PlayerState = NewPlayer ? NewPlayer->GetPlayerState<AYSPlayerState>() : nullptr;
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(Pawn))
+	{
+		PlayerCharacter->SetLeftHanded(PlayerState && PlayerState->IsLeftHanded());
+	}
+	Pawn->FinishSpawning(SpawnTransform);
+	return Pawn;
+}

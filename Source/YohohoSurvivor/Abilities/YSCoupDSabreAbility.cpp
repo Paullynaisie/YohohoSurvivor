@@ -1,6 +1,7 @@
 #include "Abilities/YSCoupDSabreAbility.h"
 #include "Components/BoxComponent.h"
 #include "Core/YSGameplayTags.h"
+#include "DrawDebugHelpers.h"
 #include "Engine/DamageEvents.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
@@ -39,6 +40,19 @@ void UYSCoupDSabreAbility::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+#if ENABLE_DRAW_DEBUG
+	// TEMPORAIRE : hitbox visible (rouge transparent) pendant la fenêtre de coupe, sur toutes les machines
+	const float SwingElapsed = GetTimeSinceActivation();
+	if (bShowHitbox && SwingElapsed >= WindupDuration && SwingElapsed <= WindupDuration + SwingDuration + HitWindowMargin)
+	{
+		const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
+		if (const UBoxComponent* Hitbox = Weapon ? Weapon->FindComponentByClass<UBoxComponent>() : nullptr)
+		{
+			DrawDebugSolidBox(GetWorld(), Hitbox->GetComponentLocation(), Hitbox->GetScaledBoxExtent(), Hitbox->GetComponentQuat(), HitboxColor, false, -1.0f, 0);
+		}
+	}
+#endif
 
 	// logique de combat : serveur uniquement (les clients ne font que jouer l'animation)
 	if (!GetOwner() || !GetOwner()->HasAuthority())
@@ -187,19 +201,16 @@ void UYSCoupDSabreAbility::ApplySwingHits()
 bool UYSCoupDSabreAbility::IsOffHandOfAkimbo() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	const AYSWeapon* LeftWeapon = Character ? Character->GetLeftHandWeapon() : nullptr;
-	const AYSWeapon* RightWeapon = Character ? Character->GetRightHandWeapon() : nullptr;
-	return LeftWeapon && RightWeapon && LeftWeapon == GetOwner() && RightWeapon->GetClass() == LeftWeapon->GetClass();
+	return Character && Character->IsAkimbo() && Character->GetOffHandWeapon() == GetOwner();
 }
 
 UYSCoupDSabreAbility* UYSCoupDSabreAbility::GetAkimboPartner() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	const AYSWeapon* LeftWeapon = Character ? Character->GetLeftHandWeapon() : nullptr;
-	const AYSWeapon* RightWeapon = Character ? Character->GetRightHandWeapon() : nullptr;
-	if (!LeftWeapon || !RightWeapon || RightWeapon != GetOwner() || RightWeapon->GetClass() != LeftWeapon->GetClass())
+	if (!Character || !Character->IsAkimbo() || Character->GetMainHandWeapon() != GetOwner())
 	{
 		return nullptr;
 	}
-	return Cast<UYSCoupDSabreAbility>(LeftWeapon->GetAutoAction());
+	const AYSWeapon* OffWeapon = Character->GetOffHandWeapon();
+	return OffWeapon ? Cast<UYSCoupDSabreAbility>(OffWeapon->GetAutoAction()) : nullptr;
 }

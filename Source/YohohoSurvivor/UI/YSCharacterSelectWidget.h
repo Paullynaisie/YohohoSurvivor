@@ -49,7 +49,7 @@ class UYSCharacterSelectButtonProxy : public UObject
 
 public:
 
-	/** 0 = choix principal (personnage / upgrade), 1 = couleur, 2 = visage, 3 = « Prêt » */
+	/** 0 = choix principal (personnage / upgrade), 1 = couleur, 2 = visage, 3 = « Prêt », 4 = main (0 droitier, 1 gaucher) */
 	int32 Group = 0;
 
 	int32 Index = INDEX_NONE;
@@ -189,6 +189,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
 	float SwatchFrameThickness = 4.0f;
 
+	/** « Choisis ta main » : boutons Droitier / Gaucher */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	FVector2D HandednessButtonSize = FVector2D(150.0f, 48.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	int32 HandednessFontSize = 20;
+
+	/** Espace entre les deux boutons */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	float HandednessSpacing = 16.0f;
+
 	// ---- colonne droite : aperçu ----
 
 	/** Taille de l'aperçu du personnage (l'image capturée a la même proportion : AYSPlayerController) */
@@ -213,6 +224,9 @@ public:
 	/** Appelés quand le joueur choisit une couleur / un visage (index) */
 	FYSOnCharacterChosen OnColorChosen;
 	FYSOnCharacterChosen OnFaceChosen;
+
+	/** Appelé quand le joueur choisit sa main (0 = droitier, 1 = gaucher) */
+	FYSOnCharacterChosen OnHandednessChosen;
 
 	/** Appelé quand le joueur clique sur « Prêt » */
 	FSimpleDelegate OnReadyClicked;
@@ -252,6 +266,9 @@ public:
 	/** Encadre la couleur / le visage choisi */
 	void SetSelectedColor(int32 Index);
 	void SetSelectedFace(int32 Index);
+
+	/** Illumine Droitier ou Gaucher */
+	void SetSelectedHandedness(bool bLeftHanded);
 
 	/** Pseudo affiché (ignoré pendant que le joueur l'édite) */
 	void SetNickname(const FText& Nickname);
@@ -338,4 +355,8 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> ReadyButton;
+
+	/** Boutons Droitier / Gaucher */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UButton>> HandednessButtons;
 };

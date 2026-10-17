@@ -41,6 +41,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'sabre|Detection")
 	FGameplayTagContainer HitTags;
 
+	/** TEMPORAIRE (en attendant le visuel) : affiche la hitbox en rouge transparent pendant la coupe (builds non Shipping) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'sabre|Debug")
+	bool bShowHitbox = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'sabre|Debug")
+	FColor HitboxColor = FColor(255, 0, 0, 90);
+
 	/** Phase 1 : la main se place sur le flanc */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'sabre|Animation", meta=(ClampMin="0.01", Units="Seconds"))
 	float WindupDuration = 0.15f;
@@ -126,10 +133,10 @@ private:
 	/** Pendant la coupe : applique les dégâts aux cibles dans la hitbox de l'arme (serveur) */
 	void ApplySwingHits();
 
-	/** Vrai si cette épée est dans la main gauche alors que la droite tient la même arme (elle suit la droite) */
+	/** Vrai en akimbo si cette épée est dans l'autre main que la principale (elle suit la principale) */
 	bool IsOffHandOfAkimbo() const;
 
-	/** En akimbo, l'attaque de l'autre main (gauche) quand celle-ci est la principale */
+	/** En akimbo, l'attaque de l'autre main quand celle-ci est la principale */
 	UYSCoupDSabreAbility* GetAkimboPartner() const;
 
 	/** Cibles déjà touchées par la coupe en cours */

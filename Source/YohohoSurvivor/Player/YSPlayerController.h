@@ -177,6 +177,10 @@ public:
 	UFUNCTION(Exec)
 	void YSSetFace(int32 FaceIndex);
 
+	/** Debug (console) : 0 = droitier, 1 = gaucher.  Ex : YSSetLeftHanded 1 */
+	UFUNCTION(Exec)
+	void YSSetLeftHanded(int32 bLeftHanded);
+
 	UFUNCTION(Exec)
 	void YSSetName(const FString& Nickname);
 
@@ -246,6 +250,10 @@ protected:
 	/** Choix de couleur / visage / pseudo à l'écran de sélection */
 	void ChooseColor(int32 ColorIndex);
 	void ChooseFace(int32 FaceIndex);
+	void ChooseHandedness(int32 Handedness);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetLeftHanded(bool bLeftHanded);
 	void CommitNickname(const FString& Nickname);
 	void ToggleReady();
 

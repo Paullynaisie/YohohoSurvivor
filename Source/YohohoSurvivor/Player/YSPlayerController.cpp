@@ -72,6 +72,7 @@ void AYSPlayerController::BeginPlay()
 			CharacterSelectMenu->OnCharacterChosen.BindUObject(this, &AYSPlayerController::YSSelectCharacter);
 			CharacterSelectMenu->OnColorChosen.BindUObject(this, &AYSPlayerController::ChooseColor);
 			CharacterSelectMenu->OnFaceChosen.BindUObject(this, &AYSPlayerController::ChooseFace);
+			CharacterSelectMenu->OnHandednessChosen.BindUObject(this, &AYSPlayerController::ChooseHandedness);
 			CharacterSelectMenu->OnNicknameCommitted.BindUObject(this, &AYSPlayerController::CommitNickname);
 			CharacterSelectMenu->OnReadyClicked.BindUObject(this, &AYSPlayerController::ToggleReady);
 
@@ -226,6 +227,7 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	{
 		CharacterSelectMenu->SetSelectedColor(MyPlayerState->GetColorIndex());
 		CharacterSelectMenu->SetSelectedFace(MyPlayerState->GetFaceIndex());
+		CharacterSelectMenu->SetSelectedHandedness(MyPlayerState->IsLeftHanded());
 		CharacterSelectMenu->SetNickname(FText::FromString(MyPlayerState->GetPlayerName()));
 		CharacterSelectMenu->SetReady(MyPlayerState->IsReady());
 
@@ -308,7 +310,8 @@ void AYSPlayerController::UpdateCharacterPreview(bool bShow)
 
 	// au-dessus de la map (rien ne lui fait d'ombre), loin de tout ; changement de personnage = nouvel aperçu
 	const FVector PreviewLocation(0.0f, 0.0f, 20000.0f);
-	if (PreviewCharacter && PreviewCharacter->GetClass() != PreviewClass)
+	const bool bPreviewLeftHanded = MyPlayerState && MyPlayerState->IsLeftHanded();
+	if (PreviewCharacter && (PreviewCharacter->GetClass() != PreviewClass || PreviewCharacter->IsLeftHanded() != bPreviewLeftHanded))
 	{
 		PreviewCharacter->Destroy();
 		PreviewCharacter = nullptr;
@@ -323,6 +326,7 @@ void AYSPlayerController::UpdateCharacterPreview(bool bShow)
 			return;
 		}
 		PreviewCharacter->SetReplicates(false);
+		PreviewCharacter->SetLeftHanded(bPreviewLeftHanded);
 		PreviewCharacter->FinishSpawning(SpawnTransform);
 		PreviewCharacter->GetCharacterMovement()->DisableMovement();
 		PreviewCharacter->GetCharacterMovement()->GravityScale = 0.0f;
@@ -818,8 +822,8 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 	{
 		// icône de l'action de la main principale (droite), sinon de la main gauche
 		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
-		const AYSWeapon* MainWeapon = PlayerCharacter ? PlayerCharacter->GetRightHandWeapon() : nullptr;
-		const AYSWeapon* OffWeapon = PlayerCharacter ? PlayerCharacter->GetLeftHandWeapon() : nullptr;
+		const AYSWeapon* MainWeapon = PlayerCharacter ? PlayerCharacter->GetMainHandWeapon() : nullptr;
+		const AYSWeapon* OffWeapon = PlayerCharacter ? PlayerCharacter->GetOffHandWeapon() : nullptr;
 		UYSAbilityComponent* Action = MainWeapon ? MainWeapon->GetActiveAction() : nullptr;
 		if (!Action && OffWeapon)
 		{
@@ -985,5 +989,23 @@ void AYSPlayerController::YSFire()
 	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
 	{
 		PlayerCharacter->TriggerFire();
+	}
+}
+
+void AYSPlayerController::ChooseHandedness(int32 Handedness)
+{
+	ServerSetLeftHanded(Handedness == 1);
+}
+
+void AYSPlayerController::YSSetLeftHanded(int32 bLeftHanded)
+{
+	ChooseHandedness(bLeftHanded != 0 ? 1 : 0);
+}
+
+void AYSPlayerController::ServerSetLeftHanded_Implementation(bool bLeftHanded)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->PlayerSetLeftHanded(this, bLeftHanded);
 	}
 }

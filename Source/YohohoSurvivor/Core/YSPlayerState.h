@@ -42,6 +42,10 @@ protected:
 	UPROPERTY(ReplicatedUsing=OnRep_Customization, BlueprintReadOnly, Category="Customization")
 	int32 FaceIndex = 0;
 
+	/** Gaucher (miroir du personnage) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Customization")
+	bool bLeftHanded = false;
+
 	/** Numéro d'arrivée dans la partie (hôte = 1 ; serveur) : nom par défaut « Player N » */
 	int32 PlayerNumber = 0;
 
@@ -85,6 +89,8 @@ public:
 
 	int32 GetColorIndex() const { return ColorIndex; }
 	int32 GetFaceIndex() const { return FaceIndex; }
+	bool IsLeftHanded() const { return bLeftHanded; }
+	void SetLeftHanded(bool bNewLeftHanded) { bLeftHanded = bNewLeftHanded; ForceNetUpdate(); }
 	int32 GetPlayerNumber() const { return PlayerNumber; }
 
 	/** Serveur uniquement */

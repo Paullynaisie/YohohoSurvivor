@@ -13,6 +13,7 @@ void AYSPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AYSPlayerState, ChosenUpgradeOffer);
 	DOREPLIFETIME(AYSPlayerState, ColorIndex);
 	DOREPLIFETIME(AYSPlayerState, FaceIndex);
+	DOREPLIFETIME(AYSPlayerState, bLeftHanded);
 }
 
 void AYSPlayerState::SetCustomization(int32 NewColorIndex, int32 NewFaceIndex)

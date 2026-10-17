@@ -161,6 +161,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, RightHandCooldownMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, LeftHandCooldownMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, Luck);
+	DOREPLIFETIME(AYSPlayerCharacter, bLeftHanded);
 }
 
 UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
@@ -434,7 +435,10 @@ void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
 	Super::OnConstruction(Transform);
 
 	// changer l'arme d'une main dans le Blueprint met à jour son visuel immédiatement
-	for (const TPair<UChildActorComponent*, UClass*> Hand : { TPair<UChildActorComponent*, UClass*>(LeftHandWeapon, LeftHandWeaponClass), TPair<UChildActorComponent*, UClass*>(RightHandWeapon, RightHandWeaponClass) })
+	// gaucher : miroir du personnage (réglé en droitier) = armes des deux mains échangées
+	UClass* LeftClass = bLeftHanded ? RightHandWeaponClass.Get() : LeftHandWeaponClass.Get();
+	UClass* RightClass = bLeftHanded ? LeftHandWeaponClass.Get() : RightHandWeaponClass.Get();
+	for (const TPair<UChildActorComponent*, UClass*> Hand : { TPair<UChildActorComponent*, UClass*>(LeftHandWeapon, LeftClass), TPair<UChildActorComponent*, UClass*>(RightHandWeapon, RightClass) })
 	{
 		if (Hand.Key->GetChildActorClass() != Hand.Value)
 		{
@@ -831,12 +835,12 @@ void AYSPlayerCharacter::Move(const FInputActionValue& Value)
 
 void AYSPlayerCharacter::Fire()
 {
-	const AYSWeapon* MainWeapon = GetRightHandWeapon();
-	const AYSWeapon* OffWeapon = GetLeftHandWeapon();
+	const AYSWeapon* MainWeapon = GetMainHandWeapon();
+	const AYSWeapon* OffWeapon = GetOffHandWeapon();
 	UYSAbilityComponent* MainAction = MainWeapon ? MainWeapon->GetActiveAction() : nullptr;
 	UYSAbilityComponent* OffAction = OffWeapon ? OffWeapon->GetActiveAction() : nullptr;
 
-	// akimbo : la main droite (principale) tire, puis la gauche après le délai de l'arme
+	// akimbo : la main principale (droite, gauche pour un gaucher) tire, puis l'autre après le délai de l'arme
 	const bool bAkimbo = MainAction && OffAction && IsAkimbo();
 	if (bAkimbo && MainAction->IsReady())
 	{
@@ -986,13 +990,21 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass)
 	const float HealthRatio = GetMaxHealth() > 0.0f ? Health / GetMaxHealth() : 1.0f;
 	const FTransform SpawnTransform(FRotator(0.0f, GetActorRotation().Yaw, 0.0f), GetActorLocation());
 	const FString OldName = GetName();
+	const bool bWasLeftHanded = bLeftHanded;
 
 	OwningController->UnPossess();
 	Destroy();
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	// droitier / gaucher conservé : réglé avant la construction (armes des mains)
+	Params.bDeferConstruction = true;
 	AYSPlayerCharacter* NewCharacter = World->SpawnActor<AYSPlayerCharacter>(NewClass, SpawnTransform, Params);
+	if (NewCharacter)
+	{
+		NewCharacter->SetLeftHanded(bWasLeftHanded);
+		NewCharacter->FinishSpawning(SpawnTransform);
+	}
 	if (!NewCharacter)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[YSPlayerCharacter] Changement de classe impossible : %s n'a pas pu apparaître"), *NewClass->GetName());

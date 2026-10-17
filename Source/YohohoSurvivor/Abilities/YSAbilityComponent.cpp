@@ -183,8 +183,7 @@ float UYSAbilityComponent::GetWeaponStat(FName Stat, float Default) const
 bool UYSAbilityComponent::IsAkimboMainHand() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	const AYSWeapon* RightWeapon = Character ? Character->GetRightHandWeapon() : nullptr;
-	return Character && Character->IsAkimbo() && RightWeapon == GetOwner();
+	return Character && Character->IsAkimbo() && Character->GetMainHandWeapon() == GetOwner();
 }
 
 float UYSAbilityComponent::GetActivationLockDuration() const

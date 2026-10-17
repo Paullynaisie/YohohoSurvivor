@@ -146,6 +146,35 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	FaceRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Faces"));
 	Customization->AddChildToVerticalBox(FaceRow)->SetHorizontalAlignment(HAlign_Center);
 
+	// droitier / gaucher
+	UVerticalBoxSlot* HandTitleSlot = Customization->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "HandTitle", "Choisis ta main"), SectionTitleFontSize));
+	HandTitleSlot->SetHorizontalAlignment(HAlign_Center);
+	HandTitleSlot->SetPadding(FMargin(0.0f, SectionSpacing, 0.0f, SectionTitleSpacing));
+	UHorizontalBox* HandRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Handedness"));
+	Customization->AddChildToVerticalBox(HandRow)->SetHorizontalAlignment(HAlign_Center);
+	const FText HandLabels[] = { NSLOCTEXT("YS", "RightHanded", "Droitier"), NSLOCTEXT("YS", "LeftHanded", "Gaucher") };
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		USizeBox* HandSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		HandSize->SetWidthOverride(HandednessButtonSize.X);
+		HandSize->SetHeightOverride(HandednessButtonSize.Y);
+		UButton* HandButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+		HandButton->SetBackgroundColor(NormalColor);
+		HandButton->AddChild(YSCharacterSelect::MakeLabel(WidgetTree, HandLabels[Index], HandednessFontSize));
+		HandSize->AddChild(HandButton);
+
+		UYSCharacterSelectButtonProxy* HandProxy = NewObject<UYSCharacterSelectButtonProxy>(this);
+		HandProxy->Group = 4;
+		HandProxy->Index = Index;
+		HandProxy->Menu = this;
+		HandButton->OnClicked.AddDynamic(HandProxy, &UYSCharacterSelectButtonProxy::HandleClicked);
+		ButtonProxies.Add(HandProxy);
+		HandednessButtons.Add(HandButton);
+
+		UHorizontalBoxSlot* HandSlot = HandRow->AddChildToHorizontalBox(HandSize);
+		HandSlot->SetPadding(FMargin(HandednessSpacing * 0.5f, 0.0f));
+	}
+
 	// droite : aperçu du personnage
 	USizeBox* Preview = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("Preview"));
 	Preview->SetWidthOverride(PreviewSize.X);
@@ -438,9 +467,21 @@ void UYSCharacterSelectWidget::NotifyButtonClicked(int32 Group, int32 Index)
 	case 3:
 		OnReadyClicked.ExecuteIfBound();
 		break;
+	case 4:
+		SetSelectedHandedness(Index == 1);
+		OnHandednessChosen.ExecuteIfBound(Index);
+		break;
 	default:
 		SetSelectedIndex(Index);
 		OnCharacterChosen.ExecuteIfBound(Index);
 		break;
+	}
+}
+
+void UYSCharacterSelectWidget::SetSelectedHandedness(bool bLeftHanded)
+{
+	for (int32 Index = 0; Index < HandednessButtons.Num(); ++Index)
+	{
+		HandednessButtons[Index]->SetBackgroundColor((Index == 1) == bLeftHanded ? SelectedColor : NormalColor);
 	}
 }

@@ -205,6 +205,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Customization")
 	FName CustomizationColorComponentName = TEXT("Head Feature");
 
+	/** Gaucher (choisi à l'écran de sélection) : miroir du personnage, réglé en droitier dans son Blueprint */
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Customization")
+	bool bLeftHanded = false;
+
 	/** Personnalisation appliquée (couleur et visage trouvés) */
 	bool bCustomizationApplied = false;
 
@@ -479,6 +483,14 @@ public:
 
 	/** Akimbo : la même arme dans les deux mains (recharge unique, CD reduction commune) */
 	bool IsAkimbo() const;
+
+	/** Gaucher : armes échangées entre les mains (miroir), main principale = gauche. À régler avant FinishSpawning (OnConstruction) */
+	void SetLeftHanded(bool bNewLeftHanded) { bLeftHanded = bNewLeftHanded; }
+	bool IsLeftHanded() const { return bLeftHanded; }
+
+	/** Arme de la main principale (droite, gauche pour un gaucher) et de l'autre main */
+	AYSWeapon* GetMainHandWeapon() const { return bLeftHanded ? GetLeftHandWeapon() : GetRightHandWeapon(); }
+	AYSWeapon* GetOffHandWeapon() const { return bLeftHanded ? GetRightHandWeapon() : GetLeftHandWeapon(); }
 
 	/** Déclenche les actions de clic des deux mains (comme le clic gauche ; debug YSFire) */
 	void TriggerFire() { Fire(); }
