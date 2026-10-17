@@ -73,6 +73,9 @@ public:
 	/** Multiplicateur de dégâts de la main qui tient l'arme de cette capacité (Atk Bonus ; 1 sinon) */
 	float GetDamageMultiplier() const;
 
+	/** Dégâts de base de la capacité, sans bonus (0 si elle n'inflige pas de dégâts) */
+	virtual float GetBaseDamage() const { return 0.0f; }
+
 	/**
 	 *  Cible dans un cône horizontal : le pawn le plus proche portant un des Tags, à moins de MaxDistance
 	 *  de Origin et à moins de MaxAngle (de chaque côté) de Direction. Utilisé par la visée assistée et les attaques auto.

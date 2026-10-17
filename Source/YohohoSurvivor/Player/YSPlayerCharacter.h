@@ -103,7 +103,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Movement", meta=(ClampMin="0", Units="CentimetersPerSecond"))
 	float MoveSpeed = 600.0f;
 
-	/** Points de vie au début */
+	/** Points de vie max de base (avant Hps bonus) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category="3C|Health", meta=(ClampMin="1"))
 	float MaxHealth = 20.0f;
 
@@ -182,6 +182,17 @@ protected:
 
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float LeftHandDamageMultiplier = 1.0f;
+
+	/** Multiplicateur de la vitesse de déplacement (Move speed bonus ; répliqué : la prédiction de mouvement du client doit le connaître) */
+	UPROPERTY(ReplicatedUsing=OnRep_MoveSpeedMultiplier, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	float MoveSpeedMultiplier = 1.0f;
+
+	/** Multiplicateur des PV max (Hps bonus) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	float MaxHealthMultiplier = 1.0f;
+
+	UFUNCTION()
+	void OnRep_MoveSpeedMultiplier();
 
 	/**
 	 *  Position par défaut de la main droite, par rapport au corps (BodyPivot) ; la main gauche est symétrique (Y inversé).
@@ -282,7 +293,19 @@ public:
 	bool IsAlive() const { return Health > 0.0f; }
 
 	UFUNCTION(BlueprintPure, Category="3C|Health")
-	float GetMaxHealth() const { return MaxHealth; }
+	float GetMaxHealth() const { return MaxHealth * MaxHealthMultiplier; }
+
+	/** PV max sans bonus */
+	float GetBaseMaxHealth() const { return MaxHealth; }
+
+	/** Vitesse de déplacement sans bonus */
+	float GetBaseMoveSpeed() const { return MoveSpeed; }
+
+	/** Move speed bonus (serveur ; répliqué) */
+	void SetMoveSpeedMultiplier(float Multiplier);
+
+	/** Hps bonus (serveur) : les PV max gagnés s'ajoutent aux PV actuels */
+	void SetMaxHealthMultiplier(float Multiplier);
 
 	/** Upgrades disponibles pour ce personnage */
 	const TArray<TObjectPtr<UYSUpgrade>>& GetUpgradePool() const { return UpgradePool; }

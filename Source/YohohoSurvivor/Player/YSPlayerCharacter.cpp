@@ -134,6 +134,8 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, MaxHealth);
 	DOREPLIFETIME(AYSPlayerCharacter, Health);
 	DOREPLIFETIME(AYSPlayerCharacter, UpgradeProgress);
+	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedMultiplier);
+	DOREPLIFETIME(AYSPlayerCharacter, MaxHealthMultiplier);
 }
 
 UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
@@ -325,14 +327,14 @@ void AYSPlayerCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	// appliqué sur le serveur ET les clients pour que la prédiction de mouvement reste cohérente
-	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
+	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * MoveSpeedMultiplier;
 
 	// réappliqué en jeu : la hurtbox ne dépend pas de réglages de collision sauvegardés dans le Blueprint
 	YSCombat::ConfigureHurtbox(BodyMesh);
 
 	if (HasAuthority())
 	{
-		Health = MaxHealth;
+		Health = GetMaxHealth();
 	}
 
 	// le strafe ne s'applique que si un mesh squelettique est renseigné
@@ -717,4 +719,23 @@ FVector AYSPlayerCharacter::GetAimLocation() const
 {
 	const AYSPlayerController* PC = Cast<AYSPlayerController>(GetController());
 	return PC ? PC->GetAimLocation() : GetActorLocation() + GetActorForwardVector() * 1000.0f;
+}
+
+void AYSPlayerCharacter::SetMoveSpeedMultiplier(float Multiplier)
+{
+	MoveSpeedMultiplier = Multiplier;
+	OnRep_MoveSpeedMultiplier();
+}
+
+void AYSPlayerCharacter::OnRep_MoveSpeedMultiplier()
+{
+	// serveur et client propriétaire doivent avoir la même vitesse (prédiction de mouvement)
+	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * MoveSpeedMultiplier;
+}
+
+void AYSPlayerCharacter::SetMaxHealthMultiplier(float Multiplier)
+{
+	const float OldMaxHealth = GetMaxHealth();
+	MaxHealthMultiplier = Multiplier;
+	Health = FMath::Clamp(Health + GetMaxHealth() - OldMaxHealth, 0.0f, GetMaxHealth());
 }

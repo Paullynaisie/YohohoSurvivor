@@ -99,6 +99,8 @@ public:
 
 	virtual bool IsAutomatic() const override { return true; }
 
+	virtual float GetBaseDamage() const override { return Damage; }
+
 
 	/** Durée totale de l'animation (préparation + coupe + retour) */
 	float GetAttackDuration() const { return WindupDuration + SwingDuration + RecoverDuration; }

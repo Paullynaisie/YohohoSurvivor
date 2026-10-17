@@ -123,11 +123,11 @@ protected:
 	UPROPERTY(VisibleDefaultsOnly, Category="Upgrade")
 	EYSUpgradeType UpgradeType = EYSUpgradeType::Stat;
 };
-
 /**
- *  Upgrade de stat : modifie une statistique pure du joueur. Chaque variante cumule jusqu'à MaxStacks bonus
- *  (ensuite elle n'est plus proposée) ; chaque bonus a une rareté tirée au hasard qui fixe sa valeur.
- *  Nouvelle stat = sous-classe qui surcharge Apply (et GetStatLabel / GetStatValue pour l'affichage).
+ *  Upgrade de stat : modifie une statistique pure du joueur, stat = valeur de base x (1 + somme des bonus).
+ *  Chaque variante cumule jusqu'à MaxStacks bonus (ensuite elle n'est plus proposée) ;
+ *  chaque bonus a une rareté tirée au hasard qui fixe sa valeur.
+ *  Nouvelle stat = sous-classe qui surcharge GetBaseStatValue (affichage) et ApplyMultiplier.
  */
 UCLASS(Abstract)
 class UYSStatUpgrade : public UYSUpgrade
@@ -138,11 +138,15 @@ public:
 
 	UYSStatUpgrade();
 
+	/** Nom de la stat sur le bouton (« Dégât : 40 ») */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	FText StatLabel;
+
 	/** Nombre maximum de bonus cumulables (par variante) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="1"))
 	int32 MaxStacks = 10;
 
-	/** Valeur d'un bonus selon sa rareté */
+	/** Valeur d'un bonus selon sa rareté (ajoutée au multiplicateur) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
 	float BronzeValue = 0.4f;
 
@@ -180,20 +184,23 @@ public:
 
 	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
 
+	/** Applique le multiplicateur 1 + somme des bonus (ApplyMultiplier) */
+	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
 protected:
 
-	/** Nom de la stat affichée (« Dégât ») */
-	virtual FText GetStatLabel() const { return FText::GetEmpty(); }
+	/** Valeur de base de la stat, sans bonus (affichage des valeurs concrètes) */
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const { return 1.0f; }
 
-	/** Valeur affichée de la stat pour une somme de bonus donnée (ex. multiplicateur 1 + somme) */
-	virtual float GetStatValue(float TotalBonus) const { return TotalBonus; }
+	/** Applique le multiplicateur de la stat au personnage (serveur) */
+	virtual void ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const {}
 
 	FLinearColor GetRarityColor(EYSUpgradeRarity Rarity) const;
 };
 
 /**
  *  Atk Bonus : deux bonus distincts, « Right hand Atk bonus » (variante 0) et « Left hand Atk bonus » (variante 1),
- *  cumulés séparément. Multiplie les dégâts de l'arme de la main par (1 + somme des bonus de cette main).
+ *  cumulés séparément. Dégâts de l'arme de la main x (1 + somme des bonus de cette main).
  *  Une main n'est proposée que si elle tient une arme.
  */
 UCLASS(meta=(DisplayName="Upgrade de stat : Atk Bonus (par main)"))
@@ -212,10 +219,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
 	FText LeftHandName;
 
-	/** Nom de la stat sur le bouton (« Dégât x 1.9 ») */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
-	FText StatLabel;
-
 	static EYSHand GetHand(int32 Variant) { return Variant == 1 ? EYSHand::Left : EYSHand::Right; }
 
 	virtual int32 GetVariantCount() const override { return 2; }
@@ -224,11 +227,44 @@ public:
 
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
-	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+protected:
+
+	/** Dégâts de base de l'arme de la main (action du clic, sinon attaque auto) */
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	virtual void ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const override;
+};
+
+/** Move speed bonus : vitesse de déplacement (MoveSpeed du personnage) x (1 + somme des bonus) */
+UCLASS(meta=(DisplayName="Upgrade de stat : Move speed bonus"))
+class UYSMoveSpeedBonusUpgrade : public UYSStatUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSMoveSpeedBonusUpgrade();
 
 protected:
 
-	virtual FText GetStatLabel() const override { return StatLabel; }
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
-	virtual float GetStatValue(float TotalBonus) const override { return 1.0f + TotalBonus; }
+	virtual void ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const override;
+};
+
+/** Hps bonus : PV max (MaxHealth du personnage) x (1 + somme des bonus) ; les PV gagnés s'ajoutent aux PV actuels */
+UCLASS(meta=(DisplayName="Upgrade de stat : Hps bonus"))
+class UYSHealthBonusUpgrade : public UYSStatUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSHealthBonusUpgrade();
+
+protected:
+
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	virtual void ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const override;
 };

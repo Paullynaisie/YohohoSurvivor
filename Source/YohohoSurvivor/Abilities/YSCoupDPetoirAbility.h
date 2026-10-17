@@ -47,6 +47,8 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	virtual float GetBaseDamage() const override { return Damage; }
+
 
 protected:
 
