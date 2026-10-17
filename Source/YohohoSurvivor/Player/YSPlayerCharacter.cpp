@@ -409,6 +409,8 @@ void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 
 	++Progress->Stacks;
 	Progress->TotalValue += Upgrade->GetBonusValue(Offer.Variant, Offer.Rarity);
+	// la partie est en pause pendant les choix : sans ça, la progression n'est pas renvoyée aux clients
+	ForceNetUpdate();
 	Upgrade->Apply(this, Offer.Variant, *Progress);
 }
 

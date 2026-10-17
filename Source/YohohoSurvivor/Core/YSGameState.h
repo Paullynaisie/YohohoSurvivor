@@ -114,9 +114,9 @@ public:
 	bool IsUpgradeSelectionActive() const { return bUpgradeSelectionActive; }
 
 	/** Serveur uniquement (AYSGameMode) */
-	void SetTeamProgress(int32 Level, float Experience, float ExperienceNeeded) { TeamLevel = Level; TeamExperience = Experience; ExperienceToNextLevel = ExperienceNeeded; }
-	void SetUpgradeSelectionActive(bool bActive) { bUpgradeSelectionActive = bActive; }
-	void SetUpgradeSelectionLevel(int32 Level) { UpgradeSelectionLevel = Level; }
+	void SetTeamProgress(int32 Level, float Experience, float ExperienceNeeded) { TeamLevel = Level; TeamExperience = Experience; ExperienceToNextLevel = ExperienceNeeded; ForceNetUpdate(); }
+	void SetUpgradeSelectionActive(bool bActive) { bUpgradeSelectionActive = bActive; ForceNetUpdate(); }
+	void SetUpgradeSelectionLevel(int32 Level) { UpgradeSelectionLevel = Level; ForceNetUpdate(); }
 	int32 GetUpgradeSelectionLevel() const { return UpgradeSelectionLevel; }
 
 	int32 GetDayNumber() const { return DayNumber; }

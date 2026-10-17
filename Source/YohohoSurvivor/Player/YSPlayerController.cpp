@@ -498,6 +498,11 @@ void AYSPlayerController::UpdateUpgradeMenu()
 	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
 	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
 	const bool bShow = YSGameState && YSGameState->IsUpgradeSelectionActive() && MyState && MyState->GetUpgradeOffers().Num() > 0 && PlayerCharacter;
+	if (bShow != UpgradeMenu->IsVisible())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSUpgradeMenu] %s : menu d'upgrade %s (sélection active %d, %d proposition(s))"), *GetName(), bShow ? TEXT("affiché") : TEXT("caché"),
+			YSGameState ? YSGameState->IsUpgradeSelectionActive() : 0, MyState ? MyState->GetUpgradeOffers().Num() : -1);
+	}
 
 	UpgradeMenu->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	if (!bShow)
@@ -537,6 +542,12 @@ void AYSPlayerController::UpdateUpgradeMenu()
 	}
 
 	UpgradeMenu->SetSelectedIndex(MyState->GetChosenUpgradeOffer());
+
+	// debug / tests automatisés en réseau : -YSAutoUpgrade choisit la première proposition
+	if (MyState->IsChoosingUpgrade() && FParse::Param(FCommandLine::Get(), TEXT("YSAutoUpgrade")))
+	{
+		ChooseUpgrade(0);
+	}
 
 	// combien de joueurs concernés ont déjà choisi
 	int32 Ready = 0;

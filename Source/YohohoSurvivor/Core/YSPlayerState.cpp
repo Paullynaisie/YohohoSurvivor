@@ -20,6 +20,7 @@ void AYSPlayerState::SetCustomization(int32 NewColorIndex, int32 NewFaceIndex)
 	ColorIndex = NewColorIndex;
 	FaceIndex = NewFaceIndex;
 	// OnRep n'est pas appelé sur le serveur : application directe pour l'hôte
+	ForceNetUpdate();
 	OnRep_Customization();
 }
 

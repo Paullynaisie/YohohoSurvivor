@@ -62,7 +62,7 @@ public:
 	bool IsReady() const { return bReady; }
 
 	/** Serveur uniquement */
-	void SetReady(bool bNewReady) { bReady = bNewReady; }
+	void SetReady(bool bNewReady) { bReady = bNewReady; ForceNetUpdate(); }
 
 	/** Serveur uniquement */
 	void SetSelectedCharacterIndex(int32 Index) { SelectedCharacterIndex = Index; }
@@ -78,10 +78,10 @@ public:
 	bool IsChoosingUpgrade() const { return UpgradeOffers.Num() > 0 && ChosenUpgradeOffer == INDEX_NONE; }
 
 	/** Serveur uniquement : nouvelles propositions (vide = pas concerné par cette sélection) */
-	void SetUpgradeOffers(const TArray<FYSUpgradeOffer>& Offers) { UpgradeOffers = Offers; ChosenUpgradeOffer = INDEX_NONE; }
+	void SetUpgradeOffers(const TArray<FYSUpgradeOffer>& Offers) { UpgradeOffers = Offers; ChosenUpgradeOffer = INDEX_NONE; ForceNetUpdate(); }
 
 	/** Serveur uniquement */
-	void SetChosenUpgradeOffer(int32 OfferIndex) { ChosenUpgradeOffer = OfferIndex; }
+	void SetChosenUpgradeOffer(int32 OfferIndex) { ChosenUpgradeOffer = OfferIndex; ForceNetUpdate(); }
 
 	int32 GetColorIndex() const { return ColorIndex; }
 	int32 GetFaceIndex() const { return FaceIndex; }
