@@ -19,7 +19,7 @@ void UYSAutoShotAbility::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 
 	// tir automatique : serveur uniquement ; en akimbo l'autre main est déclenchée par la principale
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !Character || !IsReady() || !FindAutoTarget())
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !Character || !IsReady() || !CanStartByPriority() || !FindAutoTarget())
 	{
 		return;
 	}
@@ -32,7 +32,6 @@ void UYSAutoShotAbility::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 
 	if (UYSAutoShotAbility* Partner = GetAkimboPartner())
 	{
-		const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 		TWeakObjectPtr<UYSAutoShotAbility> WeakPartner = Partner;
 		GetWorld()->GetTimerManager().SetTimer(AkimboTimer, FTimerDelegate::CreateWeakLambda(this, [WeakPartner]()
 		{
@@ -40,7 +39,7 @@ void UYSAutoShotAbility::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 			{
 				WeakPartner->FireAtTarget();
 			}
-		}), FMath::Max(Weapon ? Weapon->GetAkimboFireDelay() : 0.0f, KINDA_SMALL_NUMBER), false);
+		}), FMath::Max(AkimboFireDelay, KINDA_SMALL_NUMBER), false);
 	}
 }
 

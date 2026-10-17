@@ -6,6 +6,7 @@
 #include "EngineUtils.h"
 #include "GameplayTagAssetInterface.h"
 #include "Net/UnrealNetwork.h"
+#include "TimerManager.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSWeapon.h"
 
@@ -13,6 +14,9 @@ namespace
 {
 	/** Marge acceptée côté serveur : l'horloge du client n'est synchronisée qu'approximativement */
 	constexpr double CooldownTolerance = 0.2;
+
+	/** Priorités des actions d'une arme, de la plus prioritaire à la moins prioritaire (liste donnée par Paul) */
+	constexpr EYSActionSlot ActionPriority[] = { EYSActionSlot::Ability, EYSActionSlot::AutoAtk };
 }
 
 UYSAbilityComponent::UYSAbilityComponent()
@@ -30,7 +34,7 @@ void UYSAbilityComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 
 void UYSAbilityComponent::TryActivate(const FVector& TargetLocation)
 {
-	if (!IsReady())
+	if (!IsReady() || !CanStartByPriority())
 	{
 		return;
 	}
@@ -143,6 +147,11 @@ void UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
 	{
 		return;
 	}
+	if (!CanStartByPriority())
+	{
+		return;
+	}
+	CancelLowerPriorityActions();
 
 	ReadyServerTime = Now + GetActivationLockDuration();
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s activée à %.2f, prête à %.2f"), *GetOwner()->GetName(), *GetName(), Now, ReadyServerTime);
@@ -188,6 +197,95 @@ bool UYSAbilityComponent::IsAkimboMainHand() const
 
 float UYSAbilityComponent::GetActivationLockDuration() const
 {
+	return GetCooldownDuration() + (IsAkimboMainHand() ? AkimboFireDelay : 0.0f);
+}
+
+bool UYSAbilityComponent::IsActionInProgress() const
+{
+	const float Elapsed = GetTimeSinceActivation();
+	const float Duration = GetActionDuration() + (IsAkimboMainHand() ? AkimboFireDelay : 0.0f);
+	return Elapsed >= 0.0f && Elapsed < Duration;
+}
+
+int32 UYSAbilityComponent::GetPriorityRank() const
+{
+	const int32 Rank = UE_ARRAY_COUNT(ActionPriority);
+	for (int32 Index = 0; Index < Rank; ++Index)
+	{
+		if (ActionPriority[Index] == GetActionSlot())
+		{
+			return Index;
+		}
+	}
+	// type absent de la liste : après tous les autres
+	return Rank;
+}
+
+void UYSAbilityComponent::GetPriorityGroup(TArray<UYSAbilityComponent*>& OutActions) const
+{
 	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
-	return GetCooldownDuration() + (Weapon && IsAkimboMainHand() ? Weapon->GetAkimboFireDelay() : 0.0f);
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	const AYSWeapon* Partner = Character && Character->IsAkimbo()
+		? (Character->GetMainHandWeapon() == Weapon ? Character->GetOffHandWeapon() : Character->GetMainHandWeapon())
+		: nullptr;
+
+	for (const AActor* Actor : { static_cast<const AActor*>(Weapon ? Weapon : GetOwner()), static_cast<const AActor*>(Partner) })
+	{
+		if (Actor)
+		{
+			TInlineComponentArray<UYSAbilityComponent*> Actions(Actor);
+			OutActions.Append(Actions);
+		}
+	}
+}
+
+bool UYSAbilityComponent::CanStartByPriority() const
+{
+	const int32 Rank = GetPriorityRank();
+	TArray<UYSAbilityComponent*> Group;
+	GetPriorityGroup(Group);
+	for (const UYSAbilityComponent* Other : Group)
+	{
+		if (Other != this && Other->GetPriorityRank() < Rank && Other->IsActionInProgress())
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+void UYSAbilityComponent::CancelLowerPriorityActions()
+{
+	const int32 Rank = GetPriorityRank();
+	TArray<UYSAbilityComponent*> Group;
+	GetPriorityGroup(Group);
+	for (UYSAbilityComponent* Other : Group)
+	{
+		if (Other != this && Other->GetPriorityRank() > Rank)
+		{
+			Other->CancelAction();
+		}
+	}
+}
+
+void UYSAbilityComponent::CancelAction()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(AkimboTimer);
+	}
+	if (!IsActionInProgress())
+	{
+		return;
+	}
+
+	// recharge rendue : l'action reprendra dès que l'action prioritaire sera finie
+	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s interrompue à %.2f"), *GetOwner()->GetName(), *GetName(), GetServerTime());
+	ReadyServerTime = FMath::Min(ReadyServerTime, GetServerTime());
+	MulticastCancelled();
+}
+
+void UYSAbilityComponent::MulticastCancelled_Implementation()
+{
+	LastActivationTime = -1.0e6;
 }

@@ -611,12 +611,13 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 
 		// recul après une activation : main reculée le long de l'axe de l'arme et cabrée (muzzle vers le haut)
 		const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
-		const float Recoil = Weapon ? Weapon->GetRecoilAlpha() : 0.0f;
+		float RecoilPitch = 0.0f;
+		float RecoilKickBack = 0.0f;
 		FVector RecoilOffset = FVector::ZeroVector;
-		if (Recoil > 0.0f)
+		if (Weapon && Weapon->GetRecoil(RecoilPitch, RecoilKickBack))
 		{
-			RecoilOffset = PivotTransform.TransformVectorNoScale(-Rotation.Vector() * Weapon->GetRecoilKickBack() * Recoil);
-			Rotation.Pitch += Weapon->GetRecoilPitch() * Recoil;
+			RecoilOffset = PivotTransform.TransformVectorNoScale(-Rotation.Vector() * RecoilKickBack);
+			Rotation.Pitch += RecoilPitch;
 		}
 
 		// le recul s'ajoute après le lissage : il reste sec malgré le retard des mains
@@ -859,7 +860,7 @@ void AYSPlayerCharacter::Fire()
 				{
 					WeakOffAction->TryActivate(GetAimLocation());
 				}
-			}), FMath::Max(MainWeapon->GetAkimboFireDelay(), KINDA_SMALL_NUMBER), false);
+			}), FMath::Max(MainAction->AkimboFireDelay, KINDA_SMALL_NUMBER), false);
 		}
 		return;
 	}

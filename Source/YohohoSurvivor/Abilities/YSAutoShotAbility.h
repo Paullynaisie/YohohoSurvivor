@@ -34,6 +34,4 @@ private:
 
 	/** Tire sur la cible actuelle si elle existe (serveur) */
 	void FireAtTarget();
-
-	FTimerHandle AkimboTimer;
 };

@@ -67,7 +67,7 @@ void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 	}
 
 	// en akimbo, la main gauche est déclenchée par la droite
-	if (IsOffHandOfAkimbo() || !IsReady() || !FindAutoTarget())
+	if (IsOffHandOfAkimbo() || !IsReady() || !CanStartByPriority() || !FindAutoTarget())
 	{
 		return;
 	}
@@ -76,7 +76,6 @@ void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 
 	if (UYSCoupDSabreAbility* Partner = GetAkimboPartner())
 	{
-		const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 		TWeakObjectPtr<UYSCoupDSabreAbility> WeakPartner = Partner;
 		GetWorld()->GetTimerManager().SetTimer(AkimboTimer, FTimerDelegate::CreateWeakLambda(this, [WeakPartner]()
 		{
@@ -84,7 +83,7 @@ void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 			{
 				WeakPartner->StartAttack();
 			}
-		}), FMath::Max(Weapon ? Weapon->GetAkimboFireDelay() : 0.0f, KINDA_SMALL_NUMBER), false);
+		}), FMath::Max(AkimboFireDelay, KINDA_SMALL_NUMBER), false);
 	}
 }
 
@@ -101,10 +100,11 @@ AActor* UYSCoupDSabreAbility::FindAutoTarget() const
 
 void UYSCoupDSabreAbility::StartAttack()
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !IsReady())
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !IsReady() || !CanStartByPriority())
 	{
 		return;
 	}
+	CancelLowerPriorityActions();
 
 	ReadyServerTime = GetServerTime() + GetActivationLockDuration();
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s attaque à %.2f, prête à %.2f"), *GetOwner()->GetName(), *GetName(), GetServerTime(), ReadyServerTime);

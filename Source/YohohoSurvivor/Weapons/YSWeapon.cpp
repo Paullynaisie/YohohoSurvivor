@@ -1,4 +1,5 @@
 #include "Weapons/YSWeapon.h"
+#include "Abilities/YSCoupDPetoirAbility.h"
 #include "Abilities/YSAbilityComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Pawn.h"
@@ -54,26 +55,23 @@ APawn* AYSWeapon::GetHolder() const
 	return Cast<APawn>(GetOwner());
 }
 
-float AYSWeapon::GetRecoilAlpha() const
+bool AYSWeapon::GetRecoil(float& OutPitch, float& OutKickBack) const
 {
-	const UYSAbilityComponent* Action = GetActiveAction();
-	if (!Action)
+	// action de tir la plus récemment activée (l'Ability et l'Auto shot ont chacune leurs réglages)
+	const UYSCoupDPetoirAbility* Latest = nullptr;
+	TInlineComponentArray<UYSCoupDPetoirAbility*> Shots(this);
+	for (const UYSCoupDPetoirAbility* Shot : Shots)
 	{
-		return 0.0f;
+		if (!Latest || Shot->GetTimeSinceActivation() < Latest->GetTimeSinceActivation())
+		{
+			Latest = Shot;
+		}
 	}
 
-	const float Elapsed = Action->GetTimeSinceActivation();
-	if (Elapsed < 0.0f || Elapsed >= RecoilKickDuration + RecoilRecoverDuration)
-	{
-		return 0.0f;
-	}
-
-	// coup sec puis retour plus doux
-	if (Elapsed < RecoilKickDuration)
-	{
-		return FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / RecoilKickDuration, 2.0f);
-	}
-	return FMath::InterpEaseInOut(1.0f, 0.0f, (Elapsed - RecoilKickDuration) / RecoilRecoverDuration, 2.0f);
+	const float Alpha = Latest ? Latest->GetRecoilAlpha() : 0.0f;
+	OutPitch = Latest ? Latest->RecoilPitch * Alpha : 0.0f;
+	OutKickBack = Latest ? Latest->RecoilKickBack * Alpha : 0.0f;
+	return Alpha > 0.0f;
 }
 
 FVector AYSWeapon::GetMuzzleLocation() const

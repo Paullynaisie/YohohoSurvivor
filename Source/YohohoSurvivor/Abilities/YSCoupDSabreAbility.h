@@ -107,6 +107,9 @@ public:
 	/** CD Reduction : seule la recharge après l'attaque est réduite, pas la durée de l'anim */
 	virtual float GetBaseCooldown() const override { return AutoAtkCooldown; }
 
+	/** Priorités : l'attaque est « en cours » pendant toute son animation */
+	virtual float GetActionDuration() const override { return GetAttackDuration(); }
+
 	virtual bool IsAutomatic() const override { return true; }
 
 	virtual float GetBaseDamage() const override { return Damage; }
@@ -141,6 +144,4 @@ private:
 
 	/** Cibles déjà touchées par la coupe en cours */
 	TSet<TWeakObjectPtr<AActor>> HitThisSwing;
-
-	FTimerHandle AkimboTimer;
 };

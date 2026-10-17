@@ -15,7 +15,7 @@ class UYSAbilityComponent;
  *  avec le personnage comme propriétaire (nécessaire aux RPC de l'action).
  *  Classe de base du Blueprint BP_Arme.
  */
-UCLASS(meta=(PrioritizeCategories="Weapon Akimbo Recoil"))
+UCLASS(meta=(PrioritizeCategories="Weapon"))
 class AYSWeapon : public AActor
 {
 	GENERATED_BODY()
@@ -59,37 +59,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon", meta=(EditCondition="bOverrideHandRotation"))
 	FRotator HandRotation = FRotator::ZeroRotator;
 
-	/** Akimbo (la même arme dans les deux mains) : délai entre l'action de la main gauche et celle de la main droite */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Akimbo", meta=(ClampMin="0", Units="Seconds"))
-	float AkimboFireDelay = 0.5f;
-
-	/** Recul à chaque activation de l'action : la main se cabre (muzzle vers le haut) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Recoil", meta=(Units="Degrees"))
-	float RecoilPitch = 25.0f;
-
-	/** Recul à chaque activation : la main recule le long de l'axe de l'arme */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Recoil", meta=(ClampMin="0", Units="Centimeters"))
-	float RecoilKickBack = 10.0f;
-
-	/** Durée du coup (montée rapide, courbe EaseOut) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Recoil", meta=(ClampMin="0.001", Units="Seconds"))
-	float RecoilKickDuration = 0.05f;
-
-	/** Durée du retour en place (courbe EaseInOut) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Recoil", meta=(ClampMin="0.001", Units="Seconds"))
-	float RecoilRecoverDuration = 0.25f;
-
 public:
 
-	/** Intensité actuelle du recul (0 = au repos, 1 = pic), d'après la dernière activation de l'action */
-	UFUNCTION(BlueprintPure, Category="Recoil")
-	float GetRecoilAlpha() const;
-
-	float GetRecoilPitch() const { return RecoilPitch; }
-
-	float GetRecoilKickBack() const { return RecoilKickBack; }
-
-	float GetAkimboFireDelay() const { return AkimboFireDelay; }
+	/**
+	 *  Recul actuel de l'arme (réglages Recoil de ses actions de tir : Coup d'Petoir, Auto shot), d'après la plus récente
+	 *  de ces actions : cabrage (degrés) et recul le long de l'axe de l'arme (cm). Faux si l'arme est au repos.
+	 */
+	bool GetRecoil(float& OutPitch, float& OutKickBack) const;
 
 	/** Rotation de main imposée par l'arme (si bOverrideHandRotation) */
 	bool GetHandRotationOverride(FRotator& OutRotation) const

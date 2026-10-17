@@ -45,6 +45,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ability|UI")
 	FLinearColor IconTint = FLinearColor::White;
 
+	/** Akimbo (la même arme dans les deux mains) : délai entre l'action de la main principale et celle de l'autre main */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Akimbo", meta=(ClampMin="0", Units="Seconds"))
+	float AkimboFireDelay = 0.5f;
+
 protected:
 
 	/** Instant (en temps serveur) où la capacité redevient disponible */
@@ -115,6 +119,27 @@ public:
 	 */
 	float GetActivationLockDuration() const;
 
+	/**
+	 *  Priorités des actions d'une arme (des deux armes en akimbo) : voir ActionPriority dans le .cpp (Ability, puis Auto atk).
+	 *  Une action ne démarre pas tant qu'une action plus prioritaire est en cours ; quand elle démarre, elle interrompt
+	 *  les actions moins prioritaires en cours (CancelAction).
+	 */
+
+	/** Durée pendant laquelle l'action est « en cours » après son déclenchement (animation) */
+	virtual float GetActionDuration() const { return 0.0f; }
+
+	/** En cours sur cette machine, d'après la dernière activation vue ; en akimbo, la main principale l'est aussi pendant AkimboFireDelay */
+	bool IsActionInProgress() const;
+
+	/** Rang de priorité du type de cette action (0 = la plus prioritaire) */
+	int32 GetPriorityRank() const;
+
+	/** Aucune action plus prioritaire de l'arme (des deux armes en akimbo) n'est en cours */
+	bool CanStartByPriority() const;
+
+	/** Interrompt l'action (serveur) : animation arrêtée sur toutes les machines, recharge rendue, main suivante de l'akimbo annulée */
+	void CancelAction();
+
 protected:
 
 	/** Effets visuels de l'activation sur toutes les machines (le client qui tire les a déjà joués par prédiction) */
@@ -123,6 +148,18 @@ protected:
 
 	/** Note l'instant de l'activation pour les effets visuels locaux */
 	void NotifyActivated();
+
+	/** Actions de l'arme de cette capacité, et de l'autre arme en akimbo */
+	void GetPriorityGroup(TArray<UYSAbilityComponent*>& OutActions) const;
+
+	/** À l'activation (serveur) : interrompt les actions moins prioritaires du groupe */
+	void CancelLowerPriorityActions();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastCancelled();
+
+	/** Déclenchement différé de l'autre main en akimbo (attaques auto) */
+	FTimerHandle AkimboTimer;
 
 	/** Vrai sur le client qui contrôle le tireur (hors serveur) : il joue les effets sans attendre le serveur */
 	bool IsLocallyPredicted() const;

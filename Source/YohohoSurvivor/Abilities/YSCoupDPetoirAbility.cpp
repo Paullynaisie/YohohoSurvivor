@@ -80,3 +80,19 @@ void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 }
+
+float UYSCoupDPetoirAbility::GetRecoilAlpha() const
+{
+	const float Elapsed = GetTimeSinceActivation();
+	if (Elapsed < 0.0f || Elapsed >= RecoilKickDuration + RecoilRecoverDuration)
+	{
+		return 0.0f;
+	}
+
+	// coup sec puis retour plus doux
+	if (Elapsed < RecoilKickDuration)
+	{
+		return FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / RecoilKickDuration, 2.0f);
+	}
+	return FMath::InterpEaseInOut(1.0f, 0.0f, (Elapsed - RecoilKickDuration) / RecoilRecoverDuration, 2.0f);
+}
