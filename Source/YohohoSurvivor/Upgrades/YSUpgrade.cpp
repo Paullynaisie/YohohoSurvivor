@@ -24,6 +24,19 @@ namespace YSUpgradeText
 		default:						return FText::GetEmpty();
 		}
 	}
+
+	/** Nom de la main : arme tenue (« Pétoir »), « Pétoir (Droite) » en akimbo, HandLabel si la main est vide */
+	FText HandName(const AYSPlayerCharacter* Character, EYSHand Hand, const FText& HandLabel, const FText& AkimboHandLabel)
+	{
+		const AYSWeapon* Weapon = Character ? (Hand == EYSHand::Left ? Character->GetLeftHandWeapon() : Character->GetRightHandWeapon()) : nullptr;
+		if (!Weapon)
+		{
+			return HandLabel;
+		}
+		return Character->IsAkimbo()
+			? FText::Format(NSLOCTEXT("YS", "AkimboWeaponName", "{0} ({1})"), Weapon->GetWeaponName(), AkimboHandLabel)
+			: Weapon->GetWeaponName();
+	}
 }
 
 void UYSUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
@@ -120,6 +133,8 @@ UYSHandStatUpgrade::UYSHandStatUpgrade()
 {
 	RightHandLabel = NSLOCTEXT("YS", "HandStatRight", "Right hand");
 	LeftHandLabel = NSLOCTEXT("YS", "HandStatLeft", "Left hand");
+	AkimboRightLabel = NSLOCTEXT("YS", "HandStatAkimboRight", "Droite");
+	AkimboLeftLabel = NSLOCTEXT("YS", "HandStatAkimboLeft", "Gauche");
 	AkimboLabel = NSLOCTEXT("YS", "HandStatAkimbo", "Akimbo");
 	AbilityLabel = NSLOCTEXT("YS", "HandStatAbility", "Ability");
 	AutoAtkLabel = NSLOCTEXT("YS", "HandStatAutoAtk", "Auto atk");
@@ -133,6 +148,12 @@ FText UYSHandStatUpgrade::MakeName(const FText& HandText, int32 Variant) const
 FText UYSHandStatUpgrade::GetVariantName(int32 Variant) const
 {
 	return MakeName(GetHand(Variant) == EYSHand::Left ? LeftHandLabel : RightHandLabel, Variant);
+}
+
+FText UYSHandStatUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	const bool bLeft = GetHand(Variant) == EYSHand::Left;
+	return MakeName(YSUpgradeText::HandName(Character, GetHand(Variant), bLeft ? LeftHandLabel : RightHandLabel, bLeft ? AkimboLeftLabel : AkimboRightLabel), Variant);
 }
 
 bool UYSHandStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
@@ -299,12 +320,22 @@ UYSWeaponUpgrade::UYSWeaponUpgrade()
 	UpgradeType = EYSUpgradeType::Weapon;
 	RightHandLabel = NSLOCTEXT("YS", "WeaponUpgradeRightHand", "Right hand");
 	LeftHandLabel = NSLOCTEXT("YS", "WeaponUpgradeLeftHand", "Left hand");
+	AkimboRightLabel = NSLOCTEXT("YS", "WeaponUpgradeAkimboRight", "Droite");
+	AkimboLeftLabel = NSLOCTEXT("YS", "WeaponUpgradeAkimboLeft", "Gauche");
 }
 
 FText UYSWeaponUpgrade::GetVariantName(int32 Variant) const
 {
 	const FText& TierName = GetTier(Variant) == EYSWeaponUpgradeTier::Unlock ? UnlockName : GetTier(Variant) == EYSWeaponUpgradeTier::Bonus ? BonusName : SuperName;
 	return FText::Format(NSLOCTEXT("YS", "WeaponUpgradeName", "{0} {1}"), GetHand(Variant) == EYSHand::Left ? LeftHandLabel : RightHandLabel, TierName);
+}
+
+FText UYSWeaponUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	const bool bLeft = GetHand(Variant) == EYSHand::Left;
+	const FText& TierName = GetTier(Variant) == EYSWeaponUpgradeTier::Unlock ? UnlockName : GetTier(Variant) == EYSWeaponUpgradeTier::Bonus ? BonusName : SuperName;
+	return FText::Format(NSLOCTEXT("YS", "WeaponUpgradeName", "{0} {1}"),
+		YSUpgradeText::HandName(Character, GetHand(Variant), bLeft ? LeftHandLabel : RightHandLabel, bLeft ? AkimboLeftLabel : AkimboRightLabel), TierName);
 }
 
 UYSAbilityComponent* UYSWeaponUpgrade::GetRequiredAction(const AYSPlayerCharacter* Character, EYSHand Hand) const
@@ -516,7 +547,11 @@ bool UYSHandCooldownReductionUpgrade::CanBeOffered(const AYSPlayerCharacter* Cha
 
 FText UYSHandCooldownReductionUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	return Character && Character->IsAkimbo() ? MakeName(AkimboLabel, Variant) : GetVariantName(Variant);
+	// akimbo : bonus commun aux deux mains (même arme) -> « Pétoir (Akimbo) Ability CD reduction »
+	const AYSWeapon* Weapon = Character && Character->IsAkimbo() ? Character->GetRightHandWeapon() : nullptr;
+	return Weapon
+		? MakeName(FText::Format(NSLOCTEXT("YS", "AkimboWeaponName", "{0} ({1})"), Weapon->GetWeaponName(), AkimboLabel), Variant)
+		: Super::GetVariantNameFor(Character, Variant);
 }
 
 void UYSHandCooldownReductionUpgrade::MergeProgress(const AYSPlayerCharacter* Character, int32 PoolIndex, TArray<FYSUpgradeProgress>& Progress) const

@@ -236,14 +236,22 @@ public:
 
 	UYSHandStatUpgrade();
 
-	/** Morceaux du nom affiché */
+	/** Morceaux du nom affiché. La main est nommée par l'arme qu'elle tient (« Pétoir Ability Damage bonus »),
+	 *  suivie en akimbo de AkimboRightLabel / AkimboLeftLabel (« Pétoir (Droite) ... ») ; Right/LeftHandLabel si la main est vide */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
 	FText RightHandLabel;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
 	FText LeftHandLabel;
 
-	/** Remplace la main quand le bonus est commun aux deux mains (CD reduction en akimbo) */
+	/** Akimbo : entre parenthèses après le nom de l'arme selon la main */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText AkimboRightLabel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText AkimboLeftLabel;
+
+	/** Entre parenthèses après le nom de l'arme quand le bonus est commun aux deux mains (CD reduction en akimbo) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
 	FText AkimboLabel;
 
@@ -266,6 +274,9 @@ public:
 	virtual int32 GetVariantCount() const override { return 4; }
 
 	virtual FText GetVariantName(int32 Variant) const override;
+
+	/** Nom avec l'arme tenue à la place de la main */
+	virtual FText GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
@@ -469,12 +480,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
 	EYSActionSlot RequiredSlot = EYSActionSlot::Ability;
 
-	/** Préfixe des noms selon la main (« Right hand Ricochet ») */
+	/** Préfixe des noms : nom de l'arme de la main (« Pétoir Ricochet »), suivi en akimbo de AkimboRightLabel / AkimboLeftLabel
+	 *  (« Pétoir (Droite) Ricochet ») ; Right/LeftHandLabel si la main est vide */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
 	FText RightHandLabel;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
 	FText LeftHandLabel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	FText AkimboRightLabel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	FText AkimboLeftLabel;
 
 	/** Déblocage : nom et description */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock")
@@ -524,6 +542,8 @@ public:
 	virtual int32 GetVariantCount() const override { return 6; }
 
 	virtual FText GetVariantName(int32 Variant) const override;
+
+	virtual FText GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 

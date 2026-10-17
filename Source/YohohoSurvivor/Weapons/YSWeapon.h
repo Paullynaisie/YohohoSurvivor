@@ -111,6 +111,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	UYSAbilityComponent* GetAction() const;
 
+	/** Nom affiché (DisplayName, sinon le nom de la classe sans BP_ ni _C) : utilisé dans les noms d'upgrades */
+	FText GetWeaponName() const;
+
 	/** Attaque active (déclenchée par le joueur, ex. Coup d'Petoir), ou nullptr */
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	UYSAbilityComponent* GetActiveAction() const;

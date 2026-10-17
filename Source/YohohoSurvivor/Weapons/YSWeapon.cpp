@@ -80,3 +80,15 @@ FVector AYSWeapon::GetMuzzleLocation() const
 {
 	return Muzzle->GetComponentLocation();
 }
+
+FText AYSWeapon::GetWeaponName() const
+{
+	if (!DisplayName.IsEmpty())
+	{
+		return DisplayName;
+	}
+	FString Name = GetClass()->GetName();
+	Name.RemoveFromStart(TEXT("BP_"));
+	Name.RemoveFromEnd(TEXT("_C"));
+	return FText::FromString(Name);
+}
