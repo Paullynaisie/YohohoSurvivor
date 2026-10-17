@@ -111,6 +111,18 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Replicated, Category="3C|Health")
 	float Health = 0.0f;
 
+	/** Hps regen : délai sans dégât subi avant que la regen démarre */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0", Units="s"))
+	float HealthRegenDelay = 5.0f;
+
+	/** Hps regen : intervalle entre deux soins */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0.05", Units="s"))
+	float HealthRegenInterval = 1.0f;
+
+	/** Armor : dégâts minimum d'un coup après réduction par l'armure */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0"))
+	float MinDamageAfterArmor = 0.0f;
+
 	/**
 	 *  BlendSpace 2D de strafe (X = direction -180..180 relative au regard, Y = vitesse).
 	 *  S'il est renseigné, il remplace l'Anim Blueprint du mesh.
@@ -190,6 +202,21 @@ protected:
 	/** Multiplicateur des PV max (Hps bonus) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float MaxHealthMultiplier = 1.0f;
+
+	/** PV rendus à chaque intervalle de regen (Hps regen ; 0 = pas de regen ; serveur) */
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	float HealthRegen = 0.0f;
+
+	/** Réduction des dégâts de chaque coup subi (Armor ; serveur) */
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	float Armor = 0.0f;
+
+	/** Dernier dégât subi (temps du monde, serveur) et temps accumulé vers le prochain soin */
+	float LastDamageTime = -1.0e9f;
+	float HealthRegenTimer = 0.0f;
+
+	/** Regen de PV (serveur, Tick) */
+	void UpdateHealthRegen(float DeltaSeconds);
 
 	UFUNCTION()
 	void OnRep_MoveSpeedMultiplier();
@@ -307,6 +334,12 @@ public:
 	/** Hps bonus (serveur) : les PV max gagnés s'ajoutent aux PV actuels */
 	void SetMaxHealthMultiplier(float Multiplier);
 
+	/** Hps regen (serveur) */
+	void SetHealthRegen(float Amount) { HealthRegen = Amount; }
+
+	/** Armor (serveur) */
+	void SetArmor(float Amount) { Armor = Amount; }
+
 	/** Upgrades disponibles pour ce personnage */
 	const TArray<TObjectPtr<UYSUpgrade>>& GetUpgradePool() const { return UpgradePool; }
 
@@ -317,8 +350,8 @@ public:
 	int32 GetTotalUpgradeStacks() const;
 
 	/**
-	 *  Tire Count propositions parmi les upgrades encore proposables, chacune avec sa rareté :
-	 *  d'abord des upgrades différentes, puis des doublons s'il n'y en a pas assez (vide si aucune).
+	 *  Tire jusqu'à Count propositions différentes parmi les variantes d'upgrades encore proposables
+	 *  (tirage pondéré par OfferWeight, sans remise), chacune avec sa rareté (vide si aucune).
 	 */
 	TArray<FYSUpgradeOffer> PickUpgradeOffers(int32 Count) const;
 

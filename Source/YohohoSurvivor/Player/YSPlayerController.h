@@ -96,6 +96,14 @@ public:
 	UFUNCTION(Exec)
 	void YSChooseUpgrade(int32 OfferIndex);
 
+	/** Debug (console) : donne directement une upgrade (index dans l'Upgrade Pool, variante, rareté 1 Bronze / 2 Silver / 3 Gold).  Ex : YSGiveUpgrade 4 0 3 */
+	UFUNCTION(Exec)
+	void YSGiveUpgrade(int32 PoolIndex, int32 Variant = 0, int32 Rarity = 1);
+
+	/** Debug (console) : tire Draws fois 3 propositions et logue la fréquence de chaque proposition par position (vérifie les poids) */
+	UFUNCTION(Exec)
+	void YSUpgradeOdds(int32 Draws = 10000);
+
 	/**
 	 *  Debug (console) : lance une commande après Delay secondes de temps réel (fonctionne aussi en pause).
 	 *  Les « _ » de Command sont remplacés par des espaces.  Ex : YSAfter 2 shot_showui
@@ -158,6 +166,9 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerAddXP(float Amount);
+
+	UFUNCTION(Server, Reliable)
+	void ServerGiveUpgrade(int32 PoolIndex, int32 Variant, int32 Rarity);
 
 	UFUNCTION(Server, Reliable)
 	void ServerDamageFoes(float Amount);

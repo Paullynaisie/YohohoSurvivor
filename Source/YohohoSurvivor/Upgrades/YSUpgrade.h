@@ -97,6 +97,10 @@ public:
 	UFUNCTION(BlueprintPure, Category="Upgrade")
 	EYSUpgradeType GetUpgradeType() const { return UpgradeType; }
 
+	/** Poids de tirage : plus il est élevé, plus l'upgrade (chaque variante) a de chances d'être proposée */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="0"))
+	float OfferWeight = 10.0f;
+
 	/** Nombre de variantes (chacune proposée et cumulée séparément) */
 	virtual int32 GetVariantCount() const { return 1; }
 
@@ -124,10 +128,11 @@ protected:
 	EYSUpgradeType UpgradeType = EYSUpgradeType::Stat;
 };
 /**
- *  Upgrade de stat : modifie une statistique pure du joueur, stat = valeur de base x (1 + somme des bonus).
+ *  Upgrade de stat : modifie une statistique pure du joueur, stat = valeur de base x (1 + somme des bonus)
+ *  (ou base + somme pour les stats additives : regen, armure).
  *  Chaque variante cumule jusqu'à MaxStacks bonus (ensuite elle n'est plus proposée) ;
  *  chaque bonus a une rareté tirée au hasard qui fixe sa valeur.
- *  Nouvelle stat = sous-classe qui surcharge GetBaseStatValue (affichage) et ApplyMultiplier.
+ *  Nouvelle stat = sous-classe qui surcharge GetBaseStatValue (affichage), ApplyBonus et si besoin GetStatValue.
  */
 UCLASS(Abstract)
 class UYSStatUpgrade : public UYSUpgrade
@@ -182,9 +187,9 @@ public:
 
 	virtual float GetBonusValue(EYSUpgradeRarity Rarity) const override;
 
-	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
 
-	/** Applique le multiplicateur 1 + somme des bonus (ApplyMultiplier) */
+	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
+	/** Applique la somme des bonus au personnage (ApplyBonus) */
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
 protected:
@@ -192,8 +197,11 @@ protected:
 	/** Valeur de base de la stat, sans bonus (affichage des valeurs concrètes) */
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const { return 1.0f; }
 
-	/** Applique le multiplicateur de la stat au personnage (serveur) */
-	virtual void ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const {}
+	/** Valeur de la stat pour une somme de bonus : base x (1 + somme) par défaut (additive : base + somme) */
+	virtual float GetStatValue(float BaseValue, float TotalBonus) const { return BaseValue * (1.0f + TotalBonus); }
+
+	/** Applique la somme des bonus au personnage (serveur) */
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const {}
 
 	FLinearColor GetRarityColor(EYSUpgradeRarity Rarity) const;
 };
@@ -232,7 +240,7 @@ protected:
 	/** Dégâts de base de l'arme de la main (action du clic, sinon attaque auto) */
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
-	virtual void ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const override;
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
 };
 
 /** Move speed bonus : vitesse de déplacement (MoveSpeed du personnage) x (1 + somme des bonus) */
@@ -249,7 +257,7 @@ protected:
 
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
-	virtual void ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const override;
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
 };
 
 /** Hps bonus : PV max (MaxHealth du personnage) x (1 + somme des bonus) ; les PV gagnés s'ajoutent aux PV actuels */
@@ -266,5 +274,46 @@ protected:
 
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
-	virtual void ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const override;
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
+};
+
+/**
+ *  Hps regen : sans dégât subi depuis HealthRegenDelay (5 s, réglable sur le personnage), rend la somme des bonus en PV
+ *  toutes les HealthRegenInterval (1 s). Mécanique inactive tant que le joueur n'a pas pris l'upgrade.
+ */
+UCLASS(meta=(DisplayName="Upgrade de stat : Hps regen"))
+class UYSHealthRegenUpgrade : public UYSStatUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSHealthRegenUpgrade();
+
+protected:
+
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override { return 0.0f; }
+
+	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
+
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
+};
+
+/** Armor : chaque coup subi est réduit de la somme des bonus. Mécanique inactive tant que le joueur n'a pas pris l'upgrade. */
+UCLASS(meta=(DisplayName="Upgrade de stat : Armor"))
+class UYSArmorUpgrade : public UYSStatUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSArmorUpgrade();
+
+protected:
+
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override { return 0.0f; }
+
+	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
+
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
 };

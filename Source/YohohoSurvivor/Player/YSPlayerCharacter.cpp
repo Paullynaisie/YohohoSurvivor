@@ -145,8 +145,20 @@ UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
 
 float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-	const float Damage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	float Damage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 	if (!HasAuthority() || !IsAlive() || Damage <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// Armor : chaque coup est réduit de l'armure (jusqu'à MinDamageAfterArmor)
+	if (Armor > 0.0f)
+	{
+		Damage = FMath::Max(FMath::Min(Damage, MinDamageAfterArmor), Damage - Armor);
+	}
+	LastDamageTime = GetWorld()->GetTimeSeconds();
+	HealthRegenTimer = 0.0f;
+	if (Damage <= 0.0f)
 	{
 		return 0.0f;
 	}
@@ -227,7 +239,7 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		const UYSUpgrade* Upgrade = UpgradePool[PoolIndex];
 		for (int32 Variant = 0; Upgrade && Variant < Upgrade->GetVariantCount(); ++Variant)
 		{
-			if (Upgrade->CanBeOffered(this, Variant, GetUpgradeProgress(PoolIndex, Variant)))
+			if (Upgrade->OfferWeight > 0.0f && Upgrade->CanBeOffered(this, Variant, GetUpgradeProgress(PoolIndex, Variant)))
 			{
 				FYSUpgradeOffer& Candidate = Candidates.AddDefaulted_GetRef();
 				Candidate.PoolIndex = PoolIndex;
@@ -236,21 +248,32 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		}
 	}
 
+	// tirage pondéré sans remise : chaque variante (ex. main droite / gauche) a le poids de son upgrade,
+	// une proposition tirée sort du tirage (que des propositions différentes) ; rareté tirée pour chacune
 	TArray<FYSUpgradeOffer> Offers;
-	if (Candidates.Num() == 0)
+	while (Offers.Num() < Count && Candidates.Num() > 0)
 	{
-		return Offers;
-	}
+		float TotalWeight = 0.0f;
+		for (const FYSUpgradeOffer& Candidate : Candidates)
+		{
+			TotalWeight += UpgradePool[Candidate.PoolIndex]->OfferWeight;
+		}
 
-	// mélange : bonus différents d'abord, puis doublons tirés au hasard pour compléter ; rareté tirée pour chacun
-	for (int32 Index = Candidates.Num() - 1; Index > 0; --Index)
-	{
-		Candidates.Swap(Index, FMath::RandRange(0, Index));
-	}
-	for (int32 Slot = 0; Slot < Count; ++Slot)
-	{
-		FYSUpgradeOffer& Offer = Offers.Add_GetRef(Slot < Candidates.Num() ? Candidates[Slot] : Candidates[FMath::RandRange(0, Candidates.Num() - 1)]);
+		int32 Picked = Candidates.Num() - 1;
+		float Roll = FMath::FRand() * TotalWeight;
+		for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+		{
+			Roll -= UpgradePool[Candidates[Index].PoolIndex]->OfferWeight;
+			if (Roll < 0.0f)
+			{
+				Picked = Index;
+				break;
+			}
+		}
+
+		FYSUpgradeOffer& Offer = Offers.Add_GetRef(Candidates[Picked]);
 		Offer.Rarity = UpgradePool[Offer.PoolIndex]->RollRarity();
+		Candidates.RemoveAt(Picked);
 	}
 	return Offers;
 }
@@ -351,6 +374,11 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateStrafeAnimation(DeltaSeconds);
 	UpdateBodyPivot(DeltaSeconds);
 	UpdateHands(DeltaSeconds);
+
+	if (HasAuthority())
+	{
+		UpdateHealthRegen(DeltaSeconds);
+	}
 }
 
 FVector AYSPlayerCharacter::GetHandTargetLocation(bool bLeft) const
@@ -738,4 +766,22 @@ void AYSPlayerCharacter::SetMaxHealthMultiplier(float Multiplier)
 	const float OldMaxHealth = GetMaxHealth();
 	MaxHealthMultiplier = Multiplier;
 	Health = FMath::Clamp(Health + GetMaxHealth() - OldMaxHealth, 0.0f, GetMaxHealth());
+}
+
+void AYSPlayerCharacter::UpdateHealthRegen(float DeltaSeconds)
+{
+	// regen seulement avec l'upgrade, vivant, pas au max, et sans dégât subi depuis HealthRegenDelay
+	if (HealthRegen <= 0.0f || !IsAlive() || Health >= GetMaxHealth() || GetWorld()->GetTimeSeconds() - LastDamageTime < HealthRegenDelay)
+	{
+		HealthRegenTimer = 0.0f;
+		return;
+	}
+
+	HealthRegenTimer += DeltaSeconds;
+	while (HealthRegenTimer >= HealthRegenInterval)
+	{
+		HealthRegenTimer -= HealthRegenInterval;
+		Health = FMath::Min(Health + HealthRegen, GetMaxHealth());
+		UE_LOG(LogTemp, Verbose, TEXT("[YSHealthRegen] %s +%.1f -> %.1f / %.1f"), *GetName(), HealthRegen, Health, GetMaxHealth());
+	}
 }

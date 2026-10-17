@@ -330,6 +330,52 @@ void AYSPlayerController::YSAfter(float Delay, const FString& Command)
 	}), Delay);
 }
 
+void AYSPlayerController::YSGiveUpgrade(int32 PoolIndex, int32 Variant, int32 Rarity)
+{
+	ServerGiveUpgrade(PoolIndex, Variant, Rarity);
+}
+
+void AYSPlayerController::ServerGiveUpgrade_Implementation(int32 PoolIndex, int32 Variant, int32 Rarity)
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		FYSUpgradeOffer Offer;
+		Offer.PoolIndex = PoolIndex;
+		Offer.Variant = Variant;
+		Offer.Rarity = static_cast<EYSUpgradeRarity>(FMath::Clamp(Rarity, 0, 3));
+		PlayerCharacter->ApplyUpgrade(Offer);
+	}
+}
+
+void AYSPlayerController::YSUpgradeOdds(int32 Draws)
+{
+	// local : le pool et la progression sont connus du client
+	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	if (!PlayerCharacter || Draws <= 0)
+	{
+		return;
+	}
+
+	TMap<FString, TArray<int32>> Counts;
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		const TArray<FYSUpgradeOffer> Offers = PlayerCharacter->PickUpgradeOffers(3);
+		for (int32 Slot = 0; Slot < Offers.Num(); ++Slot)
+		{
+			const FString Name = PlayerCharacter->GetUpgradePool()[Offers[Slot].PoolIndex]->GetVariantName(Offers[Slot].Variant).ToString();
+			TArray<int32>& SlotCounts = Counts.FindOrAdd(Name);
+			SlotCounts.SetNumZeroed(3);
+			++SlotCounts[Slot];
+		}
+	}
+
+	for (const TPair<FString, TArray<int32>>& Entry : Counts)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSUpgradeOdds] %-22s proposition 1 : %5.1f %%  2 : %5.1f %%  3 : %5.1f %%"), *Entry.Key,
+			100.0f * Entry.Value[0] / Draws, 100.0f * Entry.Value[1] / Draws, 100.0f * Entry.Value[2] / Draws);
+	}
+}
+
 void AYSPlayerController::ServerAddXP_Implementation(float Amount)
 {
 	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())

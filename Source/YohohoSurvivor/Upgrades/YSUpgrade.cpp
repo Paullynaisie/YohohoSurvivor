@@ -99,13 +99,13 @@ void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Va
 	const float BaseValue = GetBaseStatValue(Character, Variant);
 
 	FYSChoiceLine& OldValue = OutLines.AddDefaulted_GetRef();
-	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(BaseValue * (1.0f + Progress.TotalValue)));
+	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetStatValue(BaseValue, Progress.TotalValue)));
 	OldValue.Color = FLinearColor(0.65f, 0.65f, 0.65f);
 	OldValue.FontSize = 16;
 	OldValue.bStrikethrough = true;
 
 	FYSChoiceLine& NewValue = OutLines.AddDefaulted_GetRef();
-	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(BaseValue * (1.0f + Progress.TotalValue + GetBonusValue(Rarity))));
+	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetStatValue(BaseValue, Progress.TotalValue + GetBonusValue(Rarity))));
 	NewValue.FontSize = 18;
 	NewValue.bBold = true;
 }
@@ -114,9 +114,9 @@ void UYSStatUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const F
 {
 	if (Character)
 	{
-		ApplyMultiplier(Character, Variant, 1.0f + Progress.TotalValue);
-		UE_LOG(LogTemp, Log, TEXT("[YSStatUpgrade] %s : %s x %.3f (%d bonus) -> %.1f"), *Character->GetName(), *GetVariantName(Variant).ToString(),
-			1.0f + Progress.TotalValue, Progress.Stacks, GetBaseStatValue(Character, Variant) * (1.0f + Progress.TotalValue));
+		ApplyBonus(Character, Variant, Progress.TotalValue);
+		UE_LOG(LogTemp, Log, TEXT("[YSStatUpgrade] %s : %s, somme des bonus %.3f (%d bonus) -> %.1f"), *Character->GetName(), *GetVariantName(Variant).ToString(),
+			Progress.TotalValue, Progress.Stacks, GetStatValue(GetBaseStatValue(Character, Variant), Progress.TotalValue));
 	}
 }
 
@@ -150,14 +150,15 @@ float UYSHandAtkBonusUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Charact
 	return Action ? Action->GetBaseDamage() : 0.0f;
 }
 
-void UYSHandAtkBonusUpgrade::ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const
+void UYSHandAtkBonusUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
-	Character->SetHandDamageMultiplier(GetHand(Variant), Multiplier);
+	Character->SetHandDamageMultiplier(GetHand(Variant), 1.0f + TotalBonus);
 }
 
 UYSMoveSpeedBonusUpgrade::UYSMoveSpeedBonusUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "MoveSpeedBonusName", "Move speed bonus");
+	OfferWeight = 5.0f;
 	StatLabel = NSLOCTEXT("YS", "MoveSpeedBonusStat", "Vitesse");
 	BronzeValue = 0.025f;
 	SilverValue = 0.05f;
@@ -169,14 +170,15 @@ float UYSMoveSpeedBonusUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Chara
 	return Character ? Character->GetBaseMoveSpeed() : 0.0f;
 }
 
-void UYSMoveSpeedBonusUpgrade::ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const
+void UYSMoveSpeedBonusUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
-	Character->SetMoveSpeedMultiplier(Multiplier);
+	Character->SetMoveSpeedMultiplier(1.0f + TotalBonus);
 }
 
 UYSHealthBonusUpgrade::UYSHealthBonusUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "HealthBonusName", "Hps bonus");
+	OfferWeight = 5.0f;
 	StatLabel = NSLOCTEXT("YS", "HealthBonusStat", "PV max");
 	BronzeValue = 0.05f;
 	SilverValue = 0.1f;
@@ -188,7 +190,37 @@ float UYSHealthBonusUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Characte
 	return Character ? Character->GetBaseMaxHealth() : 0.0f;
 }
 
-void UYSHealthBonusUpgrade::ApplyMultiplier(AYSPlayerCharacter* Character, int32 Variant, float Multiplier) const
+void UYSHealthBonusUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
-	Character->SetMaxHealthMultiplier(Multiplier);
+	Character->SetMaxHealthMultiplier(1.0f + TotalBonus);
+}
+
+UYSHealthRegenUpgrade::UYSHealthRegenUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "HealthRegenName", "Hps regen");
+	StatLabel = NSLOCTEXT("YS", "HealthRegenStat", "Regen PV/s");
+	OfferWeight = 5.0f;
+	BronzeValue = 1.0f;
+	SilverValue = 2.0f;
+	GoldValue = 3.0f;
+}
+
+void UYSHealthRegenUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
+{
+	Character->SetHealthRegen(TotalBonus);
+}
+
+UYSArmorUpgrade::UYSArmorUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "ArmorName", "Armor");
+	StatLabel = NSLOCTEXT("YS", "ArmorStat", "Armure");
+	OfferWeight = 5.0f;
+	BronzeValue = 1.0f;
+	SilverValue = 2.0f;
+	GoldValue = 3.0f;
+}
+
+void UYSArmorUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
+{
+	Character->SetArmor(TotalBonus);
 }

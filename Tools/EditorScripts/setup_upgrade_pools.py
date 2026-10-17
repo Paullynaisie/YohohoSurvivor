@@ -4,6 +4,8 @@ ensuite à régler dans l'asset) :
   - DA_Upgrade_AtkBonus        (UYSHandAtkBonusUpgrade : Right / Left hand Atk bonus)
   - DA_Upgrade_MoveSpeedBonus  (UYSMoveSpeedBonusUpgrade)
   - DA_Upgrade_HpsBonus        (UYSHealthBonusUpgrade)
+  - DA_Upgrade_HpsRegen        (UYSHealthRegenUpgrade)
+  - DA_Upgrade_Armor           (UYSArmorUpgrade)
 Upgrade Pool des 3 personnages jouables = ces assets
 (les enfants reçoivent la même valeur que le parent : ils en héritent à nouveau).
 
@@ -19,6 +21,8 @@ UPGRADES = [
     ("DA_Upgrade_AtkBonus", unreal.YSHandAtkBonusUpgrade),
     ("DA_Upgrade_MoveSpeedBonus", unreal.YSMoveSpeedBonusUpgrade),
     ("DA_Upgrade_HpsBonus", unreal.YSHealthBonusUpgrade),
+    ("DA_Upgrade_HpsRegen", unreal.YSHealthRegenUpgrade),
+    ("DA_Upgrade_Armor", unreal.YSArmorUpgrade),
 ]
 CHARACTERS = [
     "/Game/Placeable/Character/PlayerCharacter_mouss",  # parent d'abord
@@ -53,7 +57,7 @@ try:
             assets.save_asset(path, only_if_is_dirty=False)
             log(f"créé : {path}")
         log(f"  {upgrade.get_editor_property('display_name')} : {upgrade.get_editor_property('stat_label')}, "
-            f"max {upgrade.get_editor_property('max_stacks')}, valeurs {upgrade.get_editor_property('bronze_value'):.3f} / "
+            f"poids {upgrade.get_editor_property('offer_weight')}, max {upgrade.get_editor_property('max_stacks')}, valeurs {upgrade.get_editor_property('bronze_value'):.3f} / "
             f"{upgrade.get_editor_property('silver_value'):.3f} / {upgrade.get_editor_property('gold_value'):.3f}")
         pool.append(upgrade)
 
