@@ -171,7 +171,7 @@ void AYSFoeCharacter::BeginPlay()
 		AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
 		if (bLevelFromDay && YSGameState)
 		{
-			Level = YSGameState->GetDayNumber();
+			Level = FMath::Max(0, YSGameState->GetDayNumber() + LevelFromDayOffset);
 		}
 
 		// statistiques du niveau (MaxHealth est répliqué pour les barres de vie)

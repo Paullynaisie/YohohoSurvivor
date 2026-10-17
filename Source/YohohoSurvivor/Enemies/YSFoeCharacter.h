@@ -49,9 +49,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe")
 	FText FoeName;
 
-	/** Le niveau suit le numéro du jour en cours au moment de l'apparition */
+	/** Le niveau suit le numéro du jour en cours au moment de l'apparition (+ LevelFromDayOffset : jour 1 = niveau 0) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level")
 	bool bLevelFromDay = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(EditCondition="bLevelFromDay"))
+	int32 LevelFromDayOffset = -1;
 
 	/** Élite : apparaît la nuit, sa mort fait passer au jour suivant ; barre de vie toujours visible */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite")
