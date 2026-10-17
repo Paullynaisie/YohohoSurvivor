@@ -12,6 +12,8 @@
 #include "UI/YSAbilityIconWidget.h"
 #include "UI/YSCharacterSelectWidget.h"
 #include "UI/YSPlayerHUDWidget.h"
+#include "UI/YSOffscreenIndicatorsWidget.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "UI/YSEliteHealthWidget.h"
 #include "UI/YSDayBannerWidget.h"
 #include "Upgrades/YSUpgrade.h"
@@ -92,6 +94,14 @@ void AYSPlayerController::BeginPlay()
 			HUDSlot.Offsets = FMargin(24.0f, 24.0f, 0.0f, 0.0f);
 			HUDSlot.ZOrder = 1;
 			ViewportSubsystem->AddWidgetForPlayer(PlayerHUD, GetLocalPlayer(), HUDSlot);
+
+			// icônes des autres joueurs hors écran, collées au bord (plein écran)
+			OffscreenIndicators = CreateWidget<UYSOffscreenIndicatorsWidget>(this, UYSOffscreenIndicatorsWidget::StaticClass());
+			OffscreenIndicators->SetVisibility(ESlateVisibility::Collapsed);
+			FGameViewportWidgetSlot IndicatorsSlot;
+			IndicatorsSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
+			IndicatorsSlot.ZOrder = 2;
+			ViewportSubsystem->AddWidgetForPlayer(OffscreenIndicators, GetLocalPlayer(), IndicatorsSlot);
 
 			// barre de l'élite : haut droite (symétrique du HUD du joueur)
 			EliteHealth = CreateWidget<UYSEliteHealthWidget>(this, UYSEliteHealthWidget::StaticClass());
@@ -486,6 +496,82 @@ void AYSPlayerController::UpdatePlayerHUD()
 	if (YSGameState)
 	{
 		PlayerHUD->SetLevel(YSGameState->GetTeamLevel(), YSGameState->GetTeamExperience(), YSGameState->GetExperienceToNextLevel());
+	}
+	if (!YSGameState)
+	{
+		return;
+	}
+
+	// taille de l'écran en unités Slate (icônes, indicateurs)
+	int32 ViewportX = 0;
+	int32 ViewportY = 0;
+	GetViewportSize(ViewportX, ViewportY);
+	const float ViewportScale = FMath::Max(0.01f, UWidgetLayoutLibrary::GetViewportScale(this));
+
+	// icône du joueur (couleur + visage choisis)
+	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
+	auto GetIcon = [YSGameState](const AYSPlayerState* State, FLinearColor& OutColor, UTexture2D*& OutFace)
+	{
+		const TArray<FYSCustomizationColor>& Colors = YSGameState->GetCustomizationColors();
+		OutColor = Colors.IsValidIndex(State->GetColorIndex()) ? Colors[State->GetColorIndex()].ButtonColor : FLinearColor::Gray;
+		OutFace = YSGameState->GetCustomizationFace(State->GetFaceIndex());
+	};
+	if (MyState)
+	{
+		FLinearColor Color;
+		UTexture2D* Face = nullptr;
+		GetIcon(MyState, Color, Face);
+		PlayerHUD->SetSelfIcon(Color, Face, ViewportX / ViewportScale);
+	}
+
+	// autres joueurs : liste sous les infos du joueur, et icône au bord de l'écran quand leur personnage est hors écran
+	TArray<FYSHUDPlayerInfo> Allies;
+	TArray<FYSOffscreenIndicator> Indicators;
+	const float EdgeMargin = OffscreenIndicators ? OffscreenIndicators->IconSize * 0.5f + OffscreenIndicatorMargin : 0.0f;
+	for (const APlayerState* OtherPlayer : YSGameState->PlayerArray)
+	{
+		const AYSPlayerState* OtherState = Cast<AYSPlayerState>(OtherPlayer);
+		if (!OtherState || OtherState == MyState)
+		{
+			continue;
+		}
+
+		const AYSPlayerCharacter* OtherCharacter = Cast<AYSPlayerCharacter>(OtherState->GetPawn());
+		FYSHUDPlayerInfo& Info = Allies.AddDefaulted_GetRef();
+		Info.Name = FText::FromString(OtherState->GetPlayerName());
+		GetIcon(OtherState, Info.Color, Info.Face);
+		Info.bAlive = OtherCharacter && OtherCharacter->IsAlive();
+		Info.Health = OtherCharacter ? OtherCharacter->GetHealth() : 0.0f;
+		Info.MaxHealth = OtherCharacter ? OtherCharacter->GetMaxHealth() : 0.0f;
+
+		FVector2D ScreenPosition;
+		if (!Info.bAlive || !ProjectWorldLocationToScreen(OtherCharacter->GetActorLocation(), ScreenPosition))
+		{
+			continue;
+		}
+		const FVector2D Screen(ViewportX / ViewportScale, ViewportY / ViewportScale);
+		const FVector2D Position = ScreenPosition / ViewportScale;
+		if (Position.X >= 0.0f && Position.Y >= 0.0f && Position.X <= Screen.X && Position.Y <= Screen.Y)
+		{
+			continue;
+		}
+
+		// hors écran : point du bord (moins la marge) sur la ligne centre de l'écran -> joueur
+		const FVector2D Center = Screen * 0.5f;
+		const FVector2D Direction = Position - Center;
+		const FVector2D Half(FMath::Max(1.0f, Center.X - EdgeMargin), FMath::Max(1.0f, Center.Y - EdgeMargin));
+		const float Scale = FMath::Min(Direction.X != 0.0f ? Half.X / FMath::Abs(Direction.X) : BIG_NUMBER, Direction.Y != 0.0f ? Half.Y / FMath::Abs(Direction.Y) : BIG_NUMBER);
+		FYSOffscreenIndicator& Indicator = Indicators.AddDefaulted_GetRef();
+		Indicator.Position = Center + Direction * Scale;
+		Indicator.Color = Info.Color;
+		Indicator.Face = Info.Face;
+	}
+	PlayerHUD->SetAllies(Allies);
+
+	if (OffscreenIndicators)
+	{
+		OffscreenIndicators->SetVisibility(bInMatch ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		OffscreenIndicators->SetIndicators(Indicators);
 	}
 }
 

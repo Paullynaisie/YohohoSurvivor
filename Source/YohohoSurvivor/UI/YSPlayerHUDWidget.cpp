@@ -7,6 +7,9 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "UI/YSPlayerIconWidget.h"
 
 namespace YSPlayerHUD
 {
@@ -71,8 +74,24 @@ UWidget* UYSPlayerHUDWidget::CreateBar(const FName& Name, const FVector2D& Size,
 
 void UYSPlayerHUDWidget::BuildWidgetTree()
 {
+	// infos du joueur (icône + colonne de barres), puis la liste des autres joueurs
+	UVerticalBox* Outer = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Outer"));
+	WidgetTree->RootWidget = Outer;
+
+	UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("SelfRow"));
+	Outer->AddChildToVerticalBox(Row);
+
+	SelfIcon = CreateWidget<UYSPlayerIconWidget>(this, UYSPlayerIconWidget::StaticClass());
+	UHorizontalBoxSlot* IconSlot = Row->AddChildToHorizontalBox(SelfIcon);
+	IconSlot->SetVerticalAlignment(VAlign_Center);
+	IconSlot->SetPadding(FMargin(0.0f, 0.0f, SelfIconSpacing, 0.0f));
+
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
-	WidgetTree->RootWidget = Column;
+	Row->AddChildToHorizontalBox(Column);
+
+	AlliesList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Allies"));
+	UVerticalBoxSlot* AlliesSlot = Outer->AddChildToVerticalBox(AlliesList);
+	AlliesSlot->SetPadding(FMargin(0.0f, AlliesTopSpacing, 0.0f, 0.0f));
 
 	UProgressBar* Bar = nullptr;
 	UTextBlock* Label = nullptr;
@@ -130,5 +149,81 @@ void UYSPlayerHUDWidget::SetPlayerName(const FText& Name)
 	if (NameLabel && !NameLabel->GetText().EqualTo(Name))
 	{
 		NameLabel->SetText(Name);
+	}
+}
+
+void UYSPlayerHUDWidget::SetSelfIcon(const FLinearColor& Color, UTexture2D* Face, float ViewportWidth)
+{
+	if (SelfIcon)
+	{
+		SelfIcon->SetIconSize(FMath::Max(16.0f, ViewportWidth * SelfIconScreenRatio));
+		SelfIcon->SetIcon(Color, Face);
+	}
+}
+
+void UYSPlayerHUDWidget::SetAllies(const TArray<FYSHUDPlayerInfo>& Allies)
+{
+	if (!AlliesList)
+	{
+		return;
+	}
+
+	// une ligne par joueur : icône, puis pseudo au-dessus d'une petite barre de PV
+	if (AllyIcons.Num() != Allies.Num())
+	{
+		AlliesList->ClearChildren();
+		AllyIcons.Reset();
+		AllyNames.Reset();
+		AllyBars.Reset();
+
+		for (int32 Index = 0; Index < Allies.Num(); ++Index)
+		{
+			UHorizontalBox* AllyRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+			UVerticalBoxSlot* RowSlot = AlliesList->AddChildToVerticalBox(AllyRow);
+			RowSlot->SetPadding(FMargin(0.0f, Index > 0 ? AllySpacing : 0.0f, 0.0f, 0.0f));
+
+			UYSPlayerIconWidget* Icon = CreateWidget<UYSPlayerIconWidget>(this, UYSPlayerIconWidget::StaticClass());
+			Icon->SetIconSize(AllyIconSize);
+			UHorizontalBoxSlot* IconSlot = AllyRow->AddChildToHorizontalBox(Icon);
+			IconSlot->SetVerticalAlignment(VAlign_Center);
+			IconSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+
+			UVerticalBox* Info = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+			AllyRow->AddChildToHorizontalBox(Info)->SetVerticalAlignment(VAlign_Center);
+
+			UTextBlock* Name = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+			YSPlayerHUD::StyleText(Name, 14);
+			Info->AddChildToVerticalBox(Name)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 2.0f));
+
+			USizeBox* BarBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+			BarBox->SetWidthOverride(AllyBarSize.X);
+			BarBox->SetHeightOverride(AllyBarSize.Y);
+			UProgressBar* Bar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
+			FProgressBarStyle Style = Bar->GetWidgetStyle();
+			Style.BackgroundImage.TintColor = FSlateColor(BarBackgroundColor);
+			Style.FillImage.TintColor = FSlateColor(FLinearColor::White);
+			Bar->SetWidgetStyle(Style);
+			Bar->SetFillColorAndOpacity(HealthColor);
+			BarBox->AddChild(Bar);
+			Info->AddChildToVerticalBox(BarBox);
+
+			AllyIcons.Add(Icon);
+			AllyNames.Add(Name);
+			AllyBars.Add(Bar);
+		}
+	}
+
+	for (int32 Index = 0; Index < Allies.Num(); ++Index)
+	{
+		const FYSHUDPlayerInfo& Ally = Allies[Index];
+		AllyIcons[Index]->SetIcon(Ally.Color, Ally.Face);
+		// mort (ou pas encore en jeu) : icône et pseudo estompés
+		AllyIcons[Index]->SetRenderOpacity(Ally.bAlive ? 1.0f : 0.4f);
+		if (!AllyNames[Index]->GetText().EqualTo(Ally.Name))
+		{
+			AllyNames[Index]->SetText(Ally.Name);
+		}
+		AllyNames[Index]->SetRenderOpacity(Ally.bAlive ? 1.0f : 0.4f);
+		AllyBars[Index]->SetPercent(Ally.bAlive && Ally.MaxHealth > 0.0f ? Ally.Health / Ally.MaxHealth : 0.0f);
 	}
 }

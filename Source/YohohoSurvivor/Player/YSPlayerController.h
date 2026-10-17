@@ -10,6 +10,7 @@ class UYSCharacterSelectWidget;
 class UYSPlayerHUDWidget;
 class UYSEliteHealthWidget;
 class UYSDayBannerWidget;
+class UYSOffscreenIndicatorsWidget;
 class ASceneCapture2D;
 class AYSPlayerCharacter;
 class UTextureRenderTarget2D;
@@ -42,6 +43,10 @@ protected:
 	/** Distance entre l'icône et le bas de l'écran */
 	UPROPERTY(EditAnywhere, Category="UI")
 	float AbilityIconBottomMargin = 40.0f;
+
+	/** Distance entre les icônes des joueurs hors écran et le bord de l'écran */
+	UPROPERTY(EditAnywhere, Category="UI")
+	float OffscreenIndicatorMargin = 12.0f;
 
 	/** Écran de sélection : Widget Blueprint enfant de YSCharacterSelectWidget (placements dans ses Class Defaults, catégorie Layout) */
 	UPROPERTY(EditAnywhere, Category="UI")
@@ -81,6 +86,10 @@ private:
 	/** Barre de vie de l'élite dans le HUD (haut droite), quand il est hors écran */
 	UPROPERTY(Transient)
 	TObjectPtr<UYSEliteHealthWidget> EliteHealth;
+
+	/** Icônes des autres joueurs hors écran (au bord, dans leur direction) */
+	UPROPERTY(Transient)
+	TObjectPtr<UYSOffscreenIndicatorsWidget> OffscreenIndicators;
 
 	/** Annonce « Jour X » */
 	UPROPERTY(Transient)
