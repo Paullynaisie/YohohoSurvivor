@@ -408,7 +408,9 @@ void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 	}
 
 	++Progress->Stacks;
-	Progress->TotalValue += Upgrade->GetBonusValue(Offer.Variant, Offer.Rarity);
+	const float BonusValue = Upgrade->GetBonusValue(Offer.Variant, Offer.Rarity);
+	Progress->TotalValue += BonusValue;
+	Progress->BonusValues.Add(BonusValue);
 	// la partie est en pause pendant les choix : sans ça, la progression n'est pas renvoyée aux clients
 	ForceNetUpdate();
 	Upgrade->Apply(this, Offer.Variant, *Progress);
@@ -835,7 +837,7 @@ void AYSPlayerCharacter::Fire()
 	UYSAbilityComponent* OffAction = OffWeapon ? OffWeapon->GetActiveAction() : nullptr;
 
 	// akimbo : la main droite (principale) tire, puis la gauche après le délai de l'arme
-	const bool bAkimbo = MainAction && OffAction && MainWeapon->GetClass() == OffWeapon->GetClass();
+	const bool bAkimbo = MainAction && OffAction && IsAkimbo();
 	if (bAkimbo && MainAction->IsReady())
 	{
 		MainAction->TryActivate(GetAimLocation());
@@ -1028,6 +1030,15 @@ void AYSPlayerCharacter::RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& O
 		Entry.PoolIndex = NewIndex;
 	}
 
+	// fusions propres à la nouvelle classe (ex. CD reduction commune en akimbo : les 10 meilleurs bonus des deux mains)
+	for (int32 PoolIndex = 0; PoolIndex < UpgradePool.Num(); ++PoolIndex)
+	{
+		if (UpgradePool[PoolIndex])
+		{
+			UpgradePool[PoolIndex]->MergeProgress(this, PoolIndex, UpgradeProgress);
+		}
+	}
+
 	// effets réappliqués une fois toute la progression en place (les upgrades d'arme lisent leurs 3 paliers) ;
 	// pas les upgrades de classe (elles relanceraient un changement de classe)
 	for (const FYSUpgradeProgress& Entry : UpgradeProgress)
@@ -1128,4 +1139,11 @@ void AYSPlayerCharacter::UpdateNameplate()
 	{
 		Widget->SetPlayer(FText::FromString(OwningPlayerState->GetPlayerName()), Health, GetMaxHealth());
 	}
+}
+
+bool AYSPlayerCharacter::IsAkimbo() const
+{
+	const AYSWeapon* LeftWeapon = GetLeftHandWeapon();
+	const AYSWeapon* RightWeapon = GetRightHandWeapon();
+	return LeftWeapon && RightWeapon && LeftWeapon->GetClass() == RightWeapon->GetClass();
 }

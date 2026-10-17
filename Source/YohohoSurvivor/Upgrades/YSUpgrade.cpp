@@ -81,7 +81,7 @@ void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Va
 {
 	// nom (couleur de la rareté) + rareté et nombre de bonus après ce choix
 	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
-	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), GetVariantName(Variant), YSUpgradeText::RarityName(Rarity));
+	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), GetVariantNameFor(Character, Variant), YSUpgradeText::RarityName(Rarity));
 	Title.Color = GetRarityColor(Rarity);
 	Title.FontSize = 20;
 	Title.bBold = true;
@@ -111,7 +111,7 @@ void UYSStatUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const F
 	if (Character)
 	{
 		ApplyBonus(Character, Variant, Progress.TotalValue);
-		UE_LOG(LogTemp, Log, TEXT("[YSStatUpgrade] %s : %s, somme des bonus %.3f (%d bonus) -> %.3f"), *Character->GetName(), *GetVariantName(Variant).ToString(),
+		UE_LOG(LogTemp, Log, TEXT("[YSStatUpgrade] %s : %s, somme des bonus %.3f (%d bonus) -> %.3f"), *Character->GetName(), *GetVariantNameFor(Character, Variant).ToString(),
 			Progress.TotalValue, Progress.Stacks, GetStatValue(GetBaseStatValue(Character, Variant), Progress.TotalValue));
 	}
 }
@@ -161,6 +161,7 @@ UYSHandCooldownReductionUpgrade::UYSHandCooldownReductionUpgrade()
 	DisplayName = NSLOCTEXT("YS", "HandCooldownReductionName", "CD Reduction");
 	RightHandName = NSLOCTEXT("YS", "RightHandCooldownReduction", "Right hand CD reduction");
 	LeftHandName = NSLOCTEXT("YS", "LeftHandCooldownReduction", "Left hand CD reduction");
+	AkimboName = NSLOCTEXT("YS", "AkimboCooldownReduction", "Akimbo CD reduction");
 	StatLabel = NSLOCTEXT("YS", "HandCooldownReductionStat", "Recharge (s)");
 	BronzeValue = 0.03f;
 	SilverValue = 0.045f;
@@ -175,6 +176,13 @@ float UYSHandCooldownReductionUpgrade::GetBaseStatValue(const AYSPlayerCharacter
 
 void UYSHandCooldownReductionUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
+	// akimbo : une seule CD reduction (variante 0) pour les deux mains
+	if (Character->IsAkimbo())
+	{
+		Character->SetHandCooldownMultiplier(EYSHand::Right, GetMultiplier(TotalBonus));
+		Character->SetHandCooldownMultiplier(EYSHand::Left, GetMultiplier(TotalBonus));
+		return;
+	}
 	Character->SetHandCooldownMultiplier(GetHand(Variant), GetMultiplier(TotalBonus));
 }
 
@@ -352,7 +360,7 @@ float UYSWeaponUpgrade::GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) co
 void UYSWeaponUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
 {
 	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
-	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), GetVariantName(Variant), YSUpgradeText::RarityName(Rarity));
+	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), GetVariantNameFor(Character, Variant), YSUpgradeText::RarityName(Rarity));
 	Title.Color = GetRarityColor(Rarity);
 	Title.FontSize = 20;
 	Title.bBold = true;
@@ -399,7 +407,7 @@ void UYSWeaponUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const
 	const float BonusTotal = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(Hand, EYSWeaponUpgradeTier::Bonus)).TotalValue;
 	const bool bSuper = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(Hand, EYSWeaponUpgradeTier::Super)).Stacks > 0;
 	ApplyWeaponProperty(Character, Hand, bUnlocked, BonusTotal, bSuper);
-	UE_LOG(LogTemp, Log, TEXT("[YSWeaponUpgrade] %s : %s (débloqué %d, bonus %.3f, super %d)"), *Character->GetName(), *GetVariantName(Variant).ToString(), bUnlocked, BonusTotal, bSuper);
+	UE_LOG(LogTemp, Log, TEXT("[YSWeaponUpgrade] %s : %s (débloqué %d, bonus %.3f, super %d)"), *Character->GetName(), *GetVariantNameFor(Character, Variant).ToString(), bUnlocked, BonusTotal, bSuper);
 }
 
 const FName UYSRicochetUpgrade::RicochetCountStat(TEXT("Ricochets"));
@@ -479,4 +487,71 @@ void UYSClassUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const 
 	{
 		Character->ChangeClass(TargetClass);
 	}
+}
+
+bool UYSHandCooldownReductionUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	if (Character && Character->IsAkimbo() && GetHand(Variant) == EYSHand::Left)
+	{
+		return false;
+	}
+	return Super::CanBeOffered(Character, Variant, Progress);
+}
+
+FText UYSHandCooldownReductionUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	return Character && Character->IsAkimbo() ? AkimboName : GetVariantName(Variant);
+}
+
+void UYSHandCooldownReductionUpgrade::MergeProgress(const AYSPlayerCharacter* Character, int32 PoolIndex, TArray<FYSUpgradeProgress>& Progress) const
+{
+	if (!Character || !Character->IsAkimbo())
+	{
+		return;
+	}
+
+	// tous les bonus des deux mains, du meilleur au moins bon ; les MaxStacks meilleurs restent (variante 0)
+	TArray<float> Values;
+	for (int32 Index = Progress.Num() - 1; Index >= 0; --Index)
+	{
+		const FYSUpgradeProgress& Entry = Progress[Index];
+		if (Entry.PoolIndex != PoolIndex)
+		{
+			continue;
+		}
+
+		if (Entry.BonusValues.Num() > 0)
+		{
+			Values.Append(Entry.BonusValues);
+		}
+		else
+		{
+			// progression sans détail : bonus de valeur moyenne
+			for (int32 Stack = 0; Stack < Entry.Stacks; ++Stack)
+			{
+				Values.Add(Entry.TotalValue / FMath::Max(1, Entry.Stacks));
+			}
+		}
+		Progress.RemoveAt(Index);
+	}
+	if (Values.Num() == 0)
+	{
+		return;
+	}
+
+	Values.Sort(TGreater<float>());
+	const int32 Dropped = FMath::Max(0, Values.Num() - MaxStacks);
+	Values.SetNum(FMath::Min(Values.Num(), MaxStacks));
+
+	FYSUpgradeProgress& Merged = Progress.AddDefaulted_GetRef();
+	Merged.PoolIndex = PoolIndex;
+	Merged.Variant = 0;
+	Merged.BonusValues = Values;
+	Merged.Stacks = Values.Num();
+	for (const float Value : Values)
+	{
+		Merged.TotalValue += Value;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSHandCooldownReduction] %s passe en akimbo : %d bonus gardés (somme %.3f), %d en trop jetés"),
+		*Character->GetName(), Merged.Stacks, Merged.TotalValue, Dropped);
 }

@@ -94,6 +94,16 @@ public:
 	/** Pawn qui utilise la capacité : le propriétaire direct, ou celui de l'arme qui la porte */
 	APawn* GetHolderPawn() const;
 
+	/** Akimbo (même arme dans les deux mains) et cette capacité est sur l'arme de la main droite (principale) */
+	bool IsAkimboMainHand() const;
+
+	/**
+	 *  Indisponibilité après une activation : GetCooldownDuration, plus en akimbo pour la main droite le délai akimbo
+	 *  (la gauche agit ce délai après elle) : recharge unique, les deux mains redeviennent prêtes ensemble,
+	 *  une fois les deux actions finies.
+	 */
+	float GetActivationLockDuration() const;
+
 protected:
 
 	/** Effets visuels de l'activation sur toutes les machines (le client qui tire les a déjà joués par prédiction) */

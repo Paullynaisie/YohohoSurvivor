@@ -477,6 +477,12 @@ public:
 	UFUNCTION(BlueprintPure, Category="3C|Weapons")
 	AYSWeapon* GetRightHandWeapon() const;
 
+	/** Akimbo : la même arme dans les deux mains (recharge unique, CD reduction commune) */
+	bool IsAkimbo() const;
+
+	/** Déclenche les actions de clic des deux mains (comme le clic gauche ; debug YSFire) */
+	void TriggerFire() { Fire(); }
+
 	/** Nom affiché (repli sur le nom de la classe si CharacterName est vide) */
 	FText GetCharacterName() const { return CharacterName.IsEmpty() ? FText::FromString(GetClass()->GetName().Replace(TEXT("_C"), TEXT(""))) : CharacterName; }
 

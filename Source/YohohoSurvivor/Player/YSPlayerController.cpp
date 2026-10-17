@@ -766,7 +766,7 @@ void AYSPlayerController::YSUpgradeOdds(int32 Draws)
 		const TArray<FYSUpgradeOffer> Offers = PlayerCharacter->PickUpgradeOffers(3);
 		for (int32 Slot = 0; Slot < Offers.Num(); ++Slot)
 		{
-			const FString Name = PlayerCharacter->GetUpgradePool()[Offers[Slot].PoolIndex]->GetVariantName(Offers[Slot].Variant).ToString();
+			const FString Name = PlayerCharacter->GetUpgradePool()[Offers[Slot].PoolIndex]->GetVariantNameFor(PlayerCharacter, Offers[Slot].Variant).ToString();
 			TArray<int32>& SlotCounts = Counts.FindOrAdd(Name);
 			SlotCounts.SetNumZeroed(3);
 			++SlotCounts[Slot];
@@ -977,5 +977,13 @@ void AYSPlayerController::ServerSetReady_Implementation(bool bReady)
 	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
 	{
 		GameMode->PlayerSetReady(this, bReady);
+	}
+}
+
+void AYSPlayerController::YSFire()
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->TriggerFire();
 	}
 }

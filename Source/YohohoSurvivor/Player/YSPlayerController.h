@@ -166,6 +166,10 @@ public:
 	UFUNCTION(Exec)
 	void YSFireAtFoe(int32 Hand = 0);
 
+	/** Debug (console) : comme un clic gauche (akimbo compris) */
+	UFUNCTION(Exec)
+	void YSFire();
+
 	/** Debug (console) : personnalisation comme à l'écran de sélection.  Ex : YSSetColor 2 / YSSetFace 3 / YSSetName Paul */
 	UFUNCTION(Exec)
 	void YSSetColor(int32 ColorIndex);

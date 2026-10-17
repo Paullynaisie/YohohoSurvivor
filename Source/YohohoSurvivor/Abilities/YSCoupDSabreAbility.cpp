@@ -92,7 +92,8 @@ void UYSCoupDSabreAbility::StartAttack()
 		return;
 	}
 
-	ReadyServerTime = GetServerTime() + GetCooldownDuration();
+	ReadyServerTime = GetServerTime() + GetActivationLockDuration();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s attaque à %.2f, prête à %.2f"), *GetOwner()->GetName(), *GetName(), GetServerTime(), ReadyServerTime);
 	HitThisSwing.Reset();
 	MulticastActivated();
 }

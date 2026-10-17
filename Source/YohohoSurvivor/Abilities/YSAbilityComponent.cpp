@@ -43,7 +43,7 @@ void UYSAbilityComponent::TryActivate(const FVector& TargetLocation)
 	}
 
 	// prédiction locale de la recharge et des effets pour un retour immédiat, le serveur fait foi
-	ReadyServerTime = GetServerTime() + GetCooldownDuration();
+	ReadyServerTime = GetServerTime() + GetActivationLockDuration();
 	NotifyActivated();
 	ServerActivate(TargetLocation);
 }
@@ -144,7 +144,8 @@ void UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
 		return;
 	}
 
-	ReadyServerTime = Now + GetCooldownDuration();
+	ReadyServerTime = Now + GetActivationLockDuration();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s activée à %.2f, prête à %.2f"), *GetOwner()->GetName(), *GetName(), Now, ReadyServerTime);
 	ExecuteAbility(TargetLocation);
 	MulticastActivated();
 }
@@ -177,4 +178,17 @@ float UYSAbilityComponent::GetWeaponStat(FName Stat, float Default) const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	return Character ? Character->GetWeaponStat(Cast<AYSWeapon>(GetOwner()), Stat, Default) : Default;
+}
+
+bool UYSAbilityComponent::IsAkimboMainHand() const
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	const AYSWeapon* RightWeapon = Character ? Character->GetRightHandWeapon() : nullptr;
+	return Character && Character->IsAkimbo() && RightWeapon == GetOwner();
+}
+
+float UYSAbilityComponent::GetActivationLockDuration() const
+{
+	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
+	return GetCooldownDuration() + (Weapon && IsAkimboMainHand() ? Weapon->GetAkimboFireDelay() : 0.0f);
 }

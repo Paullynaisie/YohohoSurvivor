@@ -85,7 +85,7 @@ void UYSAbilityIconWidget::Refresh(const UYSAbilityComponent* Ability)
 	IconImage->SetColorAndOpacity(Ability->IconTint);
 
 	const float Remaining = Ability->GetCooldownRemaining();
-	const float Duration = Ability->GetCooldownDuration();
+	const float Duration = Ability->GetActivationLockDuration();
 	CooldownBar->SetPercent(Duration > 0.0f ? Remaining / Duration : 0.0f);
 	CooldownText->SetText(Remaining > 0.0f ? FText::AsNumber(FMath::CeilToInt(Remaining)) : FText::GetEmpty());
 }

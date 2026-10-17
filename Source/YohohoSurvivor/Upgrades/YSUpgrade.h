@@ -76,6 +76,10 @@ struct FYSUpgradeProgress
 	/** Somme des valeurs des bonus obtenus */
 	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
 	float TotalValue = 0.0f;
+
+	/** Valeur de chaque bonus obtenu (pour garder les meilleurs quand deux progressions fusionnent : CD reduction en akimbo) */
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	TArray<float> BonusValues;
 };
 
 /**
@@ -128,6 +132,12 @@ public:
 
 	/** Nom affiché d'une variante */
 	virtual FText GetVariantName(int32 Variant) const { return DisplayName; }
+
+	/** Nom affiché d'une variante pour ce personnage (ex. CD reduction commune en akimbo) */
+	virtual FText GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const { return GetVariantName(Variant); }
+
+	/** Après un changement de classe (RestoreUpgrades), avant de réappliquer : fusionne des progressions si besoin */
+	virtual void MergeProgress(const AYSPlayerCharacter* Character, int32 PoolIndex, TArray<FYSUpgradeProgress>& Progress) const {}
 
 	/** Peut encore être proposée à ce personnage (Progress = ce qu'il a déjà obtenu de cette variante) */
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const { return true; }
@@ -264,7 +274,7 @@ protected:
 };
 
 /**
- *  CD Reduction (par main) : temps de recharge de l'arme de la main x (1 - somme des bonus de cette main),
+ *  CD Reduction (par main ; une seule commune en akimbo) : temps de recharge de l'arme de la main x (1 - somme des bonus),
  *  jamais sous MinCooldownMultiplier. Coup d'Petoir : Cooldown ; Coup d'sabre : Auto Atk Cooldown (pas la durée de l'anim).
  */
 UCLASS(meta=(DisplayName="Upgrade de stat : CD Reduction (par main)"))
@@ -279,6 +289,18 @@ public:
 	/** Multiplicateur minimum de la recharge (garde-fou) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="0", ClampMax="1"))
 	float MinCooldownMultiplier = 0.1f;
+
+	/** Nom en akimbo (une seule CD reduction pour les deux mains) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	FText AkimboName;
+
+	/** Akimbo : seule la variante 0 est proposée et s'applique aux deux mains */
+	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
+	virtual FText GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	/** Passage en akimbo : les bonus des deux mains fusionnent dans la variante 0, les MaxStacks meilleurs sont gardés */
+	virtual void MergeProgress(const AYSPlayerCharacter* Character, int32 PoolIndex, TArray<FYSUpgradeProgress>& Progress) const override;
 
 protected:
 
