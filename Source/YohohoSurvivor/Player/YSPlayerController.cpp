@@ -357,6 +357,8 @@ void AYSPlayerController::YSUpgradeOdds(int32 Draws)
 	}
 
 	TMap<FString, TArray<int32>> Counts;
+	int32 RarityCounts[4] = { 0, 0, 0, 0 };
+	int32 TotalOffers = 0;
 	for (int32 Draw = 0; Draw < Draws; ++Draw)
 	{
 		const TArray<FYSUpgradeOffer> Offers = PlayerCharacter->PickUpgradeOffers(3);
@@ -366,6 +368,8 @@ void AYSPlayerController::YSUpgradeOdds(int32 Draws)
 			TArray<int32>& SlotCounts = Counts.FindOrAdd(Name);
 			SlotCounts.SetNumZeroed(3);
 			++SlotCounts[Slot];
+			++RarityCounts[static_cast<int32>(Offers[Slot].Rarity)];
+			++TotalOffers;
 		}
 	}
 
@@ -374,6 +378,9 @@ void AYSPlayerController::YSUpgradeOdds(int32 Draws)
 		UE_LOG(LogTemp, Log, TEXT("[YSUpgradeOdds] %-22s proposition 1 : %5.1f %%  2 : %5.1f %%  3 : %5.1f %%"), *Entry.Key,
 			100.0f * Entry.Value[0] / Draws, 100.0f * Entry.Value[1] / Draws, 100.0f * Entry.Value[2] / Draws);
 	}
+	UE_LOG(LogTemp, Log, TEXT("[YSUpgradeOdds] Raretés (toutes propositions) : Bronze %.1f %%  Silver %.1f %%  Gold %.1f %%  (chances : %.0f / %.0f / %.0f, Luck %.0f)"),
+		100.0f * RarityCounts[1] / FMath::Max(1, TotalOffers), 100.0f * RarityCounts[2] / FMath::Max(1, TotalOffers), 100.0f * RarityCounts[3] / FMath::Max(1, TotalOffers),
+		PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Bronze), PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Silver), PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Gold), PlayerCharacter->GetLuck());
 }
 
 void AYSPlayerController::ServerAddXP_Implementation(float Amount)

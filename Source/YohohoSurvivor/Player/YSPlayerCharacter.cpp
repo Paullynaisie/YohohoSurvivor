@@ -138,6 +138,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, MaxHealthMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, RightHandCooldownMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, LeftHandCooldownMultiplier);
+	DOREPLIFETIME(AYSPlayerCharacter, Luck);
 }
 
 UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
@@ -250,34 +251,115 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		}
 	}
 
-	// tirage pondéré sans remise : chaque variante (ex. main droite / gauche) a le poids de son upgrade,
-	// une proposition tirée sort du tirage (que des propositions différentes) ; rareté tirée pour chacune
+	// pour chaque proposition : d'abord la rareté (chances du joueur, avec sa Luck), puis l'upgrade parmi celles
+	// qui existent dans cette rareté, au poids ; sans remise (que des propositions différentes).
+	// Rareté sans aucune upgrade possible : retirée du tirage, chances des autres renormalisées.
+	static const EYSUpgradeRarity Rarities[] = { EYSUpgradeRarity::Bronze, EYSUpgradeRarity::Silver, EYSUpgradeRarity::Gold };
 	TArray<FYSUpgradeOffer> Offers;
 	while (Offers.Num() < Count && Candidates.Num() > 0)
 	{
+		float RarityTotal = 0.0f;
+		float RarityChances[3] = { 0.0f, 0.0f, 0.0f };
+		bool bAnyAvailable = false;
+		bool bAvailable[3] = { false, false, false };
+		for (int32 RarityIndex = 0; RarityIndex < 3; ++RarityIndex)
+		{
+			bAvailable[RarityIndex] = Candidates.ContainsByPredicate([this, RarityIndex](const FYSUpgradeOffer& Candidate)
+			{
+				return UpgradePool[Candidate.PoolIndex]->SupportsRarity(Rarities[RarityIndex]);
+			});
+			bAnyAvailable |= bAvailable[RarityIndex];
+			RarityChances[RarityIndex] = bAvailable[RarityIndex] ? GetRarityChance(Rarities[RarityIndex]) : 0.0f;
+			RarityTotal += RarityChances[RarityIndex];
+		}
+		if (!bAnyAvailable)
+		{
+			break;
+		}
+
+		int32 RarityPicked = INDEX_NONE;
+		if (RarityTotal > 0.0f)
+		{
+			float RarityRoll = FMath::FRand() * RarityTotal;
+			for (int32 RarityIndex = 0; RarityIndex < 3; ++RarityIndex)
+			{
+				if (RarityChances[RarityIndex] > 0.0f)
+				{
+					RarityPicked = RarityIndex;
+					RarityRoll -= RarityChances[RarityIndex];
+					if (RarityRoll < 0.0f)
+					{
+						break;
+					}
+				}
+			}
+		}
+		else
+		{
+			// toutes les raretés possibles à 0 % : équiprobables
+			TArray<int32> AvailableRarities;
+			for (int32 RarityIndex = 0; RarityIndex < 3; ++RarityIndex)
+			{
+				if (bAvailable[RarityIndex])
+				{
+					AvailableRarities.Add(RarityIndex);
+				}
+			}
+			RarityPicked = AvailableRarities[FMath::RandRange(0, AvailableRarities.Num() - 1)];
+		}
+		const EYSUpgradeRarity Rarity = Rarities[RarityPicked];
+
 		float TotalWeight = 0.0f;
 		for (const FYSUpgradeOffer& Candidate : Candidates)
 		{
-			TotalWeight += UpgradePool[Candidate.PoolIndex]->OfferWeight;
+			const UYSUpgrade* Upgrade = UpgradePool[Candidate.PoolIndex];
+			TotalWeight += Upgrade->SupportsRarity(Rarity) ? Upgrade->OfferWeight : 0.0f;
 		}
 
-		int32 Picked = Candidates.Num() - 1;
+		int32 Picked = INDEX_NONE;
 		float Roll = FMath::FRand() * TotalWeight;
 		for (int32 Index = 0; Index < Candidates.Num(); ++Index)
 		{
-			Roll -= UpgradePool[Candidates[Index].PoolIndex]->OfferWeight;
-			if (Roll < 0.0f)
+			const UYSUpgrade* Upgrade = UpgradePool[Candidates[Index].PoolIndex];
+			if (Upgrade->SupportsRarity(Rarity))
 			{
 				Picked = Index;
-				break;
+				Roll -= Upgrade->OfferWeight;
+				if (Roll < 0.0f)
+				{
+					break;
+				}
 			}
 		}
 
 		FYSUpgradeOffer& Offer = Offers.Add_GetRef(Candidates[Picked]);
-		Offer.Rarity = UpgradePool[Offer.PoolIndex]->RollRarity();
+		Offer.Rarity = Rarity;
 		Candidates.RemoveAt(Picked);
 	}
 	return Offers;
+}
+
+float AYSPlayerCharacter::GetBaseRarityChance(EYSUpgradeRarity Rarity) const
+{
+	switch (Rarity)
+	{
+	case EYSUpgradeRarity::Bronze:	return BronzeChance;
+	case EYSUpgradeRarity::Silver:	return SilverChance;
+	case EYSUpgradeRarity::Gold:	return GoldChance;
+	default:						return 0.0f;
+	}
+}
+
+float AYSPlayerCharacter::GetRarityChance(EYSUpgradeRarity Rarity) const
+{
+	const float Bronze = FMath::Max(0.0f, BronzeChance - Luck);
+	switch (Rarity)
+	{
+	case EYSUpgradeRarity::Bronze:	return Bronze;
+	case EYSUpgradeRarity::Silver:	return SilverChance;
+	case EYSUpgradeRarity::Gold:	return GoldChance + (BronzeChance - Bronze);
+	default:						return 0.0f;
+	}
 }
 
 void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)

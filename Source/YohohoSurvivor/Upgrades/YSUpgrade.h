@@ -112,8 +112,17 @@ public:
 	/** Peut encore être proposée à ce personnage (Progress = ce qu'il a déjà obtenu de cette variante) */
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const { return true; }
 
-	/** Rareté tirée pour une nouvelle proposition (None si l'upgrade n'en a pas) */
-	virtual EYSUpgradeRarity RollRarity() const { return EYSUpgradeRarity::None; }
+	/** Raretés dans lesquelles l'upgrade peut être proposée (la rareté est tirée d'abord, selon la Luck du joueur) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
+	bool bCanBeBronze = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
+	bool bCanBeSilver = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
+	bool bCanBeGold = true;
+
+	bool SupportsRarity(EYSUpgradeRarity Rarity) const;
 
 	/** Valeur ajoutée à Progress.TotalValue par un bonus de cette rareté */
 	virtual float GetBonusValue(EYSUpgradeRarity Rarity) const { return 0.0f; }
@@ -133,7 +142,7 @@ protected:
  *  Upgrade de stat : modifie une statistique pure du joueur, stat = valeur de base x (1 + somme des bonus)
  *  (ou base + somme pour les stats additives : regen, armure).
  *  Chaque variante cumule jusqu'à MaxStacks bonus (ensuite elle n'est plus proposée) ;
- *  chaque bonus a une rareté tirée au hasard qui fixe sa valeur.
+ *  chaque bonus a une rareté (tirée selon la Luck du joueur) qui fixe sa valeur.
  *  Nouvelle stat = sous-classe qui surcharge GetBaseStatValue (affichage), ApplyBonus et si besoin GetStatValue.
  */
 UCLASS(Abstract)
@@ -163,16 +172,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
 	float GoldValue = 0.9f;
 
-	/** Poids du tirage de chaque rareté (égaux = équiprobables) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity", meta=(ClampMin="0"))
-	float BronzeWeight = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity", meta=(ClampMin="0"))
-	float SilverWeight = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity", meta=(ClampMin="0"))
-	float GoldWeight = 1.0f;
-
 	/** Couleur du nom selon la rareté */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
 	FLinearColor BronzeColor = FLinearColor(0.85f, 0.5f, 0.22f);
@@ -185,10 +184,7 @@ public:
 
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
-	virtual EYSUpgradeRarity RollRarity() const override;
-
 	virtual float GetBonusValue(EYSUpgradeRarity Rarity) const override;
-
 
 	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
 	/** Applique la somme des bonus au personnage (ApplyBonus) */
@@ -359,6 +355,29 @@ public:
 protected:
 
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override { return 0.0f; }
+
+	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
+
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
+};
+
+/**
+ *  Luck : chaque bonus déplace LuckValue (Silver Value, 5) points de % de chance du Bronze vers le Gold
+ *  pour les prochaines propositions (chances de base sur le personnage : 3C > Upgrades). N'existe qu'en Silver.
+ */
+UCLASS(meta=(DisplayName="Upgrade de stat : Luck"))
+class UYSLuckUpgrade : public UYSStatUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSLuckUpgrade();
+
+protected:
+
+	/** Affichage : chance de Gold actuelle (%) */
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
 

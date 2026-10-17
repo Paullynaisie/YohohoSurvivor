@@ -7,6 +7,7 @@ ensuite à régler dans l'asset) :
   - DA_Upgrade_HpsRegen        (UYSHealthRegenUpgrade)
   - DA_Upgrade_Armor           (UYSArmorUpgrade)
   - DA_Upgrade_CDReduction     (UYSHandCooldownReductionUpgrade : Right / Left hand CD reduction)
+  - DA_Upgrade_Luck            (UYSLuckUpgrade : Silver uniquement)
 Upgrade Pool des 3 personnages jouables = ces assets
 (les enfants reçoivent la même valeur que le parent : ils en héritent à nouveau).
 
@@ -25,6 +26,7 @@ UPGRADES = [
     ("DA_Upgrade_HpsRegen", unreal.YSHealthRegenUpgrade),
     ("DA_Upgrade_Armor", unreal.YSArmorUpgrade),
     ("DA_Upgrade_CDReduction", unreal.YSHandCooldownReductionUpgrade),
+    ("DA_Upgrade_Luck", unreal.YSLuckUpgrade),
 ]
 CHARACTERS = [
     "/Game/Placeable/Character/PlayerCharacter_mouss",  # parent d'abord

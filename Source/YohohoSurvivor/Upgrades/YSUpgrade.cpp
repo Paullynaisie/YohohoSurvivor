@@ -43,20 +43,15 @@ bool UYSStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Var
 	return Progress.Stacks < MaxStacks;
 }
 
-EYSUpgradeRarity UYSStatUpgrade::RollRarity() const
+bool UYSUpgrade::SupportsRarity(EYSUpgradeRarity Rarity) const
 {
-	const float Total = BronzeWeight + SilverWeight + GoldWeight;
-	if (Total <= 0.0f)
+	switch (Rarity)
 	{
-		return EYSUpgradeRarity::Bronze;
+	case EYSUpgradeRarity::Bronze:	return bCanBeBronze;
+	case EYSUpgradeRarity::Silver:	return bCanBeSilver;
+	case EYSUpgradeRarity::Gold:	return bCanBeGold;
+	default:						return true;
 	}
-
-	const float Roll = FMath::FRand() * Total;
-	if (Roll < BronzeWeight)
-	{
-		return EYSUpgradeRarity::Bronze;
-	}
-	return Roll < BronzeWeight + SilverWeight ? EYSUpgradeRarity::Silver : EYSUpgradeRarity::Gold;
 }
 
 float UYSStatUpgrade::GetBonusValue(EYSUpgradeRarity Rarity) const
@@ -250,4 +245,26 @@ UYSArmorUpgrade::UYSArmorUpgrade()
 void UYSArmorUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
 	Character->SetArmor(TotalBonus);
+}
+
+UYSLuckUpgrade::UYSLuckUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "LuckName", "Luck");
+	StatLabel = NSLOCTEXT("YS", "LuckStat", "Chance Gold (%)");
+	OfferWeight = 10.0f;
+	bCanBeBronze = false;
+	bCanBeGold = false;
+	BronzeValue = 5.0f;
+	SilverValue = 5.0f;
+	GoldValue = 5.0f;
+}
+
+float UYSLuckUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	return Character ? Character->GetBaseRarityChance(EYSUpgradeRarity::Gold) : 0.0f;
+}
+
+void UYSLuckUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
+{
+	Character->SetLuck(TotalBonus);
 }

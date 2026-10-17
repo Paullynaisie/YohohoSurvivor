@@ -184,6 +184,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Upgrades")
 	TArray<TObjectPtr<UYSUpgrade>> UpgradePool;
 
+	/** Chances (%) de chaque rareté sans Luck (la rareté de chaque proposition est tirée en premier) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Upgrades", meta=(ClampMin="0"))
+	float BronzeChance = 50.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Upgrades", meta=(ClampMin="0"))
+	float SilverChance = 40.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Upgrades", meta=(ClampMin="0"))
+	float GoldChance = 10.0f;
+
 	/** Progression de chaque variante d'upgrade obtenue (répliquée pour l'affichage du menu) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TArray<FYSUpgradeProgress> UpgradeProgress;
@@ -217,6 +227,10 @@ protected:
 	/** Réduction des dégâts de chaque coup subi (Armor ; serveur) */
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float Armor = 0.0f;
+
+	/** Luck : points de % de chance déplacés du Bronze vers le Gold (répliquée : affichage et debug côté client) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	float Luck = 0.0f;
 
 	/** Dernier dégât subi (temps du monde, serveur) et temps accumulé vers le prochain soin */
 	float LastDamageTime = -1.0e9f;
@@ -347,6 +361,17 @@ public:
 	/** Armor (serveur) */
 	void SetArmor(float Amount) { Armor = Amount; }
 
+	/** Luck (serveur ; répliquée) : points de % de chance déplacés du Bronze vers le Gold */
+	void SetLuck(float Amount) { Luck = Amount; }
+
+	float GetLuck() const { return Luck; }
+
+	/** Chance (%) de tirer une rareté sans Luck */
+	float GetBaseRarityChance(EYSUpgradeRarity Rarity) const;
+
+	/** Chance (%) de tirer une rareté avec la Luck actuelle : Bronze - Luck (min 0), Silver inchangé, Gold + ce que perd le Bronze */
+	float GetRarityChance(EYSUpgradeRarity Rarity) const;
+
 	/** Upgrades disponibles pour ce personnage */
 	const TArray<TObjectPtr<UYSUpgrade>>& GetUpgradePool() const { return UpgradePool; }
 
@@ -358,7 +383,7 @@ public:
 
 	/**
 	 *  Tire jusqu'à Count propositions différentes parmi les variantes d'upgrades encore proposables
-	 *  (tirage pondéré par OfferWeight, sans remise), chacune avec sa rareté (vide si aucune).
+	 *  (sans remise) : rareté tirée d'abord (GetRarityChance, Luck), puis upgrade de cette rareté pondérée par OfferWeight (vide si aucune).
 	 */
 	TArray<FYSUpgradeOffer> PickUpgradeOffers(int32 Count) const;
 
