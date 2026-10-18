@@ -1,22 +1,14 @@
 #include "Abilities/YSRollingShotAbility.h"
-#include "Curves/CurveFloat.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "GameFramework/RootMotionSource.h"
 #include "Player/YSPlayerCharacter.h"
 #include "TimerManager.h"
 #include "Weapons/YSWeapon.h"
 
 namespace YSRollingShot
 {
-	/** Points de la courbe EaseOut de la roulade */
-	constexpr int32 RollCurveKeys = 16;
-
-	/** En dessous de cette vitesse, le personnage est considéré à l'arrêt (roulade à l'opposé du curseur) */
-	constexpr float MovingSpeedThreshold = 10.0f;
-
 	/** Distance du point visé devant le personnage au moment du tir */
 	constexpr float AimDistance = 1000.0f;
 }
@@ -24,56 +16,6 @@ namespace YSRollingShot
 UYSRollingShotAbility::UYSRollingShotAbility()
 {
 	DisplayName = NSLOCTEXT("YS", "RollingShot", "Rolling shot");
-}
-
-void UYSRollingShotAbility::BeginPlay()
-{
-	Super::BeginPlay();
-
-	// temps (0..1) -> distance parcourue (0..1) : EaseOut, identique sur toutes les machines (prédiction de la roulade)
-	RollCurve = NewObject<UCurveFloat>(this, NAME_None, RF_Transient);
-	for (int32 Index = 0; Index <= YSRollingShot::RollCurveKeys; ++Index)
-	{
-		const float Time = static_cast<float>(Index) / YSRollingShot::RollCurveKeys;
-		const FKeyHandle Key = RollCurve->FloatCurve.AddKey(Time, 1.0f - FMath::Pow(1.0f - Time, RollEaseExponent));
-		RollCurve->FloatCurve.SetKeyInterpMode(Key, RCIM_Linear);
-	}
-}
-
-void UYSRollingShotAbility::PrepareActivation(const FVector& TargetLocation)
-{
-	// direction du mouvement (input, sinon vitesse) ; à l'arrêt : à l'opposé du curseur (= du regard)
-	const ACharacter* Character = Cast<ACharacter>(GetHolderPawn());
-	if (!Character)
-	{
-		return;
-	}
-
-	const UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
-	FVector Direction = Movement->GetCurrentAcceleration().GetSafeNormal2D();
-	if (Direction.IsNearlyZero() && Character->GetVelocity().Size2D() > YSRollingShot::MovingSpeedThreshold)
-	{
-		Direction = Character->GetVelocity().GetSafeNormal2D();
-	}
-	if (Direction.IsNearlyZero())
-	{
-		Direction = -Character->GetActorForwardVector().GetSafeNormal2D();
-	}
-	RollDirection = Direction;
-
-	if (!GetOwner()->HasAuthority())
-	{
-		ServerSetRollDirection(Direction);
-	}
-}
-
-void UYSRollingShotAbility::ServerSetRollDirection_Implementation(FVector_NetQuantizeNormal Direction)
-{
-	const FVector Flat = FVector(Direction).GetSafeNormal2D();
-	if (!Flat.IsNearlyZero())
-	{
-		RollDirection = Flat;
-	}
 }
 
 void UYSRollingShotAbility::OnActivationPredicted(const FVector& TargetLocation)
@@ -85,7 +27,7 @@ void UYSRollingShotAbility::ExecuteAbility(const FVector& TargetLocation)
 {
 	StartRoll();
 	MulticastRollStarted();
-	UE_LOG(LogTemp, Verbose, TEXT("[YSRollingShot] %s roulade vers (%.2f, %.2f) à %.2f depuis (%.0f, %.0f)"), *GetOwner()->GetName(), RollDirection.X, RollDirection.Y, GetWorld()->GetTimeSeconds(), GetHolderPawn() ? GetHolderPawn()->GetActorLocation().X : 0.0f, GetHolderPawn() ? GetHolderPawn()->GetActorLocation().Y : 0.0f);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSRollingShot] %s roulade à %.2f depuis (%.0f, %.0f)"), *GetOwner()->GetName(), GetWorld()->GetTimeSeconds(), GetHolderPawn() ? GetHolderPawn()->GetActorLocation().X : 0.0f, GetHolderPawn() ? GetHolderPawn()->GetActorLocation().Y : 0.0f);
 
 	// visée puis tir
 	GetWorld()->GetTimerManager().SetTimer(ShootTimer, this, &UYSRollingShotAbility::Shoot, FMath::Max(RollDuration + AimDuration, KINDA_SMALL_NUMBER), false);
@@ -100,23 +42,15 @@ void UYSRollingShotAbility::StartRoll()
 	}
 	LastRollTime = GetWorld()->GetTimeSeconds();
 
-	// root motion : remplace le déplacement pendant RollDuration, s'arrête net à la fin
-	TSharedPtr<FRootMotionSource_MoveToDynamicForce> Roll = MakeShared<FRootMotionSource_MoveToDynamicForce>();
-	Roll->InstanceName = TEXT("YSRollingShot");
-	Roll->AccumulateMode = ERootMotionAccumulateMode::Override;
-	Roll->Priority = 500;
-	Roll->StartLocation = Character->GetActorLocation();
-	Roll->InitialTargetLocation = Roll->StartLocation + RollDirection * RollDistance;
-	Roll->TargetLocation = Roll->InitialTargetLocation;
-	Roll->Duration = RollDuration;
-	Roll->bRestrictSpeedToExpected = true;
-	Roll->TimeMappingCurve = RollCurve;
-	Roll->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::SetVelocity;
-	Roll->FinishVelocityParams.SetVelocity = FVector::ZeroVector;
+	// vitesse x RollSpeedMultiplier tout de suite (dans la direction du mouvement) ; elle retombe ensuite avec MaxWalkSpeed
 	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
-	// une roulade précédente encore enregistrée empêcherait la nouvelle
-	Movement->RemoveRootMotionSource(Roll->InstanceName);
-	Movement->ApplyRootMotionSource(Roll);
+	const FVector Direction = Movement->GetCurrentAcceleration().IsNearlyZero() ? Movement->Velocity.GetSafeNormal2D() : Movement->GetCurrentAcceleration().GetSafeNormal2D();
+	if (!Direction.IsNearlyZero())
+	{
+		const float RollSpeed = Movement->MaxWalkSpeed * RollSpeedMultiplier;
+		Movement->Velocity = Direction * RollSpeed + FVector(0.0f, 0.0f, Movement->Velocity.Z);
+		Movement->MaxWalkSpeed = RollSpeed;
+	}
 
 	// esquive : traverse les NME (et les autres joueurs) pendant la roulade, puis collisions normales
 	if (bRollThroughFoes)
@@ -208,6 +142,12 @@ bool UYSRollingShotAbility::IsGrantingInvulnerability() const
 float UYSRollingShotAbility::GetMoveSpeedMultiplier() const
 {
 	const float Elapsed = GetTimeSinceRoll();
+	// roulade : bonus de vitesse qui retombe jusqu'à la vitesse de la visée
+	if (Elapsed >= 0.0f && Elapsed < RollDuration)
+	{
+		const float Decay = FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / RollDuration, RollSpeedDecayExponent);
+		return FMath::Lerp(RollSpeedMultiplier, AimMoveSpeedMultiplier, Decay);
+	}
 	return Elapsed >= RollDuration && Elapsed < RollDuration + AimDuration ? AimMoveSpeedMultiplier : 1.0f;
 }
 

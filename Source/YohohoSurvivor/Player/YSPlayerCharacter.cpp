@@ -1249,7 +1249,7 @@ void AYSPlayerCharacter::UpdateMaxWalkSpeed()
 	// serveur et client propriétaire doivent avoir la même vitesse (prédiction de mouvement)
 	const float CarryMultiplier = IsValid(CarriedObject) ? CarriedObject->GetCarrierSpeedMultiplier() : 1.0f;
 	float ActionMultiplier = 1.0f;
-	ForEachHeldAction([&ActionMultiplier](const UYSAbilityComponent* Action) { ActionMultiplier = FMath::Min(ActionMultiplier, Action->GetMoveSpeedMultiplier()); });
+	ForEachHeldAction([&ActionMultiplier](const UYSAbilityComponent* Action) { ActionMultiplier *= Action->GetMoveSpeedMultiplier(); });
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * MoveSpeedMultiplier * CarryMultiplier * ActionMultiplier;
 }
 

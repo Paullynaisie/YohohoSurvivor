@@ -4,14 +4,12 @@
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "YSRollingShotAbility.generated.h"
 
-class UCurveFloat;
-
 /**
  *  « Rolling shot » : Ability des pistolets (Gun, shoot system PewPew ; remplace le Coup d'Petoir, dont elle hérite :
  *  mêmes réglages de tir, et les mêmes upgrades s'y appliquent, Ricochet compris).
  *  À l'activation, interrompt les actions moins prioritaires des DEUX armes (BlocksAllWeapons), puis en 3 temps :
- *  1. Roulade : Roll Distance en Roll Duration (EaseOut) dans la direction du mouvement (sans mouvement : à l'opposé
- *     du curseur), invulnérable ; root motion appliqué par le serveur et prédit par le client qui l'a lancée.
+ *  1. Roulade (Roll Duration) : le joueur garde le contrôle, sa vitesse passe tout de suite à x Roll Speed Multiplier puis
+ *     décroît jusqu'à la vitesse de la visée ; invulnérable, traverse les NME ; serveur et client qui active (prédiction).
  *     Animation : le corps fait des tours sur lui-même vers la direction de la roulade.
  *  2. Visée : Aim Duration immobile (vitesse x Aim Move Speed Multiplier), le personnage regarde toujours le curseur.
  *  3. Tir : le Coup d'Petoir (rafale PewPew) dans la direction du regard ; en akimbo, l'autre pistolet tire après Akimbo Fire Delay.
@@ -24,17 +22,17 @@ class UYSRollingShotAbility : public UYSCoupDPetoirAbility
 
 public:
 
-	/** Roulade : distance parcourue */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rolling Shot|Roll", meta=(ClampMin="0", Units="Centimeters"))
-	float RollDistance = 500.0f;
-
 	/** Roulade : durée */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rolling Shot|Roll", meta=(ClampMin="0.01", Units="Seconds"))
 	float RollDuration = 0.2f;
 
-	/** Roulade : courbe EaseOut (1 = vitesse constante ; plus grand = départ plus brutal) */
+	/** Roulade : vitesse de déplacement x ce multiplicateur au départ, qui décroît jusqu'à celui de la visée en fin de roulade */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rolling Shot|Roll", meta=(ClampMin="0"))
+	float RollSpeedMultiplier = 2.0f;
+
+	/** Roulade : courbe de la décroissance (1 = linéaire ; plus grand = le bonus retombe plus vite au début) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rolling Shot|Roll", meta=(ClampMin="1"))
-	float RollEaseExponent = 2.0f;
+	float RollSpeedDecayExponent = 1.0f;
 
 	/** Pendant la roulade, le personnage traverse les NME et les autres joueurs (sinon un NME devant l'arrête net) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rolling Shot|Roll")
@@ -72,8 +70,6 @@ public:
 
 	UYSRollingShotAbility();
 
-	virtual void BeginPlay() override;
-
 	/** Roulade + visée + rafale, puis la recharge (CD reduction : seulement la recharge) */
 	virtual float GetCooldownDuration() const override { return RollDuration + AimDuration + BurstDuration + Cooldown * GetCooldownMultiplier(); }
 
@@ -93,9 +89,6 @@ public:
 
 protected:
 
-	/** Direction de la roulade (machine qui active) ; envoyée au serveur par un client */
-	virtual void PrepareActivation(const FVector& TargetLocation) override;
-
 	/** Client : roulade prédite */
 	virtual void OnActivationPredicted(const FVector& TargetLocation) override;
 
@@ -110,16 +103,13 @@ protected:
 	/** Les balles partent dans la direction du regard (le curseur pendant la visée) */
 	virtual FVector GetBurstTargetLocation(int32 BulletIndex) const override;
 
-	UFUNCTION(Server, Reliable)
-	void ServerSetRollDirection(FVector_NetQuantizeNormal Direction);
-
 	/** Animation de roulade sur toutes les machines (le client qui l'a prédite ne la rejoue pas) */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastRollStarted();
 
 private:
 
-	/** Lance la roulade (root motion) dans RollDirection et note son début */
+	/** Lance la roulade (bonus de vitesse, traversée des NME) et note son début */
 	void StartRoll();
 
 	/** Fin de la visée : rafale de cette arme, puis de l'autre en akimbo (serveur) */
@@ -127,12 +117,6 @@ private:
 
 	/** En akimbo : le Rolling shot de l'autre main si celle-ci est la principale */
 	UYSRollingShotAbility* GetAkimboPartner() const;
-
-	/** Courbe EaseOut de la roulade (temps -> distance), construite depuis RollEaseExponent */
-	UPROPERTY(Transient)
-	TObjectPtr<UCurveFloat> RollCurve;
-
-	FVector RollDirection = FVector::ForwardVector;
 
 	/** Début de la dernière roulade vue par cette machine (temps local) */
 	double LastRollTime = -1.0e6;
