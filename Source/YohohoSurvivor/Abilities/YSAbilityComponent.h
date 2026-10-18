@@ -155,6 +155,18 @@ public:
 	/** Appelé par CancelAction (serveur) : arrêter ce que l'action a en cours (ex. rafale) */
 	virtual void OnActionCancelled() {}
 
+	/** L'action bloque et interrompt aussi les actions moins prioritaires de l'autre arme (ex. Rolling shot : tout le personnage roule) */
+	virtual bool BlocksAllWeapons() const { return false; }
+
+	/** Le personnage ne subit aucun dégât en ce moment (ex. roulade ; serveur) */
+	virtual bool IsGrantingInvulnerability() const { return false; }
+
+	/** Multiplicateur de la vitesse de déplacement du personnage en ce moment (ex. 0 pendant la visée du Rolling shot) */
+	virtual float GetMoveSpeedMultiplier() const { return 1.0f; }
+
+	/** Animation du corps en cours (ex. roulade) : angle de rotation (degrés, vers la direction du mouvement) et décalage vertical */
+	virtual bool GetBodyRoll(float& OutAngle, float& OutHeightOffset) const { return false; }
+
 protected:
 
 	/** Effets visuels de l'activation sur toutes les machines (le client qui tire les a déjà joués par prédiction) */
@@ -185,6 +197,12 @@ private:
 	double LastActivationTime = -1.0e6;
 
 protected:
+
+	/** Avant l'activation, sur la machine qui active (client local ou hôte) : préparer des données locales (ex. direction de roulade) */
+	virtual void PrepareActivation(const FVector& TargetLocation) {}
+
+	/** Client qui prédit l'activation (pas l'hôte) : effets locaux immédiats (ex. roulade prédite) */
+	virtual void OnActivationPredicted(const FVector& TargetLocation) {}
 
 	/** Effet de la capacité, exécuté uniquement sur le serveur */
 	virtual void ExecuteAbility(const FVector& TargetLocation) {}

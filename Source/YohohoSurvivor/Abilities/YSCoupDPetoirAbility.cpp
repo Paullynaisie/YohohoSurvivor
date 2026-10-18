@@ -42,6 +42,11 @@ AActor* UYSCoupDPetoirAbility::FindAssistTarget(const FVector& Origin, const FVe
 
 void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
 {
+	StartBurst(TargetLocation);
+}
+
+void UYSCoupDPetoirAbility::StartBurst(const FVector& TargetLocation)
+{
 	// PewPew : rafale de BulletsPerBurst balles réparties sur BurstDuration (Shotgun / Piercing : à venir)
 	GetWorld()->GetTimerManager().ClearTimer(BurstTimer);
 	BurstTargetLocation = TargetLocation;
@@ -145,10 +150,11 @@ void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 Bull
 
 void UYSCoupDPetoirAbility::MulticastBulletFired_Implementation(int32 BulletIndex)
 {
-	// recul de chaque balle ; le tireur a déjà joué celui de la première par prédiction (Ability)
-	if (BulletIndex > 0 || IsAutomatic() || !IsLocallyPredicted())
+	// recul de chaque balle ; le tireur a déjà joué celui de la première par prédiction (Ability tirée dès l'activation)
+	if (BulletIndex > 0 || IsAutomatic() || !PredictsFirstBullet() || !IsLocallyPredicted())
 	{
 		NotifyActivated();
+		LastBulletTime = GetWorld()->GetTimeSeconds();
 	}
 }
 
@@ -162,7 +168,9 @@ void UYSCoupDPetoirAbility::MulticastReloadStarted_Implementation()
 
 float UYSCoupDPetoirAbility::GetRecoilAlpha() const
 {
-	const float Elapsed = GetTimeSinceActivation();
+	// recul : depuis la dernière balle (et depuis l'activation quand la première balle part tout de suite)
+	const float SinceBullet = static_cast<float>(GetWorld()->GetTimeSeconds() - LastBulletTime);
+	const float Elapsed = PredictsFirstBullet() ? FMath::Min(SinceBullet, GetTimeSinceActivation()) : SinceBullet;
 	if (Elapsed < 0.0f || Elapsed >= RecoilKickDuration + RecoilRecoverDuration)
 	{
 		return 0.0f;

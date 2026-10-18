@@ -145,6 +145,9 @@ public:
 	/** PewPew : balles de la rafale = Bullets Per Burst + upgrade Shoot system du type d'action */
 	int32 GetBulletsPerBurst() const;
 
+	/** Démarre une rafale vers TargetLocation (serveur ; ExecuteAbility, ou l'autre arme en akimbo) */
+	void StartBurst(const FVector& TargetLocation);
+
 	/** Tire une balle vers TargetLocation (serveur) : projectile + recul sur toutes les machines */
 	void FireBullet(const FVector& TargetLocation, int32 BulletIndex);
 
@@ -154,6 +157,9 @@ protected:
 	virtual void ExecuteAbility(const FVector& TargetLocation) override;
 
 	virtual void OnActionCancelled() override;
+
+	/** La première balle part à l'activation (le client qui active la prédit) ; faux si le tir vient plus tard (Rolling shot) */
+	virtual bool PredictsFirstBullet() const { return true; }
 
 	/** Point visé par la balle numéro BulletIndex de la rafale (par défaut : le point visé à l'activation) */
 	virtual FVector GetBurstTargetLocation(int32 BulletIndex) const { return BurstTargetLocation; }
@@ -190,4 +196,7 @@ private:
 
 	/** Dernier début de rechargement vu par cette machine (temps local) */
 	double LastReloadTime = -1.0e6;
+
+	/** Dernière balle vue par cette machine (temps local ; recul) */
+	double LastBulletTime = -1.0e6;
 };

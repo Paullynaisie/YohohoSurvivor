@@ -184,6 +184,13 @@ UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
 
 float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
+	// invulnérable (roulade du Rolling shot…)
+	if (IsInvulnerable())
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s invulnérable : %.0f dégâts ignorés"), *GetName(), DamageAmount);
+		return 0.0f;
+	}
+
 	float Damage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 	if (!HasAuthority() || !IsAlive() || Damage <= 0.0f)
 	{
@@ -524,6 +531,8 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateDayNight(DeltaSeconds);
 	UpdateNameplate();
 	UpdateInteractPrompt();
+	// vitesse : peut dépendre d'une action en cours (visée du Rolling shot) ; serveur et client propriétaire
+	UpdateMaxWalkSpeed();
 
 	// clients : PlayerState et options de personnalisation peuvent arriver dans n'importe quel ordre
 	if (!bCustomizationApplied)
@@ -702,8 +711,24 @@ void AYSPlayerCharacter::UpdateBodyPivot(float DeltaSeconds)
 	// pivot autour des pieds (bas de la capsule) pour que le personnage reste posé au sol, puis sautillement vertical
 	const FVector ActorLocation = GetActorLocation();
 	const FVector Feet = ActorLocation - FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
-	const FVector PivotLocation = Feet + LeanQuat.RotateVector(ActorLocation - Feet) + FVector(0.0f, 0.0f, Hop);
-	BodyPivot->SetWorldLocationAndRotation(PivotLocation, LeanQuat * GetActorQuat());
+	FVector PivotLocation = Feet + LeanQuat.RotateVector(ActorLocation - Feet) + FVector(0.0f, 0.0f, Hop);
+
+	// roulade (Rolling shot) : le corps tourne sur lui-même vers la direction du mouvement et se met en boule
+	FQuat RollQuat = FQuat::Identity;
+	float RollAngle = 0.0f;
+	float RollHeight = 0.0f;
+	bool bRolling = false;
+	ForEachHeldAction([&](const UYSAbilityComponent* Action) { bRolling = bRolling || Action->GetBodyRoll(RollAngle, RollHeight); });
+	if (bRolling)
+	{
+		if (Velocity.SizeSquared2D() > FMath::Square(MovingSpeedThreshold))
+		{
+			RollAnimDirection = Velocity.GetSafeNormal2D();
+		}
+		RollQuat = FQuat(FVector::CrossProduct(FVector::UpVector, RollAnimDirection).GetSafeNormal(), FMath::DegreesToRadians(RollAngle));
+		PivotLocation.Z += RollHeight;
+	}
+	BodyPivot->SetWorldLocationAndRotation(PivotLocation, RollQuat * LeanQuat * GetActorQuat());
 }
 
 float AYSPlayerCharacter::UpdateHop(float DeltaSeconds, float Speed)
@@ -896,6 +921,13 @@ void AYSPlayerCharacter::Fire()
 	const AYSWeapon* OffWeapon = GetOffHandWeapon();
 	UYSAbilityComponent* MainAction = MainWeapon ? MainWeapon->GetActiveAction() : nullptr;
 	UYSAbilityComponent* OffAction = OffWeapon ? OffWeapon->GetActiveAction() : nullptr;
+
+	// action qui occupe tout le personnage (Rolling shot) : seule la main principale la lance (elle gère l'autre arme)
+	if (MainAction && OffAction && IsAkimbo() && MainAction->BlocksAllWeapons())
+	{
+		MainAction->TryActivate(GetAimLocation());
+		return;
+	}
 
 	// akimbo : la main principale (droite, gauche pour un gaucher) tire, puis l'autre après le délai de l'arme
 	const bool bAkimbo = MainAction && OffAction && IsAkimbo();
@@ -1216,7 +1248,9 @@ void AYSPlayerCharacter::UpdateMaxWalkSpeed()
 {
 	// serveur et client propriétaire doivent avoir la même vitesse (prédiction de mouvement)
 	const float CarryMultiplier = IsValid(CarriedObject) ? CarriedObject->GetCarrierSpeedMultiplier() : 1.0f;
-	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * MoveSpeedMultiplier * CarryMultiplier;
+	float ActionMultiplier = 1.0f;
+	ForEachHeldAction([&ActionMultiplier](const UYSAbilityComponent* Action) { ActionMultiplier = FMath::Min(ActionMultiplier, Action->GetMoveSpeedMultiplier()); });
+	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * MoveSpeedMultiplier * CarryMultiplier * ActionMultiplier;
 }
 
 float AYSPlayerCharacter::GetFoeAttractionMultiplier() const
@@ -1383,4 +1417,23 @@ void AYSPlayerCharacter::UpdateInteractPrompt()
 		}
 		FocusedInteractable = Target;
 	}
+}
+
+void AYSPlayerCharacter::ForEachHeldAction(TFunctionRef<void(const UYSAbilityComponent*)> Function) const
+{
+	for (const AYSWeapon* Weapon : GetHeldWeapons())
+	{
+		TInlineComponentArray<UYSAbilityComponent*> Actions(Weapon);
+		for (const UYSAbilityComponent* Action : Actions)
+		{
+			Function(Action);
+		}
+	}
+}
+
+bool AYSPlayerCharacter::IsInvulnerable() const
+{
+	bool bInvulnerable = false;
+	ForEachHeldAction([&bInvulnerable](const UYSAbilityComponent* Action) { bInvulnerable = bInvulnerable || Action->IsGrantingInvulnerability(); });
+	return bInvulnerable;
 }

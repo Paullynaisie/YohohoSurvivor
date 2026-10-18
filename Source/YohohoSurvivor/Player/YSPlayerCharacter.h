@@ -362,6 +362,9 @@ private:
 	/** Temps écoulé pour le bruit d'oscillation des mains */
 	float HandSwayTime = 0.0f;
 
+	/** Direction de l'animation de roulade (dernière direction de mouvement pendant la roulade) */
+	FVector RollAnimDirection = FVector::ForwardVector;
+
 	/** Yaw actuel (lissé, relatif au corps) de chaque main : vers la cible de visée assistée, sinon rotation par défaut */
 	float LeftHandYaw = 0.0f;
 	float RightHandYaw = 0.0f;
@@ -521,6 +524,12 @@ public:
 	TArray<AYSWeapon*> GetHeldWeapons() const;
 
 	UYSWeaponSet* GetWeaponSet() const { return WeaponSet; }
+
+	/** Invulnérable en ce moment (action en cours : roulade du Rolling shot…) */
+	bool IsInvulnerable() const;
+
+	/** Appelle Function pour chaque action des armes tenues */
+	void ForEachHeldAction(TFunctionRef<void(const UYSAbilityComponent*)> Function) const;
 
 	/** Akimbo : la même arme dans les deux mains (recharge unique) */
 	bool IsAkimbo() const;

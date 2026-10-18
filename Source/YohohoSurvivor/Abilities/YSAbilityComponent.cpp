@@ -39,6 +39,8 @@ void UYSAbilityComponent::TryActivate(const FVector& TargetLocation)
 		return;
 	}
 
+	PrepareActivation(TargetLocation);
+
 	if (GetOwner()->HasAuthority())
 	{
 		// joueur hôte (listen server) : exécution directe
@@ -49,6 +51,7 @@ void UYSAbilityComponent::TryActivate(const FVector& TargetLocation)
 	// prédiction locale de la recharge et des effets pour un retour immédiat, le serveur fait foi
 	ReadyServerTime = GetServerTime() + GetActivationLockDuration();
 	NotifyActivated();
+	OnActivationPredicted(TargetLocation);
 	ServerActivate(TargetLocation);
 }
 
@@ -240,6 +243,23 @@ void UYSAbilityComponent::GetPriorityGroup(TArray<UYSAbilityComponent*>& OutActi
 		{
 			TInlineComponentArray<UYSAbilityComponent*> Actions(Actor);
 			OutActions.Append(Actions);
+		}
+	}
+
+	// autre arme (pas akimbo) : dans le groupe si une de ses actions ou celle-ci bloque toutes les armes (ex. Rolling shot)
+	for (const AYSWeapon* Other : Character ? Character->GetHeldWeapons() : TArray<AYSWeapon*>())
+	{
+		if (Other == Weapon || Other == Partner)
+		{
+			continue;
+		}
+		TInlineComponentArray<UYSAbilityComponent*> Actions(Other);
+		for (UYSAbilityComponent* Action : Actions)
+		{
+			if (BlocksAllWeapons() || Action->BlocksAllWeapons())
+			{
+				OutActions.Add(Action);
+			}
 		}
 	}
 }
