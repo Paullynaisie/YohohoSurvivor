@@ -17,6 +17,7 @@ class UInputAction;
 class UInputMappingContext;
 class UChildActorComponent;
 class AYSWeapon;
+class UYSWeaponSet;
 class AYSInteractiveObject;
 class UTexture2D;
 class UWidgetComponent;
@@ -181,12 +182,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hop", meta=(ClampMin="1"))
 	float HopEaseExponent = 2.0f;
 
-	/** Arme tenue dans la main gauche (clic gauche = son action) */
+	/** Set d'arme du personnage (Data Asset : arme de chaque main, /Game/Core/WeaponSets) ; prioritaire sur les armes par main ci-dessous */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Weapons")
+	TObjectPtr<UYSWeaponSet> WeaponSet;
+
+	/** Sans set d'arme (tests) : arme tenue dans la main gauche */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Weapons", meta=(EditCondition="WeaponSet == nullptr"))
 	TSubclassOf<AYSWeapon> LeftHandWeaponClass;
 
-	/** Arme tenue dans la main droite */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Weapons")
+	/** Sans set d'arme (tests) : arme tenue dans la main droite */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Weapons", meta=(EditCondition="WeaponSet == nullptr"))
 	TSubclassOf<AYSWeapon> RightHandWeaponClass;
 
 	/**
@@ -233,22 +238,18 @@ protected:
 	TArray<FYSUpgradeProgress> UpgradeProgress;
 
 	/**
-	 *  Multiplicateurs par main et par type d'action (index = GetActionIndex : 0 main droite Ability, 1 gauche Ability,
-	 *  2 droite Auto atk, 3 gauche Auto atk) : dégâts (Damage bonus ; serveur) et recharge (CD reduction ; répliqués :
-	 *  le client prédit la recharge)
+	 *  Multiplicateurs par type d'action, pour tout le set d'arme (index = GetSlotIndex : 0 Ability, 1 Auto atk) :
+	 *  dégâts (Damage bonus ; serveur) et recharge (CD reduction ; répliqués : le client prédit la recharge)
 	 */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category="3C|Upgrades")
-	float DamageMultipliers[4];
+	float DamageMultipliers[2];
 
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, Category="3C|Upgrades")
-	float CooldownMultipliers[4];
+	float CooldownMultipliers[2];
 
-	/** Propriétés données à l'arme de chaque main par les upgrades d'arme (ex. Ricochets ; serveur) */
+	/** Propriétés données aux armes tenues par les upgrades d'arme (ex. Ricochets ; serveur) */
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
-	TMap<FName, float> RightHandWeaponStats;
-
-	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
-	TMap<FName, float> LeftHandWeaponStats;
+	TMap<FName, float> WeaponStats;
 
 	/** Multiplicateur de la vitesse de déplacement (Move speed bonus ; répliqué : la prédiction de mouvement du client doit le connaître) */
 	UPROPERTY(ReplicatedUsing=OnRep_MoveSpeedMultiplier, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
@@ -470,21 +471,21 @@ public:
 	/** Ajoute le bonus proposé à la progression et applique l'upgrade (serveur) */
 	void ApplyUpgrade(const FYSUpgradeOffer& Offer);
 
-	/** Index des multiplicateurs pour une main et un type d'action */
-	static int32 GetActionIndex(EYSHand Hand, EYSActionSlot Slot) { return (Hand == EYSHand::Left ? 1 : 0) + (Slot == EYSActionSlot::AutoAtk ? 2 : 0); }
+	/** Index des multiplicateurs pour un type d'action */
+	static int32 GetSlotIndex(EYSActionSlot Slot) { return Slot == EYSActionSlot::AutoAtk ? 1 : 0; }
 
-	/** Damage bonus / CD reduction d'une main pour un type d'action (serveur) */
-	void SetHandDamageMultiplier(EYSHand Hand, EYSActionSlot Slot, float Multiplier) { DamageMultipliers[GetActionIndex(Hand, Slot)] = Multiplier; }
+	/** Damage bonus / CD reduction d'un type d'action, pour toutes les armes du set (serveur) */
+	void SetDamageMultiplier(EYSActionSlot Slot, float Multiplier) { DamageMultipliers[GetSlotIndex(Slot)] = Multiplier; }
 
-	void SetHandCooldownMultiplier(EYSHand Hand, EYSActionSlot Slot, float Multiplier) { CooldownMultipliers[GetActionIndex(Hand, Slot)] = Multiplier; ForceNetUpdate(); }
+	void SetCooldownMultiplier(EYSActionSlot Slot, float Multiplier) { CooldownMultipliers[GetSlotIndex(Slot)] = Multiplier; ForceNetUpdate(); }
 
-	/** Propriété d'arme d'une main (upgrades d'arme ; serveur) */
-	void SetHandWeaponStat(EYSHand Hand, FName Stat, float Value) { (Hand == EYSHand::Left ? LeftHandWeaponStats : RightHandWeaponStats).Add(Stat, Value); }
+	/** Propriété des armes tenues (upgrades d'arme ; serveur) */
+	void SetWeaponStat(FName Stat, float Value) { WeaponStats.Add(Stat, Value); }
 
-	/** Propriété d'arme de la main qui tient Weapon (Default si absente ou arme pas tenue) */
+	/** Propriété d'arme de Weapon (Default si absente ou arme pas tenue) */
 	float GetWeaponStat(const AYSWeapon* Weapon, FName Stat, float Default) const;
 
-	/** Multiplicateurs de la main qui tient Weapon pour un type d'action (1 si elle n'est pas tenue) */
+	/** Multiplicateurs d'un type d'action pour Weapon (1 si elle n'est pas tenue) */
 	float GetWeaponCooldownMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
 
 	float GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
@@ -503,7 +504,12 @@ public:
 	UFUNCTION(BlueprintPure, Category="3C|Weapons")
 	AYSWeapon* GetRightHandWeapon() const;
 
-	/** Akimbo : la même arme dans les deux mains (recharge unique, CD reduction commune) */
+	/** Armes tenues (main droite puis gauche, mains vides ignorées) */
+	TArray<AYSWeapon*> GetHeldWeapons() const;
+
+	UYSWeaponSet* GetWeaponSet() const { return WeaponSet; }
+
+	/** Akimbo : la même arme dans les deux mains (recharge unique) */
 	bool IsAkimbo() const;
 
 	/** Debug (serveur) : change l'arme d'une main en cours de partie */

@@ -19,6 +19,7 @@
 #include "TimerManager.h"
 #include "Components/ChildActorComponent.h"
 #include "Weapons/YSWeapon.h"
+#include "Weapons/YSWeaponSet.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSDanglingChainComponent.h"
 #include "Components/WidgetComponent.h"
@@ -150,7 +151,7 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	Nameplate->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Nameplate->SetVisibility(false);
 
-	for (int32 Index = 0; Index < 4; ++Index)
+	for (int32 Index = 0; Index < 2; ++Index)
 	{
 		DamageMultipliers[Index] = 1.0f;
 		CooldownMultipliers[Index] = 1.0f;
@@ -432,25 +433,33 @@ void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 
 float AYSPlayerCharacter::GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const
 {
-	if (Weapon && Weapon == GetRightHandWeapon())
+	// un bonus par type d'action pour tout le set d'arme
+	return Weapon && GetHeldWeapons().Contains(Weapon) ? DamageMultipliers[GetSlotIndex(Slot)] : 1.0f;
+}
+
+TArray<AYSWeapon*> AYSPlayerCharacter::GetHeldWeapons() const
+{
+	TArray<AYSWeapon*> Weapons;
+	for (AYSWeapon* Weapon : { GetRightHandWeapon(), GetLeftHandWeapon() })
 	{
-		return DamageMultipliers[GetActionIndex(EYSHand::Right, Slot)];
+		if (Weapon)
+		{
+			Weapons.Add(Weapon);
+		}
 	}
-	if (Weapon && Weapon == GetLeftHandWeapon())
-	{
-		return DamageMultipliers[GetActionIndex(EYSHand::Left, Slot)];
-	}
-	return 1.0f;
+	return Weapons;
 }
 
 void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
-	// changer l'arme d'une main dans le Blueprint met à jour son visuel immédiatement
+	// changer le set (ou l'arme d'une main sans set) dans le Blueprint met à jour son visuel immédiatement
 	// gaucher : miroir du personnage (réglé en droitier) = armes des deux mains échangées
-	UClass* LeftClass = bLeftHanded ? RightHandWeaponClass.Get() : LeftHandWeaponClass.Get();
-	UClass* RightClass = bLeftHanded ? LeftHandWeaponClass.Get() : RightHandWeaponClass.Get();
+	UClass* SetRightClass = WeaponSet ? WeaponSet->RightHandWeapon.Get() : RightHandWeaponClass.Get();
+	UClass* SetLeftClass = WeaponSet ? WeaponSet->LeftHandWeapon.Get() : LeftHandWeaponClass.Get();
+	UClass* LeftClass = bLeftHanded ? SetRightClass : SetLeftClass;
+	UClass* RightClass = bLeftHanded ? SetLeftClass : SetRightClass;
 	for (const TPair<UChildActorComponent*, UClass*> Hand : { TPair<UChildActorComponent*, UClass*>(LeftHandWeapon, LeftClass), TPair<UChildActorComponent*, UClass*>(RightHandWeapon, RightClass) })
 	{
 		if (Hand.Key->GetChildActorClass() != Hand.Value)
@@ -948,30 +957,12 @@ void AYSPlayerCharacter::UpdateHealthRegen(float DeltaSeconds)
 
 float AYSPlayerCharacter::GetWeaponCooldownMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const
 {
-	if (Weapon && Weapon == GetRightHandWeapon())
-	{
-		return CooldownMultipliers[GetActionIndex(EYSHand::Right, Slot)];
-	}
-	if (Weapon && Weapon == GetLeftHandWeapon())
-	{
-		return CooldownMultipliers[GetActionIndex(EYSHand::Left, Slot)];
-	}
-	return 1.0f;
+	return Weapon && GetHeldWeapons().Contains(Weapon) ? CooldownMultipliers[GetSlotIndex(Slot)] : 1.0f;
 }
 
 float AYSPlayerCharacter::GetWeaponStat(const AYSWeapon* Weapon, FName Stat, float Default) const
 {
-	const TMap<FName, float>* Stats = nullptr;
-	if (Weapon && Weapon == GetRightHandWeapon())
-	{
-		Stats = &RightHandWeaponStats;
-	}
-	else if (Weapon && Weapon == GetLeftHandWeapon())
-	{
-		Stats = &LeftHandWeaponStats;
-	}
-
-	const float* Value = Stats ? Stats->Find(Stat) : nullptr;
+	const float* Value = Weapon && GetHeldWeapons().Contains(Weapon) ? WeaponStats.Find(Stat) : nullptr;
 	return Value ? *Value : Default;
 }
 
@@ -1077,15 +1068,6 @@ void AYSPlayerCharacter::RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& O
 
 		FYSUpgradeProgress& Entry = UpgradeProgress.Add_GetRef(Old);
 		Entry.PoolIndex = NewIndex;
-	}
-
-	// fusions propres à la nouvelle classe (ex. CD reduction commune en akimbo : les 10 meilleurs bonus des deux mains)
-	for (int32 PoolIndex = 0; PoolIndex < UpgradePool.Num(); ++PoolIndex)
-	{
-		if (UpgradePool[PoolIndex])
-		{
-			UpgradePool[PoolIndex]->MergeProgress(this, PoolIndex, UpgradeProgress);
-		}
 	}
 
 	// effets réappliqués une fois toute la progression en place (les upgrades d'arme lisent leurs 3 paliers) ;

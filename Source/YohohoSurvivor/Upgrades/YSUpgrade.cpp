@@ -25,17 +25,18 @@ namespace YSUpgradeText
 		}
 	}
 
-	/** Nom de la main : arme tenue (« Pétoir »), « Pétoir (Droite) » en akimbo, HandLabel si la main est vide */
-	FText HandName(const AYSPlayerCharacter* Character, EYSHand Hand, const FText& HandLabel, const FText& AkimboHandLabel)
+	/** Noms des armes qui portent ces actions, sans doublon (« Epee », « Pistolet & Epee ») ; vide si aucune */
+	FText WeaponsName(const TArray<UYSAbilityComponent*>& Actions)
 	{
-		const AYSWeapon* Weapon = Character ? (Hand == EYSHand::Left ? Character->GetLeftHandWeapon() : Character->GetRightHandWeapon()) : nullptr;
-		if (!Weapon)
+		TArray<FString> Names;
+		for (const UYSAbilityComponent* Action : Actions)
 		{
-			return HandLabel;
+			if (const AYSWeapon* Weapon = Action ? Cast<AYSWeapon>(Action->GetOwner()) : nullptr)
+			{
+				Names.AddUnique(Weapon->GetWeaponName().ToString());
+			}
 		}
-		return Character->IsAkimbo()
-			? FText::Format(NSLOCTEXT("YS", "AkimboWeaponName", "{0} ({1})"), Weapon->GetWeaponName(), AkimboHandLabel)
-			: Weapon->GetWeaponName();
+		return FText::FromString(FString::Join(Names, TEXT(" & ")));
 	}
 }
 
@@ -131,50 +132,56 @@ void UYSStatUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const F
 
 UYSHandStatUpgrade::UYSHandStatUpgrade()
 {
-	RightHandLabel = NSLOCTEXT("YS", "HandStatRight", "Right hand");
-	LeftHandLabel = NSLOCTEXT("YS", "HandStatLeft", "Left hand");
-	AkimboRightLabel = NSLOCTEXT("YS", "HandStatAkimboRight", "Droite");
-	AkimboLeftLabel = NSLOCTEXT("YS", "HandStatAkimboLeft", "Gauche");
-	AkimboLabel = NSLOCTEXT("YS", "HandStatAkimbo", "Akimbo");
 	AbilityLabel = NSLOCTEXT("YS", "HandStatAbility", "Ability");
 	AutoAtkLabel = NSLOCTEXT("YS", "HandStatAutoAtk", "Auto atk");
 }
 
-FText UYSHandStatUpgrade::MakeName(const FText& HandText, int32 Variant) const
+FText UYSHandStatUpgrade::MakeName(const FText& WeaponsText, int32 Variant) const
 {
-	return FText::Format(NSLOCTEXT("YS", "HandStatName", "{0} {1} {2}"), HandText, GetSlot(Variant) == EYSActionSlot::AutoAtk ? AutoAtkLabel : AbilityLabel, BonusName);
+	const FText& SlotLabel = GetSlot(Variant) == EYSActionSlot::AutoAtk ? AutoAtkLabel : AbilityLabel;
+	return WeaponsText.IsEmpty()
+		? FText::Format(NSLOCTEXT("YS", "SlotStatNameNoWeapon", "{0} {1}"), SlotLabel, BonusName)
+		: FText::Format(NSLOCTEXT("YS", "SlotStatName", "{0} {1} {2}"), WeaponsText, SlotLabel, BonusName);
 }
 
 FText UYSHandStatUpgrade::GetVariantName(int32 Variant) const
 {
-	return MakeName(GetHand(Variant) == EYSHand::Left ? LeftHandLabel : RightHandLabel, Variant);
+	return MakeName(FText::GetEmpty(), Variant);
 }
 
 FText UYSHandStatUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	const bool bLeft = GetHand(Variant) == EYSHand::Left;
-	return MakeName(YSUpgradeText::HandName(Character, GetHand(Variant), bLeft ? LeftHandLabel : RightHandLabel, bLeft ? AkimboLeftLabel : AkimboRightLabel), Variant);
+	TArray<UYSAbilityComponent*> Actions;
+	for (const AYSWeapon* Weapon : Character ? Character->GetHeldWeapons() : TArray<AYSWeapon*>())
+	{
+		if (UYSAbilityComponent* Action = GetSlot(Variant) == EYSActionSlot::AutoAtk ? Weapon->GetAutoAction() : Weapon->GetActiveAction())
+		{
+			Actions.Add(Action);
+		}
+	}
+	return MakeName(YSUpgradeText::WeaponsName(Actions), Variant);
 }
 
 bool UYSHandStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	// l'arme de la main doit avoir une action de ce type (Ability = clic, Auto atk = attaque auto)
-	return GetHandAction(Character, Variant) && Super::CanBeOffered(Character, Variant, Progress);
+	// une arme du set doit avoir une action de ce type (Ability = clic, Auto atk = attaque auto)
+	return GetSlotAction(Character, Variant) && Super::CanBeOffered(Character, Variant, Progress);
 }
 
-AYSWeapon* UYSHandStatUpgrade::GetHandWeapon(const AYSPlayerCharacter* Character, int32 Variant)
+UYSAbilityComponent* UYSHandStatUpgrade::GetSlotAction(const AYSPlayerCharacter* Character, int32 Variant)
 {
-	return !Character ? nullptr : GetHand(Variant) == EYSHand::Left ? Character->GetLeftHandWeapon() : Character->GetRightHandWeapon();
-}
-
-UYSAbilityComponent* UYSHandStatUpgrade::GetHandAction(const AYSPlayerCharacter* Character, int32 Variant)
-{
-	const AYSWeapon* Weapon = GetHandWeapon(Character, Variant);
-	if (!Weapon)
+	if (!Character)
 	{
 		return nullptr;
 	}
-	return GetSlot(Variant) == EYSActionSlot::AutoAtk ? Weapon->GetAutoAction() : Weapon->GetActiveAction();
+	for (const AYSWeapon* Weapon : { Character->GetMainHandWeapon(), Character->GetOffHandWeapon() })
+	{
+		if (UYSAbilityComponent* Action = !Weapon ? nullptr : GetSlot(Variant) == EYSActionSlot::AutoAtk ? Weapon->GetAutoAction() : Weapon->GetActiveAction())
+		{
+			return Action;
+		}
+	}
+	return nullptr;
 }
 
 UYSHandAtkBonusUpgrade::UYSHandAtkBonusUpgrade()
@@ -186,13 +193,13 @@ UYSHandAtkBonusUpgrade::UYSHandAtkBonusUpgrade()
 
 float UYSHandAtkBonusUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	const UYSAbilityComponent* Action = GetHandAction(Character, Variant);
+	const UYSAbilityComponent* Action = GetSlotAction(Character, Variant);
 	return Action ? Action->GetBaseDamage() : 0.0f;
 }
 
 void UYSHandAtkBonusUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
-	Character->SetHandDamageMultiplier(GetHand(Variant), GetSlot(Variant), 1.0f + TotalBonus);
+	Character->SetDamageMultiplier(GetSlot(Variant), 1.0f + TotalBonus);
 }
 
 UYSHandCooldownReductionUpgrade::UYSHandCooldownReductionUpgrade()
@@ -207,20 +214,13 @@ UYSHandCooldownReductionUpgrade::UYSHandCooldownReductionUpgrade()
 
 float UYSHandCooldownReductionUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	const UYSAbilityComponent* Action = GetHandAction(Character, Variant);
+	const UYSAbilityComponent* Action = GetSlotAction(Character, Variant);
 	return Action ? Action->GetBaseCooldown() : 0.0f;
 }
 
 void UYSHandCooldownReductionUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
-	// akimbo : une seule CD reduction par type d'action (variante de la main droite) pour les deux mains
-	if (Character->IsAkimbo())
-	{
-		Character->SetHandCooldownMultiplier(EYSHand::Right, GetSlot(Variant), GetMultiplier(TotalBonus));
-		Character->SetHandCooldownMultiplier(EYSHand::Left, GetSlot(Variant), GetMultiplier(TotalBonus));
-		return;
-	}
-	Character->SetHandCooldownMultiplier(GetHand(Variant), GetSlot(Variant), GetMultiplier(TotalBonus));
+	Character->SetCooldownMultiplier(GetSlot(Variant), GetMultiplier(TotalBonus));
 }
 
 UYSMoveSpeedBonusUpgrade::UYSMoveSpeedBonusUpgrade()
@@ -318,55 +318,56 @@ void UYSLuckUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, fl
 UYSWeaponUpgrade::UYSWeaponUpgrade()
 {
 	UpgradeType = EYSUpgradeType::Weapon;
-	RightHandLabel = NSLOCTEXT("YS", "WeaponUpgradeRightHand", "Right hand");
-	LeftHandLabel = NSLOCTEXT("YS", "WeaponUpgradeLeftHand", "Left hand");
-	AkimboRightLabel = NSLOCTEXT("YS", "WeaponUpgradeAkimboRight", "Droite");
-	AkimboLeftLabel = NSLOCTEXT("YS", "WeaponUpgradeAkimboLeft", "Gauche");
 }
 
 FText UYSWeaponUpgrade::GetVariantName(int32 Variant) const
 {
-	const FText& TierName = GetTier(Variant) == EYSWeaponUpgradeTier::Unlock ? UnlockName : GetTier(Variant) == EYSWeaponUpgradeTier::Bonus ? BonusName : SuperName;
-	return FText::Format(NSLOCTEXT("YS", "WeaponUpgradeName", "{0} {1}"), GetHand(Variant) == EYSHand::Left ? LeftHandLabel : RightHandLabel, TierName);
+	switch (GetTier(Variant))
+	{
+	case EYSWeaponUpgradeTier::Unlock:	return UnlockName;
+	case EYSWeaponUpgradeTier::Bonus:	return BonusName;
+	default:							return SuperName;
+	}
 }
 
 FText UYSWeaponUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	const bool bLeft = GetHand(Variant) == EYSHand::Left;
-	const FText& TierName = GetTier(Variant) == EYSWeaponUpgradeTier::Unlock ? UnlockName : GetTier(Variant) == EYSWeaponUpgradeTier::Bonus ? BonusName : SuperName;
-	return FText::Format(NSLOCTEXT("YS", "WeaponUpgradeName", "{0} {1}"),
-		YSUpgradeText::HandName(Character, GetHand(Variant), bLeft ? LeftHandLabel : RightHandLabel, bLeft ? AkimboLeftLabel : AkimboRightLabel), TierName);
+	// « Pistolet Ricochet » : armes du set concernées + palier
+	const FText Weapons = YSUpgradeText::WeaponsName(GetRequiredActions(Character));
+	return Weapons.IsEmpty() ? GetVariantName(Variant) : FText::Format(NSLOCTEXT("YS", "WeaponUpgradeName", "{0} {1}"), Weapons, GetVariantName(Variant));
 }
 
-UYSAbilityComponent* UYSWeaponUpgrade::GetRequiredAction(const AYSPlayerCharacter* Character, EYSHand Hand) const
+TArray<UYSAbilityComponent*> UYSWeaponUpgrade::GetRequiredActions(const AYSPlayerCharacter* Character) const
 {
-	const AYSWeapon* Weapon = !Character ? nullptr : Hand == EYSHand::Left ? Character->GetLeftHandWeapon() : Character->GetRightHandWeapon();
-	if (!Weapon || !RequiredActionClass)
+	TArray<UYSAbilityComponent*> Required;
+	if (!Character || !RequiredActionClass)
 	{
-		return nullptr;
+		return Required;
 	}
 
-	TInlineComponentArray<UYSAbilityComponent*> Actions(Weapon);
-	for (UYSAbilityComponent* Action : Actions)
+	for (const AYSWeapon* Weapon : { Character->GetMainHandWeapon(), Character->GetOffHandWeapon() })
 	{
-		if (Action->IsA(RequiredActionClass) && Action->GetActionSlot() == RequiredSlot)
+		TInlineComponentArray<UYSAbilityComponent*> Actions(Weapon);
+		for (UYSAbilityComponent* Action : Actions)
 		{
-			return Action;
+			if (Action->IsA(RequiredActionClass) && Action->GetActionSlot() == RequiredSlot)
+			{
+				Required.Add(Action);
+			}
 		}
 	}
-	return nullptr;
+	return Required;
 }
 
 bool UYSWeaponUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	const EYSHand Hand = GetHand(Variant);
-	if (!Character || !GetRequiredAction(Character, Hand))
+	if (!Character || GetRequiredActions(Character).Num() == 0)
 	{
 		return false;
 	}
 
 	// le déblocage d'abord ; ensuite il laisse la place au Bonus (cumulable) et au Super (une fois)
-	const bool bUnlocked = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(Hand, EYSWeaponUpgradeTier::Unlock)).Stacks > 0;
+	const bool bUnlocked = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Unlock)).Stacks > 0;
 	switch (GetTier(Variant))
 	{
 	case EYSWeaponUpgradeTier::Unlock:	return !bUnlocked;
@@ -428,7 +429,7 @@ void UYSWeaponUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 
 	StackLine.Color = FLinearColor(0.7f, 0.7f, 0.7f);
 	StackLine.FontSize = 13;
 
-	const float BaseValue = GetBonusBaseValue(Character, GetHand(Variant));
+	const float BaseValue = GetBonusBaseValue(Character);
 
 	FYSChoiceLine& OldValue = OutLines.AddDefaulted_GetRef();
 	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), BonusStatLabel, YSUpgradeText::FormatStat(BaseValue * (1.0f + Progress.TotalValue)));
@@ -449,11 +450,10 @@ void UYSWeaponUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const
 		return;
 	}
 
-	const EYSHand Hand = GetHand(Variant);
-	const bool bUnlocked = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(Hand, EYSWeaponUpgradeTier::Unlock)).Stacks > 0;
-	const float BonusTotal = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(Hand, EYSWeaponUpgradeTier::Bonus)).TotalValue;
-	const bool bSuper = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(Hand, EYSWeaponUpgradeTier::Super)).Stacks > 0;
-	ApplyWeaponProperty(Character, Hand, bUnlocked, BonusTotal, bSuper);
+	const bool bUnlocked = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Unlock)).Stacks > 0;
+	const float BonusTotal = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Bonus)).TotalValue;
+	const bool bSuper = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Super)).Stacks > 0;
+	ApplyWeaponProperty(Character, bUnlocked, BonusTotal, bSuper);
 	UE_LOG(LogTemp, Log, TEXT("[YSWeaponUpgrade] %s : %s (débloqué %d, bonus %.3f, super %d)"), *Character->GetName(), *GetVariantNameFor(Character, Variant).ToString(), bUnlocked, BonusTotal, bSuper);
 }
 
@@ -474,17 +474,17 @@ UYSRicochetUpgrade::UYSRicochetUpgrade()
 	SuperDescription = NSLOCTEXT("YS", "RicochetSuperDesc", "La balle ricoche une fois de plus");
 }
 
-float UYSRicochetUpgrade::GetBonusBaseValue(const AYSPlayerCharacter* Character, EYSHand Hand) const
+float UYSRicochetUpgrade::GetBonusBaseValue(const AYSPlayerCharacter* Character) const
 {
-	const UYSAbilityComponent* Action = GetRequiredAction(Character, Hand);
-	return Action ? Action->GetBaseDamage() : 0.0f;
+	const TArray<UYSAbilityComponent*> Actions = GetRequiredActions(Character);
+	return Actions.Num() > 0 ? Actions[0]->GetBaseDamage() : 0.0f;
 }
 
-void UYSRicochetUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, EYSHand Hand, bool bUnlocked, float BonusTotal, bool bSuper) const
+void UYSRicochetUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
 {
 	const int32 Ricochets = bUnlocked ? UnlockRicochets + (bSuper ? SuperExtraRicochets : 0) : 0;
-	Character->SetHandWeaponStat(Hand, RicochetCountStat, Ricochets);
-	Character->SetHandWeaponStat(Hand, RicochetDamageBonusStat, BonusTotal);
+	Character->SetWeaponStat(RicochetCountStat, Ricochets);
+	Character->SetWeaponStat(RicochetDamageBonusStat, BonusTotal);
 }
 
 UYSClassUpgrade::UYSClassUpgrade()
@@ -504,7 +504,7 @@ FText UYSClassUpgrade::GetVariantName(int32 Variant) const
 
 bool UYSClassUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	return Character && TargetClass && Character->GetClass() == SourceClass && Progress.Stacks == 0;
+	return Character && TargetClass && (Character->GetClass() == SourceClass || ExtraSourceClasses.Contains(Character->GetClass())) && Progress.Stacks == 0;
 }
 
 void UYSClassUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
@@ -536,76 +536,3 @@ void UYSClassUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const 
 	}
 }
 
-bool UYSHandCooldownReductionUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
-{
-	if (Character && Character->IsAkimbo() && GetHand(Variant) == EYSHand::Left)
-	{
-		return false;
-	}
-	return Super::CanBeOffered(Character, Variant, Progress);
-}
-
-FText UYSHandCooldownReductionUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const
-{
-	// akimbo : bonus commun aux deux mains (même arme) -> « Pétoir (Akimbo) Ability CD reduction »
-	const AYSWeapon* Weapon = Character && Character->IsAkimbo() ? Character->GetRightHandWeapon() : nullptr;
-	return Weapon
-		? MakeName(FText::Format(NSLOCTEXT("YS", "AkimboWeaponName", "{0} ({1})"), Weapon->GetWeaponName(), AkimboLabel), Variant)
-		: Super::GetVariantNameFor(Character, Variant);
-}
-
-void UYSHandCooldownReductionUpgrade::MergeProgress(const AYSPlayerCharacter* Character, int32 PoolIndex, TArray<FYSUpgradeProgress>& Progress) const
-{
-	if (!Character || !Character->IsAkimbo())
-	{
-		return;
-	}
-
-	// par type d'action : tous les bonus des deux mains, du meilleur au moins bon ; les MaxStacks meilleurs restent (main droite)
-	for (const EYSActionSlot Slot : { EYSActionSlot::Ability, EYSActionSlot::AutoAtk })
-	{
-		TArray<float> Values;
-		for (int32 Index = Progress.Num() - 1; Index >= 0; --Index)
-		{
-			const FYSUpgradeProgress& Entry = Progress[Index];
-			if (Entry.PoolIndex != PoolIndex || GetSlot(Entry.Variant) != Slot)
-			{
-				continue;
-			}
-
-			if (Entry.BonusValues.Num() > 0)
-			{
-				Values.Append(Entry.BonusValues);
-			}
-			else
-			{
-				// progression sans détail : bonus de valeur moyenne
-				for (int32 Stack = 0; Stack < Entry.Stacks; ++Stack)
-				{
-					Values.Add(Entry.TotalValue / FMath::Max(1, Entry.Stacks));
-				}
-			}
-			Progress.RemoveAt(Index);
-		}
-		if (Values.Num() == 0)
-		{
-			continue;
-		}
-
-		Values.Sort(TGreater<float>());
-		const int32 Dropped = FMath::Max(0, Values.Num() - MaxStacks);
-		Values.SetNum(FMath::Min(Values.Num(), MaxStacks));
-
-		FYSUpgradeProgress& Merged = Progress.AddDefaulted_GetRef();
-		Merged.PoolIndex = PoolIndex;
-		Merged.Variant = MakeVariant(EYSHand::Right, Slot);
-		Merged.BonusValues = Values;
-		Merged.Stacks = Values.Num();
-		for (const float Value : Values)
-		{
-			Merged.TotalValue += Value;
-		}
-		UE_LOG(LogTemp, Log, TEXT("[YSHandCooldownReduction] %s passe en akimbo (%s) : %d bonus gardés (somme %.3f), %d en trop jetés"),
-			*Character->GetName(), Slot == EYSActionSlot::AutoAtk ? TEXT("Auto atk") : TEXT("Ability"), Merged.Stacks, Merged.TotalValue, Dropped);
-	}
-}
