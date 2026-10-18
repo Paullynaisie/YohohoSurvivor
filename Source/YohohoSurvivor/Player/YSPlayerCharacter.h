@@ -17,6 +17,7 @@ class UInputAction;
 class UInputMappingContext;
 class UChildActorComponent;
 class AYSWeapon;
+class AYSInteractiveObject;
 class UTexture2D;
 class UWidgetComponent;
 class UMaterialInterface;
@@ -95,6 +96,10 @@ private:
 	/** Action de tir (clic gauche), créée à l'exécution */
 	UPROPERTY(Transient)
 	TObjectPtr<UInputAction> FireAction;
+
+	/** Action d'interaction (touche E), créée à l'exécution */
+	UPROPERTY(Transient)
+	TObjectPtr<UInputAction> InteractAction;
 
 	/** Contexte d'input clavier/souris par défaut, créé à l'exécution */
 	UPROPERTY(Transient)
@@ -309,6 +314,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Hands")
 	bool bHandsUseBodyMaterial = true;
 
+	/** Interaction (E) : distance max (au sol) d'un objet devant le personnage */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Interaction", meta=(ClampMin="0", Units="Centimeters"))
+	float InteractionDistance = 200.0f;
+
+	/** Interaction : écart d'angle max (de chaque côté) entre le regard et l'objet */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Interaction", meta=(ClampMin="0", ClampMax="180", Units="Degrees"))
+	float InteractionAngle = 70.0f;
+
+	/** Objet porté à deux mains (coffre) : armes désactivées et cachées, mains sur l'objet */
+	UPROPERTY(ReplicatedUsing=OnRep_CarriedObject, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Interaction")
+	TObjectPtr<AYSInteractiveObject> CarriedObject;
+
+	UFUNCTION()
+	void OnRep_CarriedObject();
+
 	/** Tags portés par le personnage (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Tags")
 	FGameplayTagContainer GameplayTags;
@@ -344,6 +364,9 @@ private:
 	/** Tir différé de la main droite en akimbo */
 	FTimerHandle AkimboTimer;
 
+	/** Objet dont l'invite « E » est affichée (joueur local) */
+	TWeakObjectPtr<AYSInteractiveObject> FocusedInteractable;
+
 public:
 
 	AYSPlayerCharacter();
@@ -351,6 +374,8 @@ public:
 	virtual void OnConstruction(const FTransform& Transform) override;
 
 	virtual void BeginPlay() override;
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	virtual void PossessedBy(AController* NewController) override;
 
@@ -495,6 +520,28 @@ public:
 	/** Déclenche les actions de clic des deux mains (comme le clic gauche ; debug YSFire) */
 	void TriggerFire() { Fire(); }
 
+	/** Comme la touche E (debug YSInteract) */
+	void TriggerInteract() { Interact(); }
+
+	USceneComponent* GetBodyPivot() const { return BodyPivot.Get(); }
+
+	/** Objet porté à deux mains (nullptr si aucun) */
+	AYSInteractiveObject* GetCarriedObject() const { return CarriedObject; }
+
+	bool IsCarrying() const { return CarriedObject != nullptr; }
+
+	/** Prend l'objet dans ses mains (serveur) : actions en cours interrompues, armes cachées, plus lent */
+	void StartCarrying(AYSInteractiveObject* Object);
+
+	/** Repose l'objet porté au sol devant lui (serveur) ; près d'un Brooker, il est racheté */
+	void DropCarriedObject(const TCHAR* Reason = TEXT(""));
+
+	/** Choix de cible des NME : distance divisée par ce nombre (objet porté ; 1 sinon) */
+	float GetFoeAttractionMultiplier() const;
+
+	/** Objet interactif le plus proche devant le personnage, avec lequel il peut interagir (nullptr si aucun) */
+	AYSInteractiveObject* FindInteractTarget() const;
+
 	/** Nom affiché (repli sur le nom de la classe si CharacterName est vide) */
 	FText GetCharacterName() const { return CharacterName.IsEmpty() ? FText::FromString(GetClass()->GetName().Replace(TEXT("_C"), TEXT(""))) : CharacterName; }
 
@@ -508,6 +555,24 @@ protected:
 	 *  Akimbo (même arme dans les deux mains) : la gauche tout de suite, la droite après son AkimboFireDelay.
 	 */
 	void Fire();
+
+	/** Touche E : repose l'objet porté, sinon interagit avec l'objet devant le personnage */
+	void Interact();
+
+	UFUNCTION(Server, Reliable)
+	void ServerInteract();
+
+	/** Interaction côté serveur */
+	void InteractOnServer();
+
+	/** MaxWalkSpeed = MoveSpeed x Move speed bonus x objet porté (serveur et client : prédiction) */
+	void UpdateMaxWalkSpeed();
+
+	/** Armes cachées pendant le portage (toutes machines) */
+	void ApplyCarryVisuals();
+
+	/** Invite « E » sur l'objet devant le joueur local */
+	void UpdateInteractPrompt();
 
 	/** Point visé par le joueur local (souris) */
 	FVector GetAimLocation() const;

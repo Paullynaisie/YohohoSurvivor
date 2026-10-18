@@ -11,6 +11,7 @@ class UYSPlayerHUDWidget;
 class UYSEliteHealthWidget;
 class UYSDayBannerWidget;
 class UYSOffscreenIndicatorsWidget;
+class UYSObjectiveWidget;
 class ASceneCapture2D;
 class AYSPlayerCharacter;
 class UTextureRenderTarget2D;
@@ -52,6 +53,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSCharacterSelectWidget> CharacterSelectMenuClass;
 
+	/** Jauge d'objectif (doublons, haut droite) : Widget Blueprint enfant de YSObjectiveWidget (placement et réglages dans ses Class Defaults, catégorie Layout) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<UYSObjectiveWidget> ObjectiveWidgetClass;
+
 	/** Aperçu du personnage : distance et hauteur de la caméra, champ de vision */
 	UPROPERTY(EditAnywhere, Category="UI|Preview", meta=(ClampMin="50", Units="cm"))
 	float PreviewCameraDistance = 450.0f;
@@ -90,6 +95,10 @@ private:
 	/** Icônes des autres joueurs hors écran (au bord, dans leur direction) */
 	UPROPERTY(Transient)
 	TObjectPtr<UYSOffscreenIndicatorsWidget> OffscreenIndicators;
+
+	/** Jauge d'objectif commune (doublons) */
+	UPROPERTY(Transient)
+	TObjectPtr<UYSObjectiveWidget> Objective;
 
 	/** Annonce « Jour X » */
 	UPROPERTY(Transient)
@@ -169,6 +178,18 @@ public:
 	/** Debug (console) : comme un clic gauche (akimbo compris) */
 	UFUNCTION(Exec)
 	void YSFire();
+
+	/** Debug : comme la touche E (prendre / reposer un objet) */
+	UFUNCTION(Exec)
+	void YSInteract();
+
+	/** Debug (hôte) : fait apparaître un coffre (BP_InteractiveObject_Chest) devant le personnage */
+	UFUNCTION(Exec)
+	void YSSpawnChest(float Distance = 150.0f);
+
+	/** Debug (hôte) : téléporte le personnage à côté du Brooker le plus proche */
+	UFUNCTION(Exec)
+	void YSGoToBrooker(float Distance = 300.0f);
 
 	/** Debug (console, hôte) : met l'arme BP de /Game/Placeable/Weapons dans une main (0 droite, 1 gauche).  Ex : YSEquipWeapon 0 BattlePetoir (préfixe BP_ facultatif) */
 	UFUNCTION(Exec)

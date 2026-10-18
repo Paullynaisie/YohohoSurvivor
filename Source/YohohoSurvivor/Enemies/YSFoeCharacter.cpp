@@ -15,6 +15,7 @@
 #include "Core/YSGameplayTags.h"
 #include "Core/YSGameMode.h"
 #include "Core/YSGameState.h"
+#include "Interaction/YSInteractiveObject.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSPlayerCharacter.h"
 #include "UI/YSHealthBarWidget.h"
@@ -136,6 +137,13 @@ void AYSFoeCharacter::Die()
 	{
 		GameMode->AddTeamExperience(GetExperienceReward());
 
+		// butin (coffre de l'élite) posé au sol là où il meurt
+		if (DeathLootClass)
+		{
+			const AYSInteractiveObject* Loot = AYSInteractiveObject::SpawnOnGround(GetWorld(), DeathLootClass, GetActorLocation(), GetActorRotation().Yaw);
+			UE_LOG(LogTemp, Log, TEXT("[YSFoe] %s laisse %s"), *GetName(), Loot ? *Loot->GetName() : TEXT("(échec)"));
+		}
+
 		// la mort de l'élite termine la nuit
 		if (bIsElite)
 		{
@@ -242,7 +250,10 @@ APawn* AYSFoeCharacter::FindNearestPlayer() const
 			continue;
 		}
 
-		const float DistSq = FVector::DistSquared2D(Pawn->GetActorLocation(), GetActorLocation());
+		// toujours le plus proche, mais un joueur qui porte un objet (coffre) compte comme N fois plus proche
+		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(Pawn);
+		const float Attraction = PlayerCharacter ? PlayerCharacter->GetFoeAttractionMultiplier() : 1.0f;
+		const float DistSq = FVector::DistSquared2D(Pawn->GetActorLocation(), GetActorLocation()) / FMath::Square(FMath::Max(Attraction, KINDA_SMALL_NUMBER));
 		if (DistSq < NearestDistSq)
 		{
 			NearestDistSq = DistSq;

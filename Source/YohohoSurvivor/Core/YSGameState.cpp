@@ -31,6 +31,8 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, bNight);
 	DOREPLIFETIME(AYSGameState, DayStartServerTime);
 	DOREPLIFETIME(AYSGameState, CurrentElite);
+	DOREPLIFETIME(AYSGameState, Doubloons);
+	DOREPLIFETIME(AYSGameState, DoubloonGoal);
 }
 
 void AYSGameState::SetMatchStarted()

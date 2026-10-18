@@ -55,6 +55,7 @@ void AYSGameMode::InitGameState()
 		YSGameState->SetSelectableCharacters(SelectableCharacters);
 		YSGameState->SetCustomizationOptions(CustomizationColors, CustomizationFaces);
 		YSGameState->SetTeamProgress(0, 0.0f, GetExperienceForLevel(0));
+		YSGameState->SetDoubloons(0, DoubloonGoal);
 	}
 }
 
@@ -441,4 +442,21 @@ APawn* AYSGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewP
 	}
 	Pawn->FinishSpawning(SpawnTransform);
 	return Pawn;
+}
+
+void AYSGameMode::AddDoubloons(int32 Amount)
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || Amount <= 0)
+	{
+		return;
+	}
+
+	const bool bWasReached = YSGameState->GetDoubloons() >= YSGameState->GetDoubloonGoal();
+	YSGameState->SetDoubloons(YSGameState->GetDoubloons() + Amount, DoubloonGoal);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Doublons +%d -> %d / %d"), Amount, YSGameState->GetDoubloons(), DoubloonGoal);
+	if (!bWasReached && YSGameState->GetDoubloons() >= DoubloonGoal)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Objectif atteint : %d doublons"), YSGameState->GetDoubloons());
+	}
 }

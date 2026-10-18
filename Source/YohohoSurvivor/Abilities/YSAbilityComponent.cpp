@@ -241,6 +241,13 @@ void UYSAbilityComponent::GetPriorityGroup(TArray<UYSAbilityComponent*>& OutActi
 
 bool UYSAbilityComponent::CanStartByPriority() const
 {
+	// objet porté à deux mains (coffre) : aucune action d'arme
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	if (Character && Character->IsCarrying())
+	{
+		return false;
+	}
+
 	const int32 Rank = GetPriorityRank();
 	TArray<UYSAbilityComponent*> Group;
 	GetPriorityGroup(Group);

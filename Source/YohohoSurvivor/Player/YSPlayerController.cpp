@@ -15,6 +15,9 @@
 #include "UI/YSOffscreenIndicatorsWidget.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "UI/YSEliteHealthWidget.h"
+#include "UI/YSObjectiveWidget.h"
+#include "Interaction/YSInteractiveObject.h"
+#include "NPC/YSBrookerNPC.h"
 #include "UI/YSDayBannerWidget.h"
 #include "Upgrades/YSUpgrade.h"
 #include "UI/YSDeathScreenWidget.h"
@@ -114,6 +117,16 @@ void AYSPlayerController::BeginPlay()
 			EliteSlot.ZOrder = 1;
 			ViewportSubsystem->AddWidgetForPlayer(EliteHealth, GetLocalPlayer(), EliteSlot);
 
+			// jauge d'objectif : haut droite, sous l'emplacement de la barre de l'élite (placement réglé dans le Widget Blueprint)
+			Objective = CreateWidget<UYSObjectiveWidget>(this, ObjectiveWidgetClass ? ObjectiveWidgetClass.Get() : UYSObjectiveWidget::StaticClass());
+			Objective->SetVisibility(ESlateVisibility::Collapsed);
+			FGameViewportWidgetSlot ObjectiveSlot;
+			ObjectiveSlot.Anchors = FAnchors(1.0f, 0.0f);
+			ObjectiveSlot.Alignment = FVector2D(1.0f, 0.0f);
+			ObjectiveSlot.Offsets = FMargin(-Objective->ScreenOffset.X, Objective->ScreenOffset.Y, 0.0f, 0.0f);
+			ObjectiveSlot.ZOrder = 1;
+			ViewportSubsystem->AddWidgetForPlayer(Objective, GetLocalPlayer(), ObjectiveSlot);
+
 			// annonce « Jour X » : plein écran, texte centré
 			DayBanner = CreateWidget<UYSDayBannerWidget>(this, UYSDayBannerWidget::StaticClass());
 			DayBanner->SetVisibility(ESlateVisibility::Collapsed);
@@ -141,6 +154,20 @@ void AYSPlayerController::BeginPlay()
 		{
 			YSSelectCharacter(AutoSelectIndex);
 			YSReady();
+		}
+
+		// -YSExecOnJoin="cmd1, cmd2" : commandes lancées à l'arrivée dans la partie (un client lancé avec une IP
+		// exécute -ExecCmds avant la connexion) ; avec YSAfter pour les différer
+		FString JoinCommands;
+		if (FParse::Value(FCommandLine::Get(), TEXT("YSExecOnJoin="), JoinCommands, false) && GetWorld()->GetNetMode() != NM_Standalone)
+		{
+			JoinCommands.TrimQuotesInline();
+			TArray<FString> Commands;
+			JoinCommands.ParseIntoArray(Commands, TEXT(","));
+			for (FString& Command : Commands)
+			{
+				ConsoleCommand(Command.TrimStartAndEnd());
+			}
 		}
 	}
 }
@@ -472,6 +499,13 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 		EliteHealth->SetElite(Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
 	}
 	EliteHealth->SetVisibility(bShowElite ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+
+	// objectif commun : doublons de l'équipe
+	if (Objective)
+	{
+		Objective->SetProgress(YSGameState->GetDoubloons(), YSGameState->GetDoubloonGoal());
+		Objective->SetVisibility(YSGameState->IsMatchStarted() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
 }
 
 void AYSPlayerController::YSStartNight()
@@ -539,6 +573,37 @@ void AYSPlayerController::UpdatePlayerHUD()
 	TArray<FYSHUDPlayerInfo> Allies;
 	TArray<FYSOffscreenIndicator> Indicators;
 	const float EdgeMargin = OffscreenIndicators ? OffscreenIndicators->IconSize * 0.5f + OffscreenIndicatorMargin : 0.0f;
+	const FVector2D Screen(ViewportX / ViewportScale, ViewportY / ViewportScale);
+
+	// icône pour un point du monde : à sa place s'il est à l'écran (si bShowOnScreen), sinon au bord dans sa direction
+	auto AddIndicator = [this, &Indicators, &Screen, EdgeMargin, ViewportScale](const FVector& WorldLocation, const FLinearColor& Color, UTexture2D* Face, bool bShowOnScreen)
+	{
+		FVector2D ScreenPosition;
+		if (!ProjectWorldLocationToScreen(WorldLocation, ScreenPosition))
+		{
+			return;
+		}
+		const FVector2D Position = ScreenPosition / ViewportScale;
+		const bool bOnScreen = Position.X >= 0.0f && Position.Y >= 0.0f && Position.X <= Screen.X && Position.Y <= Screen.Y;
+		if (bOnScreen && !bShowOnScreen)
+		{
+			return;
+		}
+
+		FYSOffscreenIndicator& Indicator = Indicators.AddDefaulted_GetRef();
+		Indicator.Color = Color;
+		Indicator.Face = Face;
+		Indicator.Position = Position;
+		if (!bOnScreen)
+		{
+			// hors écran : point du bord (moins la marge) sur la ligne centre de l'écran -> cible
+			const FVector2D Center = Screen * 0.5f;
+			const FVector2D Direction = Position - Center;
+			const FVector2D Half(FMath::Max(1.0f, Center.X - EdgeMargin), FMath::Max(1.0f, Center.Y - EdgeMargin));
+			const float Scale = FMath::Min(Direction.X != 0.0f ? Half.X / FMath::Abs(Direction.X) : BIG_NUMBER, Direction.Y != 0.0f ? Half.Y / FMath::Abs(Direction.Y) : BIG_NUMBER);
+			Indicator.Position = Center + Direction * Scale;
+		}
+	};
 	for (const APlayerState* OtherPlayer : YSGameState->PlayerArray)
 	{
 		const AYSPlayerState* OtherState = Cast<AYSPlayerState>(OtherPlayer);
@@ -555,29 +620,21 @@ void AYSPlayerController::UpdatePlayerHUD()
 		Info.Health = OtherCharacter ? OtherCharacter->GetHealth() : 0.0f;
 		Info.MaxHealth = OtherCharacter ? OtherCharacter->GetMaxHealth() : 0.0f;
 
-		FVector2D ScreenPosition;
-		if (!Info.bAlive || !ProjectWorldLocationToScreen(OtherCharacter->GetActorLocation(), ScreenPosition))
+		if (Info.bAlive)
 		{
-			continue;
+			AddIndicator(OtherCharacter->GetActorLocation(), Info.Color, Info.Face, false);
 		}
-		const FVector2D Screen(ViewportX / ViewportScale, ViewportY / ViewportScale);
-		const FVector2D Position = ScreenPosition / ViewportScale;
-		if (Position.X >= 0.0f && Position.Y >= 0.0f && Position.X <= Screen.X && Position.Y <= Screen.Y)
-		{
-			continue;
-		}
-
-		// hors écran : point du bord (moins la marge) sur la ligne centre de l'écran -> joueur
-		const FVector2D Center = Screen * 0.5f;
-		const FVector2D Direction = Position - Center;
-		const FVector2D Half(FMath::Max(1.0f, Center.X - EdgeMargin), FMath::Max(1.0f, Center.Y - EdgeMargin));
-		const float Scale = FMath::Min(Direction.X != 0.0f ? Half.X / FMath::Abs(Direction.X) : BIG_NUMBER, Direction.Y != 0.0f ? Half.Y / FMath::Abs(Direction.Y) : BIG_NUMBER);
-		FYSOffscreenIndicator& Indicator = Indicators.AddDefaulted_GetRef();
-		Indicator.Position = Center + Direction * Scale;
-		Indicator.Color = Info.Color;
-		Indicator.Face = Info.Face;
 	}
 	PlayerHUD->SetAllies(Allies);
+
+	// objet porté : bulle du Brooker le plus proche (au-dessus de lui, ou au bord de l'écran)
+	if (PlayerCharacter && PlayerCharacter->IsCarrying())
+	{
+		if (const AYSBrookerNPC* Brooker = AYSBrookerNPC::FindNearest(GetWorld(), PlayerCharacter->GetActorLocation()))
+		{
+			AddIndicator(Brooker->GetIndicatorLocation(), Brooker->GetIndicatorColor(), Brooker->GetIndicatorIcon(), true);
+		}
+	}
 
 	if (OffscreenIndicators)
 	{
@@ -1023,4 +1080,41 @@ void AYSPlayerController::YSEquipWeapon(int32 Hand, const FString& WeaponName)
 	}
 	PlayerCharacter->DebugEquipWeapon(Hand == 1 ? EYSHand::Left : EYSHand::Right, WeaponClass);
 	UE_LOG(LogTemp, Log, TEXT("[YSEquipWeapon] %s dans la main %s"), *WeaponName, Hand == 1 ? TEXT("gauche") : TEXT("droite"));
+}
+
+void AYSPlayerController::YSInteract()
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->TriggerInteract();
+	}
+}
+
+void AYSPlayerController::YSSpawnChest(float Distance)
+{
+	const APawn* MyPawn = GetPawn();
+	UClass* ChestClass = LoadClass<AYSInteractiveObject>(nullptr, TEXT("/Game/Placeable/InteractiveObjects/BP_InteractiveObject_Chest.BP_InteractiveObject_Chest_C"));
+	if (!MyPawn || !ChestClass || !HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSSpawnChest] impossible (perso %d, coffre trouvé %d, hôte %d)"), MyPawn != nullptr, ChestClass != nullptr, HasAuthority());
+		return;
+	}
+	const AYSInteractiveObject* Chest = AYSInteractiveObject::SpawnOnGround(GetWorld(), ChestClass, MyPawn->GetActorLocation() + MyPawn->GetActorForwardVector() * Distance, MyPawn->GetActorRotation().Yaw);
+	UE_LOG(LogTemp, Log, TEXT("[YSSpawnChest] %s"), Chest ? *Chest->GetName() : TEXT("échec"));
+}
+
+void AYSPlayerController::YSGoToBrooker(float Distance)
+{
+	APawn* MyPawn = GetPawn();
+	const AYSBrookerNPC* Brooker = MyPawn ? AYSBrookerNPC::FindNearest(GetWorld(), MyPawn->GetActorLocation()) : nullptr;
+	if (!Brooker || !HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSGoToBrooker] impossible (Brooker trouvé %d, hôte %d)"), Brooker != nullptr, HasAuthority());
+		return;
+	}
+	// à Distance du Brooker, du côté du personnage, tourné vers lui
+	const FVector FromBrooker = (MyPawn->GetActorLocation() - Brooker->GetActorLocation()).GetSafeNormal2D();
+	const FVector Location = Brooker->GetActorLocation() + (FromBrooker.IsNearlyZero() ? FVector::ForwardVector : FromBrooker) * Distance + FVector(0.0f, 0.0f, 100.0f);
+	MyPawn->TeleportTo(Location, (-FromBrooker).Rotation());
+	UE_LOG(LogTemp, Log, TEXT("[YSGoToBrooker] %s à %.0f cm de %s"), *MyPawn->GetName(), Distance, *Brooker->GetName());
 }

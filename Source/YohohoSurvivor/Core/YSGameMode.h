@@ -18,7 +18,7 @@ class UTexture2D;
  *  XP commune à l'équipe (AddTeamExperience) : à chaque niveau, partie en pause et choix d'une upgrade par joueur.
  *  Classe de base de BP_TestGameMode.
  */
-UCLASS(meta=(PrioritizeCategories="Spawn DayNight Level"))
+UCLASS(meta=(PrioritizeCategories="Spawn Objective DayNight Level"))
 class AYSGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
@@ -68,6 +68,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DayNight", meta=(ClampMin="1", Units="s"))
 	float DayDuration = 30.0f;
 
+	/** Objectif commun : doublons à réunir en revendant des coffres au Brooker (jauge d'objectif du HUD) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="1"))
+	int32 DoubloonGoal = 100;
+
 public:
 
 	AYSGameMode();
@@ -114,6 +118,9 @@ public:
 
 	/** Mort de l'élite : la nuit se termine, jour suivant */
 	void OnEliteKilled(AYSFoeCharacter* Elite);
+
+	/** Doublons gagnés par l'équipe (vente au Brooker ; serveur) */
+	void AddDoubloons(int32 Amount);
 
 protected:
 

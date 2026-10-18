@@ -134,7 +134,7 @@ public:
 	/** Rang de priorité du type de cette action (0 = la plus prioritaire) */
 	int32 GetPriorityRank() const;
 
-	/** Aucune action plus prioritaire de l'arme (des deux armes en akimbo) n'est en cours */
+	/** Aucune action plus prioritaire de l'arme (des deux armes en akimbo) n'est en cours, et le personnage a les mains libres (pas d'objet porté) */
 	bool CanStartByPriority() const;
 
 	/** Interrompt l'action (serveur) : animation arrêtée sur toutes les machines, recharge rendue, main suivante de l'akimbo annulée */

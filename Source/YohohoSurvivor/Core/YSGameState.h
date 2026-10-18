@@ -86,6 +86,13 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="DayNight")
 	TObjectPtr<AYSFoeCharacter> CurrentElite;
 
+	/** Objectif commun : doublons gagnés par l'équipe et objectif à atteindre */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Objective")
+	int32 Doubloons = 0;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Objective")
+	int32 DoubloonGoal = 100;
+
 public:
 
 	AYSGameState();
@@ -130,6 +137,12 @@ public:
 	void StartDay(int32 Day);
 	void StartNight() { bNight = true; }
 	void SetCurrentElite(AYSFoeCharacter* Elite) { CurrentElite = Elite; }
+
+	int32 GetDoubloons() const { return Doubloons; }
+	int32 GetDoubloonGoal() const { return DoubloonGoal; }
+
+	/** Serveur uniquement (AYSGameMode) */
+	void SetDoubloons(int32 Amount, int32 Goal) { Doubloons = Amount; DoubloonGoal = Goal; ForceNetUpdate(); }
 
 	/** Secondes écoulées depuis le démarrage de la partie (0 avant ; valable sur serveur et clients) */
 	UFUNCTION(BlueprintPure, Category="Match")

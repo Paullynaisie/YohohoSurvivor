@@ -31,6 +31,10 @@
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerController.h"
 #include "Upgrades/YSUpgrade.h"
+#include "Abilities/YSAbilityComponent.h"
+#include "EngineUtils.h"
+#include "Interaction/YSInteractiveObject.h"
+#include "NPC/YSBrookerNPC.h"
 
 namespace
 {
@@ -167,6 +171,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, CooldownMultipliers);
 	DOREPLIFETIME(AYSPlayerCharacter, Luck);
 	DOREPLIFETIME(AYSPlayerCharacter, bLeftHanded);
+	DOREPLIFETIME(AYSPlayerCharacter, CarriedObject);
 }
 
 UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
@@ -211,6 +216,9 @@ float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Dam
 
 void AYSPlayerCharacter::Die()
 {
+	// l'objet porté tombe au sol
+	DropCarriedObject(TEXT("mort"));
+
 	// le joueur reste mort (pas de réapparition) mais compte toujours pour la taille des vagues
 	if (AYSPlayerState* YSPlayerState = GetPlayerState<AYSPlayerState>())
 	{
@@ -473,7 +481,7 @@ void AYSPlayerCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	// appliqué sur le serveur ET les clients pour que la prédiction de mouvement reste cohérente
-	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * MoveSpeedMultiplier;
+	UpdateMaxWalkSpeed();
 
 	// réappliqué en jeu : la hurtbox ne dépend pas de réglages de collision sauvegardés dans le Blueprint
 	YSCombat::ConfigureHurtbox(BodyMesh);
@@ -499,6 +507,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateHands(DeltaSeconds);
 	UpdateDayNight(DeltaSeconds);
 	UpdateNameplate();
+	UpdateInteractPrompt();
 
 	// clients : PlayerState et options de personnalisation peuvent arriver dans n'importe quel ordre
 	if (!bCustomizationApplied)
@@ -570,6 +579,15 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 
 	auto UpdateHand = [this, DeltaSeconds, &PivotTransform](USceneComponent* Hand, FVector& WorldLocation, float& CurrentYaw, bool bLeft, float NoiseSeed)
 	{
+		// objet porté : la main est sur son point de placement, sans retard (l'objet suit déjà le corps)
+		if (const USceneComponent* HandPoint = IsValid(CarriedObject) ? CarriedObject->GetHandPoint(bLeft) : nullptr)
+		{
+			WorldLocation = HandPoint->GetComponentLocation();
+			Hand->SetWorldLocation(WorldLocation);
+			Hand->SetRelativeRotation(PivotTransform.GetRotation().Inverse() * HandPoint->GetComponentQuat());
+			return;
+		}
+
 		// oscillation : bruit de Perlin sur chaque axe, limité à HandSwayAmplitude autour de la cible
 		const float NoiseTime = HandSwayTime * HandSwaySpeed + NoiseSeed;
 		const FVector Sway = FVector(
@@ -775,12 +793,13 @@ void AYSPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 	{
 		EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AYSPlayerCharacter::Move);
 		EnhancedInput->BindAction(FireAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Fire);
+		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Interact);
 	}
 }
 
 void AYSPlayerCharacter::CreateDefaultInput()
 {
-	if (MoveAction && FireAction && DefaultMappingContext)
+	if (MoveAction && FireAction && InteractAction && DefaultMappingContext)
 	{
 		return;
 	}
@@ -791,8 +810,12 @@ void AYSPlayerCharacter::CreateDefaultInput()
 	FireAction = NewObject<UInputAction>(this, TEXT("IA_Fire"));
 	FireAction->ValueType = EInputActionValueType::Boolean;
 
+	InteractAction = NewObject<UInputAction>(this, TEXT("IA_Interact"));
+	InteractAction->ValueType = EInputActionValueType::Boolean;
+
 	DefaultMappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Default"));
 	DefaultMappingContext->MapKey(FireAction, EKeys::LeftMouseButton);
+	DefaultMappingContext->MapKey(InteractAction, EKeys::E);
 
 	// une touche renvoie (1,0) : Swizzle la passe sur Y, Negate l'inverse
 	auto MapKey = [this](const FKey& Key, bool bSwizzle, bool bNegate)
@@ -841,6 +864,12 @@ void AYSPlayerCharacter::Move(const FInputActionValue& Value)
 
 void AYSPlayerCharacter::Fire()
 {
+	// objet porté à deux mains : armes désactivées
+	if (IsCarrying())
+	{
+		return;
+	}
+
 	const AYSWeapon* MainWeapon = GetMainHandWeapon();
 	const AYSWeapon* OffWeapon = GetOffHandWeapon();
 	UYSAbilityComponent* MainAction = MainWeapon ? MainWeapon->GetActiveAction() : nullptr;
@@ -889,8 +918,7 @@ void AYSPlayerCharacter::SetMoveSpeedMultiplier(float Multiplier)
 
 void AYSPlayerCharacter::OnRep_MoveSpeedMultiplier()
 {
-	// serveur et client propriétaire doivent avoir la même vitesse (prédiction de mouvement)
-	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * MoveSpeedMultiplier;
+	UpdateMaxWalkSpeed();
 }
 
 void AYSPlayerCharacter::SetMaxHealthMultiplier(float Multiplier)
@@ -997,6 +1025,9 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass)
 	const FTransform SpawnTransform(FRotator(0.0f, GetActorRotation().Yaw, 0.0f), GetActorLocation());
 	const FString OldName = GetName();
 	const bool bWasLeftHanded = bLeftHanded;
+
+	// l'objet porté reste au sol (le nouveau personnage a les mains libres)
+	DropCarriedObject(TEXT("changement de classe"));
 
 	OwningController->UnPossess();
 	Destroy();
@@ -1164,4 +1195,192 @@ bool AYSPlayerCharacter::IsAkimbo() const
 	const AYSWeapon* LeftWeapon = GetLeftHandWeapon();
 	const AYSWeapon* RightWeapon = GetRightHandWeapon();
 	return LeftWeapon && RightWeapon && LeftWeapon->GetClass() == RightWeapon->GetClass();
+}
+
+void AYSPlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// l'invite « E » affichée pour ce joueur disparaît avec lui
+	if (FocusedInteractable.IsValid())
+	{
+		FocusedInteractable->SetPromptVisible(false);
+	}
+	FocusedInteractable.Reset();
+
+	// serveur : un personnage qui disparaît (déconnexion…) ne garde pas l'objet
+	DropCarriedObject(TEXT("fin de jeu du personnage"));
+
+	Super::EndPlay(EndPlayReason);
+}
+
+void AYSPlayerCharacter::UpdateMaxWalkSpeed()
+{
+	// serveur et client propriétaire doivent avoir la même vitesse (prédiction de mouvement)
+	const float CarryMultiplier = IsValid(CarriedObject) ? CarriedObject->GetCarrierSpeedMultiplier() : 1.0f;
+	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * MoveSpeedMultiplier * CarryMultiplier;
+}
+
+float AYSPlayerCharacter::GetFoeAttractionMultiplier() const
+{
+	return IsValid(CarriedObject) ? CarriedObject->GetFoeAttractionMultiplier() : 1.0f;
+}
+
+AYSInteractiveObject* AYSPlayerCharacter::FindInteractTarget() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || !IsAlive() || IsCarrying())
+	{
+		return nullptr;
+	}
+
+	// le plus proche devant le personnage (regard = direction du curseur), à portée
+	const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
+	const float MinCos = FMath::Cos(FMath::DegreesToRadians(InteractionAngle));
+	AYSInteractiveObject* Best = nullptr;
+	float BestDistSq = FMath::Square(InteractionDistance);
+	for (TActorIterator<AYSInteractiveObject> It(World); It; ++It)
+	{
+		AYSInteractiveObject* Object = *It;
+		if (!Object->CanInteract(this))
+		{
+			continue;
+		}
+
+		const FVector ToObject = (Object->GetActorLocation() - GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
+		const float DistSq = ToObject.SizeSquared();
+		if (DistSq > BestDistSq)
+		{
+			continue;
+		}
+
+		// collé au personnage : toujours « devant »
+		if (DistSq > FMath::Square(GetCapsuleComponent()->GetScaledCapsuleRadius()) && FVector::DotProduct(ToObject.GetSafeNormal(), Forward) < MinCos)
+		{
+			continue;
+		}
+
+		Best = Object;
+		BestDistSq = DistSq;
+	}
+	return Best;
+}
+
+void AYSPlayerCharacter::Interact()
+{
+	if (HasAuthority())
+	{
+		InteractOnServer();
+	}
+	else
+	{
+		ServerInteract();
+	}
+}
+
+void AYSPlayerCharacter::ServerInteract_Implementation()
+{
+	InteractOnServer();
+}
+
+void AYSPlayerCharacter::InteractOnServer()
+{
+	if (IsCarrying())
+	{
+		DropCarriedObject(TEXT("touche E"));
+		return;
+	}
+
+	if (AYSInteractiveObject* Target = FindInteractTarget())
+	{
+		Target->Interact(this);
+	}
+}
+
+void AYSPlayerCharacter::StartCarrying(AYSInteractiveObject* Object)
+{
+	if (!HasAuthority() || IsCarrying() || !IsValid(Object))
+	{
+		return;
+	}
+
+	// les armes sont désactivées : actions en cours interrompues (anim du sabre, main suivante de l'akimbo)
+	GetWorldTimerManager().ClearTimer(AkimboTimer);
+	for (const AYSWeapon* Weapon : { GetLeftHandWeapon(), GetRightHandWeapon() })
+	{
+		if (Weapon)
+		{
+			TInlineComponentArray<UYSAbilityComponent*> Actions(Weapon);
+			for (UYSAbilityComponent* Action : Actions)
+			{
+				Action->CancelAction();
+			}
+		}
+	}
+
+	CarriedObject = Object;
+	Object->SetCarrier(this);
+	ApplyCarryVisuals();
+	UpdateMaxWalkSpeed();
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s prend %s"), *GetName(), *Object->GetName());
+}
+
+void AYSPlayerCharacter::DropCarriedObject(const TCHAR* Reason)
+{
+	AYSInteractiveObject* Object = CarriedObject;
+	if (!HasAuthority() || !IsValid(Object))
+	{
+		return;
+	}
+
+	// reposé au sol devant le personnage
+	const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
+	const FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), GetActorLocation() + Forward * Object->GetDropDistance(), this);
+	CarriedObject = nullptr;
+	Object->SetCarrier(nullptr, Ground, GetActorRotation().Yaw);
+	ApplyCarryVisuals();
+	UpdateMaxWalkSpeed();
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s repose %s (%s)"), *GetName(), *Object->GetName(), Reason);
+
+	// près d'un Brooker : racheté (doublons pour l'équipe)
+	AYSBrookerNPC::TrySell(Object);
+}
+
+void AYSPlayerCharacter::OnRep_CarriedObject()
+{
+	ApplyCarryVisuals();
+	UpdateMaxWalkSpeed();
+}
+
+void AYSPlayerCharacter::ApplyCarryVisuals()
+{
+	for (AYSWeapon* Weapon : { GetLeftHandWeapon(), GetRightHandWeapon() })
+	{
+		if (Weapon)
+		{
+			Weapon->SetActorHiddenInGame(IsCarrying());
+		}
+	}
+}
+
+void AYSPlayerCharacter::UpdateInteractPrompt()
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+
+	AYSInteractiveObject* Target = FindInteractTarget();
+	if (Target != FocusedInteractable.Get())
+	{
+		if (FocusedInteractable.IsValid())
+		{
+			FocusedInteractable->SetPromptVisible(false);
+		}
+		if (Target)
+		{
+			Target->SetPromptVisible(true);
+		}
+		FocusedInteractable = Target;
+	}
 }

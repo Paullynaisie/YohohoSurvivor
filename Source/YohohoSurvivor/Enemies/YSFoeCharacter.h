@@ -10,6 +10,7 @@ class UCapsuleComponent;
 class UStaticMeshComponent;
 class UWidgetComponent;
 class UYSFaceDecalComponent;
+class AYSInteractiveObject;
 
 /**
  *  Ennemi de base : attiré en ligne droite vers le joueur le plus proche, sans pathfinding,
@@ -69,6 +70,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(ClampMin="0.1"))
 	float SizeMultiplier = 1.0f;
+
+	/** Objet laissé au sol à sa mort (ex. coffre de l'élite ; vide = rien) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Loot")
+	TSubclassOf<AYSInteractiveObject> DeathLootClass;
 
 	/** Niveau du NME : augmente ses PV, ses dégâts et l'XP qu'il donne */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Foe|Level", meta=(ClampMin="0"))
