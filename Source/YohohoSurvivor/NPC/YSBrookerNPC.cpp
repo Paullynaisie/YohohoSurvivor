@@ -1,8 +1,21 @@
-#include "NPC/YSBrookerNPC.h"
+﻿#include "NPC/YSBrookerNPC.h"
+#include "Components/StaticMeshComponent.h"
 #include "Core/YSGameMode.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Interaction/YSInteractiveObject.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "UObject/ConstructorHelpers.h"
+
+namespace YSBrooker
+{
+	/** Rayon du cylindre moteur (100 x 100 x 100) */
+	constexpr float CylinderRadius = 50.0f;
+
+	/** Épaisseur du disque de la zone (échelle Z du cylindre) */
+	constexpr float ZoneThickness = 0.01f;
+}
 
 AYSBrookerNPC::AYSBrookerNPC()
 {
@@ -13,7 +26,47 @@ AYSBrookerNPC::AYSBrookerNPC()
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RootComponent = Root;
 
+	// zone de rachat : disque translucide au sol, sans collision ni ombre
+	AcceptZone = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AcceptZone"));
+	AcceptZone->SetupAttachment(Root);
+	AcceptZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	AcceptZone->SetCastShadow(false);
+	AcceptZone->SetCanEverAffectNavigation(false);
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Disc(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	if (Disc.Succeeded())
+	{
+		AcceptZone->SetStaticMesh(Disc.Object);
+	}
+
 	BrookerName = NSLOCTEXT("YS", "BrookerName", "Brooker");
+}
+
+void AYSBrookerNPC::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	// visible dans l'éditeur, pour placer le Brooker
+	ApplyZone();
+}
+
+void AYSBrookerNPC::ApplyZone()
+{
+	// la zone suit AcceptRange
+	AcceptZone->SetVisibility(bShowZone && AcceptRange > 0.0f);
+	const float Scale = FMath::Max(AcceptRange, 1.0f) / YSBrooker::CylinderRadius;
+	AcceptZone->SetRelativeScale3D(FVector(Scale, Scale, YSBrooker::ZoneThickness));
+	AcceptZone->SetRelativeLocation(FVector(0.0f, 0.0f, ZoneHeight));
+
+	if (ZoneMaterial)
+	{
+		UMaterialInstanceDynamic* Material = AcceptZone->CreateDynamicMaterialInstance(0, ZoneMaterial);
+		Material->SetVectorParameterValue(TEXT("Color"), ZoneColor);
+		Material->SetScalarParameterValue(TEXT("Glow"), ZoneGlow);
+		Material->SetScalarParameterValue(TEXT("FillOpacity"), ZoneFillOpacity);
+		Material->SetScalarParameterValue(TEXT("EdgeOpacity"), ZoneEdgeOpacity);
+		Material->SetScalarParameterValue(TEXT("Radius"), AcceptRange);
+		Material->SetScalarParameterValue(TEXT("EdgeWidth"), ZoneEdgeWidth);
+	}
 }
 
 void AYSBrookerNPC::BeginPlay()
@@ -22,14 +75,32 @@ void AYSBrookerNPC::BeginPlay()
 
 	// posé au sol (même calcul sur toutes les machines)
 	SetActorLocation(AYSInteractiveObject::FindGround(GetWorld(), GetActorLocation(), this));
+
+	// OnConstruction ne tourne pas pour un Brooker chargé avec la map : matériau de zone recréé ici
+	ApplyZone();
+
+	const UMaterialInterface* ZoneMaterialUsed = AcceptZone->GetMaterial(0);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBrooker] %s : zone %.0f cm, matériau %s (parent %s), visible %d"), *GetName(), AcceptRange,
+		ZoneMaterialUsed ? *ZoneMaterialUsed->GetName() : TEXT("aucun"), ZoneMaterialUsed && ZoneMaterialUsed->GetMaterial() ? *ZoneMaterialUsed->GetMaterial()->GetName() : TEXT("-"), AcceptZone->IsVisible());
 }
 
 bool AYSBrookerNPC::TryBuy(AYSInteractiveObject* Object)
 {
 	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
-	if (!GameMode || !IsValid(Object) || Object->GetDoubloonValue() <= 0 || Object->GetCarrier()
-		|| FVector::DistSquared2D(Object->GetActorLocation(), GetActorLocation()) > FMath::Square(AcceptRange))
+	if (!GameMode || !IsValid(Object) || Object->GetCarrier())
 	{
+		return false;
+	}
+
+	const float Distance = FVector::Dist2D(Object->GetActorLocation(), GetActorLocation());
+	if (Distance > AcceptRange)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSBrooker] %s : %s hors de la zone (%.0f cm, zone %.0f cm)"), *GetName(), *Object->GetName(), Distance, AcceptRange);
+		return false;
+	}
+	if (Object->GetDoubloonValue() <= 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSBrooker] %s : %s n'a pas de valeur (Doubloon Value = 0)"), *GetName(), *Object->GetName());
 		return false;
 	}
 
