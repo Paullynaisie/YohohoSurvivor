@@ -179,6 +179,11 @@ float UYSAbilityComponent::GetDamageMultiplier() const
 
 float UYSAbilityComponent::GetCooldownMultiplier() const
 {
+	// les Guns n'ont pas de CD reduction (ils ont l'upgrade Shoot system)
+	if (WeaponType == EYSWeaponType::Gun)
+	{
+		return 1.0f;
+	}
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	return Character ? Character->GetWeaponCooldownMultiplier(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 1.0f;
 }

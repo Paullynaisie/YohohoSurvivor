@@ -251,6 +251,10 @@ protected:
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TMap<FName, float> WeaponStats;
 
+	/** Upgrade Shoot system par type d'action (Guns ; serveur) : PewPew = balles ajoutées à chaque rafale */
+	UPROPERTY(Transient, VisibleInstanceOnly, Category="3C|Upgrades")
+	float ShootSystemBonus[2];
+
 	/** Multiplicateur de la vitesse de déplacement (Move speed bonus ; répliqué : la prédiction de mouvement du client doit le connaître) */
 	UPROPERTY(ReplicatedUsing=OnRep_MoveSpeedMultiplier, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float MoveSpeedMultiplier = 1.0f;
@@ -481,6 +485,12 @@ public:
 	void SetDamageMultiplier(EYSActionSlot Slot, float Multiplier) { DamageMultipliers[GetSlotIndex(Slot)] = Multiplier; }
 
 	void SetCooldownMultiplier(EYSActionSlot Slot, float Multiplier) { CooldownMultipliers[GetSlotIndex(Slot)] = Multiplier; ForceNetUpdate(); }
+
+	/** Shoot system d'un type d'action, pour tous les Guns du set (serveur) */
+	void SetShootSystemBonus(EYSActionSlot Slot, float Bonus) { ShootSystemBonus[GetSlotIndex(Slot)] = Bonus; }
+
+	/** Bonus Shoot system pour Weapon (0 si elle n'est pas tenue) */
+	float GetWeaponShootSystemBonus(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
 
 	/** Propriété des armes tenues (upgrades d'arme ; serveur) */
 	void SetWeaponStat(FName Stat, float Value) { WeaponStats.Add(Stat, Value); }

@@ -261,8 +261,14 @@ public:
 
 protected:
 
-	/** Première action de ce type parmi les armes tenues (main principale d'abord ; nullptr si aucune) */
-	static UYSAbilityComponent* GetSlotAction(const AYSPlayerCharacter* Character, int32 Variant);
+	/** Actions de ce type parmi les armes tenues, concernées par l'upgrade (main principale d'abord) */
+	TArray<UYSAbilityComponent*> GetSlotActions(const AYSPlayerCharacter* Character, int32 Variant) const;
+
+	/** Première de ces actions (nullptr si aucune) */
+	UYSAbilityComponent* GetSlotAction(const AYSPlayerCharacter* Character, int32 Variant) const;
+
+	/** L'upgrade concerne cette action (ex. CD reduction : pas les Guns) */
+	virtual bool IsActionEligible(const UYSAbilityComponent* Action) const { return true; }
 
 	/** « <armes> <type> <BonusName> » */
 	FText MakeName(const FText& WeaponsText, int32 Variant) const;
@@ -305,6 +311,9 @@ public:
 
 protected:
 
+	/** Les Guns n'ont pas de CD reduction (ils ont l'upgrade Shoot system) */
+	virtual bool IsActionEligible(const UYSAbilityComponent* Action) const override;
+
 	/** Recharge de base de l'action */
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
@@ -313,6 +322,33 @@ protected:
 	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
 
 	float GetMultiplier(float TotalBonus) const { return FMath::Max(MinCooldownMultiplier, 1.0f - TotalBonus); }
+};
+
+/**
+ *  Shoot system (par type d'action, Guns du set) : améliore le shoot system des actions de Gun.
+ *  PewPew : Bronze / Silver / Gold Value (1 / 2 / 3) balles de plus à chaque rafale (même durée de rafale).
+ *  Shotgun / Piercing : à venir (pas proposée pour ces systèmes).
+ */
+UCLASS(meta=(DisplayName="Upgrade de stat : Shoot system (Guns du set)"))
+class UYSShootSystemUpgrade : public UYSHandStatUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSShootSystemUpgrade();
+
+protected:
+
+	/** Guns dont le shoot system a une amélioration (PewPew pour l'instant) */
+	virtual bool IsActionEligible(const UYSAbilityComponent* Action) const override;
+
+	/** PewPew : balles par rafale de base */
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
+
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
 };
 
 /** Move speed bonus : vitesse de déplacement (MoveSpeed du personnage) x (1 + somme des bonus) */

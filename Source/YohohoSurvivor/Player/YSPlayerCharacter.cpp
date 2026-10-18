@@ -154,6 +154,7 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
 		DamageMultipliers[Index] = 1.0f;
+		ShootSystemBonus[Index] = 0.0f;
 		CooldownMultipliers[Index] = 1.0f;
 	}
 
@@ -436,6 +437,11 @@ float AYSPlayerCharacter::GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYS
 {
 	// un bonus par type d'action pour tout le set d'arme
 	return Weapon && GetHeldWeapons().Contains(Weapon) ? DamageMultipliers[GetSlotIndex(Slot)] : 1.0f;
+}
+
+float AYSPlayerCharacter::GetWeaponShootSystemBonus(const AYSWeapon* Weapon, EYSActionSlot Slot) const
+{
+	return Weapon && GetHeldWeapons().Contains(Weapon) ? ShootSystemBonus[GetSlotIndex(Slot)] : 0.0f;
 }
 
 TArray<AYSWeapon*> AYSPlayerCharacter::GetHeldWeapons() const

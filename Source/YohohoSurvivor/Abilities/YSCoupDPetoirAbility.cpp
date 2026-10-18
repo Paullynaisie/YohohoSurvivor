@@ -5,6 +5,7 @@
 #include "GameFramework/Pawn.h"
 #include "TimerManager.h"
 #include "Weapons/YSWeapon.h"
+#include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSProjectile.h"
 
 namespace YSGun
@@ -46,6 +47,7 @@ void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
 	BurstTargetLocation = TargetLocation;
 	BulletsFired = 0;
 	BurstShooters.Reset();
+	BurstBulletCount = GetBulletsPerBurst();
 	FireNextBullet();
 }
 
@@ -58,7 +60,7 @@ void UYSCoupDPetoirAbility::FireNextBullet()
 	}
 	++BulletsFired;
 
-	const int32 BulletCount = FMath::Max(1, BulletsPerBurst);
+	const int32 BulletCount = FMath::Max(1, BurstBulletCount);
 	if (BulletsFired < BulletCount)
 	{
 		// première balle tout de suite, dernière à la fin de la rafale
@@ -195,4 +197,11 @@ FRotator UYSCoupDPetoirAbility::GetReloadSpin() const
 	case EYSReloadSpinAxis::Roll:	return FRotator(0.0f, 0.0f, Angle);
 	default:						return FRotator(Angle, 0.0f, 0.0f);
 	}
+}
+
+int32 UYSCoupDPetoirAbility::GetBulletsPerBurst() const
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	const float Bonus = Character ? Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 0.0f;
+	return FMath::Max(1, BulletsPerBurst + FMath::RoundToInt(Bonus));
 }

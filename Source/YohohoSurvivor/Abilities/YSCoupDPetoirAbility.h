@@ -142,6 +142,9 @@ public:
 
 	virtual bool IsActionInProgress() const override;
 
+	/** PewPew : balles de la rafale = Bullets Per Burst + upgrade Shoot system du type d'action */
+	int32 GetBulletsPerBurst() const;
+
 	/** Tire une balle vers TargetLocation (serveur) : projectile + recul sur toutes les machines */
 	void FireBullet(const FVector& TargetLocation, int32 BulletIndex);
 
@@ -176,6 +179,9 @@ private:
 
 	/** Balles déjà tirées dans la rafale en cours */
 	int32 BulletsFired = 0;
+
+	/** Balles de la rafale en cours (fixé au départ) */
+	int32 BurstBulletCount = 1;
 
 	/** Armes qui ont tiré dans la rafale en cours (pour l'animation de rechargement) */
 	TArray<TWeakObjectPtr<UYSCoupDPetoirAbility>> BurstShooters;

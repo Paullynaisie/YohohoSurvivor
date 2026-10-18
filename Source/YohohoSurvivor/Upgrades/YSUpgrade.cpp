@@ -152,15 +152,7 @@ FText UYSHandStatUpgrade::GetVariantName(int32 Variant) const
 
 FText UYSHandStatUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	TArray<UYSAbilityComponent*> Actions;
-	for (const AYSWeapon* Weapon : Character ? Character->GetHeldWeapons() : TArray<AYSWeapon*>())
-	{
-		if (UYSAbilityComponent* Action = GetSlot(Variant) == EYSActionSlot::AutoAtk ? Weapon->GetAutoAction() : Weapon->GetActiveAction())
-		{
-			Actions.Add(Action);
-		}
-	}
-	return MakeName(YSUpgradeText::WeaponsName(Actions), Variant);
+	return MakeName(YSUpgradeText::WeaponsName(GetSlotActions(Character, Variant)), Variant);
 }
 
 bool UYSHandStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
@@ -169,20 +161,28 @@ bool UYSHandStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32
 	return GetSlotAction(Character, Variant) && Super::CanBeOffered(Character, Variant, Progress);
 }
 
-UYSAbilityComponent* UYSHandStatUpgrade::GetSlotAction(const AYSPlayerCharacter* Character, int32 Variant)
+TArray<UYSAbilityComponent*> UYSHandStatUpgrade::GetSlotActions(const AYSPlayerCharacter* Character, int32 Variant) const
 {
+	TArray<UYSAbilityComponent*> Actions;
 	if (!Character)
 	{
-		return nullptr;
+		return Actions;
 	}
 	for (const AYSWeapon* Weapon : { Character->GetMainHandWeapon(), Character->GetOffHandWeapon() })
 	{
-		if (UYSAbilityComponent* Action = !Weapon ? nullptr : GetSlot(Variant) == EYSActionSlot::AutoAtk ? Weapon->GetAutoAction() : Weapon->GetActiveAction())
+		UYSAbilityComponent* Action = !Weapon ? nullptr : GetSlot(Variant) == EYSActionSlot::AutoAtk ? Weapon->GetAutoAction() : Weapon->GetActiveAction();
+		if (Action && IsActionEligible(Action))
 		{
-			return Action;
+			Actions.Add(Action);
 		}
 	}
-	return nullptr;
+	return Actions;
+}
+
+UYSAbilityComponent* UYSHandStatUpgrade::GetSlotAction(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	const TArray<UYSAbilityComponent*> Actions = GetSlotActions(Character, Variant);
+	return Actions.Num() > 0 ? Actions[0] : nullptr;
 }
 
 UYSHandAtkBonusUpgrade::UYSHandAtkBonusUpgrade()
@@ -222,6 +222,38 @@ float UYSHandCooldownReductionUpgrade::GetBaseStatValue(const AYSPlayerCharacter
 void UYSHandCooldownReductionUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
 	Character->SetCooldownMultiplier(GetSlot(Variant), GetMultiplier(TotalBonus));
+}
+
+bool UYSHandCooldownReductionUpgrade::IsActionEligible(const UYSAbilityComponent* Action) const
+{
+	return Action->WeaponType != EYSWeaponType::Gun;
+}
+
+UYSShootSystemUpgrade::UYSShootSystemUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "ShootSystemName", "Shoot system");
+	BonusName = NSLOCTEXT("YS", "ShootSystemBonus", "Shoot system");
+	StatLabel = NSLOCTEXT("YS", "ShootSystemStat", "Balles par rafale");
+	BronzeValue = 1.0f;
+	SilverValue = 2.0f;
+	GoldValue = 3.0f;
+}
+
+bool UYSShootSystemUpgrade::IsActionEligible(const UYSAbilityComponent* Action) const
+{
+	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(Action);
+	return Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->ShootSystem == EYSShootSystem::PewPew;
+}
+
+float UYSShootSystemUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(GetSlotAction(Character, Variant));
+	return Gun ? Gun->BulletsPerBurst : 0.0f;
+}
+
+void UYSShootSystemUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
+{
+	Character->SetShootSystemBonus(GetSlot(Variant), TotalBonus);
 }
 
 UYSMoveSpeedBonusUpgrade::UYSMoveSpeedBonusUpgrade()
