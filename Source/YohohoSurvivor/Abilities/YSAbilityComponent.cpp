@@ -179,8 +179,8 @@ float UYSAbilityComponent::GetDamageMultiplier() const
 
 float UYSAbilityComponent::GetCooldownMultiplier() const
 {
-	// les Guns n'ont pas de CD reduction (ils ont l'upgrade Shoot system)
-	if (WeaponType == EYSWeaponType::Gun)
+	// l'Auto atk des Guns n'a pas de CD reduction (elle a l'upgrade Shoot system) ; l'Ability des Guns si
+	if (WeaponType == EYSWeaponType::Gun && IsAutomatic())
 	{
 		return 1.0f;
 	}

@@ -311,7 +311,7 @@ public:
 
 protected:
 
-	/** Les Guns n'ont pas de CD reduction (ils ont l'upgrade Shoot system) */
+	/** L'Auto atk des Guns n'a pas de CD reduction (elle a l'upgrade Shoot system) */
 	virtual bool IsActionEligible(const UYSAbilityComponent* Action) const override;
 
 	/** Recharge de base de l'action */
@@ -325,7 +325,7 @@ protected:
 };
 
 /**
- *  Shoot system (par type d'action, Guns du set) : améliore le shoot system des actions de Gun.
+ *  Shoot system (Auto atk des Guns du set seulement ; leur Ability garde la CD reduction) : améliore le shoot system.
  *  PewPew : Bronze / Silver / Gold Value (1 / 2 / 3) balles de plus à chaque rafale (même durée de rafale).
  *  Shotgun / Piercing : à venir (pas proposée pour ces systèmes).
  */
@@ -340,7 +340,7 @@ public:
 
 protected:
 
-	/** Guns dont le shoot system a une amélioration (PewPew pour l'instant) */
+	/** Auto atk de Gun dont le shoot system a une amélioration (PewPew pour l'instant) */
 	virtual bool IsActionEligible(const UYSAbilityComponent* Action) const override;
 
 	/** PewPew : balles par rafale de base */

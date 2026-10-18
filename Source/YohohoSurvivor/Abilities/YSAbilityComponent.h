@@ -94,7 +94,7 @@ public:
 	/** Recharge de base, sans CD Reduction (affichage des upgrades) */
 	virtual float GetBaseCooldown() const { return Cooldown; }
 
-	/** Multiplicateur de recharge du type d'action (CD reduction ; toujours 1 pour un Gun) */
+	/** Multiplicateur de recharge du type d'action (CD reduction ; toujours 1 pour l'Auto atk d'un Gun) */
 	float GetCooldownMultiplier() const;
 
 	/** Propriété donnée à l'arme de cette capacité par une upgrade d'arme (Default si aucune) */

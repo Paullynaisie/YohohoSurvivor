@@ -226,7 +226,8 @@ void UYSHandCooldownReductionUpgrade::ApplyBonus(AYSPlayerCharacter* Character, 
 
 bool UYSHandCooldownReductionUpgrade::IsActionEligible(const UYSAbilityComponent* Action) const
 {
-	return Action->WeaponType != EYSWeaponType::Gun;
+	// l'Auto atk des Guns a l'upgrade Shoot system à la place ; l'Ability des Guns garde la CD reduction
+	return Action->WeaponType != EYSWeaponType::Gun || !Action->IsAutomatic();
 }
 
 UYSShootSystemUpgrade::UYSShootSystemUpgrade()
@@ -242,7 +243,7 @@ UYSShootSystemUpgrade::UYSShootSystemUpgrade()
 bool UYSShootSystemUpgrade::IsActionEligible(const UYSAbilityComponent* Action) const
 {
 	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(Action);
-	return Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->ShootSystem == EYSShootSystem::PewPew;
+	return Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->IsAutomatic() && Gun->ShootSystem == EYSShootSystem::PewPew;
 }
 
 float UYSShootSystemUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
