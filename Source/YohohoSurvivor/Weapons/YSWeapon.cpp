@@ -90,3 +90,18 @@ FText AYSWeapon::GetWeaponName() const
 	Name.RemoveFromEnd(TEXT("_C"));
 	return FText::FromString(Name);
 }
+
+FRotator AYSWeapon::GetReloadSpin() const
+{
+	// rechargement le plus récent parmi les actions de tir de l'arme
+	const UYSCoupDPetoirAbility* Latest = nullptr;
+	TInlineComponentArray<UYSCoupDPetoirAbility*> Shots(this);
+	for (const UYSCoupDPetoirAbility* Shot : Shots)
+	{
+		if (!Latest || Shot->GetTimeSinceReload() < Latest->GetTimeSinceReload())
+		{
+			Latest = Shot;
+		}
+	}
+	return Latest ? Latest->GetReloadSpin() : FRotator::ZeroRotator;
+}

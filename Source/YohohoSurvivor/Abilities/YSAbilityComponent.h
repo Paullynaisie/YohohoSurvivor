@@ -13,6 +13,14 @@ enum class EYSActionSlot : uint8
 	AutoAtk	UMETA(DisplayName="Auto atk"),
 };
 
+/** Type d'action d'arme : définit certains comportements face aux upgrades */
+UENUM(BlueprintType)
+enum class EYSWeaponType : uint8
+{
+	Melee,
+	Gun,
+};
+
 class UTexture2D;
 
 /**
@@ -32,6 +40,10 @@ public:
 	/** Nom affiché */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ability")
 	FText DisplayName;
+
+	/** Type de l'action (Melee / Gun) : comportements face aux upgrades */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ability")
+	EYSWeaponType WeaponType = EYSWeaponType::Melee;
 
 	/** Temps de recharge */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Ability", meta=(ClampMin="0", Units="Seconds"))
@@ -117,7 +129,7 @@ public:
 	 *  (la gauche agit ce délai après elle) : recharge unique, les deux mains redeviennent prêtes ensemble,
 	 *  une fois les deux actions finies.
 	 */
-	float GetActivationLockDuration() const;
+	virtual float GetActivationLockDuration() const;
 
 	/**
 	 *  Priorités des actions d'une arme (des deux armes en akimbo) : voir ActionPriority dans le .cpp (Ability, puis Auto atk).
@@ -129,7 +141,7 @@ public:
 	virtual float GetActionDuration() const { return 0.0f; }
 
 	/** En cours sur cette machine, d'après la dernière activation vue ; en akimbo, la main principale l'est aussi pendant AkimboFireDelay */
-	bool IsActionInProgress() const;
+	virtual bool IsActionInProgress() const;
 
 	/** Rang de priorité du type de cette action (0 = la plus prioritaire) */
 	int32 GetPriorityRank() const;
@@ -139,6 +151,9 @@ public:
 
 	/** Interrompt l'action (serveur) : animation arrêtée sur toutes les machines, recharge rendue, main suivante de l'akimbo annulée */
 	void CancelAction();
+
+	/** Appelé par CancelAction (serveur) : arrêter ce que l'action a en cours (ex. rafale) */
+	virtual void OnActionCancelled() {}
 
 protected:
 

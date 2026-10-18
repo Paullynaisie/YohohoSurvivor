@@ -281,6 +281,7 @@ void UYSAbilityComponent::CancelAction()
 	{
 		World->GetTimerManager().ClearTimer(AkimboTimer);
 	}
+	OnActionCancelled();
 	if (!IsActionInProgress())
 	{
 		return;

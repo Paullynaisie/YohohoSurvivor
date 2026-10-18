@@ -2,7 +2,6 @@
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "Player/YSPlayerCharacter.h"
-#include "TimerManager.h"
 #include "Weapons/YSWeapon.h"
 
 UYSAutoShotAbility::UYSAutoShotAbility()
@@ -11,15 +10,17 @@ UYSAutoShotAbility::UYSAutoShotAbility()
 	DisplayName = NSLOCTEXT("YS", "AutoShot", "Auto shot");
 	Damage = 20.0f;
 	Cooldown = 1.0f;
+	BulletsPerBurst = 3;
+	BurstDuration = 1.0f;
 }
 
 void UYSAutoShotAbility::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	// tir automatique : serveur uniquement ; en akimbo l'autre main est déclenchée par la principale
+	// tir automatique : serveur uniquement ; en akimbo l'autre main tire dans la rafale de la principale
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !Character || !IsReady() || !CanStartByPriority() || !FindAutoTarget())
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !Character || !IsReady() || !CanStartByPriority())
 	{
 		return;
 	}
@@ -28,18 +29,9 @@ void UYSAutoShotAbility::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		return;
 	}
 
-	FireAtTarget();
-
-	if (UYSAutoShotAbility* Partner = GetAkimboPartner())
+	if (const AActor* Target = FindAutoTarget())
 	{
-		TWeakObjectPtr<UYSAutoShotAbility> WeakPartner = Partner;
-		GetWorld()->GetTimerManager().SetTimer(AkimboTimer, FTimerDelegate::CreateWeakLambda(this, [WeakPartner]()
-		{
-			if (WeakPartner.IsValid())
-			{
-				WeakPartner->FireAtTarget();
-			}
-		}), FMath::Max(AkimboFireDelay, KINDA_SMALL_NUMBER), false);
+		ActivateOnServer(Target->GetActorLocation());
 	}
 }
 
@@ -49,15 +41,20 @@ AActor* UYSAutoShotAbility::FindAutoTarget() const
 	return Holder ? FindAssistTarget(Holder->GetActorLocation(), Holder->GetActorForwardVector()) : nullptr;
 }
 
-void UYSAutoShotAbility::FireAtTarget()
+FVector UYSAutoShotAbility::GetBurstTargetLocation(int32 BulletIndex) const
 {
-	// sans cible (elle est morte entre-temps) : tir droit devant
-	const APawn* Holder = GetHolderPawn();
-	const AActor* Target = FindAutoTarget();
-	if (Holder)
+	if (const AActor* Target = FindAutoTarget())
 	{
-		ActivateOnServer(Target ? Target->GetActorLocation() : Holder->GetActorLocation() + Holder->GetActorForwardVector() * 1000.0f);
+		return Target->GetActorLocation();
 	}
+	const APawn* Holder = GetHolderPawn();
+	return Holder ? Holder->GetActorLocation() + Holder->GetActorForwardVector() * 1000.0f : Super::GetBurstTargetLocation(BulletIndex);
+}
+
+UYSCoupDPetoirAbility* UYSAutoShotAbility::GetBulletShooter(int32 BulletIndex) const
+{
+	UYSAutoShotAbility* Partner = GetAkimboPartner();
+	return Partner && BulletIndex % 2 == 1 ? Partner : const_cast<UYSAutoShotAbility*>(this);
 }
 
 UYSAutoShotAbility* UYSAutoShotAbility::GetAkimboPartner() const

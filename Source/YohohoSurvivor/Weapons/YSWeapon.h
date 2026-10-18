@@ -67,6 +67,9 @@ public:
 	 */
 	bool GetRecoil(float& OutPitch, float& OutKickBack) const;
 
+	/** Rotation actuelle de l'animation de rechargement (Reload Anim des actions de tir ; nulle au repos), à ajouter à la main */
+	FRotator GetReloadSpin() const;
+
 	/** Rotation de main imposée par l'arme (si bOverrideHandRotation) */
 	bool GetHandRotationOverride(FRotator& OutRotation) const
 	{

@@ -648,6 +648,12 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 			Rotation.Pitch += RecoilPitch;
 		}
 
+		// rechargement (fin de rafale) : l'arme fait un tour sur elle-même
+		if (Weapon)
+		{
+			Rotation += Weapon->GetReloadSpin();
+		}
+
 		// le recul s'ajoute après le lissage : il reste sec malgré le retard des mains
 		FVector FinalLocation = WorldLocation + RecoilOffset;
 		FQuat FinalRotation = Rotation.Quaternion();
