@@ -362,6 +362,9 @@ private:
 	/** Temps écoulé pour le bruit d'oscillation des mains */
 	float HandSwayTime = 0.0f;
 
+	/** Dernière image où le joueur a appuyé sur une direction (déplacement forcé de la roulade sinon) */
+	uint64 LastMoveInputFrame = 0;
+
 	/** Direction de l'animation de roulade (dernière direction de mouvement pendant la roulade) */
 	FVector RollAnimDirection = FVector::ForwardVector;
 

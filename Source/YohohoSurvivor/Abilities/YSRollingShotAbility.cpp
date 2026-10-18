@@ -44,7 +44,9 @@ void UYSRollingShotAbility::StartRoll()
 
 	// vitesse x RollSpeedMultiplier tout de suite (dans la direction du mouvement) ; elle retombe ensuite avec MaxWalkSpeed
 	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
-	const FVector Direction = Movement->GetCurrentAcceleration().IsNearlyZero() ? Movement->Velocity.GetSafeNormal2D() : Movement->GetCurrentAcceleration().GetSafeNormal2D();
+	// direction : celle de l'input, sinon à l'opposé du curseur (= du regard)
+	const FVector Direction = Movement->GetCurrentAcceleration().IsNearlyZero() ? -Character->GetActorForwardVector().GetSafeNormal2D() : Movement->GetCurrentAcceleration().GetSafeNormal2D();
+	ForcedRollDirection = -Character->GetActorForwardVector().GetSafeNormal2D();
 	if (!Direction.IsNearlyZero())
 	{
 		const float RollSpeed = Movement->MaxWalkSpeed * RollSpeedMultiplier;
@@ -163,5 +165,16 @@ bool UYSRollingShotAbility::GetBodyRoll(float& OutAngle, float& OutHeightOffset)
 	const float Alpha = Elapsed / Duration;
 	OutAngle = 360.0f * RollAnimTurns * FMath::InterpEaseInOut(0.0f, 1.0f, Alpha, RollAnimEaseExponent);
 	OutHeightOffset = -RollAnimTuckHeight * FMath::Sin(PI * Alpha);
+	return true;
+}
+
+bool UYSRollingShotAbility::GetForcedMoveDirection(FVector& OutDirection) const
+{
+	const float Elapsed = GetTimeSinceRoll();
+	if (!bForceMoveWithoutInput || Elapsed < 0.0f || Elapsed >= RollDuration || ForcedRollDirection.IsNearlyZero())
+	{
+		return false;
+	}
+	OutDirection = ForcedRollDirection;
 	return true;
 }

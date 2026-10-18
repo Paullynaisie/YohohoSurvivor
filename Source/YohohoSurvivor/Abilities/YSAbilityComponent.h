@@ -164,6 +164,9 @@ public:
 	/** Multiplicateur de la vitesse de déplacement du personnage en ce moment (ex. 0 pendant la visée du Rolling shot) */
 	virtual float GetMoveSpeedMultiplier() const { return 1.0f; }
 
+	/** Déplacement forcé en cours quand le joueur n'appuie sur aucune direction (ex. roulade : à l'opposé du curseur) */
+	virtual bool GetForcedMoveDirection(FVector& OutDirection) const { return false; }
+
 	/** Animation du corps en cours (ex. roulade) : angle de rotation (degrés, vers la direction du mouvement) et décalage vertical */
 	virtual bool GetBodyRoll(float& OutAngle, float& OutHeightOffset) const { return false; }
 

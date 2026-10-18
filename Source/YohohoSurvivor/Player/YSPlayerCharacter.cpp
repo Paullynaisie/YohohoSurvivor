@@ -534,6 +534,24 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	// vitesse : peut dépendre d'une action en cours (visée du Rolling shot) ; serveur et client propriétaire
 	UpdateMaxWalkSpeed();
 
+	// déplacement forcé (roulade du Rolling shot) quand le joueur n'appuie sur aucune direction ; machine qui contrôle le perso
+	if (IsLocallyControlled() && GFrameCounter - LastMoveInputFrame > 1 && GetPendingMovementInputVector().IsNearlyZero())
+	{
+		FVector ForcedDirection = FVector::ZeroVector;
+		ForEachHeldAction([&ForcedDirection](const UYSAbilityComponent* Action)
+		{
+			FVector Direction;
+			if (ForcedDirection.IsNearlyZero() && Action->GetForcedMoveDirection(Direction))
+			{
+				ForcedDirection = Direction;
+			}
+		});
+		if (!ForcedDirection.IsNearlyZero())
+		{
+			AddMovementInput(ForcedDirection);
+		}
+	}
+
 	// clients : PlayerState et options de personnalisation peuvent arriver dans n'importe quel ordre
 	if (!bCustomizationApplied)
 	{
@@ -907,6 +925,11 @@ void AYSPlayerCharacter::Move(const FInputActionValue& Value)
 
 	AddMovementInput(CameraMatrix.GetUnitAxis(EAxis::X), Input.Y);
 	AddMovementInput(CameraMatrix.GetUnitAxis(EAxis::Y), Input.X);
+
+	if (!Input.IsNearlyZero())
+	{
+		LastMoveInputFrame = GFrameCounter;
+	}
 }
 
 void AYSPlayerCharacter::Fire()

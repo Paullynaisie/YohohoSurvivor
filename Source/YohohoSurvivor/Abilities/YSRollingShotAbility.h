@@ -30,6 +30,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rolling Shot|Roll", meta=(ClampMin="0"))
 	float RollSpeedMultiplier = 2.0f;
 
+	/** Roulade sans touche de direction pressée : le personnage avance quand même, à l'opposé du curseur (direction prise au lancement) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rolling Shot|Roll")
+	bool bForceMoveWithoutInput = true;
+
 	/** Roulade : courbe de la décroissance (1 = linéaire ; plus grand = le bonus retombe plus vite au début) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rolling Shot|Roll", meta=(ClampMin="1"))
 	float RollSpeedDecayExponent = 1.0f;
@@ -84,6 +88,8 @@ public:
 
 	virtual bool GetBodyRoll(float& OutAngle, float& OutHeightOffset) const override;
 
+	virtual bool GetForcedMoveDirection(FVector& OutDirection) const override;
+
 	/** Secondes depuis le début de la dernière roulade vue par cette machine */
 	float GetTimeSinceRoll() const;
 
@@ -124,4 +130,7 @@ private:
 	FTimerHandle ShootTimer;
 	FTimerHandle PartnerTimer;
 	FTimerHandle RollCollisionTimer;
+
+	/** Direction de la roulade sans input (machine qui la joue : client local ou hôte) */
+	FVector ForcedRollDirection = FVector::ZeroVector;
 };
