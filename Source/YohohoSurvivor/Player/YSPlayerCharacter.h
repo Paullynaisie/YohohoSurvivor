@@ -183,7 +183,7 @@ protected:
 	float HopEaseExponent = 2.0f;
 
 	/** Set d'arme du personnage (Data Asset : arme de chaque main, /Game/Core/WeaponSets) ; prioritaire sur les armes par main ci-dessous */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Weapons")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category="3C|Weapons")
 	TObjectPtr<UYSWeaponSet> WeaponSet;
 
 	/** Sans set d'arme (tests) : arme tenue dans la main gauche */
@@ -457,7 +457,10 @@ public:
 	 *  Remplace ce personnage par un NewClass au même endroit (serveur) : même contrôleur, mêmes upgrades
 	 *  (réappliquées sur le nouveau personnage, y compris sur ses nouvelles armes), même proportion de PV.
 	 */
-	void ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass);
+	void ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, UYSWeaponSet* NewWeaponSet = nullptr);
+
+	/** Upgrade de classe : même personnage avec un autre set d'arme (serveur ; respawn comme ChangeClass, upgrades et PV gardés) */
+	void ChangeWeaponSet(UYSWeaponSet* NewWeaponSet) { ChangeClass(GetClass(), NewWeaponSet); }
 
 	/** Applique la personnalisation de son joueur (couleur, visage ; AYSPlayerState) */
 	void RefreshCustomization();

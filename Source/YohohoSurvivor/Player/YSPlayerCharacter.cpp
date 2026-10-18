@@ -172,6 +172,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, CooldownMultipliers);
 	DOREPLIFETIME(AYSPlayerCharacter, Luck);
 	DOREPLIFETIME(AYSPlayerCharacter, bLeftHanded);
+	DOREPLIFETIME(AYSPlayerCharacter, WeaponSet);
 	DOREPLIFETIME(AYSPlayerCharacter, CarriedObject);
 }
 
@@ -1000,7 +1001,7 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickClassOffers() const
 	return Offers;
 }
 
-void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass)
+void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, UYSWeaponSet* NewWeaponSet)
 {
 	AController* OwningController = GetController();
 	UWorld* World = GetWorld();
@@ -1031,6 +1032,11 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass)
 	if (NewCharacter)
 	{
 		NewCharacter->SetLeftHanded(bWasLeftHanded);
+		// set d'arme : celui demandé (upgrade de classe), sinon celui du nouveau personnage
+		if (NewWeaponSet)
+		{
+			NewCharacter->WeaponSet = NewWeaponSet;
+		}
 		NewCharacter->FinishSpawning(SpawnTransform);
 	}
 	if (!NewCharacter)
@@ -1042,8 +1048,8 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass)
 	OwningController->Possess(NewCharacter);
 	NewCharacter->RestoreUpgrades(OldPool, OldProgress);
 	NewCharacter->Health = FMath::Max(1.0f, HealthRatio * NewCharacter->GetMaxHealth());
-	UE_LOG(LogTemp, Log, TEXT("[YSPlayerCharacter] Changement de classe : %s -> %s (%d upgrade(s) conservée(s), PV %.0f / %.0f)"),
-		*OldName, *NewCharacter->GetName(), NewCharacter->UpgradeProgress.Num(), NewCharacter->Health, NewCharacter->GetMaxHealth());
+	UE_LOG(LogTemp, Log, TEXT("[YSPlayerCharacter] Changement de classe : %s -> %s, set %s (%d upgrade(s) conservée(s), PV %.0f / %.0f)"),
+		*OldName, *NewCharacter->GetName(), NewCharacter->WeaponSet ? *NewCharacter->WeaponSet->GetName() : TEXT("aucun"), NewCharacter->UpgradeProgress.Num(), NewCharacter->Health, NewCharacter->GetMaxHealth());
 }
 
 void AYSPlayerCharacter::RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& OldPool, const TArray<FYSUpgradeProgress>& OldProgress)

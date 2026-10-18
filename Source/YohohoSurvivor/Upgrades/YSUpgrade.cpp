@@ -3,6 +3,7 @@
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSWeapon.h"
+#include "Weapons/YSWeaponSet.h"
 
 namespace YSUpgradeText
 {
@@ -495,16 +496,26 @@ UYSClassUpgrade::UYSClassUpgrade()
 
 FText UYSClassUpgrade::GetVariantName(int32 Variant) const
 {
-	if (!DisplayName.IsEmpty() || !TargetClass)
+	if (!DisplayName.IsEmpty())
 	{
 		return DisplayName;
 	}
-	return TargetClass->GetDefaultObject<AYSPlayerCharacter>()->GetCharacterName();
+	if (TargetWeaponSet)
+	{
+		return TargetWeaponSet->DisplayName.IsEmpty() ? FText::FromString(TargetWeaponSet->GetName()) : TargetWeaponSet->DisplayName;
+	}
+	return TargetClass ? TargetClass->GetDefaultObject<AYSPlayerCharacter>()->GetCharacterName() : FText::GetEmpty();
 }
 
 bool UYSClassUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	return Character && TargetClass && (Character->GetClass() == SourceClass || ExtraSourceClasses.Contains(Character->GetClass())) && Progress.Stacks == 0;
+	if (!Character || Progress.Stacks > 0 || (!TargetWeaponSet && !TargetClass))
+	{
+		return false;
+	}
+	const bool bSetMatches = !SourceWeaponSet || Character->GetWeaponSet() == SourceWeaponSet;
+	const bool bClassMatches = !SourceClass || Character->GetClass() == SourceClass || ExtraSourceClasses.Contains(Character->GetClass());
+	return bSetMatches && bClassMatches;
 }
 
 void UYSClassUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
@@ -530,7 +541,11 @@ void UYSClassUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 V
 
 void UYSClassUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	if (Character && TargetClass)
+	if (Character && TargetWeaponSet)
+	{
+		Character->ChangeWeaponSet(TargetWeaponSet);
+	}
+	else if (Character && TargetClass)
 	{
 		Character->ChangeClass(TargetClass);
 	}

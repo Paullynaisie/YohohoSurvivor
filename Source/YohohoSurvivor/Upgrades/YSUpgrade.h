@@ -9,6 +9,7 @@
 class AYSPlayerCharacter;
 class AYSWeapon;
 class UYSAbilityComponent;
+class UYSWeaponSet;
 
 /** Catégorie d'upgrade : définit son comportement */
 UENUM(BlueprintType)
@@ -555,9 +556,11 @@ protected:
 };
 
 /**
- *  Upgrade de classe : proposée (sans hasard, sans rareté) au niveau d'équipe AYSGameMode::ClassUpgradeLevel,
- *  aux personnages de la classe SourceClass ; les choix sont toutes les upgrades de classe proposables du pool.
- *  Le personnage est remplacé par un TargetClass qui garde toutes les upgrades obtenues (AYSPlayerCharacter::ChangeClass).
+ *  Upgrade de classe : proposée (sans hasard, sans rareté) au niveau d'équipe AYSGameMode::ClassUpgradeLevel ;
+ *  les choix sont toutes les upgrades de classe proposables du pool.
+ *  Normalement : change le SET D'ARME du personnage (SourceWeaponSet -> TargetWeaponSet), qui garde toutes ses upgrades.
+ *  Ancien mode (si TargetWeaponSet est vide) : remplace le personnage par un TargetClass (AYSPlayerCharacter::ChangeClass).
+ *  Conditions remplies seulement si renseignées : set d'arme actuel = SourceWeaponSet, classe = SourceClass / ExtraSourceClasses.
  */
 UCLASS(meta=(DisplayName="Upgrade de classe"))
 class UYSClassUpgrade : public UYSUpgrade
@@ -568,7 +571,15 @@ public:
 
 	UYSClassUpgrade();
 
-	/** Personnage qui peut prendre cette classe (classe exacte) */
+	/** Set d'arme que le personnage doit avoir (vide = n'importe lequel) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Class")
+	TObjectPtr<UYSWeaponSet> SourceWeaponSet;
+
+	/** Set d'arme obtenu (le personnage reste le même) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Class")
+	TObjectPtr<UYSWeaponSet> TargetWeaponSet;
+
+	/** Ancien mode : personnage qui peut prendre cette classe (classe exacte ; vide = n'importe lequel) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Class")
 	TSubclassOf<AYSPlayerCharacter> SourceClass;
 
@@ -576,7 +587,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Class")
 	TArray<TSubclassOf<AYSPlayerCharacter>> ExtraSourceClasses;
 
-	/** Personnage obtenu */
+	/** Ancien mode (sans TargetWeaponSet) : personnage obtenu */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Class")
 	TSubclassOf<AYSPlayerCharacter> TargetClass;
 
@@ -584,13 +595,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Class", meta=(MultiLine="true"))
 	FText Description;
 
-	/** Nom : DisplayName, sinon le nom du personnage obtenu */
+	/** Nom : DisplayName, sinon le nom du set d'arme (ou du personnage) obtenu */
 	virtual FText GetVariantName(int32 Variant) const override;
 
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
 	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
 
-	/** Remplace le personnage par TargetClass (serveur) */
+	/** Change le set d'arme (ou remplace le personnage par TargetClass) (serveur) */
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 };

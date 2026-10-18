@@ -3,7 +3,8 @@ Sets d'arme et personnage de test :
   - /Game/Core/WeaponSets : DA_WeaponSet_SabrePistolet (Mouss), DA_WeaponSet_AkimboBattlePetoir (Mouss 2pistol),
     DA_WeaponSet_AkimboSabre (Mouss 2sabre) ; assignés aux personnages (3C > Weapons > Weapon Set)
   - /Game/Placeable/Character/PlayerCharacter_JohnnyPlaytest : copie de PlayerCharacter_mouss (« JohnnyPlaytest »),
-    dernier choix de l'écran de sélection, peut prendre les mêmes upgrades de classe que Mouss
+    dernier choix de l'écran de sélection
+  - upgrades de classe (DA_ClassUpgrade_Mouss2Sabre / Mouss2Pistol) : changent le set d'arme (Sabre et Pistolet -> Akimbo)
 Ne recrée pas ce qui existe déjà (les réglages de Paul sont conservés).
 
 Lancement (éditeur fermé) :
@@ -90,15 +91,20 @@ try:
     gm.set_editor_property("selectable_characters", selectable)
     assets.save_asset(GAME_MODE_BP, only_if_is_dirty=False)
 
-    # upgrades de classe de Mouss : aussi pour JohnnyPlaytest
-    for name in ["DA_ClassUpgrade_Mouss2Sabre", "DA_ClassUpgrade_Mouss2Pistol"]:
+    # upgrades de classe : changent le set d'arme (Sabre et Pistolet -> Akimbo), le personnage reste le même
+    # (plus de remplacement par Mouss 2sabre / 2pistol) ; ouvertes à tout personnage qui a le set de départ
+    for name, target in [("DA_ClassUpgrade_Mouss2Sabre", "DA_WeaponSet_AkimboSabre"), ("DA_ClassUpgrade_Mouss2Pistol", "DA_WeaponSet_AkimboBattlePetoir")]:
         upgrade = assets.load_asset(f"{UPGRADES_DIR}/{name}")
-        extra = list(upgrade.get_editor_property("extra_source_classes"))
-        if johnny_class not in extra:
-            extra.append(johnny_class)
-            upgrade.set_editor_property("extra_source_classes", extra)
+        if upgrade.get_editor_property("target_weapon_set") is None:
+            upgrade.set_editor_property("source_weapon_set", assets.load_asset(f"{SETS_DIR}/DA_WeaponSet_SabrePistolet"))
+            upgrade.set_editor_property("target_weapon_set", assets.load_asset(f"{SETS_DIR}/{target}"))
+            upgrade.set_editor_property("source_class", None)
+            upgrade.set_editor_property("extra_source_classes", [])
+            upgrade.set_editor_property("target_class", None)
             assets.save_asset(f"{UPGRADES_DIR}/{name}", only_if_is_dirty=False)
-            log(f"{name} : ouvert à {JOHNNY}")
+            log(f"{name} : DA_WeaponSet_SabrePistolet -> {target}")
+        log(f"relu : {name} « {upgrade.get_editor_property('display_name')} » "
+            f"{upgrade.get_editor_property('source_weapon_set').get_name()} -> {upgrade.get_editor_property('target_weapon_set').get_name()}")
 
     # relecture
     for character in ["PlayerCharacter_mouss", "PlayerCharacter_mouss2sabre", "PlayerCharacter_mouss2pistol", JOHNNY]:
