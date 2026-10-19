@@ -3,7 +3,9 @@ Personnalisation à l'écran de sélection (BP_TestGameMode, catégorie Characte
   - couleurs Rouge / Bleu / Vert / Violet / Rose / Jaune / Cyan / Noir : matériaux m_PH_monochrome_Red / Blue / Green /
     Purple / Pink / Yellow / Cyan / Black
     (appliqués au composant « Head Feature » du personnage et à ses sous-composants)
-  - visages : textures T_MoussFace_1 à 4 (decal du visage)
+  - visages : textures T_MoussFace_1 à 6 (decal du visage)
+Couleurs : écrites seulement si la liste est vide ; visages : ceux qui manquent sont ajoutés à la fin
+(les réglages de Paul sont conservés).
 
 Lancement (éditeur fermé) :
   UnrealEditor.exe YohohoSurvivor.uproject -ExecutePythonScript="Tools/EditorScripts/setup_customization.py"
@@ -26,7 +28,7 @@ COLORS = [
     ("Cyan", unreal.LinearColor(0.1, 0.85, 0.9, 1.0), "m_PH_monochrome_Cyan"),
     ("Noir", unreal.LinearColor(0.04, 0.04, 0.04, 1.0), "m_PH_monochrome_Black"),
 ]
-FACES = ["T_MoussFace_1", "T_MoussFace_2", "T_MoussFace_3", "T_MoussFace_4"]
+FACES = ["T_MoussFace_1", "T_MoussFace_2", "T_MoussFace_3", "T_MoussFace_4", "T_MoussFace_5", "T_MoussFace_6"]
 
 assets = unreal.EditorAssetLibrary
 report = []
@@ -49,15 +51,20 @@ try:
         color.set_editor_property("material", material)
         colors.append(color)
 
-    faces = []
+    gm = unreal.get_default_object(assets.load_blueprint_class(GAME_MODE_BP))
+    if len(gm.get_editor_property("customization_colors")) == 0:
+        gm.set_editor_property("customization_colors", colors)
+        log("couleurs écrites")
+
+    # visages : les existants gardent leur ordre, ceux qui manquent sont ajoutés à la fin
+    faces = [f for f in gm.get_editor_property("customization_faces") if f]
     for face_name in FACES:
         face = assets.load_asset(f"{FACE_DIR}/{face_name}")
         if face is None:
             raise RuntimeError(f"texture introuvable : {face_name}")
-        faces.append(face)
-
-    gm = unreal.get_default_object(assets.load_blueprint_class(GAME_MODE_BP))
-    gm.set_editor_property("customization_colors", colors)
+        if face not in faces:
+            faces.append(face)
+            log(f"visage ajouté : {face_name}")
     gm.set_editor_property("customization_faces", faces)
     assets.save_asset(GAME_MODE_BP, only_if_is_dirty=False)
 
