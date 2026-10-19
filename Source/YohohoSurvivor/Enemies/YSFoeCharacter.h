@@ -129,7 +129,7 @@ protected:
 
 	/** Vitesse de déplacement maximale */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement", meta=(ClampMin="0", Units="CentimetersPerSecond"))
-	float MoveSpeed = 400.0f;
+	float MoveSpeed = 300.0f;
 
 	/** Vitesse à laquelle l'ennemi se tourne vers sa cible (0 = instantané) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement", meta=(ClampMin="0"))
