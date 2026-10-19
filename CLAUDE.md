@@ -104,7 +104,7 @@ Langue de travail avec l'utilisateur (Paul) : **français**.
 
 ## Façon de travailler avec Paul
 
-- **Toujours terminer ses messages par « Yohoho »** tant qu on travaille sur ce projet (demande de Paul). **Exception : quand on a supprimé quelque chose**, terminer à la place par « parce que je suis un pirate ! ».
+- **Toujours terminer ses messages par « Yohoho »** tant qu on travaille sur ce projet (demande de Paul). **Exception : quand on a supprimé quelque chose**, terminer à la place par « parce que je suis un pirate ! ». **Quand on ne fait qu'acquiescer** (réponse courte de prise en compte d'une consigne, sans autre travail), terminer à la place par « oui capitaine ! ».
 - Nouveau PC : si le `.uproject` refuse de s'ouvrir (« Select Unreal Engine Version ») alors que UE 5.8 est installé, c'est que `C:\ProgramData\Epic\UnrealEngineLauncher\LauncherInstalled.dat` ne le liste pas encore : quitter complètement l'Epic Games Launcher puis le relancer. **Ne pas** choisir le moteur à la main (Unreal crée une copie du projet `YohohoSurvivor 5.8` liée à un GUID propre au PC, à ne pas commiter).
 - **Ne jamais lancer de build packagée (`Tools/BuildGame.ps1`) sans que Paul le demande explicitement**, et **ne jamais lui proposer d'en lancer une** (pas de « je lance la build ? ») : c'est lui qui dit quand en faire. Les tests en `-game` depuis l'éditeur restent permis pour vérifier.
 - **Les builds ne vont jamais sur Git** (ni commit, ni Release GitHub) : `Build/` reste ignoré, seuls le script et `Tools/BuildVersion.json` sont versionnés (choix de Paul).
