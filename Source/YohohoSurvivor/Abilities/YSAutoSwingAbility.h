@@ -175,11 +175,6 @@ protected:
 	/** Coupe en cours critique (Golden bloodlust au maximum de stacks au début de l'attaque ; serveur) */
 	bool bCriticalSwing = false;
 
-	/** Sens de déplacement de la hitbox de l'arme (à plat), direction du pushback des coups (serveur) */
-	FVector HitboxMoveDirection = FVector::ZeroVector;
-	FVector LastHitboxLocation = FVector::ZeroVector;
-	bool bHasLastHitboxLocation = false;
-
 private:
 
 	/** Vrai en akimbo si cette épée est dans l'autre main que la principale (elle suit la principale) */

@@ -55,20 +55,6 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 		return;
 	}
 
-	// direction du coup (pushback) : sens dans lequel la hitbox se déplace pendant la coupe
-	const AYSWeapon* SwingWeapon = Cast<AYSWeapon>(GetOwner());
-	if (const UBoxComponent* SwingHitbox = SwingWeapon ? SwingWeapon->FindComponentByClass<UBoxComponent>() : nullptr)
-	{
-		const FVector HitboxLocation = SwingHitbox->GetComponentLocation();
-		const FVector Delta = (HitboxLocation - LastHitboxLocation) * FVector(1.0f, 1.0f, 0.0f);
-		if (bHasLastHitboxLocation && Delta.SizeSquared() > KINDA_SMALL_NUMBER)
-		{
-			HitboxMoveDirection = Delta.GetSafeNormal();
-		}
-		LastHitboxLocation = HitboxLocation;
-		bHasLastHitboxLocation = true;
-	}
-
 	const float Elapsed = GetSwingElapsed();
 	if (IsInSwingWindow(Elapsed))
 	{
@@ -226,9 +212,8 @@ void UYSAutoSwingAbility::ApplySwingHits()
 		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.3f%s)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
 			FinalDamage, Damage, GetDamageMultiplier(), bCriticalSwing ? TEXT(", critique") : TEXT(""));
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible ; critique : type de dégât qui grossit le chiffre ;
-		// direction du coup = déplacement de la hitbox (sinon du porteur vers la cible) pour le pushback
-		const FVector ShotDirection = !HitboxMoveDirection.IsNearlyZero() ? HitboxMoveDirection
-			: (Holder ? (Target->GetActorLocation() - Holder->GetActorLocation()).GetSafeNormal2D() : FVector::ZeroVector);
+		// direction du coup (pushback) = du porteur vers la cible : le NME recule, il n'est pas balayé sur le côté par la lame
+		const FVector ShotDirection = Holder ? (Target->GetActorLocation() - Holder->GetActorLocation()).GetSafeNormal2D() : FVector::ZeroVector;
 		const FPointDamageEvent DamageEvent(FinalDamage, FHitResult(), ShotDirection, bCriticalSwing ? UYSCriticalDamageType::StaticClass() : nullptr);
 		Target->TakeDamage(FinalDamage, DamageEvent, Holder ? Holder->GetController() : nullptr, nullptr);
 	}

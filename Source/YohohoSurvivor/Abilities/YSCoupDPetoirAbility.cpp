@@ -45,6 +45,15 @@ void UYSCoupDPetoirAbility::ExecuteAbility(const FVector& TargetLocation)
 	StartBurst(TargetLocation);
 }
 
+void UYSCoupDPetoirAbility::OnActivationPredicted(const FVector& TargetLocation)
+{
+	Super::OnActivationPredicted(TargetLocation);
+	if (PredictsFirstBullet())
+	{
+		RecoilTimeScale = ComputeRecoilTimeScale(GetTimeToNextShot(0, GetBulletsPerBurst()));
+	}
+}
+
 void UYSCoupDPetoirAbility::StartBurst(const FVector& TargetLocation)
 {
 	// PewPew : rafale de BulletsPerBurst balles réparties sur BurstDuration (Shotgun / Piercing : à venir)
@@ -58,14 +67,14 @@ void UYSCoupDPetoirAbility::StartBurst(const FVector& TargetLocation)
 
 void UYSCoupDPetoirAbility::FireNextBullet()
 {
+	const int32 BulletCount = FMath::Max(1, BurstBulletCount);
 	if (UYSCoupDPetoirAbility* Shooter = GetBulletShooter(BulletsFired))
 	{
-		Shooter->FireBullet(GetBurstTargetLocation(BulletsFired), BulletsFired);
+		Shooter->FireBullet(GetBurstTargetLocation(BulletsFired), BulletsFired, GetTimeToNextShot(BulletsFired, BulletCount));
 		BurstShooters.AddUnique(Shooter);
 	}
 	++BulletsFired;
 
-	const int32 BulletCount = FMath::Max(1, BurstBulletCount);
 	if (BulletsFired < BulletCount)
 	{
 		// première balle tout de suite, dernière à la fin de la rafale
@@ -86,6 +95,36 @@ void UYSCoupDPetoirAbility::FireNextBullet()
 	BurstShooters.Reset();
 }
 
+float UYSCoupDPetoirAbility::GetTimeToNextShot(int32 BulletIndex, int32 BulletCount) const
+{
+	if (BulletCount <= 1)
+	{
+		return 0.0f;
+	}
+
+	// en akimbo (Auto shot), les balles alternent : la suivante de la même arme est 2 balles plus loin
+	const float Interval = BurstDuration / (BulletCount - 1);
+	const UYSCoupDPetoirAbility* Shooter = GetBulletShooter(BulletIndex);
+	for (int32 NextIndex = BulletIndex + 1; NextIndex < BulletCount; ++NextIndex)
+	{
+		if (GetBulletShooter(NextIndex) == Shooter)
+		{
+			return (NextIndex - BulletIndex) * Interval;
+		}
+	}
+	return 0.0f;
+}
+
+float UYSCoupDPetoirAbility::ComputeRecoilTimeScale(float TimeToNextShot) const
+{
+	const float RecoilDuration = RecoilKickDuration + RecoilRecoverDuration;
+	if (!bFitRecoilToFireRate || TimeToNextShot <= 0.0f || TimeToNextShot >= RecoilDuration)
+	{
+		return 1.0f;
+	}
+	return FMath::Max(TimeToNextShot / RecoilDuration, 0.01f);
+}
+
 void UYSCoupDPetoirAbility::OnActionCancelled()
 {
 	// action interrompue (priorité, objet porté) : la rafale s'arrête
@@ -102,7 +141,7 @@ bool UYSCoupDPetoirAbility::IsActionInProgress() const
 	return Super::IsActionInProgress() || (World && World->GetTimerManager().IsTimerActive(BurstTimer));
 }
 
-void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 BulletIndex)
+void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 BulletIndex, float TimeToNextShot)
 {
 	AActor* Owner = GetOwner();
 	if (!ProjectileClass || !Owner)
@@ -145,16 +184,19 @@ void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 Bull
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s balle %d à %.2f"), *Owner->GetName(), *GetName(), BulletIndex + 1, GetWorld()->GetTimeSeconds());
-	MulticastBulletFired(BulletIndex);
+	MulticastBulletFired(BulletIndex, TimeToNextShot);
 }
 
-void UYSCoupDPetoirAbility::MulticastBulletFired_Implementation(int32 BulletIndex)
+void UYSCoupDPetoirAbility::MulticastBulletFired_Implementation(int32 BulletIndex, float TimeToNextShot)
 {
 	// recul de chaque balle ; le tireur a déjà joué celui de la première par prédiction (Ability tirée dès l'activation)
 	if (BulletIndex > 0 || IsAutomatic() || !PredictsFirstBullet() || !IsLocallyPredicted())
 	{
 		NotifyActivated();
 		LastBulletTime = GetWorld()->GetTimeSeconds();
+		RecoilTimeScale = ComputeRecoilTimeScale(TimeToNextShot);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s balle %d : recul %.3f s (x%.2f, balle suivante de l'arme dans %.3f s)"), *GetOwner()->GetName(), BulletIndex + 1,
+			(RecoilKickDuration + RecoilRecoverDuration) * RecoilTimeScale, RecoilTimeScale, TimeToNextShot);
 	}
 }
 
@@ -171,17 +213,20 @@ float UYSCoupDPetoirAbility::GetRecoilAlpha() const
 	// recul : depuis la dernière balle (et depuis l'activation quand la première balle part tout de suite)
 	const float SinceBullet = static_cast<float>(GetWorld()->GetTimeSeconds() - LastBulletTime);
 	const float Elapsed = PredictsFirstBullet() ? FMath::Min(SinceBullet, GetTimeSinceActivation()) : SinceBullet;
-	if (Elapsed < 0.0f || Elapsed >= RecoilKickDuration + RecoilRecoverDuration)
+	// rafale rapide : recul accéléré pour finir avant la balle suivante de cette arme
+	const float KickDuration = RecoilKickDuration * RecoilTimeScale;
+	const float RecoverDuration = RecoilRecoverDuration * RecoilTimeScale;
+	if (Elapsed < 0.0f || Elapsed >= KickDuration + RecoverDuration)
 	{
 		return 0.0f;
 	}
 
 	// coup sec puis retour plus doux
-	if (Elapsed < RecoilKickDuration)
+	if (Elapsed < KickDuration)
 	{
-		return FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / RecoilKickDuration, 2.0f);
+		return FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / KickDuration, 2.0f);
 	}
-	return FMath::InterpEaseInOut(1.0f, 0.0f, (Elapsed - RecoilKickDuration) / RecoilRecoverDuration, 2.0f);
+	return FMath::InterpEaseInOut(1.0f, 0.0f, (Elapsed - KickDuration) / RecoverDuration, 2.0f);
 }
 
 float UYSCoupDPetoirAbility::GetTimeSinceReload() const

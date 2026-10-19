@@ -96,6 +96,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil", meta=(ClampMin="0.001", Units="Seconds"))
 	float RecoilRecoverDuration = 0.25f;
 
+	/**
+	 *  Rafale : si la balle suivante de la même arme part avant la fin du recul (coup + retour), le recul est accéléré
+	 *  pour se jouer entièrement d'ici là (l'écart entre les tirs ne change pas). La dernière balle joue le recul normal.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil")
+	bool bFitRecoilToFireRate = true;
+
 	/** Intensité actuelle du recul (0 = au repos, 1 = pic), d'après la dernière balle */
 	UFUNCTION(BlueprintPure, Category="Recoil")
 	float GetRecoilAlpha() const;
@@ -148,13 +155,19 @@ public:
 	/** Démarre une rafale vers TargetLocation (serveur ; ExecuteAbility, ou l'autre arme en akimbo) */
 	void StartBurst(const FVector& TargetLocation);
 
-	/** Tire une balle vers TargetLocation (serveur) : projectile + recul sur toutes les machines */
-	void FireBullet(const FVector& TargetLocation, int32 BulletIndex);
+	/**
+	 *  Tire une balle vers TargetLocation (serveur) : projectile + recul sur toutes les machines ;
+	 *  TimeToNextShot = délai avant la balle suivante de cette arme (0 = aucune : recul complet)
+	 */
+	void FireBullet(const FVector& TargetLocation, int32 BulletIndex, float TimeToNextShot = 0.0f);
 
 protected:
 
 	/** Démarre la rafale (serveur) */
 	virtual void ExecuteAbility(const FVector& TargetLocation) override;
+
+	/** Client qui active : recul de la première balle (prédite) adapté à la cadence de la rafale */
+	virtual void OnActivationPredicted(const FVector& TargetLocation) override;
 
 	virtual void OnActionCancelled() override;
 
@@ -169,7 +182,7 @@ protected:
 
 	/** Recul d'une balle sur toutes les machines (le tireur qui a prédit la première ne la rejoue pas) */
 	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastBulletFired(int32 BulletIndex);
+	void MulticastBulletFired(int32 BulletIndex, float TimeToNextShot);
 
 	/** Animation de rechargement sur toutes les machines */
 	UFUNCTION(NetMulticast, Unreliable)
@@ -179,6 +192,15 @@ private:
 
 	/** Tire la balle suivante de la rafale, programme la suivante ou lance le rechargement (serveur) */
 	void FireNextBullet();
+
+	/** Délai entre la balle BulletIndex et la suivante tirée par la même arme dans une rafale de BulletCount balles (0 = aucune) */
+	float GetTimeToNextShot(int32 BulletIndex, int32 BulletCount) const;
+
+	/** Accélération du recul (1 = normal, < 1 = plus rapide) pour qu'il finisse avant la balle suivante */
+	float ComputeRecoilTimeScale(float TimeToNextShot) const;
+
+	/** Accélération du recul de la dernière balle vue par cette machine */
+	float RecoilTimeScale = 1.0f;
 
 	/** Point visé à l'activation */
 	FVector BurstTargetLocation = FVector::ZeroVector;
