@@ -16,6 +16,7 @@
 #include "Core/YSGameplayTags.h"
 #include "Core/YSGameMode.h"
 #include "Core/YSGameState.h"
+#include "Enemies/YSFoeBomb.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSPlayerCharacter.h"
@@ -28,6 +29,7 @@ AYSFoeCharacter::AYSFoeCharacter()
 	// un contrôleur IA est nécessaire pour que le CharacterMovementComponent consomme l'input
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 	AIControllerClass = AAIController::StaticClass();
+	BombClass = AYSFoeBomb::StaticClass();
 
 	GetCapsuleComponent()->InitCapsuleSize(42.0f, 96.0f);
 
@@ -212,6 +214,11 @@ void AYSFoeCharacter::BeginPlay()
 	// réappliqué en jeu : les collisions de combat ne dépendent pas de réglages sauvegardés dans le Blueprint
 	YSCombat::ConfigureHurtbox(BodyMesh);
 	YSCombat::ConfigureHitbox(Hitbox);
+	// NME à distance : pas de corps à corps
+	if (bRanged)
+	{
+		Hitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
 
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
 
@@ -237,6 +244,7 @@ void AYSFoeCharacter::BeginPlay()
 		// statistiques du niveau (MaxHealth est répliqué pour les barres de vie)
 		MaxHealth = (BaseHealth + HealthPerLevel * Level) * HealthMultiplier;
 		ContactDamage = (BaseContactDamage + ContactDamagePerLevel * Level) * DamageMultiplier;
+		BombDamage = (BaseBombDamage + BombDamagePerLevel * Level) * DamageMultiplier;
 		Health = MaxHealth;
 
 		if (bIsElite && YSGameState)
@@ -261,7 +269,10 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
-	ApplyContactDamage();
+	if (!bRanged)
+	{
+		ApplyContactDamage();
+	}
 
 	Target = FindNearestPlayer();
 	if (!Target)
@@ -276,10 +287,63 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
-	AddMovementInput(ToTarget.GetSafeNormal());
+	// à distance : s'arrête à portée et lance une bombe toutes les ThrowInterval secondes passées à portée
+	const bool bInRange = bRanged && ToTarget.SizeSquared() <= FMath::Square(AttackRange);
+	if (bInRange)
+	{
+		ThrowTimer += DeltaSeconds;
+		if (ThrowTimer >= ThrowInterval)
+		{
+			ThrowTimer -= ThrowInterval;
+			ThrowBomb(Target);
+		}
+	}
+	else
+	{
+		AddMovementInput(ToTarget.GetSafeNormal());
+	}
 
 	const FRotator Desired(0.0f, ToTarget.Rotation().Yaw, 0.0f);
 	SetActorRotation(TurnSpeed > 0.0f ? FMath::RInterpTo(GetActorRotation(), Desired, DeltaSeconds, TurnSpeed) : Desired);
+}
+
+void AYSFoeCharacter::ThrowBomb(const APawn* BombTarget)
+{
+	if (!BombClass || !BombTarget)
+	{
+		return;
+	}
+
+	// vise le sol sous la cible au moment du lancer
+	FYSBombThrow Throw;
+	Throw.Start = GetActorLocation() + FVector(0.0f, 0.0f, ThrowHeight);
+	Throw.Target = AYSInteractiveObject::FindGround(GetWorld(), BombTarget->GetActorLocation(), BombTarget);
+	Throw.ApexHeight = BombApexHeight;
+	Throw.FlightDuration = BombFlightDuration;
+	Throw.FuseDuration = BombFuseDuration;
+	Throw.BombColor = BombColor;
+	Throw.FuseColor = FuseColor;
+	Throw.FuseGlow = FuseGlow;
+	Throw.BombMaterial = BombMaterial;
+	Throw.Damage = BombDamage;
+	Throw.ExplosionRadius = ExplosionRadius;
+	Throw.ExplosionGrowDuration = ExplosionGrowDuration;
+	Throw.ExplosionFadeDuration = ExplosionFadeDuration;
+	Throw.ExplosionColor = ExplosionColor;
+	Throw.LandingZoneColor = LandingZoneColor;
+	Throw.LandingZoneFillOpacity = LandingZoneFillOpacity;
+	Throw.LandingZoneEdgeOpacity = LandingZoneEdgeOpacity;
+	Throw.LandingZoneMaterial = LandingZoneMaterial;
+	Throw.ExplosionMaterial = ExplosionMaterial;
+
+	const FTransform SpawnTransform(Throw.Start);
+	AYSFoeBomb* Bomb = GetWorld()->SpawnActorDeferred<AYSFoeBomb>(BombClass, SpawnTransform, this, this, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (Bomb)
+	{
+		Bomb->SetThrow(Throw);
+		Bomb->FinishSpawning(SpawnTransform);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s lance une bombe sur %s (%.0f cm)"), *GetName(), *BombTarget->GetName(), FVector::Dist2D(Throw.Start, Throw.Target));
 }
 
 APawn* AYSFoeCharacter::FindNearestPlayer() const

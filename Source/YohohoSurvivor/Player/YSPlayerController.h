@@ -203,6 +203,10 @@ public:
 	UFUNCTION(Exec)
 	void YSSpawnTreasureMap(float Distance = 150.0f);
 
+	/** Debug (hôte) : fait apparaître le NME /Game/Placeable/Character/<Name> devant le personnage. Ex : YSSpawnFoe FoeCharacter_Skull_Bomb 1500 */
+	UFUNCTION(Exec)
+	void YSSpawnFoe(const FString& Name, float Distance = 1500.0f);
+
 	/** Debug (hôte) : le personnage qui porte une carte au trésor est téléporté au point suivant de son chemin */
 	UFUNCTION(Exec)
 	void YSTreasureNextPoint();

@@ -532,6 +532,8 @@ void AYSPlayerCharacter::BeginPlay()
 	if (HasAuthority())
 	{
 		Health = GetMaxHealth();
+		// regen de base ; les upgrades Hps regen (RestoreUpgrades au changement de classe) s'y ajoutent
+		HealthRegen = BaseHealthRegen;
 	}
 
 	// le strafe ne s'applique que si un mesh squelettique est renseigné

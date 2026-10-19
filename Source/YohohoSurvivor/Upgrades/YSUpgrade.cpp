@@ -339,9 +339,15 @@ UYSHealthRegenUpgrade::UYSHealthRegenUpgrade()
 	GoldValue = 3.0f;
 }
 
+float UYSHealthRegenUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	return Character ? Character->GetBaseHealthRegen() : 0.0f;
+}
+
 void UYSHealthRegenUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
-	Character->SetHealthRegen(TotalBonus);
+	// regen de base du personnage + somme des bonus
+	Character->SetHealthRegen(GetStatValue(GetBaseStatValue(Character, Variant), TotalBonus));
 }
 
 UYSArmorUpgrade::UYSArmorUpgrade()

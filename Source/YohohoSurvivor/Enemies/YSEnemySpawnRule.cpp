@@ -83,6 +83,32 @@ int32 UYSEnemySpawnRule::CountAliveEnemies() const
 	return Count;
 }
 
+TSubclassOf<AYSFoeCharacter> UYSEnemySpawnRule::PickEnemyClass(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes)
+{
+	// tirage pondéré par le Spawn Weight de chaque NME (catégorie Foe|Spawn)
+	float TotalWeight = 0.0f;
+	for (const TSubclassOf<AYSFoeCharacter>& Class : Classes)
+	{
+		TotalWeight += Class ? FMath::Max(Class->GetDefaultObject<AYSFoeCharacter>()->GetSpawnWeight(), 0.0f) : 0.0f;
+	}
+	if (TotalWeight <= 0.0f)
+	{
+		return Classes.Num() > 0 ? Classes[FMath::RandHelper(Classes.Num())] : nullptr;
+	}
+
+	float Roll = FMath::FRandRange(0.0f, TotalWeight);
+	for (const TSubclassOf<AYSFoeCharacter>& Class : Classes)
+	{
+		const float Weight = Class ? FMath::Max(Class->GetDefaultObject<AYSFoeCharacter>()->GetSpawnWeight(), 0.0f) : 0.0f;
+		if (Weight > 0.0f && Roll <= Weight)
+		{
+			return Class;
+		}
+		Roll -= Weight;
+	}
+	return Classes.Last();
+}
+
 int32 UYSEnemySpawnRule::SpawnEnemies(int32 Count)
 {
 	UWorld* World = GetWorld();
@@ -102,7 +128,7 @@ int32 UYSEnemySpawnRule::SpawnEnemies(int32 Count)
 	int32 Spawned = 0;
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
-		Spawned += SpawnEnemy(Classes[FMath::RandHelper(Classes.Num())]) ? 1 : 0;
+		Spawned += SpawnEnemy(PickEnemyClass(Classes)) ? 1 : 0;
 	}
 	return Spawned;
 }

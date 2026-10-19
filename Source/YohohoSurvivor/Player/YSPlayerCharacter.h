@@ -124,6 +124,10 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Replicated, Category="3C|Health")
 	float Health = 0.0f;
 
+	/** Hps regen de base : PV rendus à chaque intervalle de regen, sans upgrade (les upgrades Hps regen s'y ajoutent) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0"))
+	float BaseHealthRegen = 1.0f;
+
 	/** Hps regen : délai sans dégât subi avant que la regen démarre */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0", Units="s"))
 	float HealthRegenDelay = 5.0f;
@@ -478,6 +482,8 @@ public:
 
 	/** Hps regen (serveur) */
 	void SetHealthRegen(float Amount) { HealthRegen = Amount; }
+
+	float GetBaseHealthRegen() const { return BaseHealthRegen; }
 
 	/** Armor (serveur) */
 	void SetArmor(float Amount) { Armor = Amount; }

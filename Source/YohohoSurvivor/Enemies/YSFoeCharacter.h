@@ -11,6 +11,8 @@ class UStaticMeshComponent;
 class UWidgetComponent;
 class UYSFaceDecalComponent;
 class AYSInteractiveObject;
+class AYSFoeBomb;
+class UMaterialInterface;
 
 /**
  *  Ennemi de base : attiré en ligne droite vers le joueur le plus proche, sans pathfinding,
@@ -135,6 +137,102 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement", meta=(ClampMin="0"))
 	float TurnSpeed = 10.0f;
 
+	/** Apparition dans les vagues : chance relative face aux autres NME de la règle de spawn (1 = normal ; 0.25 face à des NME à 1 = 1 sur 5) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn", meta=(ClampMin="0"))
+	float SpawnWeight = 1.0f;
+
+	/**
+	 *  NME à distance (Skull Bomb) : pas de dégâts de contact (hitbox désactivée) ; avance vers sa cible jusqu'à AttackRange
+	 *  puis s'arrête et lance une bombe en cloche toutes les ThrowInterval secondes passées à portée
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged")
+	bool bRanged = false;
+
+	/** S'arrête à cette distance de sa cible (au-delà, il fonce vers elle) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Centimeters"))
+	float AttackRange = 1000.0f;
+
+	/** Une bombe toutes les N secondes passées à portée de sa cible */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0.1", Units="Seconds"))
+	float ThrowInterval = 5.0f;
+
+	/** La bombe part de cette hauteur au-dessus du centre du NME */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", Units="Centimeters"))
+	float ThrowHeight = 80.0f;
+
+	/** Sommet de la cloche : hauteur au-dessus du plus haut entre le départ et l'impact */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Centimeters"))
+	float BombApexHeight = 300.0f;
+
+	/** Durée du vol de la bombe (la cloche est calculée pour atterrir pile à ce moment) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0.05", Units="Seconds"))
+	float BombFlightDuration = 1.5f;
+
+	/** Posée au sol, la bombe attend ce temps avant d'exploser, en passant progressivement de BombColor à FuseColor lumineux */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Seconds"))
+	float BombFuseDuration = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
+	FLinearColor BombColor = FLinearColor(0.02f, 0.02f, 0.02f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
+	FLinearColor FuseColor = FLinearColor(1.0f, 0.05f, 0.02f);
+
+	/** Intensité de la lueur (émissif) à la fin de la mèche */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0"))
+	float FuseGlow = 20.0f;
+
+	/** Matériau de la bombe (M_FoeBomb : paramètres Color et Emissive) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
+	TObjectPtr<UMaterialInterface> BombMaterial;
+
+	/** Dégâts de l'explosion au niveau 0 (x Damage Multiplier) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0"))
+	float BaseBombDamage = 20.0f;
+
+	/** Dégâts de l'explosion ajoutés par niveau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0"))
+	float BombDamagePerLevel = 0.0f;
+
+	/** Rayon de l'explosion (joueurs dont le corps touche la sphère) et de la prévisualisation au sol */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="1", Units="Centimeters"))
+	float ExplosionRadius = 500.0f;
+
+	/** La sphère de l'explosion grossit de 0 au rayon en ce temps, puis s'efface en ExplosionFadeDuration */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Seconds"))
+	float ExplosionGrowDuration = 0.14f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Seconds"))
+	float ExplosionFadeDuration = 0.2f;
+
+	/** Couleur de la sphère d'explosion (alpha = opacité) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
+	FLinearColor ExplosionColor = FLinearColor(1.0f, 0.0f, 0.0f, 0.35f);
+
+	/** Prévisualisation de l'impact au sol pendant le vol (disque de la zone du Brooker) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
+	FLinearColor LandingZoneColor = FLinearColor(1.0f, 0.1f, 0.05f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", ClampMax="1"))
+	float LandingZoneFillOpacity = 0.15f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", ClampMax="1"))
+	float LandingZoneEdgeOpacity = 0.7f;
+
+	/** Matériaux : disque d'impact (M_BrookerZone) et sphère d'explosion (M_FoeExplosion : Color, Opacity) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
+	TObjectPtr<UMaterialInterface> LandingZoneMaterial;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
+	TObjectPtr<UMaterialInterface> ExplosionMaterial;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
+	TSubclassOf<AYSFoeBomb> BombClass;
+
+	/** Dégâts de l'explosion, calculés au spawn depuis le niveau */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Foe|Ranged")
+	float BombDamage = 20.0f;
+
 	/** Joueur actuellement ciblé (renseigné sur le serveur uniquement) */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Foe")
 	TObjectPtr<APawn> Target;
@@ -171,6 +269,8 @@ public:
 
 	float GetSizeMultiplier() const { return SizeMultiplier; }
 
+	float GetSpawnWeight() const { return SpawnWeight; }
+
 	/** Nom affiché (repli sur le nom de la classe) */
 	FText GetFoeName() const { return FoeName.IsEmpty() ? FText::FromString(GetClass()->GetName().Replace(TEXT("_C"), TEXT(""))) : FoeName; }
 
@@ -201,7 +301,14 @@ protected:
 	/** Blesse les joueurs dont la hurtbox touche la Hitbox (serveur) */
 	void ApplyContactDamage();
 
+	/** NME à distance : lance une bombe vers le sol sous sa cible (serveur) */
+	void ThrowBomb(const APawn* BombTarget);
+
 private:
+
+	/** Secondes passées à portée de la cible depuis la dernière bombe (serveur) */
+	float ThrowTimer = 0.0f;
+
 
 	/** Prochain instant (temps du monde) où chaque joueur touché peut reprendre des dégâts de contact */
 	TMap<TWeakObjectPtr<AActor>, double> NextContactDamageTime;

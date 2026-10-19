@@ -66,6 +66,9 @@ public:
 	/** Fait apparaître Count NME, chacun à un emplacement hors écran différent. Renvoie le nombre réellement apparus. */
 	int32 SpawnEnemies(int32 Count);
 
+	/** Un NME de la liste, tiré au hasard selon leur Spawn Weight (catégorie Foe|Spawn du NME) */
+	static TSubclassOf<AYSFoeCharacter> PickEnemyClass(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes);
+
 protected:
 
 	virtual void StartRule() {}

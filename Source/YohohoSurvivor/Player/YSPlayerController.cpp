@@ -4,6 +4,7 @@
 #include "Weapons/YSWeapon.h"
 #include "Blueprint/GameViewportSubsystem.h"
 #include "Enemies/YSFoeCharacter.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/DamageEvents.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
@@ -821,7 +822,8 @@ void AYSPlayerController::YSChooseUpgrade(int32 OfferIndex)
 void AYSPlayerController::YSAfter(float Delay, const FString& Command)
 {
 	// ticker hors monde : continue pendant la pause
-	const FString FullCommand = Command.Replace(TEXT("_"), TEXT(" "));
+	// « _ » = espace, « __ » = vrai « _ » (noms d'assets)
+	const FString FullCommand = Command.Replace(TEXT("__"), TEXT("\x01")).Replace(TEXT("_"), TEXT(" ")).Replace(TEXT("\x01"), TEXT("_"));
 	TWeakObjectPtr<AYSPlayerController> WeakThis(this);
 	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([WeakThis, FullCommand](float)
 	{
@@ -1199,6 +1201,27 @@ void AYSPlayerController::YSSpawnTreasureMap(float Distance)
 		? GameMode->SpawnTreasureMapAt(AYSInteractiveObject::FindGround(GetWorld(), MyPawn->GetActorLocation() + MyPawn->GetActorForwardVector() * Distance, MyPawn))
 		: GameMode->SpawnTreasureMap();
 	UE_LOG(LogTemp, Log, TEXT("[YSSpawnTreasureMap] %s"), TreasureMap ? *TreasureMap->GetName() : TEXT("échec (Treasure Map Class vide, ou pas de chemin complet depuis ce point)"));
+}
+
+void AYSPlayerController::YSSpawnFoe(const FString& Name, float Distance)
+{
+	const APawn* MyPawn = GetPawn();
+	const FString Path = FString::Printf(TEXT("/Game/Placeable/Character/%s.%s_C"), *Name, *Name);
+	UClass* FoeClass = LoadClass<AYSFoeCharacter>(nullptr, *Path);
+	if (!MyPawn || !FoeClass || !HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSSpawnFoe] impossible (perso %d, classe %s trouvée %d, hôte %d)"), MyPawn != nullptr, *Path, FoeClass != nullptr, HasAuthority());
+		return;
+	}
+
+	// au sol devant le personnage, tourné vers lui
+	const FVector Forward = MyPawn->GetActorForwardVector().GetSafeNormal2D();
+	const FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), MyPawn->GetActorLocation() + Forward * Distance, MyPawn);
+	const float HalfHeight = FoeClass->GetDefaultObject<AYSFoeCharacter>()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	const AActor* Foe = GetWorld()->SpawnActor<AYSFoeCharacter>(FoeClass, Ground + FVector(0.0f, 0.0f, HalfHeight + 2.0f), (-Forward).Rotation(), Params);
+	UE_LOG(LogTemp, Log, TEXT("[YSSpawnFoe] %s"), Foe ? *Foe->GetName() : TEXT("échec"));
 }
 
 void AYSPlayerController::YSTreasureNextPoint()
