@@ -1,5 +1,6 @@
 #include "Upgrades/YSUpgrade.h"
 #include "Abilities/YSAbilityComponent.h"
+#include "Abilities/YSAutoSwingAbility.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSWeapon.h"
@@ -431,6 +432,12 @@ bool UYSWeaponUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 V
 		return false;
 	}
 
+	// jumelles (Ricochet / Bloodlust) : jamais l'une si le joueur a déjà l'autre
+	if (TwinUpgrade && Character->HasUpgrade(TwinUpgrade))
+	{
+		return false;
+	}
+
 	// le déblocage d'abord ; ensuite il laisse la place au Bonus (cumulable) et au Super (une fois)
 	const bool bUnlocked = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Unlock)).Stacks > 0;
 	switch (GetTier(Variant))
@@ -494,16 +501,14 @@ void UYSWeaponUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 
 	StackLine.Color = FLinearColor(0.7f, 0.7f, 0.7f);
 	StackLine.FontSize = 13;
 
-	const float BaseValue = GetBonusBaseValue(Character);
-
 	FYSChoiceLine& OldValue = OutLines.AddDefaulted_GetRef();
-	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), BonusStatLabel, YSUpgradeText::FormatStat(BaseValue * (1.0f + Progress.TotalValue)));
+	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), BonusStatLabel, YSUpgradeText::FormatStat(GetBonusDisplayValue(Character, Progress.TotalValue)));
 	OldValue.Color = FLinearColor(0.65f, 0.65f, 0.65f);
 	OldValue.FontSize = 16;
 	OldValue.bStrikethrough = true;
 
 	FYSChoiceLine& NewValue = OutLines.AddDefaulted_GetRef();
-	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), BonusStatLabel, YSUpgradeText::FormatStat(BaseValue * (1.0f + Progress.TotalValue + GetBonusValue(Variant, Rarity))));
+	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), BonusStatLabel, YSUpgradeText::FormatStat(GetBonusDisplayValue(Character, Progress.TotalValue + GetBonusValue(Variant, Rarity))));
 	NewValue.FontSize = 18;
 	NewValue.bBold = true;
 }
@@ -550,6 +555,26 @@ void UYSRicochetUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool
 	const int32 Ricochets = bUnlocked ? UnlockRicochets + (bSuper ? SuperExtraRicochets : 0) : 0;
 	Character->SetWeaponStat(RicochetCountStat, Ricochets);
 	Character->SetWeaponStat(RicochetDamageBonusStat, BonusTotal);
+}
+
+UYSBloodlustUpgrade::UYSBloodlustUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "BloodlustName", "Bloodlust");
+	RequiredActionClass = UYSAutoSwingAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::AutoAtk;
+	UnlockName = NSLOCTEXT("YS", "BloodlustUnlockName", "Bloodlust");
+	UnlockDescription = NSLOCTEXT("YS", "BloodlustUnlockDesc", "Chaque Auto swing qui touche donne une BL stack (max 5) :\n+5 % de vitesse d'atk par stack, perdues après 3 s sans toucher");
+	BonusName = NSLOCTEXT("YS", "BloodlustBonusName", "Bloodlust Atk speed");
+	BonusStatLabel = NSLOCTEXT("YS", "BloodlustBonusStat", "Atk speed par BL stack (%)");
+	BonusSilverValue = 0.01f;
+	BonusGoldValue = 0.02f;
+	SuperName = NSLOCTEXT("YS", "BloodlustSuperName", "Golden bloodlust");
+	SuperDescription = NSLOCTEXT("YS", "BloodlustSuperDesc", "Avec toutes ses BL stacks,\nles Auto swing sont critiques");
+}
+
+void UYSBloodlustUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	Character->SetBloodlust(bUnlocked ? MaxStacks : 0, StackDuration, AtkSpeedPerStack + BonusTotal, bUnlocked && bSuper);
 }
 
 UYSClassUpgrade::UYSClassUpgrade()

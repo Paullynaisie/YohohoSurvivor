@@ -12,6 +12,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Components/WidgetComponent.h"
 #include "Core/YSCombat.h"
+#include "Core/YSDamageTypes.h"
 #include "Core/YSGameplayTags.h"
 #include "Core/YSGameMode.h"
 #include "Core/YSGameState.h"
@@ -118,7 +119,7 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	Health = FMath::Max(0.0f, Health - Damage);
 
 	// chiffre de dégâts chez tous les joueurs, au point d'impact (position du projectile)
-	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator);
+	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator, UYSCriticalDamageType::IsCritical(DamageEvent));
 
 	// OnRep n'est pas appelé sur le serveur : mise à jour directe pour le joueur hôte
 	UpdateHealthBar();

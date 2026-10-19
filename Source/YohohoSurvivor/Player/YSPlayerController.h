@@ -6,6 +6,7 @@
 #include "YSPlayerController.generated.h"
 
 class UYSAbilityIconWidget;
+class UYSBloodlustStacksWidget;
 class UYSCharacterSelectWidget;
 class UYSPlayerHUDWidget;
 class UYSEliteHealthWidget;
@@ -57,6 +58,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSObjectiveWidget> ObjectiveWidgetClass;
 
+	/** BL stacks du Bloodlust (à droite de l'icône d'Ability ; Widget Blueprint réglable WBP_BloodlustStacks) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<UYSBloodlustStacksWidget> BloodlustWidgetClass;
+
 	/** Aperçu du personnage : distance et hauteur de la caméra, champ de vision */
 	UPROPERTY(EditAnywhere, Category="UI|Preview", meta=(ClampMin="50", Units="cm"))
 	float PreviewCameraDistance = 450.0f;
@@ -75,6 +80,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UYSAbilityIconWidget> AbilityIcon;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UYSBloodlustStacksWidget> BloodlustStacks;
 
 	/** Menu de sélection du personnage, affiché tant que le joueur n'a pas de personnage */
 	UPROPERTY(Transient)
@@ -234,6 +242,13 @@ public:
 
 	UFUNCTION(Server, Reliable)
 	void ServerCheatAtkSpeed();
+
+	/** Debug : fixe les BL stacks du Bloodlust (si débloqué) et relance leur délai.  Ex : YSSetBloodlustStacks 5 */
+	UFUNCTION(Exec)
+	void YSSetBloodlustStacks(int32 Stacks);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetBloodlustStacks(int32 Stacks);
 
 	FVector GetAimLocation() const { return AimLocation; }
 

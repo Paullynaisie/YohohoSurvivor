@@ -251,6 +251,37 @@ protected:
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TMap<FName, float> WeaponStats;
 
+	/** Coup critique : dégâts x ce multiplicateur (Golden bloodlust ; sera upgradable) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Combat", meta=(ClampMin="1"))
+	float CriticalDamageMultiplier = 1.5f;
+
+	/**
+	 *  Bloodlust (upgrade d'arme des épées ; serveur, répliqué pour l'UI et la prédiction de la recharge) :
+	 *  BL stacks gagnées par les Auto swing qui touchent, perdues toutes d'un coup après BloodlustDuration sans toucher.
+	 *  BloodlustMaxStacks 0 = Bloodlust pas débloqué.
+	 */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
+	int32 BloodlustStacks = 0;
+
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
+	int32 BloodlustMaxStacks = 0;
+
+	/** Durée sans toucher avant de perdre les stacks (reprise à chaque stack gagnée ou coup au maximum) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
+	float BloodlustDuration = 3.0f;
+
+	/** Vitesse d'atk par stack (0.05 = 5 % ; + Bloodlust Atk speed) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
+	float BloodlustAtkSpeedPerStack = 0.05f;
+
+	/** Golden bloodlust : Auto swing critiques au maximum de stacks */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
+	bool bGoldenBloodlust = false;
+
+	/** Temps serveur où les stacks sont perdues */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
+	double BloodlustExpireServerTime = 0.0;
+
 	/** Upgrade Shoot system par type d'action (Guns ; serveur) : PewPew = balles ajoutées à chaque rafale */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category="3C|Upgrades")
 	float ShootSystemBonus[2];
@@ -506,6 +537,32 @@ public:
 
 	/** Multiplicateurs d'un type d'action pour Weapon (1 si elle n'est pas tenue) */
 	float GetWeaponCooldownMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
+
+	/** Bloodlust réglé par l'upgrade (serveur) : MaxStacks 0 = désactivé (stacks remises à 0) */
+	void SetBloodlust(int32 MaxStacks, float Duration, float AtkSpeedPerStack, bool bGolden);
+
+	/** Une Auto swing a touché (serveur) : +1 stack (max BloodlustMaxStacks) et le délai repart */
+	void AddBloodlustStack();
+
+	/** Debug (serveur) : stacks fixées (bornées au maximum) et délai relancé */
+	void DebugSetBloodlustStacks(int32 Stacks);
+
+	int32 GetBloodlustStacks() const { return BloodlustStacks; }
+	int32 GetBloodlustMaxStacks() const { return BloodlustMaxStacks; }
+
+	/** Part restante du délai avant la perte des stacks (0..1 ; 0 sans stack) */
+	float GetBloodlustTimeRatio() const;
+
+	/** Recharge et retour de l'Auto swing x ce facteur (appliqué après l'Atk speed) : 1 - stacks x vitesse par stack */
+	float GetBloodlustCooldownFactor() const;
+
+	/** Golden bloodlust et toutes les stacks : les Auto swing sont critiques */
+	bool IsBloodlustCritical() const { return bGoldenBloodlust && BloodlustMaxStacks > 0 && BloodlustStacks >= BloodlustMaxStacks; }
+
+	float GetCriticalDamageMultiplier() const { return CriticalDamageMultiplier; }
+
+	/** A déjà au moins un bonus de cette upgrade (n'importe quelle variante) */
+	bool HasUpgrade(const UYSUpgrade* Upgrade) const;
 
 	float GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
 

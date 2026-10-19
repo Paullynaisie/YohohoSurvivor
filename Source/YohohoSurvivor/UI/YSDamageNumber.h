@@ -44,6 +44,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Damage Number")
 	int32 FontSize = 24;
 
+	/** Coup critique : taille du chiffre x ce multiplicateur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Damage Number", meta=(ClampMin="1"))
+	float CriticalScale = 2.0f;
+
 	/** Dégâts que j'inflige */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Damage Number|Colors")
 	FLinearColor DealtByMeColor = FLinearColor::White;
@@ -73,5 +77,5 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	/** Renseigne le montant et la couleur (à appeler juste après le spawn) */
-	void Init(float Amount, EYSDamageNumberKind Kind);
+	void Init(float Amount, EYSDamageNumberKind Kind, bool bCritical = false);
 };

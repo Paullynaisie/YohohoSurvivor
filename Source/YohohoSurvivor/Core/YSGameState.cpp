@@ -60,7 +60,7 @@ float AYSGameState::GetDayElapsedTime() const
 	return bMatchStarted ? FMath::Max(0.0, GetServerWorldTimeSeconds() - DayStartServerTime) : 0.0f;
 }
 
-void AYSGameState::ReportDamage(const AActor* Victim, float Amount, const FVector& ImpactLocation, const AController* InstigatorController)
+void AYSGameState::ReportDamage(const AActor* Victim, float Amount, const FVector& ImpactLocation, const AController* InstigatorController, bool bCritical)
 {
 	if (!Victim || !Victim->HasAuthority())
 	{
@@ -78,10 +78,11 @@ void AYSGameState::ReportDamage(const AActor* Victim, float Amount, const FVecto
 		Amount,
 		ImpactLocation,
 		InstigatorController ? InstigatorController->PlayerState.Get() : nullptr,
-		VictimPawn ? VictimPawn->GetPlayerState() : nullptr);
+		VictimPawn ? VictimPawn->GetPlayerState() : nullptr,
+		bCritical);
 }
 
-void AYSGameState::MulticastDamageNumber_Implementation(float Amount, FVector_NetQuantize Location, APlayerState* InstigatorPlayer, APlayerState* VictimPlayer)
+void AYSGameState::MulticastDamageNumber_Implementation(float Amount, FVector_NetQuantize Location, APlayerState* InstigatorPlayer, APlayerState* VictimPlayer, bool bCritical)
 {
 	UWorld* World = GetWorld();
 	if (!DamageNumberClass || GetNetMode() == NM_DedicatedServer)
@@ -113,6 +114,6 @@ void AYSGameState::MulticastDamageNumber_Implementation(float Amount, FVector_Ne
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	if (AYSDamageNumber* Number = World->SpawnActor<AYSDamageNumber>(DamageNumberClass, Location + Jitter, FRotator::ZeroRotator, Params))
 	{
-		Number->Init(Amount, Kind);
+		Number->Init(Amount, Kind, bCritical);
 	}
 }

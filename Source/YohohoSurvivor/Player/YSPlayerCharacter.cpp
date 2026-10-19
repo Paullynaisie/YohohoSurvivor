@@ -26,6 +26,7 @@
 #include "UI/YSNameplateWidget.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSCombat.h"
+#include "Core/YSDamageTypes.h"
 #include "Core/YSGameplayTags.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
@@ -175,6 +176,12 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, bLeftHanded);
 	DOREPLIFETIME(AYSPlayerCharacter, WeaponSet);
 	DOREPLIFETIME(AYSPlayerCharacter, CarriedObject);
+	DOREPLIFETIME(AYSPlayerCharacter, BloodlustStacks);
+	DOREPLIFETIME(AYSPlayerCharacter, BloodlustMaxStacks);
+	DOREPLIFETIME(AYSPlayerCharacter, BloodlustDuration);
+	DOREPLIFETIME(AYSPlayerCharacter, BloodlustAtkSpeedPerStack);
+	DOREPLIFETIME(AYSPlayerCharacter, bGoldenBloodlust);
+	DOREPLIFETIME(AYSPlayerCharacter, BloodlustExpireServerTime);
 }
 
 UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
@@ -215,7 +222,7 @@ float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Dam
 	Health = FMath::Max(0.0f, Health - Damage);
 
 	// chiffre chez tous les joueurs : rouge pour le joueur touché, orange pour les autres (couleurs sur AYSDamageNumber)
-	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator);
+	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator, UYSCriticalDamageType::IsCritical(DamageEvent));
 
 	if (!IsAlive())
 	{
@@ -435,6 +442,7 @@ void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 	const float BonusValue = Upgrade->GetBonusValue(Offer.Variant, Offer.Rarity);
 	Progress->TotalValue += BonusValue;
 	Progress->BonusValues.Add(BonusValue);
+	Progress->BonusRarities.Add(Offer.Rarity);
 	// la partie est en pause pendant les choix : sans ça, la progression n'est pas renvoyée aux clients
 	ForceNetUpdate();
 	Upgrade->Apply(this, Offer.Variant, *Progress);
@@ -567,6 +575,15 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	if (HasAuthority())
 	{
 		UpdateHealthRegen(DeltaSeconds);
+
+		// Bloodlust : toutes les stacks perdues après BloodlustDuration sans toucher
+		const AGameStateBase* GameState = GetWorld()->GetGameState();
+		if (BloodlustStacks > 0 && GameState && GameState->GetServerWorldTimeSeconds() >= BloodlustExpireServerTime)
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[YSBloodlust] %s : %d stack(s) perdue(s)"), *GetName(), BloodlustStacks);
+			BloodlustStacks = 0;
+			ForceNetUpdate();
+		}
 	}
 }
 
@@ -1161,6 +1178,42 @@ void AYSPlayerCharacter::RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& O
 		Entry.PoolIndex = NewIndex;
 	}
 
+	// upgrade d'arme incompatible avec le nouveau set (ex. Ricochet sans pistolet) : convertie vers sa jumelle
+	// (Bloodlust), palier par palier, chaque bonus gardant sa rareté
+	for (FYSUpgradeProgress& Entry : UpgradeProgress)
+	{
+		const UYSWeaponUpgrade* Upgrade = Cast<UYSWeaponUpgrade>(UpgradePool[Entry.PoolIndex]);
+		const UYSWeaponUpgrade* Twin = Upgrade ? Upgrade->TwinUpgrade.Get() : nullptr;
+		const int32 TwinIndex = Twin ? UpgradePool.IndexOfByKey(Twin) : INDEX_NONE;
+		if (!Twin || TwinIndex == INDEX_NONE || Upgrade->IsCompatibleWith(this) || !Twin->IsCompatibleWith(this))
+		{
+			continue;
+		}
+
+		// rareté de chaque bonus (anciennes parties sans rareté notée : déduite de la valeur, Gold si plus proche de la valeur Gold)
+		TArray<EYSUpgradeRarity> Rarities = Entry.BonusRarities;
+		for (int32 Index = Rarities.Num(); Index < Entry.Stacks; ++Index)
+		{
+			const float Value = Entry.BonusValues.IsValidIndex(Index) ? Entry.BonusValues[Index] : 0.0f;
+			const bool bGold = UYSWeaponUpgrade::GetTier(Entry.Variant) == EYSWeaponUpgradeTier::Super
+				|| (UYSWeaponUpgrade::GetTier(Entry.Variant) == EYSWeaponUpgradeTier::Bonus && Value >= (Upgrade->BonusSilverValue + Upgrade->BonusGoldValue) * 0.5f);
+			Rarities.Add(bGold ? EYSUpgradeRarity::Gold : EYSUpgradeRarity::Silver);
+		}
+
+		Entry.PoolIndex = TwinIndex;
+		Entry.BonusRarities = Rarities;
+		Entry.BonusValues.Reset();
+		Entry.TotalValue = 0.0f;
+		for (const EYSUpgradeRarity Rarity : Rarities)
+		{
+			const float Value = Twin->GetBonusValue(Entry.Variant, Rarity);
+			Entry.BonusValues.Add(Value);
+			Entry.TotalValue += Value;
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSPlayerCharacter] %s : %s converti en %s (palier %d, %d bonus, somme %.3f)"), *GetName(), *Upgrade->GetName(), *Twin->GetName(),
+			Entry.Variant, Entry.Stacks, Entry.TotalValue);
+	}
+
 	// effets réappliqués une fois toute la progression en place (les upgrades d'arme lisent leurs 3 paliers) ;
 	// pas les upgrades de classe (elles relanceraient un changement de classe)
 	for (const FYSUpgradeProgress& Entry : UpgradeProgress)
@@ -1283,6 +1336,68 @@ void AYSPlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	DropCarriedObject(TEXT("fin de jeu du personnage"));
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void AYSPlayerCharacter::SetBloodlust(int32 MaxStacks, float Duration, float AtkSpeedPerStack, bool bGolden)
+{
+	BloodlustMaxStacks = FMath::Max(0, MaxStacks);
+	BloodlustDuration = Duration;
+	BloodlustAtkSpeedPerStack = AtkSpeedPerStack;
+	bGoldenBloodlust = bGolden;
+	BloodlustStacks = FMath::Min(BloodlustStacks, BloodlustMaxStacks);
+	ForceNetUpdate();
+}
+
+void AYSPlayerCharacter::AddBloodlustStack()
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	if (!HasAuthority() || BloodlustMaxStacks <= 0 || !GameState)
+	{
+		return;
+	}
+	// une stack de plus ; au maximum, le coup relance quand même le délai
+	BloodlustStacks = FMath::Min(BloodlustStacks + 1, BloodlustMaxStacks);
+	BloodlustExpireServerTime = GameState->GetServerWorldTimeSeconds() + BloodlustDuration;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBloodlust] %s : %d / %d stack(s), facteur de recharge %.3f%s"), *GetName(), BloodlustStacks, BloodlustMaxStacks,
+		GetBloodlustCooldownFactor(), IsBloodlustCritical() ? TEXT(", critiques") : TEXT(""));
+}
+
+void AYSPlayerCharacter::DebugSetBloodlustStacks(int32 Stacks)
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	if (!HasAuthority() || !GameState)
+	{
+		return;
+	}
+	BloodlustStacks = FMath::Clamp(Stacks, 0, BloodlustMaxStacks);
+	BloodlustExpireServerTime = GameState->GetServerWorldTimeSeconds() + BloodlustDuration;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSBloodlust] %s : stacks fixées à %d / %d"), *GetName(), BloodlustStacks, BloodlustMaxStacks);
+}
+
+float AYSPlayerCharacter::GetBloodlustTimeRatio() const
+{
+	const AGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (BloodlustStacks <= 0 || BloodlustDuration <= 0.0f || !GameState)
+	{
+		return 0.0f;
+	}
+	return FMath::Clamp(static_cast<float>((BloodlustExpireServerTime - GameState->GetServerWorldTimeSeconds()) / BloodlustDuration), 0.0f, 1.0f);
+}
+
+float AYSPlayerCharacter::GetBloodlustCooldownFactor() const
+{
+	// garde-fou : jamais une recharge nulle
+	return FMath::Max(0.1f, 1.0f - BloodlustStacks * BloodlustAtkSpeedPerStack);
+}
+
+bool AYSPlayerCharacter::HasUpgrade(const UYSUpgrade* Upgrade) const
+{
+	return Upgrade && UpgradeProgress.ContainsByPredicate([this, Upgrade](const FYSUpgradeProgress& Entry)
+	{
+		return Entry.Stacks > 0 && UpgradePool.IsValidIndex(Entry.PoolIndex) && UpgradePool[Entry.PoolIndex] == Upgrade;
+	});
 }
 
 float AYSPlayerCharacter::GetUnmodifiedWalkSpeed() const

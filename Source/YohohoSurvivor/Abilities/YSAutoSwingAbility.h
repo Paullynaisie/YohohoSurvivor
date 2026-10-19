@@ -121,6 +121,9 @@ public:
 	/** Valeur concernée par la CD reduction (affichage) : Auto Atk CD, + Recover Duration en Swing */
 	virtual float GetBaseCooldown() const override { return AutoAtkCooldown + (IsRecoverReducedByCooldown() ? RecoverDuration : 0.0f); }
 
+	/** Attaque auto : Atk speed (CD reduction) puis BL stacks du Bloodlust (appliquées après) */
+	virtual float GetCooldownMultiplier() const override;
+
 	/** Swing (attaque auto) : la CD reduction réduit aussi le retour, dans la même proportion que la recharge */
 	bool IsRecoverReducedByCooldown() const { return IsAutomatic() && MeleeSystem == EYSMeleeSystem::Swing; }
 
@@ -168,6 +171,9 @@ protected:
 
 	/** Cibles déjà touchées par la coupe en cours */
 	TSet<TWeakObjectPtr<AActor>> HitThisSwing;
+
+	/** Coupe en cours critique (Golden bloodlust au maximum de stacks au début de l'attaque ; serveur) */
+	bool bCriticalSwing = false;
 
 private:
 

@@ -23,7 +23,7 @@ void AYSDamageNumber::BeginPlay()
 	SetLifeSpan(Duration);
 }
 
-void AYSDamageNumber::Init(float Amount, EYSDamageNumberKind Kind)
+void AYSDamageNumber::Init(float Amount, EYSDamageNumberKind Kind, bool bCritical)
 {
 	Widget->InitWidget();
 	UYSDamageNumberWidget* DamageWidget = Cast<UYSDamageNumberWidget>(Widget->GetUserWidgetObject());
@@ -43,7 +43,8 @@ void AYSDamageNumber::Init(float Amount, EYSDamageNumberKind Kind)
 
 	FNumberFormattingOptions Format;
 	Format.MaximumFractionalDigits = 1;
-	DamageWidget->SetDamage(FText::AsNumber(Amount, &Format), Color, FontSize);
+	// critique : chiffre plus gros
+	DamageWidget->SetDamage(FText::AsNumber(Amount, &Format), Color, FMath::RoundToInt(FontSize * (bCritical ? CriticalScale : 1.0f)));
 }
 
 void AYSDamageNumber::Tick(float DeltaSeconds)

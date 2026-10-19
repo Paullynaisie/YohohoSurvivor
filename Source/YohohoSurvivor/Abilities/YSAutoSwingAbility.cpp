@@ -1,5 +1,6 @@
 #include "Abilities/YSAutoSwingAbility.h"
 #include "Components/BoxComponent.h"
+#include "Core/YSDamageTypes.h"
 #include "Core/YSGameplayTags.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/DamageEvents.h"
@@ -102,9 +103,19 @@ void UYSAutoSwingAbility::StartAttack()
 	CancelLowerPriorityActions();
 
 	ReadyServerTime = GetServerTime() + GetActivationLockDuration();
-	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s attaque à %.2f, prête à %.2f"), *GetOwner()->GetName(), *GetName(), GetServerTime(), ReadyServerTime);
+	// Golden bloodlust : l'attaque est critique si toutes les BL stacks sont là au moment où elle part
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	bCriticalSwing = Character && Character->IsBloodlustCritical();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s attaque à %.2f, prête à %.2f%s"), *GetOwner()->GetName(), *GetName(), GetServerTime(), ReadyServerTime, bCriticalSwing ? TEXT(" (critique)") : TEXT(""));
 	HitThisSwing.Reset();
 	MulticastActivated();
+}
+
+float UYSAutoSwingAbility::GetCooldownMultiplier() const
+{
+	// BL stacks : vitesse d'atk en plus, appliquée après l'Atk speed (attaque auto seulement, pas le Dashing Slash)
+	const AYSPlayerCharacter* Character = IsAutomatic() ? Cast<AYSPlayerCharacter>(GetHolderPawn()) : nullptr;
+	return Super::GetCooldownMultiplier() * (Character ? Character->GetBloodlustCooldownFactor() : 1.0f);
 }
 
 bool UYSAutoSwingAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const
@@ -178,6 +189,9 @@ void UYSAutoSwingAbility::ApplySwingHits()
 	GetWorld()->OverlapMultiByObjectType(Overlaps, Hitbox->GetComponentLocation(), Hitbox->GetComponentQuat(),
 		FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeBox(Hitbox->GetScaledBoxExtent()), Params);
 
+	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Holder);
+	const float CriticalMultiplier = bCriticalSwing && Character ? Character->GetCriticalDamageMultiplier() : 1.0f;
+
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		AActor* Target = Overlap.GetActor();
@@ -187,11 +201,19 @@ void UYSAutoSwingAbility::ApplySwingHits()
 			continue;
 		}
 
+		// Bloodlust : une seule BL stack par attaque auto, même si elle touche plusieurs NME
+		if (HitThisSwing.Num() == 0 && IsAutomatic() && Character)
+		{
+			Character->AddBloodlustStack();
+		}
+
 		HitThisSwing.Add(Target);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.3f)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
-			Damage * GetDamageMultiplier(), Damage, GetDamageMultiplier());
-		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible
-		Target->TakeDamage(Damage * GetDamageMultiplier(), FDamageEvent(), Holder ? Holder->GetController() : nullptr, nullptr);
+		const float FinalDamage = Damage * GetDamageMultiplier() * CriticalMultiplier;
+		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.3f%s)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
+			FinalDamage, Damage, GetDamageMultiplier(), bCriticalSwing ? TEXT(", critique") : TEXT(""));
+		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible ; critique : type de dégât qui grossit le chiffre
+		const FDamageEvent DamageEvent(bCriticalSwing ? UYSCriticalDamageType::StaticClass() : nullptr);
+		Target->TakeDamage(FinalDamage, DamageEvent, Holder ? Holder->GetController() : nullptr, nullptr);
 	}
 }
 

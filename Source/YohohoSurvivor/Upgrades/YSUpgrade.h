@@ -82,6 +82,10 @@ struct FYSUpgradeProgress
 	/** Valeur de chaque bonus obtenu */
 	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
 	TArray<float> BonusValues;
+
+	/** Rareté de chaque bonus obtenu (conversion vers l'upgrade jumelle au changement de set d'arme) */
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	TArray<EYSUpgradeRarity> BonusRarities;
 };
 
 /**
@@ -533,6 +537,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
 	float SuperWeight = 10.0f;
 
+	/**
+	 *  Upgrade jumelle (ex. Ricochet <-> Bloodlust) : jamais proposée si le joueur a déjà l'autre ; au changement de set
+	 *  d'arme, si ce set n'est pas compatible avec celle-ci mais l'est avec la jumelle, la progression est convertie
+	 *  palier par palier (même rareté pour chaque bonus)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Twin")
+	TObjectPtr<UYSWeaponUpgrade> TwinUpgrade;
+
+	/** Une arme tenue a l'action requise */
+	bool IsCompatibleWith(const AYSPlayerCharacter* Character) const { return GetRequiredActions(Character).Num() > 0; }
+
 	static EYSWeaponUpgradeTier GetTier(int32 Variant) { return static_cast<EYSWeaponUpgradeTier>(FMath::Clamp(Variant, 0, 2)); }
 
 	static int32 MakeVariant(EYSWeaponUpgradeTier Tier) { return static_cast<int32>(Tier); }
@@ -560,6 +575,9 @@ protected:
 
 	/** Valeur affichée pour le palier Bonus sans bonus (ex. dégâts de base de l'arme) ; valeur = base x (1 + somme) */
 	virtual float GetBonusBaseValue(const AYSPlayerCharacter* Character) const { return 1.0f; }
+
+	/** Valeur concrète affichée pour une somme de bonus (par défaut base x (1 + somme)) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const { return GetBonusBaseValue(Character) * (1.0f + BonusTotal); }
 
 	/** Applique la propriété aux armes : débloquée ?, somme des bonus, super obtenu ? (serveur) */
 	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const {}
@@ -598,6 +616,42 @@ protected:
 
 	/** Dégâts de base du Coup d'Petoir */
 	virtual float GetBonusBaseValue(const AYSPlayerCharacter* Character) const override;
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+};
+
+/**
+ *  Bloodlust (Auto swing des épées, jumeau du Ricochet) : chaque Auto swing qui touche donne une BL stack (une seule par
+ *  attaque), jusqu'à MaxStacks ; toutes perdues après StackDuration sans toucher (délai relancé à chaque stack ou coup au max).
+ *  Chaque stack = AtkSpeedPerStack de vitesse d'atk en plus, appliquée APRÈS l'Atk speed (recharge et retour de l'Auto swing).
+ *  Bonus « Bloodlust Atk speed » : + Silver / Gold Value de vitesse d'atk PAR STACK (additif : 3 Silver = 8 % par stack) ;
+ *  Super « Golden bloodlust » : Auto swing critiques au maximum de stacks (dégâts x CriticalDamageMultiplier du perso).
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : Bloodlust"))
+class UYSBloodlustUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSBloodlustUpgrade();
+
+	/** BL stacks maximum */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(ClampMin="1"))
+	int32 MaxStacks = 5;
+
+	/** Durée sans toucher avant de perdre toutes les stacks */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(ClampMin="0.1", Units="Seconds"))
+	float StackDuration = 3.0f;
+
+	/** Vitesse d'atk par stack (0.05 = 5 %) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(ClampMin="0"))
+	float AtkSpeedPerStack = 0.05f;
+
+protected:
+
+	/** Vitesse d'atk par stack, en % */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return (AtkSpeedPerStack + BonusTotal) * 100.0f; }
 
 	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
 };

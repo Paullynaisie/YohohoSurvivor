@@ -10,6 +10,7 @@
 #include "Containers/Ticker.h"
 #include "GameFramework/Pawn.h"
 #include "UI/YSAbilityIconWidget.h"
+#include "UI/YSBloodlustStacksWidget.h"
 #include "UI/YSCharacterSelectWidget.h"
 #include "UI/YSPlayerHUDWidget.h"
 #include "UI/YSOffscreenIndicatorsWidget.h"
@@ -66,6 +67,17 @@ void AYSPlayerController::BeginPlay()
 			ViewportSlot.Alignment = FVector2D(0.5f, 1.0f);
 			ViewportSlot.Offsets = FMargin(0.0f, -AbilityIconBottomMargin, AbilityIcon->IconSize, AbilityIcon->IconSize);
 			ViewportSubsystem->AddWidgetForPlayer(AbilityIcon, GetLocalPlayer(), ViewportSlot);
+		}
+
+		// BL stacks : bas de l'écran, à droite de l'icône (placement réglé dans le Widget Blueprint)
+		if (ViewportSubsystem)
+		{
+			BloodlustStacks = CreateWidget<UYSBloodlustStacksWidget>(this, BloodlustWidgetClass ? BloodlustWidgetClass.Get() : UYSBloodlustStacksWidget::StaticClass());
+			FGameViewportWidgetSlot BloodlustSlot;
+			BloodlustSlot.Anchors = FAnchors(0.5f, 1.0f);
+			BloodlustSlot.Alignment = FVector2D(0.0f, 1.0f);
+			BloodlustSlot.Offsets = FMargin(BloodlustStacks->ScreenOffset.X, -BloodlustStacks->ScreenOffset.Y, 0.0f, 0.0f);
+			ViewportSubsystem->AddWidgetForPlayer(BloodlustStacks, GetLocalPlayer(), BloodlustSlot);
 		}
 
 		// menu de sélection plein écran, au-dessus du reste de l'UI
@@ -182,6 +194,19 @@ void AYSPlayerController::SetupInputComponent()
 	// codes de triche pour les tests (absents des builds Shipping)
 	InputComponent->BindKey(EKeys::Right, IE_Pressed, this, &AYSPlayerController::YSCheatAtkSpeed);
 #endif
+}
+
+void AYSPlayerController::YSSetBloodlustStacks(int32 Stacks)
+{
+	ServerSetBloodlustStacks(Stacks);
+}
+
+void AYSPlayerController::ServerSetBloodlustStacks_Implementation(int32 Stacks)
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->DebugSetBloodlustStacks(Stacks);
+	}
 }
 
 void AYSPlayerController::YSCheatAtkSpeed()
@@ -928,6 +953,13 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 			Action = OffWeapon->GetActiveAction();
 		}
 		AbilityIcon->Refresh(Action);
+	}
+
+	if (BloodlustStacks)
+	{
+		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+		BloodlustStacks->Refresh(PlayerCharacter ? PlayerCharacter->GetBloodlustStacks() : 0, PlayerCharacter ? PlayerCharacter->GetBloodlustMaxStacks() : 0,
+			PlayerCharacter ? PlayerCharacter->GetBloodlustTimeRatio() : 0.0f, PlayerCharacter && PlayerCharacter->IsBloodlustCritical());
 	}
 }
 
