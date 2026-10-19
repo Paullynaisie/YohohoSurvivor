@@ -268,16 +268,35 @@ void AYSTreasureMap::UpdateDashes()
 			PathDashes->ClearInstances();
 			VisibleDashCount = 0;
 		}
+		// pas de fondu à rejouer en reprenant une carte déjà avancée
+		LastSeenReachedPointIndex = ReachedPointIndex;
 		return;
 	}
 
 	const FVector Center = Character->GetActorLocation();
-	const float StartDistance = bHideTravelledPath ? PathSpline->GetDistanceAlongSplineAtSplinePoint(FMath::Clamp(ReachedPointIndex, 0, PathSpline->GetNumberOfSplinePoints() - 1)) : 0.0f;
+	const int32 LastPoint = PathSpline->GetNumberOfSplinePoints() - 1;
+	const float StartDistance = bHideTravelledPath ? PathSpline->GetDistanceAlongSplineAtSplinePoint(FMath::Clamp(ReachedPointIndex, 0, LastPoint)) : 0.0f;
 	const float VisibleRadiusSquared = FMath::Square(VisibleRadius);
 
-	TArray<FTransform> Transforms;
-	for (float Distance = StartDistance; Distance < SplineLength; Distance += DashSpacing)
+	// point atteint : le segment terminé rétrécit au lieu de disparaître d'un coup
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (ReachedPointIndex != LastSeenReachedPointIndex)
 	{
+		TravelledFadeFromDistance = PathSpline->GetDistanceAlongSplineAtSplinePoint(FMath::Clamp(LastSeenReachedPointIndex, 0, LastPoint));
+		TravelledFadeStartTime = Now;
+		LastSeenReachedPointIndex = ReachedPointIndex;
+	}
+	const float TravelledFade = TravelledFadeDuration > 0.0f ? 1.0f - FMath::Clamp(static_cast<float>(Now - TravelledFadeStartTime) / TravelledFadeDuration, 0.0f, 1.0f) : 0.0f;
+	const float FirstDistance = TravelledFade > 0.0f ? FMath::Min(TravelledFadeFromDistance, StartDistance) : StartDistance;
+
+	TArray<FTransform> Transforms;
+	// grille fixe le long du chemin : les pointillés ne sautent pas quand le début affiché change
+	for (float Distance = FMath::FloorToFloat(FirstDistance / DashSpacing) * DashSpacing; Distance < SplineLength; Distance += DashSpacing)
+	{
+		if (Distance < FirstDistance)
+		{
+			continue;
+		}
 		const float DashCenter = FMath::Min(Distance + DashLength * 0.5f, SplineLength);
 		FVector Location = PathSpline->GetLocationAtDistanceAlongSpline(DashCenter, ESplineCoordinateSpace::World);
 		const float DistanceSquared = FVector::DistSquared2D(Location, Center);
@@ -286,8 +305,12 @@ void AYSTreasureMap::UpdateDashes()
 			continue;
 		}
 
-		// rétrécit avant la limite d'affichage
-		const float Fade = FadeDistance > 0.0f ? FMath::Clamp((VisibleRadius - FMath::Sqrt(DistanceSquared)) / FadeDistance, 0.0f, 1.0f) : 1.0f;
+		// rétrécit avant la limite d'affichage, et sur le segment qui vient d'être terminé
+		float Fade = FadeDistance > 0.0f ? FMath::Clamp((VisibleRadius - FMath::Sqrt(DistanceSquared)) / FadeDistance, 0.0f, 1.0f) : 1.0f;
+		if (Distance < StartDistance)
+		{
+			Fade *= TravelledFade;
+		}
 		if (Fade <= 0.0f)
 		{
 			continue;

@@ -105,6 +105,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes")
 	bool bHideTravelledPath = true;
 
+	/** Point atteint : les pointillés du segment parcouru rétrécissent jusqu'à disparaître pendant cette durée (0 = d'un coup) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes", meta=(ClampMin="0", Units="Seconds", EditCondition="bHideTravelledPath"))
+	float TravelledFadeDuration = 0.6f;
+
 	/** Forme d'un pointillé (cube de 100 cm aplati par défaut) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes")
 	TObjectPtr<UStaticMesh> DashMesh;
@@ -178,4 +182,9 @@ private:
 
 	/** Pointillés affichés à la dernière frame */
 	int32 VisibleDashCount = 0;
+
+	/** Dernier point atteint vu par cette machine, et fondu du segment qu'il vient de terminer (temps local, distance sur la spline) */
+	int32 LastSeenReachedPointIndex = 0;
+	double TravelledFadeStartTime = -1.0e6;
+	float TravelledFadeFromDistance = 0.0f;
 };
