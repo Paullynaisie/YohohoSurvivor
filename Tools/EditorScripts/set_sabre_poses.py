@@ -1,5 +1,5 @@
 """
-Applique les poses du Coup d'sabre demandées par Paul dans BP_Epee (main droite ; la gauche est symétrique) :
+Applique les poses du Auto swing demandées par Paul dans BP_Epee (main droite ; la gauche est symétrique) :
   - préparation : (-20, 90, 0), rotation X -90 / Y 180 / Z -115
   - fin de coupe : (40, -65, 0), rotation X -90 / Y 180 / Z -400 (arc de cercle)
 Option : argument « left=<chemin BP> » pour changer l'arme de la main gauche du joueur (tests akimbo).
@@ -30,13 +30,13 @@ try:
     sds = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
     for handle in sds.k2_gather_subobject_data_for_blueprint(sword):
         sabre = lib.get_object(lib.get_data(handle))
-        if isinstance(sabre, unreal.YSCoupDSabreAbility):
+        if isinstance(sabre, unreal.YSAutoSwingAbility):
             sabre.set_editor_property("windup_hand_location", unreal.Vector(-20, 90, 0))
             sabre.set_editor_property("windup_hand_rotation", unreal.Rotator(roll=-90, pitch=180, yaw=-115))
             sabre.set_editor_property("swing_end_hand_location", unreal.Vector(40, -65, 0))
             sabre.set_editor_property("swing_end_hand_rotation", unreal.Rotator(roll=-90, pitch=180, yaw=-400))
             sabre.set_editor_property("bCircularSwing", True)
-            log("poses du CoupDSabre mises à jour")
+            log("poses du AutoSwing mises à jour")
     unreal.BlueprintEditorLibrary.compile_blueprint(sword)
     assets.save_asset(SWORD_BP, only_if_is_dirty=False)
 

@@ -15,7 +15,7 @@ PISTOL = {"akimbo_fire_delay": 0.15, "recoil_pitch": 90.0, "recoil_kick_back": 5
 TARGETS = [
     (f"{WEAPONS}/BP_Pistolet", "CoupDPetoir", PISTOL),
     (f"{WEAPONS}/BP_BattlePetoir", "AutoShot", PISTOL),
-    (f"{WEAPONS}/BP_Epee", "CoupDSabre", {"akimbo_fire_delay": 0.25}),
+    (f"{WEAPONS}/BP_Epee", "AutoSwing", {"akimbo_fire_delay": 0.25}),
 ]
 
 subsystem = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)

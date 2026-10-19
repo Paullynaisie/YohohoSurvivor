@@ -1,7 +1,7 @@
 """
-BattleSword : /Game/Placeable/Weapons/BP_BattleSword, enfant de BP_Epee (Coup d'sabre en Auto atk, hérité)
+BattleSword : /Game/Placeable/Weapons/BP_BattleSword, enfant de BP_Epee (Auto swing en Auto atk, hérité)
 + un composant « DashingSlash » (UYSDashingSlashAbility, Ability) : reprend l'animation, les timings, la hitbox de debug
-et les tags du Coup d'sabre de l'épée ; 75 dégâts, recharge 5 s, akimbo 0 s.
+et les tags du Auto swing de l'épée ; 75 dégâts, recharge 5 s, akimbo 0 s.
 DA_WeaponSet_AkimboSabre : deux BP_BattleSword (nom affiché « Akimbo BattleSword »).
 Ne recrée pas l'arme ni le composant s'ils existent (les réglages de Paul sont conservés).
 
@@ -45,10 +45,10 @@ def components(bp):
 try:
     sword = assets.load_asset(SWORD_BP)
     sabre = next((obj for _, obj in components(sword)
-                  if isinstance(obj, unreal.YSCoupDSabreAbility) and not isinstance(obj, unreal.YSDashingSlashAbility)), None)
+                  if isinstance(obj, unreal.YSAutoSwingAbility) and not isinstance(obj, unreal.YSDashingSlashAbility)), None)
     if sabre is None:
-        raise RuntimeError("pas de Coup d'sabre dans BP_Epee")
-    log(f"Coup d'sabre de l'épée : {sabre.get_editor_property('damage')} dégâts, préparation {sabre.get_editor_property('windup_duration')} s, "
+        raise RuntimeError("pas de Auto swing dans BP_Epee")
+    log(f"Auto swing de l'épée : {sabre.get_editor_property('damage')} dégâts, préparation {sabre.get_editor_property('windup_duration')} s, "
         f"coupe {sabre.get_editor_property('swing_duration')} s, retour {sabre.get_editor_property('recover_duration')} s")
 
     if assets.does_asset_exist(BATTLE_BP):
@@ -74,7 +74,7 @@ try:
         dash.set_editor_property("damage", 75.0)
         dash.set_editor_property("cooldown", 5.0)
         dash.set_editor_property("akimbo_fire_delay", 0.0)
-        log("Dashing Slash ajouté (réglages d'animation copiés du Coup d'sabre)")
+        log("Dashing Slash ajouté (réglages d'animation copiés du Auto swing)")
 
     unreal.BlueprintEditorLibrary.compile_blueprint(battle)
     weapon = unreal.get_default_object(assets.load_blueprint_class(BATTLE_BP))

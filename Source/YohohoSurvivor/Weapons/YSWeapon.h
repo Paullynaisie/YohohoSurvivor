@@ -97,7 +97,7 @@ public:
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	UYSAbilityComponent* GetActiveAction() const;
 
-	/** Attaque automatique (déclenchée par le serveur, ex. Coup d'sabre), ou nullptr */
+	/** Attaque automatique (déclenchée par le serveur, ex. Auto swing), ou nullptr */
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	UYSAbilityComponent* GetAutoAction() const;
 

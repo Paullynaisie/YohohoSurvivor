@@ -1,4 +1,4 @@
-#include "Abilities/YSCoupDSabreAbility.h"
+#include "Abilities/YSAutoSwingAbility.h"
 #include "Components/BoxComponent.h"
 #include "Core/YSGameplayTags.h"
 #include "DrawDebugHelpers.h"
@@ -13,25 +13,25 @@
 #include "TimerManager.h"
 #include "Weapons/YSWeapon.h"
 
-UYSCoupDSabreAbility::UYSCoupDSabreAbility()
+UYSAutoSwingAbility::UYSAutoSwingAbility()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 
-	DisplayName = NSLOCTEXT("YS", "CoupDSabre", "Coup d'sabre");
+	DisplayName = NSLOCTEXT("YS", "AutoSwing", "Auto swing");
 	Cooldown = AutoAtkCooldown;
 	IconTint = FLinearColor(0.75f, 0.75f, 0.8f);
 	HitTags.AddTag(YSTags::Team_Foe);
 }
 
-void UYSCoupDSabreAbility::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+void UYSAutoSwingAbility::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(UYSCoupDSabreAbility, Damage);
-	DOREPLIFETIME(UYSCoupDSabreAbility, AutoAtkCooldown);
+	DOREPLIFETIME(UYSAutoSwingAbility, Damage);
+	DOREPLIFETIME(UYSAutoSwingAbility, AutoAtkCooldown);
 }
 
-void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
@@ -69,9 +69,9 @@ void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 
 	StartAttack();
 
-	if (UYSCoupDSabreAbility* Partner = GetAkimboPartner())
+	if (UYSAutoSwingAbility* Partner = GetAkimboPartner())
 	{
-		TWeakObjectPtr<UYSCoupDSabreAbility> WeakPartner = Partner;
+		TWeakObjectPtr<UYSAutoSwingAbility> WeakPartner = Partner;
 		GetWorld()->GetTimerManager().SetTimer(AkimboTimer, FTimerDelegate::CreateWeakLambda(this, [WeakPartner]()
 		{
 			if (WeakPartner.IsValid())
@@ -82,7 +82,7 @@ void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 	}
 }
 
-AActor* UYSCoupDSabreAbility::FindAutoTarget() const
+AActor* UYSAutoSwingAbility::FindAutoTarget() const
 {
 	// la direction du curseur est celle du regard du personnage
 	const APawn* Holder = GetHolderPawn();
@@ -93,7 +93,7 @@ AActor* UYSCoupDSabreAbility::FindAutoTarget() const
 	return FindTargetInCone(GetWorld(), Holder->GetActorLocation(), Holder->GetActorForwardVector(), DetectionDistance, DetectionAngle, HitTags, Holder);
 }
 
-void UYSCoupDSabreAbility::StartAttack()
+void UYSAutoSwingAbility::StartAttack()
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority() || !IsReady() || !CanStartByPriority())
 	{
@@ -107,7 +107,7 @@ void UYSCoupDSabreAbility::StartAttack()
 	MulticastActivated();
 }
 
-bool UYSCoupDSabreAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const
+bool UYSAutoSwingAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const
 {
 	const float Elapsed = GetSwingElapsed();
 	if (Elapsed < 0.0f || Elapsed >= GetAttackDuration())
@@ -156,14 +156,14 @@ bool UYSCoupDSabreAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLo
 	else
 	{
 		// retour : de la fin de coupe vers la pose normale
-		OutIdleWeight = FMath::InterpEaseInOut(0.0f, 1.0f, (Elapsed - GetWindupTime() - GetSwingTime()) / RecoverDuration, RecoverEaseExponent);
+		OutIdleWeight = FMath::InterpEaseInOut(0.0f, 1.0f, (Elapsed - GetWindupTime() - GetSwingTime()) / GetRecoverTime(), RecoverEaseExponent);
 		OutLocation = SwingEndHandLocation;
 		OutRotation = SwingEndQuat;
 	}
 	return true;
 }
 
-void UYSCoupDSabreAbility::ApplySwingHits()
+void UYSAutoSwingAbility::ApplySwingHits()
 {
 	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 	const UBoxComponent* Hitbox = Weapon ? Weapon->FindComponentByClass<UBoxComponent>() : nullptr;
@@ -173,7 +173,7 @@ void UYSCoupDSabreAbility::ApplySwingHits()
 		return;
 	}
 
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(CoupDSabre), false, Holder);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(AutoSwing), false, Holder);
 	TArray<FOverlapResult> Overlaps;
 	GetWorld()->OverlapMultiByObjectType(Overlaps, Hitbox->GetComponentLocation(), Hitbox->GetComponentQuat(),
 		FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeBox(Hitbox->GetScaledBoxExtent()), Params);
@@ -188,20 +188,20 @@ void UYSCoupDSabreAbility::ApplySwingHits()
 		}
 
 		HitThisSwing.Add(Target);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSSabre] %s.%s touche %s : %.1f dégâts (base %.1f x %.3f)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
+		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.3f)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
 			Damage * GetDamageMultiplier(), Damage, GetDamageMultiplier());
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible
 		Target->TakeDamage(Damage * GetDamageMultiplier(), FDamageEvent(), Holder ? Holder->GetController() : nullptr, nullptr);
 	}
 }
 
-bool UYSCoupDSabreAbility::IsOffHandOfAkimbo() const
+bool UYSAutoSwingAbility::IsOffHandOfAkimbo() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	return Character && Character->IsAkimbo() && Character->GetOffHandWeapon() == GetOwner();
 }
 
-UYSCoupDSabreAbility* UYSCoupDSabreAbility::GetAkimboPartner() const
+UYSAutoSwingAbility* UYSAutoSwingAbility::GetAkimboPartner() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	if (!Character || !Character->IsAkimbo() || Character->GetMainHandWeapon() != GetOwner())
@@ -209,5 +209,5 @@ UYSCoupDSabreAbility* UYSCoupDSabreAbility::GetAkimboPartner() const
 		return nullptr;
 	}
 	const AYSWeapon* OffWeapon = Character->GetOffHandWeapon();
-	return OffWeapon ? Cast<UYSCoupDSabreAbility>(OffWeapon->GetAutoAction()) : nullptr;
+	return OffWeapon ? Cast<UYSAutoSwingAbility>(OffWeapon->GetAutoAction()) : nullptr;
 }

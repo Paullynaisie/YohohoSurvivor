@@ -1,24 +1,24 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Abilities/YSCoupDSabreAbility.h"
+#include "Abilities/YSAutoSwingAbility.h"
 #include "YSDashingSlashAbility.generated.h"
 
 /**
- *  « Dashing Slash » : Ability de la BattleSword (Melee ; sous-classe du Coup d'sabre : même animation, mêmes timings,
+ *  « Dashing Slash » : Ability de la BattleSword (Melee ; sous-classe du Auto swing : même animation, mêmes timings,
  *  même hitbox, et les upgrades d'Ability s'y appliquent : Damage bonus, CD reduction).
  *  Pendant de Rolling shot pour les épées. À l'activation, interrompt les actions moins prioritaires des DEUX armes
  *  (BlocksAllWeapons). La direction est prise sur le curseur au clic, puis ZQSD et la souris sont ignorés jusqu'à la fin :
  *  1. Petit pas en arrière (Step Back Duration), à l'opposé du curseur : vitesse x Step Back Speed Multiplier
  *     qui décroît jusqu'à Step Back End Speed Multiplier.
  *  2. Énorme dash vers le curseur (Dash Duration) : vitesse x Dash Speed Multiplier qui décroît jusqu'à Dash End Speed Multiplier ;
- *     invulnérable ; l'animation du Coup d'sabre démarre avec le dash. En akimbo, les deux épées frappent en même temps
+ *     invulnérable ; l'animation du Auto swing démarre avec le dash. En akimbo, les deux épées frappent en même temps
  *     (Akimbo Fire Delay 0) et chacune inflige Damage.
  *  La recharge (Cooldown, réduite par CD reduction) commence à la fin du dash.
  *  Le mouvement est piloté par l'épée de la main principale (une seule fois en akimbo).
  */
 UCLASS(ClassGroup=(YS), meta=(BlueprintSpawnableComponent, DisplayName="Dashing Slash"))
-class UYSDashingSlashAbility : public UYSCoupDSabreAbility
+class UYSDashingSlashAbility : public UYSAutoSwingAbility
 {
 	GENERATED_BODY()
 

@@ -294,7 +294,8 @@ protected:
 
 /**
  *  CD reduction (par type d'action, tout le set) : recharge des actions x (1 - somme des bonus), jamais sous
- *  MinCooldownMultiplier. Coup d'Petoir / Auto shot : Cooldown ; Coup d'sabre : Auto Atk Cooldown (pas la durée de l'anim).
+ *  MinCooldownMultiplier. Coup d'Petoir / Auto shot : Cooldown ; Auto swing (Swing) : Auto Atk Cooldown ET Recover Duration,
+ *  dans la même proportion (valeur affichée = leur somme).
  */
 UCLASS(meta=(DisplayName="Upgrade de stat : CD reduction (Ability / Auto atk du set)"))
 class UYSHandCooldownReductionUpgrade : public UYSHandStatUpgrade
@@ -308,6 +309,9 @@ public:
 	/** Multiplicateur minimum de la recharge (garde-fou) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="0", ClampMax="1"))
 	float MinCooldownMultiplier = 0.1f;
+
+	/** Lignes du bouton : en plus des valeurs concrètes, la réduction appliquée (« Recharge (s) : 1.41 (-6 %) ») */
+	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
 
 protected:
 

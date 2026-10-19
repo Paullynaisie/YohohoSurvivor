@@ -15,7 +15,7 @@
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
-#include "Abilities/YSCoupDSabreAbility.h"
+#include "Abilities/YSAutoSwingAbility.h"
 #include "TimerManager.h"
 #include "Components/ChildActorComponent.h"
 #include "Weapons/YSWeapon.h"
@@ -697,7 +697,7 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 		FVector FinalLocation = WorldLocation + RecoilOffset;
 		FQuat FinalRotation = Rotation.Quaternion();
 
-		// coupe (Coup d'sabre en attaque auto, Dashing Slash en Ability) : la pose animée remplace la pose normale,
+		// coupe (Auto swing en attaque auto, Dashing Slash en Ability) : la pose animée remplace la pose normale,
 		// sans retard pour garder la coupe brutale ; l'Ability d'abord (prioritaire)
 		float IdleWeight = 1.0f;
 		FVector PoseLocation = FVector::ZeroVector;
@@ -705,7 +705,7 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 		bool bSwinging = false;
 		for (const UYSAbilityComponent* Action : { Weapon ? Weapon->GetActiveAction() : nullptr, Weapon ? Weapon->GetAutoAction() : nullptr })
 		{
-			const UYSCoupDSabreAbility* Sabre = Cast<UYSCoupDSabreAbility>(Action);
+			const UYSAutoSwingAbility* Sabre = Cast<UYSAutoSwingAbility>(Action);
 			if (!bSwinging && Sabre && Sabre->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation))
 			{
 				bSwinging = true;

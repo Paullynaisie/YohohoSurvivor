@@ -27,7 +27,7 @@ class UTexture2D;
  *  Base des capacités du joueur : temps de recharge, activation réseau et données d'UI.
  *  Attaque active (ex. Coup d'Petoir) : le client local appelle TryActivate -> RPC serveur -> le serveur
  *  vérifie la recharge et exécute ExecuteAbility. Le temps de recharge est prédit côté client puis corrigé par réplication.
- *  Attaque automatique (ex. Coup d'sabre) : déclenchée par le serveur lui-même (IsAutomatic).
+ *  Attaque automatique (ex. Auto swing) : déclenchée par le serveur lui-même (IsAutomatic).
  *  Les paramètres sont BlueprintReadWrite pour pouvoir être modifiés par les upgrades.
  */
 UCLASS(Abstract, ClassGroup=(YS))

@@ -1,6 +1,6 @@
 """
-Met en place le Coup d'sabre :
-  - BP_Epee : composant « CoupDSabre » (attaque auto) + « Hitbox » (UBoxComponent couvrant la lame,
+Met en place le Auto swing :
+  - BP_Epee : composant « AutoSwing » (attaque auto) + « Hitbox » (UBoxComponent couvrant la lame,
     sans collision propre : la capacité l'interroge pendant la coupe)
   - PlayerCharacter_mouss : main droite = BP_Epee (main gauche inchangée)
 
@@ -49,7 +49,7 @@ def get_or_add_component(bp, component_class, name, parent_name=None):
 
 try:
     sword = assets.load_asset(SWORD_BP)
-    get_or_add_component(sword, unreal.YSCoupDSabreAbility, "CoupDSabre")
+    get_or_add_component(sword, unreal.YSAutoSwingAbility, "AutoSwing")
     hitbox = get_or_add_component(sword, unreal.BoxComponent, "Hitbox", parent_name="Root")
     hitbox.set_editor_property("relative_location", HITBOX_LOCATION)
     hitbox.set_box_extent(HITBOX_EXTENT, False)

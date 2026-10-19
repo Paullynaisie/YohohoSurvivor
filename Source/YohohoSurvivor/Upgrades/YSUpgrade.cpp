@@ -219,6 +219,26 @@ float UYSHandCooldownReductionUpgrade::GetBaseStatValue(const AYSPlayerCharacter
 	return Action ? Action->GetBaseCooldown() : 0.0f;
 }
 
+void UYSHandCooldownReductionUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+{
+	const int32 FirstLine = OutLines.Num();
+	Super::GetOfferLines(Character, Variant, Progress, Rarity, OutLines);
+
+	// valeurs concrètes (actuelle rayée, nouvelle en gras = les deux dernières lignes) : réduction totale appliquée à côté
+	if (OutLines.Num() - FirstLine < 2)
+	{
+		return;
+	}
+	FNumberFormattingOptions Format;
+	Format.MaximumFractionalDigits = 1;
+	auto AppendReduction = [&Format](FYSChoiceLine& Line, float Multiplier)
+	{
+		Line.Text = FText::Format(NSLOCTEXT("YS", "CooldownReductionValue", "{0} (-{1} %)"), Line.Text, FText::AsNumber((1.0f - Multiplier) * 100.0f, &Format));
+	};
+	AppendReduction(OutLines[OutLines.Num() - 2], GetMultiplier(Progress.TotalValue));
+	AppendReduction(OutLines.Last(), GetMultiplier(Progress.TotalValue + GetBonusValue(Variant, Rarity)));
+}
+
 void UYSHandCooldownReductionUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
 	Character->SetCooldownMultiplier(GetSlot(Variant), GetMultiplier(TotalBonus));
