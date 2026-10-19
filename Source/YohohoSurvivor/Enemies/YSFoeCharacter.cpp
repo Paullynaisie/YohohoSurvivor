@@ -170,11 +170,16 @@ void AYSFoeCharacter::BeginPlay()
 
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
 
-	// taille (élites) : réglage du Blueprint, appliqué à l'identique sur toutes les machines
+	// taille (élites) : réglage du Blueprint, appliqué à l'identique sur toutes les machines.
+	// Échelle ABSOLUE (celle de la classe x SizeMultiplier) : chez un client, l'acteur arrive déjà à l'échelle du serveur
+	// (transform répliqué) ; multiplier l'échelle actuelle la doublait (élite x9 au lieu de x3 chez les clients)
 	if (!FMath::IsNearlyEqual(SizeMultiplier, 1.0f))
 	{
-		SetActorScale3D(GetActorScale3D() * SizeMultiplier);
+		const USceneComponent* DefaultRoot = GetClass()->GetDefaultObject<AYSFoeCharacter>()->GetRootComponent();
+		const FVector BaseScale = DefaultRoot ? DefaultRoot->GetRelativeScale3D() : FVector::OneVector;
+		SetActorScale3D(BaseScale * SizeMultiplier);
 	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s (%s) échelle %.2f"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"), GetActorScale3D().X);
 
 	if (HasAuthority())
 	{
