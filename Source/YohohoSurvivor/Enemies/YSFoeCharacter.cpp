@@ -188,6 +188,18 @@ void AYSFoeCharacter::Die()
 	Destroy();
 }
 
+void AYSFoeCharacter::FellOutOfWorld(const UDamageType& DamageType)
+{
+	// mort normale (XP, fin de la nuit pour l'élite) décidée par le serveur
+	if (!HasAuthority() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSDeadZone] %s tombé sous la map (Z %.0f) : mort"), *GetName(), GetActorLocation().Z);
+	Health = 0.0f;
+	Die();
+}
+
 UPrimitiveComponent* AYSFoeCharacter::GetHurtbox() const
 {
 	return BodyMesh;

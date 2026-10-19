@@ -727,6 +727,9 @@ protected:
 	/** PV à 0 (serveur) : PlayerState mort, caméra laissée sur place, personnage détruit */
 	virtual void Die();
 
+	/** Deadzone : tombé sous le KillZ de la map (World Settings) -> mort (serveur ; rien chez les clients) */
+	virtual void FellOutOfWorld(const UDamageType& DamageType) override;
+
 private:
 
 	/** Crée les actions et le contexte ZQSD/WASD + flèches + clic gauche */

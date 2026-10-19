@@ -75,10 +75,22 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ricochet", meta=(ClampMin="0", Units="Centimeters"))
 	float RicochetRange = 1500.0f;
 
+	/** Ricochet : la balle s'arrête ce temps sur l'impact avant de repartir vers la cible suivante (0 = repart tout de suite) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ricochet", meta=(ClampMin="0", Units="Seconds"))
+	float RicochetPauseDuration = 0.1f;
+
 private:
 
 	/** Plus de dégâts possibles (balle en cours de destruction) */
 	bool bHasHit = false;
+
+	/** Arrêtée sur l'impact avant un ricochet : ne touche rien (serveur) */
+	bool bRicochetPaused = false;
+
+	/** Cible du ricochet en attente (serveur) */
+	TWeakObjectPtr<AActor> RicochetTarget;
+
+	FTimerHandle RicochetPauseTimer;
 
 	/** Cibles déjà touchées (un ricochet ne les retouche pas) */
 	TArray<TWeakObjectPtr<AActor>> HitActors;
@@ -106,8 +118,14 @@ public:
 
 protected:
 
-	/** Repart vers le NME le plus proche pas encore touché ; faux si aucun à portée */
+	/** Ricochet vers le NME le plus proche pas encore touché (après l'arrêt RicochetPauseDuration) ; faux si aucun à portée */
 	bool Ricochet();
+
+	/** NME le plus proche de l'impact pas encore touché, à moins de RicochetRange, ou nullptr */
+	AActor* FindRicochetTarget() const;
+
+	/** Repart vers la cible du ricochet (une autre si elle a disparu pendant l'arrêt, sinon la balle disparaît) */
+	void LaunchRicochet();
 
 protected:
 

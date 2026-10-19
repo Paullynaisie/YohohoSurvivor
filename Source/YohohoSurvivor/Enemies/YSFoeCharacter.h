@@ -186,6 +186,9 @@ protected:
 	/** Mort de l'ennemi (serveur) */
 	virtual void Die();
 
+	/** Deadzone : tombé sous le KillZ de la map (World Settings) -> mort (serveur ; rien chez les clients) */
+	virtual void FellOutOfWorld(const UDamageType& DamageType) override;
+
 	UFUNCTION()
 	void OnRep_Health();
 

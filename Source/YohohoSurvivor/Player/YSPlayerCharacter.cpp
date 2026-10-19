@@ -252,6 +252,18 @@ void AYSPlayerCharacter::Die()
 	Destroy();
 }
 
+void AYSPlayerCharacter::FellOutOfWorld(const UDamageType& DamageType)
+{
+	// le serveur décide de la mort (le personnage répliqué ne doit pas être détruit par un client)
+	if (!HasAuthority() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSDeadZone] %s tombé sous la map (Z %.0f) : mort"), *GetName(), GetActorLocation().Z);
+	Health = 0.0f;
+	Die();
+}
+
 AYSWeapon* AYSPlayerCharacter::GetLeftHandWeapon() const
 {
 	return Cast<AYSWeapon>(LeftHandWeapon->GetChildActor());
