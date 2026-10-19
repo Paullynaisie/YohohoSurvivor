@@ -287,14 +287,18 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
-	// à distance : s'arrête à portée et lance une bombe toutes les ThrowInterval secondes passées à portée
+	// à distance : la bombe se recharge en permanence (même hors de portée) ; rechargée, elle part dès que la cible
+	// est à portée, et le NME s'arrête à portée
+	if (bRanged)
+	{
+		ThrowTimer = FMath::Min(ThrowTimer + DeltaSeconds, ThrowInterval);
+	}
 	const bool bInRange = bRanged && ToTarget.SizeSquared() <= FMath::Square(AttackRange);
 	if (bInRange)
 	{
-		ThrowTimer += DeltaSeconds;
 		if (ThrowTimer >= ThrowInterval)
 		{
-			ThrowTimer -= ThrowInterval;
+			ThrowTimer = 0.0f;
 			ThrowBomb(Target);
 		}
 	}

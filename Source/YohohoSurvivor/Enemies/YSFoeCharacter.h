@@ -152,7 +152,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Centimeters"))
 	float AttackRange = 1000.0f;
 
-	/** Une bombe toutes les N secondes passées à portée de sa cible */
+	/** Recharge de la bombe (en continu, même hors de portée) ; rechargée, elle part dès que la cible est à portée */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0.1", Units="Seconds"))
 	float ThrowInterval = 5.0f;
 
@@ -306,7 +306,7 @@ protected:
 
 private:
 
-	/** Secondes passées à portée de la cible depuis la dernière bombe (serveur) */
+	/** Recharge de la bombe depuis la dernière (serveur, plafonnée à ThrowInterval) */
 	float ThrowTimer = 0.0f;
 
 
