@@ -177,6 +177,47 @@ void AYSPlayerController::SetupInputComponent()
 	Super::SetupInputComponent();
 
 	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AYSPlayerController::YSLeaveGame);
+
+#if !UE_BUILD_SHIPPING
+	// codes de triche pour les tests (absents des builds Shipping)
+	InputComponent->BindKey(EKeys::Right, IE_Pressed, this, &AYSPlayerController::YSCheatAtkSpeed);
+#endif
+}
+
+void AYSPlayerController::YSCheatAtkSpeed()
+{
+	ServerCheatAtkSpeed();
+}
+
+void AYSPlayerController::ServerCheatAtkSpeed_Implementation()
+{
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	if (!PlayerCharacter)
+	{
+		return;
+	}
+
+	// Atk speed = variante Auto atk de la CD reduction ; 10 bonus Silver, sans dépasser le maximum de l'upgrade
+	const TArray<TObjectPtr<UYSUpgrade>>& Pool = PlayerCharacter->GetUpgradePool();
+	const int32 PoolIndex = Pool.IndexOfByPredicate([](const TObjectPtr<UYSUpgrade>& Upgrade) { return Cast<UYSHandCooldownReductionUpgrade>(Upgrade.Get()) != nullptr; });
+	const UYSHandCooldownReductionUpgrade* AtkSpeed = Pool.IsValidIndex(PoolIndex) ? Cast<UYSHandCooldownReductionUpgrade>(Pool[PoolIndex].Get()) : nullptr;
+	const int32 Variant = UYSHandStatUpgrade::MakeVariant(EYSActionSlot::AutoAtk);
+	if (!AtkSpeed || !AtkSpeed->CanBeOffered(PlayerCharacter, Variant, PlayerCharacter->GetUpgradeProgress(PoolIndex, Variant)))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSCheat] Atk speed : pas disponible (pas d'attaque auto éligible, ou maximum atteint)"));
+		return;
+	}
+
+	FYSUpgradeOffer Offer;
+	Offer.PoolIndex = PoolIndex;
+	Offer.Variant = Variant;
+	Offer.Rarity = EYSUpgradeRarity::Silver;
+	int32 Given = 0;
+	for (; Given < 10 && PlayerCharacter->GetUpgradeProgress(PoolIndex, Variant).Stacks < AtkSpeed->MaxStacks; ++Given)
+	{
+		PlayerCharacter->ApplyUpgrade(Offer);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSCheat] Atk speed : %d bonus Silver donnés (%d / %d)"), Given, PlayerCharacter->GetUpgradeProgress(PoolIndex, Variant).Stacks, AtkSpeed->MaxStacks);
 }
 
 void AYSPlayerController::YSLeaveGame()

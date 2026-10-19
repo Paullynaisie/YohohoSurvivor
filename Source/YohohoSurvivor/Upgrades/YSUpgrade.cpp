@@ -208,9 +208,20 @@ UYSHandCooldownReductionUpgrade::UYSHandCooldownReductionUpgrade()
 	DisplayName = NSLOCTEXT("YS", "HandCooldownReductionName", "CD reduction");
 	BonusName = NSLOCTEXT("YS", "HandCooldownReductionBonus", "CD reduction");
 	StatLabel = NSLOCTEXT("YS", "HandCooldownReductionStat", "Recharge (s)");
+	AutoAtkBonusName = NSLOCTEXT("YS", "HandCooldownReductionAutoAtk", "Atk speed");
 	BronzeValue = 0.03f;
 	SilverValue = 0.045f;
 	GoldValue = 0.06f;
+}
+
+FText UYSHandCooldownReductionUpgrade::MakeName(const FText& WeaponsText, int32 Variant) const
+{
+	// la CD reduction des attaques auto s'appelle Atk speed (pas de « Auto atk » dans le nom)
+	if (GetSlot(Variant) != EYSActionSlot::AutoAtk || AutoAtkBonusName.IsEmpty())
+	{
+		return Super::MakeName(WeaponsText, Variant);
+	}
+	return WeaponsText.IsEmpty() ? AutoAtkBonusName : FText::Format(NSLOCTEXT("YS", "AtkSpeedName", "{0} {1}"), WeaponsText, AutoAtkBonusName);
 }
 
 float UYSHandCooldownReductionUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const

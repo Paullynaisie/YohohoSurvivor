@@ -271,7 +271,7 @@ protected:
 	virtual bool IsActionEligible(const UYSAbilityComponent* Action) const { return true; }
 
 	/** « <armes> <type> <BonusName> » */
-	FText MakeName(const FText& WeaponsText, int32 Variant) const;
+	virtual FText MakeName(const FText& WeaponsText, int32 Variant) const;
 };
 
 /** Damage bonus (par type d'action, tout le set) : dégâts des actions x (1 + somme des bonus) */
@@ -310,6 +310,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="0", ClampMax="1"))
 	float MinCooldownMultiplier = 0.1f;
 
+	/** Nom de la variante Auto atk (« Epee Atk speed ») ; la variante Ability garde « <armes> Ability CD reduction » */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText AutoAtkBonusName;
+
 	/** Lignes du bouton : en plus des valeurs concrètes, la réduction appliquée (« Recharge (s) : 1.41 (-6 %) ») */
 	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
 
@@ -322,6 +326,9 @@ protected:
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue * GetMultiplier(TotalBonus); }
+
+	/** Auto atk : « <armes> Atk speed » */
+	virtual FText MakeName(const FText& WeaponsText, int32 Variant) const override;
 
 	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
 

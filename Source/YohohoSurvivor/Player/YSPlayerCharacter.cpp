@@ -911,23 +911,20 @@ void AYSPlayerCharacter::CreateDefaultInput()
 		}
 	};
 
-	// avant : Z (AZERTY), W (QWERTY), flèche haut
+	// les flèches sont réservées aux codes de triche (AYSPlayerController::SetupInputComponent)
+	// avant : Z (AZERTY), W (QWERTY)
 	MapKey(EKeys::Z, true, false);
 	MapKey(EKeys::W, true, false);
-	MapKey(EKeys::Up, true, false);
 
 	// arrière
 	MapKey(EKeys::S, true, true);
-	MapKey(EKeys::Down, true, true);
 
 	// gauche : Q (AZERTY), A (QWERTY)
 	MapKey(EKeys::Q, false, true);
 	MapKey(EKeys::A, false, true);
-	MapKey(EKeys::Left, false, true);
 
 	// droite
 	MapKey(EKeys::D, false, false);
-	MapKey(EKeys::Right, false, false);
 }
 
 void AYSPlayerCharacter::Move(const FInputActionValue& Value)

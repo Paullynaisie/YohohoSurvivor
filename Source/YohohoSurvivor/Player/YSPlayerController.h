@@ -228,6 +228,13 @@ public:
 	UFUNCTION(Exec)
 	void YSLeaveGame();
 
+	/** Triche (flèche droite, builds non Shipping) : 10 bonus Atk speed Silver (CD reduction de l'Auto atk), sans dépasser le maximum */
+	UFUNCTION(Exec)
+	void YSCheatAtkSpeed();
+
+	UFUNCTION(Server, Reliable)
+	void ServerCheatAtkSpeed();
+
 	FVector GetAimLocation() const { return AimLocation; }
 
 	/**
