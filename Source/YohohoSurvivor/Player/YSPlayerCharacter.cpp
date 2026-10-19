@@ -534,8 +534,14 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	// vitesse : peut dépendre d'une action en cours (visée du Rolling shot) ; serveur et client propriétaire
 	UpdateMaxWalkSpeed();
 
-	// déplacement forcé (roulade du Rolling shot) quand le joueur n'appuie sur aucune direction ; machine qui contrôle le perso
-	if (IsLocallyControlled() && GFrameCounter - LastMoveInputFrame > 1 && GetPendingMovementInputVector().IsNearlyZero())
+	// déplacement forcé quand le joueur n'appuie sur aucune direction (roulade du Rolling shot) ou toujours si l'action
+	// impose sa trajectoire (Dashing Slash) ; machine qui contrôle le perso
+	const bool bMoveOverridden = IsMoveInputOverridden();
+	if (bMoveOverridden)
+	{
+		ConsumeMovementInputVector();
+	}
+	if (IsLocallyControlled() && (bMoveOverridden || (GFrameCounter - LastMoveInputFrame > 1 && GetPendingMovementInputVector().IsNearlyZero())))
 	{
 		FVector ForcedDirection = FVector::ZeroVector;
 		ForEachHeldAction([&ForcedDirection](const UYSAbilityComponent* Action)
@@ -691,12 +697,21 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 		FVector FinalLocation = WorldLocation + RecoilOffset;
 		FQuat FinalRotation = Rotation.Quaternion();
 
-		// attaque auto (Coup d'sabre) : la pose animée remplace la pose normale, sans retard pour garder la coupe brutale
-		const UYSCoupDSabreAbility* Sabre = Weapon ? Cast<UYSCoupDSabreAbility>(Weapon->GetAutoAction()) : nullptr;
+		// coupe (Coup d'sabre en attaque auto, Dashing Slash en Ability) : la pose animée remplace la pose normale,
+		// sans retard pour garder la coupe brutale ; l'Ability d'abord (prioritaire)
 		float IdleWeight = 1.0f;
-		FVector PoseLocation;
-		FQuat PoseRotation;
-		if (Sabre && Sabre->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation))
+		FVector PoseLocation = FVector::ZeroVector;
+		FQuat PoseRotation = FQuat::Identity;
+		bool bSwinging = false;
+		for (const UYSAbilityComponent* Action : { Weapon ? Weapon->GetActiveAction() : nullptr, Weapon ? Weapon->GetAutoAction() : nullptr })
+		{
+			const UYSCoupDSabreAbility* Sabre = Cast<UYSCoupDSabreAbility>(Action);
+			if (!bSwinging && Sabre && Sabre->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation))
+			{
+				bSwinging = true;
+			}
+		}
+		if (bSwinging)
 		{
 			// poses exprimées pour la main droite : symétrie pour la gauche (Y, Yaw et Roll inversés)
 			if (bLeft)
@@ -917,6 +932,12 @@ void AYSPlayerCharacter::CreateDefaultInput()
 
 void AYSPlayerCharacter::Move(const FInputActionValue& Value)
 {
+	// trajectoire imposée par une action (Dashing Slash) : ZQSD ignoré jusqu'à la fin
+	if (IsMoveInputOverridden())
+	{
+		return;
+	}
+
 	const FVector2D Input = Value.Get<FVector2D>();
 
 	// directions relatives à la caméra (seulement le yaw) : "haut" = vers le haut de l'écran
@@ -1267,13 +1288,32 @@ void AYSPlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+float AYSPlayerCharacter::GetUnmodifiedWalkSpeed() const
+{
+	const float CarryMultiplier = IsValid(CarriedObject) ? CarriedObject->GetCarrierSpeedMultiplier() : 1.0f;
+	return MoveSpeed * MoveSpeedMultiplier * CarryMultiplier;
+}
+
 void AYSPlayerCharacter::UpdateMaxWalkSpeed()
 {
 	// serveur et client propriétaire doivent avoir la même vitesse (prédiction de mouvement)
-	const float CarryMultiplier = IsValid(CarriedObject) ? CarriedObject->GetCarrierSpeedMultiplier() : 1.0f;
 	float ActionMultiplier = 1.0f;
 	ForEachHeldAction([&ActionMultiplier](const UYSAbilityComponent* Action) { ActionMultiplier *= Action->GetMoveSpeedMultiplier(); });
-	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * MoveSpeedMultiplier * CarryMultiplier * ActionMultiplier;
+	GetCharacterMovement()->MaxWalkSpeed = GetUnmodifiedWalkSpeed() * ActionMultiplier;
+}
+
+bool AYSPlayerCharacter::IsMoveInputOverridden() const
+{
+	bool bOverridden = false;
+	ForEachHeldAction([&bOverridden](const UYSAbilityComponent* Action) { bOverridden = bOverridden || Action->OverridesMoveInput(); });
+	return bOverridden;
+}
+
+bool AYSPlayerCharacter::GetLockedAimDirection(FVector& OutDirection) const
+{
+	bool bLocked = false;
+	ForEachHeldAction([&bLocked, &OutDirection](const UYSAbilityComponent* Action) { bLocked = bLocked || Action->GetLockedAimDirection(OutDirection); });
+	return bLocked;
 }
 
 float AYSPlayerCharacter::GetFoeAttractionMultiplier() const

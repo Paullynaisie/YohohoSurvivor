@@ -43,7 +43,7 @@ void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 
 #if ENABLE_DRAW_DEBUG
 	// TEMPORAIRE : hitbox visible (rouge transparent) pendant la fenêtre de coupe, sur toutes les machines
-	const float SwingElapsed = GetTimeSinceActivation();
+	const float SwingElapsed = GetSwingElapsed();
 	if (bShowHitbox && SwingElapsed >= WindupDuration && SwingElapsed <= WindupDuration + SwingDuration + HitWindowMargin)
 	{
 		const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
@@ -60,14 +60,15 @@ void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 		return;
 	}
 
-	const float Elapsed = GetTimeSinceActivation();
+	const float Elapsed = GetSwingElapsed();
 	if (Elapsed >= WindupDuration && Elapsed <= WindupDuration + SwingDuration + HitWindowMargin)
 	{
 		ApplySwingHits();
 	}
 
-	// en akimbo, la main gauche est déclenchée par la droite
-	if (IsOffHandOfAkimbo() || !IsReady() || !CanStartByPriority() || !FindAutoTarget())
+	// déclenchement automatique : seulement pour l'attaque auto (une sous-classe en Ability est lancée par le clic)
+	// ; en akimbo, la main gauche est déclenchée par la droite
+	if (!IsAutomatic() || IsOffHandOfAkimbo() || !IsReady() || !CanStartByPriority() || !FindAutoTarget())
 	{
 		return;
 	}
@@ -114,7 +115,7 @@ void UYSCoupDSabreAbility::StartAttack()
 
 bool UYSCoupDSabreAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const
 {
-	const float Elapsed = GetTimeSinceActivation();
+	const float Elapsed = GetSwingElapsed();
 	if (Elapsed < 0.0f || Elapsed >= GetAttackDuration())
 	{
 		return false;
@@ -193,6 +194,8 @@ void UYSCoupDSabreAbility::ApplySwingHits()
 		}
 
 		HitThisSwing.Add(Target);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSSabre] %s.%s touche %s : %.1f dégâts (base %.1f x %.3f)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
+			Damage * GetDamageMultiplier(), Damage, GetDamageMultiplier());
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible
 		Target->TakeDamage(Damage * GetDamageMultiplier(), FDamageEvent(), Holder ? Holder->GetController() : nullptr, nullptr);
 	}

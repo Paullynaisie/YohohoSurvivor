@@ -1000,6 +1000,15 @@ void AYSPlayerController::UpdateAim()
 
 	AimLocation = RayOrigin + RayDirection * Distance;
 
+	// regard figé par une action (Dashing Slash) : la souris n'est plus suivie jusqu'à la fin
+	FVector LockedDirection;
+	const AYSPlayerCharacter* YSCharacter = Cast<AYSPlayerCharacter>(ControlledPawn);
+	if (YSCharacter && YSCharacter->GetLockedAimDirection(LockedDirection))
+	{
+		SetControlRotation(FRotator(0.0f, LockedDirection.Rotation().Yaw, 0.0f));
+		return;
+	}
+
 	const FVector ToAim = AimLocation - PawnLocation;
 	if (ToAim.SizeSquared2D() > 1.0f)
 	{

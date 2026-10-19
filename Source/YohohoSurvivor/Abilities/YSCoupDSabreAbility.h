@@ -131,17 +131,22 @@ public:
 	/** Déclenche l'attaque (serveur) si elle est disponible */
 	void StartAttack();
 
-private:
+protected:
+
+	/** Temps écoulé dans l'animation de coupe (préparation au début) ; par défaut depuis l'activation */
+	virtual float GetSwingElapsed() const { return GetTimeSinceActivation(); }
 
 	/** Pendant la coupe : applique les dégâts aux cibles dans la hitbox de l'arme (serveur) */
 	void ApplySwingHits();
+
+	/** Cibles déjà touchées par la coupe en cours */
+	TSet<TWeakObjectPtr<AActor>> HitThisSwing;
+
+private:
 
 	/** Vrai en akimbo si cette épée est dans l'autre main que la principale (elle suit la principale) */
 	bool IsOffHandOfAkimbo() const;
 
 	/** En akimbo, l'attaque de l'autre main quand celle-ci est la principale */
 	UYSCoupDSabreAbility* GetAkimboPartner() const;
-
-	/** Cibles déjà touchées par la coupe en cours */
-	TSet<TWeakObjectPtr<AActor>> HitThisSwing;
 };

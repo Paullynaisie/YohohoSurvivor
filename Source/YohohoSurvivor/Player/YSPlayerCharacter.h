@@ -531,6 +531,15 @@ public:
 	/** Invulnérable en ce moment (action en cours : roulade du Rolling shot…) */
 	bool IsInvulnerable() const;
 
+	/** Vitesse de marche sans les multiplicateurs des actions (MoveSpeed x Move speed bonus x objet porté) */
+	float GetUnmodifiedWalkSpeed() const;
+
+	/** Une action impose sa trajectoire (Dashing Slash) : ZQSD ignoré */
+	bool IsMoveInputOverridden() const;
+
+	/** Une action fige le regard du personnage (Dashing Slash) : le curseur n'est plus suivi */
+	bool GetLockedAimDirection(FVector& OutDirection) const;
+
 	/** Appelle Function pour chaque action des armes tenues */
 	void ForEachHeldAction(TFunctionRef<void(const UYSAbilityComponent*)> Function) const;
 

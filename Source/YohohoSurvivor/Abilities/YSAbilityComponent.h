@@ -170,6 +170,12 @@ public:
 	/** Animation du corps en cours (ex. roulade) : angle de rotation (degrés, vers la direction du mouvement) et décalage vertical */
 	virtual bool GetBodyRoll(float& OutAngle, float& OutHeightOffset) const { return false; }
 
+	/** L'action impose sa trajectoire en ce moment : l'input de déplacement (ZQSD) est ignoré, seul GetForcedMoveDirection compte */
+	virtual bool OverridesMoveInput() const { return false; }
+
+	/** Le regard du personnage est figé dans cette direction (le curseur n'est plus suivi), ex. Dashing Slash */
+	virtual bool GetLockedAimDirection(FVector& OutDirection) const { return false; }
+
 protected:
 
 	/** Effets visuels de l'activation sur toutes les machines (le client qui tire les a déjà joués par prédiction) */
