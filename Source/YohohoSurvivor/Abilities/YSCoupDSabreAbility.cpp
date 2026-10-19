@@ -13,12 +13,6 @@
 #include "TimerManager.h"
 #include "Weapons/YSWeapon.h"
 
-namespace
-{
-	/** Marge après la coupe pendant laquelle la hitbox reste active (évite de rater la dernière image) */
-	constexpr float HitWindowMargin = 0.05f;
-}
-
 UYSCoupDSabreAbility::UYSCoupDSabreAbility()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -44,7 +38,7 @@ void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 #if ENABLE_DRAW_DEBUG
 	// TEMPORAIRE : hitbox visible (rouge transparent) pendant la fenêtre de coupe, sur toutes les machines
 	const float SwingElapsed = GetSwingElapsed();
-	if (bShowHitbox && SwingElapsed >= WindupDuration && SwingElapsed <= WindupDuration + SwingDuration + HitWindowMargin)
+	if (bShowHitbox && IsInSwingWindow(SwingElapsed))
 	{
 		const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 		if (const UBoxComponent* Hitbox = Weapon ? Weapon->FindComponentByClass<UBoxComponent>() : nullptr)
@@ -61,7 +55,7 @@ void UYSCoupDSabreAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 	}
 
 	const float Elapsed = GetSwingElapsed();
-	if (Elapsed >= WindupDuration && Elapsed <= WindupDuration + SwingDuration + HitWindowMargin)
+	if (IsInSwingWindow(Elapsed))
 	{
 		ApplySwingHits();
 	}

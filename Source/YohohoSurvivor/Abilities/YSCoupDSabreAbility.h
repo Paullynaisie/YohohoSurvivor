@@ -136,6 +136,9 @@ protected:
 	/** Temps écoulé dans l'animation de coupe (préparation au début) ; par défaut depuis l'activation */
 	virtual float GetSwingElapsed() const { return GetTimeSinceActivation(); }
 
+	/** Hitbox active : uniquement pendant la phase de coupe (ni la préparation, ni le retour) */
+	bool IsInSwingWindow(float SwingElapsed) const { return SwingElapsed >= WindupDuration && SwingElapsed < WindupDuration + SwingDuration; }
+
 	/** Pendant la coupe : applique les dégâts aux cibles dans la hitbox de l'arme (serveur) */
 	void ApplySwingHits();
 
