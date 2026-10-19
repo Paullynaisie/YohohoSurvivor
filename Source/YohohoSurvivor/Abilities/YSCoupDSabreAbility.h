@@ -116,7 +116,11 @@ public:
 
 
 	/** Durée totale de l'animation (préparation + coupe + retour) */
-	float GetAttackDuration() const { return WindupDuration + SwingDuration + RecoverDuration; }
+	float GetAttackDuration() const { return GetWindupTime() + GetSwingTime() + RecoverDuration; }
+
+	/** Durées effectives de la préparation et de la coupe (Coup d'sabre : Windup / Swing Duration ; Dashing Slash : pas en arrière / dash) */
+	virtual float GetWindupTime() const { return WindupDuration; }
+	virtual float GetSwingTime() const { return SwingDuration; }
 
 	/** Cible actuelle de la détection (dans la direction du curseur), ou nullptr */
 	UFUNCTION(BlueprintPure, Category="Coup d'sabre")
@@ -137,7 +141,7 @@ protected:
 	virtual float GetSwingElapsed() const { return GetTimeSinceActivation(); }
 
 	/** Hitbox active : uniquement pendant la phase de coupe (ni la préparation, ni le retour) */
-	bool IsInSwingWindow(float SwingElapsed) const { return SwingElapsed >= WindupDuration && SwingElapsed < WindupDuration + SwingDuration; }
+	bool IsInSwingWindow(float SwingElapsed) const { return SwingElapsed >= GetWindupTime() && SwingElapsed < GetWindupTime() + GetSwingTime(); }
 
 	/** Pendant la coupe : applique les dégâts aux cibles dans la hitbox de l'arme (serveur) */
 	void ApplySwingHits();

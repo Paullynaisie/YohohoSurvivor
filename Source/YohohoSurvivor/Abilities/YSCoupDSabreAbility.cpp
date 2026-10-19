@@ -118,18 +118,18 @@ bool UYSCoupDSabreAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLo
 	const FQuat WindupQuat = WindupHandRotation.Quaternion();
 	const FQuat SwingEndQuat = SwingEndHandRotation.Quaternion();
 
-	if (Elapsed < WindupDuration)
+	if (Elapsed < GetWindupTime())
 	{
 		// préparation : de la pose normale vers le flanc
-		const float Alpha = FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / WindupDuration, WindupEaseExponent);
+		const float Alpha = FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / GetWindupTime(), WindupEaseExponent);
 		OutIdleWeight = 1.0f - Alpha;
 		OutLocation = WindupHandLocation;
 		OutRotation = WindupQuat;
 	}
-	else if (Elapsed < WindupDuration + SwingDuration)
+	else if (Elapsed < GetWindupTime() + GetSwingTime())
 	{
 		// coupe : départ immédiat, très rapide
-		const float Alpha = FMath::InterpEaseOut(0.0f, 1.0f, (Elapsed - WindupDuration) / SwingDuration, SwingEaseExponent);
+		const float Alpha = FMath::InterpEaseOut(0.0f, 1.0f, (Elapsed - GetWindupTime()) / GetSwingTime(), SwingEaseExponent);
 		OutIdleWeight = 0.0f;
 
 		if (bCircularSwing)
@@ -156,7 +156,7 @@ bool UYSCoupDSabreAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLo
 	else
 	{
 		// retour : de la fin de coupe vers la pose normale
-		OutIdleWeight = FMath::InterpEaseInOut(0.0f, 1.0f, (Elapsed - WindupDuration - SwingDuration) / RecoverDuration, RecoverEaseExponent);
+		OutIdleWeight = FMath::InterpEaseInOut(0.0f, 1.0f, (Elapsed - GetWindupTime() - GetSwingTime()) / RecoverDuration, RecoverEaseExponent);
 		OutLocation = SwingEndHandLocation;
 		OutRotation = SwingEndQuat;
 	}

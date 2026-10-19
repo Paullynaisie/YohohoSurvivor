@@ -79,7 +79,11 @@ public:
 	virtual float GetBaseCooldown() const override { return Cooldown; }
 
 	/** Priorités : en cours pendant le pas en arrière, puis le dash et l'animation de coupe */
-	virtual float GetActionDuration() const override { return StepBackDuration + FMath::Max(DashDuration, GetAttackDuration()); }
+	virtual float GetActionDuration() const override { return FMath::Max(StepBackDuration + DashDuration, GetAttackDuration()); }
+
+	/** Animation calée sur le mouvement : préparation pendant le pas en arrière, coupe pendant le dash (Windup / Swing Duration ignorés) */
+	virtual float GetWindupTime() const override { return StepBackDuration; }
+	virtual float GetSwingTime() const override { return DashDuration; }
 
 	virtual bool BlocksAllWeapons() const override { return true; }
 
@@ -94,9 +98,6 @@ public:
 	virtual bool GetLockedAimDirection(FVector& OutDirection) const override;
 
 protected:
-
-	/** L'animation de coupe démarre au début du dash */
-	virtual float GetSwingElapsed() const override { return GetTimeSinceActivation() - StepBackDuration; }
 
 	/** Machine qui active (client local ou hôte) : direction figée sur le curseur */
 	virtual void PrepareActivation(const FVector& TargetLocation) override;
