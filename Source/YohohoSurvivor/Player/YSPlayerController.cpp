@@ -18,6 +18,7 @@
 #include "UI/YSEliteHealthWidget.h"
 #include "UI/YSObjectiveWidget.h"
 #include "Interaction/YSInteractiveObject.h"
+#include "Interaction/YSTreasureMap.h"
 #include "NPC/YSBrookerNPC.h"
 #include "UI/YSDayBannerWidget.h"
 #include "Upgrades/YSUpgrade.h"
@@ -693,8 +694,8 @@ void AYSPlayerController::UpdatePlayerHUD()
 	}
 	PlayerHUD->SetAllies(Allies);
 
-	// objet porté : bulle du Brooker le plus proche (au-dessus de lui, ou au bord de l'écran)
-	if (PlayerCharacter && PlayerCharacter->IsCarrying())
+	// objet porté vendable : bulle du Brooker le plus proche (au-dessus de lui, ou au bord de l'écran)
+	if (PlayerCharacter && PlayerCharacter->IsCarrying() && PlayerCharacter->GetCarriedObject()->GetDoubloonValue() > 0)
 	{
 		if (const AYSBrookerNPC* Brooker = AYSBrookerNPC::FindNearest(GetWorld(), PlayerCharacter->GetActorLocation()))
 		{
@@ -1183,6 +1184,35 @@ void AYSPlayerController::YSSpawnChest(float Distance)
 	}
 	const AYSInteractiveObject* Chest = AYSInteractiveObject::SpawnOnGround(GetWorld(), ChestClass, MyPawn->GetActorLocation() + MyPawn->GetActorForwardVector() * Distance, MyPawn->GetActorRotation().Yaw);
 	UE_LOG(LogTemp, Log, TEXT("[YSSpawnChest] %s"), Chest ? *Chest->GetName() : TEXT("échec"));
+}
+
+void AYSPlayerController::YSSpawnTreasureMap(float Distance)
+{
+	const APawn* MyPawn = GetPawn();
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	if (!MyPawn || !GameMode)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSSpawnTreasureMap] impossible (perso %d, hôte %d)"), MyPawn != nullptr, GameMode != nullptr);
+		return;
+	}
+	const AYSTreasureMap* TreasureMap = Distance > 0.0f
+		? GameMode->SpawnTreasureMapAt(AYSInteractiveObject::FindGround(GetWorld(), MyPawn->GetActorLocation() + MyPawn->GetActorForwardVector() * Distance, MyPawn))
+		: GameMode->SpawnTreasureMap();
+	UE_LOG(LogTemp, Log, TEXT("[YSSpawnTreasureMap] %s"), TreasureMap ? *TreasureMap->GetName() : TEXT("échec (Treasure Map Class vide, ou pas de chemin complet depuis ce point)"));
+}
+
+void AYSPlayerController::YSTreasureNextPoint()
+{
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSTreasureMap* TreasureMap = PlayerCharacter ? Cast<AYSTreasureMap>(PlayerCharacter->GetCarriedObject()) : nullptr;
+	if (!TreasureMap || !HasAuthority() || TreasureMap->GetReachedPointIndex() + 1 >= TreasureMap->GetPathPoints().Num())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSTreasureNextPoint] impossible (carte portée %d, hôte %d)"), TreasureMap != nullptr, HasAuthority());
+		return;
+	}
+	const FVector Point = TreasureMap->GetPathPoints()[TreasureMap->GetReachedPointIndex() + 1];
+	PlayerCharacter->TeleportTo(Point + FVector(0.0f, 0.0f, 100.0f), PlayerCharacter->GetActorRotation());
+	UE_LOG(LogTemp, Log, TEXT("[YSTreasureNextPoint] %s -> point %d (%.0f, %.0f)"), *PlayerCharacter->GetName(), TreasureMap->GetReachedPointIndex() + 1, Point.X, Point.Y);
 }
 
 void AYSPlayerController::YSGoToBrooker(float Distance)

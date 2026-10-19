@@ -199,6 +199,14 @@ public:
 	UFUNCTION(Exec)
 	void YSGoToBrooker(float Distance = 300.0f);
 
+	/** Debug (hôte) : carte au trésor devant le personnage (Distance > 0) ou au hasard dans la zone du GameMode (0) */
+	UFUNCTION(Exec)
+	void YSSpawnTreasureMap(float Distance = 150.0f);
+
+	/** Debug (hôte) : le personnage qui porte une carte au trésor est téléporté au point suivant de son chemin */
+	UFUNCTION(Exec)
+	void YSTreasureNextPoint();
+
 	/** Debug (console, hôte) : met l'arme BP de /Game/Placeable/Weapons dans une main (0 droite, 1 gauche).  Ex : YSEquipWeapon 0 BattlePetoir (préfixe BP_ facultatif) */
 	UFUNCTION(Exec)
 	void YSEquipWeapon(int32 Hand, const FString& WeaponName);

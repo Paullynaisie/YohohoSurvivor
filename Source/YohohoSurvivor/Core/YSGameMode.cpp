@@ -3,6 +3,7 @@
 #include "Core/YSPlayerState.h"
 #include "Enemies/YSEnemySpawnRule.h"
 #include "Enemies/YSFoeCharacter.h"
+#include "Interaction/YSTreasureMap.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/YSPlayerCharacter.h"
@@ -308,6 +309,8 @@ void AYSGameMode::TryStartMatch()
 	}
 
 	YSGameState->SetMatchStarted();
+	// jour 1 : carte au trésor
+	SpawnTreasureMap();
 	for (UYSEnemySpawnRule* Rule : SpawnRules)
 	{
 		if (Rule)
@@ -360,6 +363,8 @@ void AYSGameMode::OnEliteKilled(AYSFoeCharacter* Elite)
 
 	YSGameState->StartDay(YSGameState->GetDayNumber() + 1);
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Élite %s tué : jour %d"), Elite ? *Elite->GetName() : TEXT("?"), YSGameState->GetDayNumber());
+	// nouveau jour : nouvelle carte au trésor
+	SpawnTreasureMap();
 	for (UYSEnemySpawnRule* Rule : SpawnRules)
 	{
 		if (Rule)
@@ -459,4 +464,80 @@ void AYSGameMode::AddDoubloons(int32 Amount)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Objectif atteint : %d doublons"), YSGameState->GetDoubloons());
 	}
+}
+
+int32 AYSGameMode::SpawnBonusWave(int32 EnemiesPerPlayer, const TCHAR* Reason)
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || !YSGameState->IsMatchStarted())
+	{
+		return 0;
+	}
+
+	// mêmes NME et même placement hors écran que la première règle de spawn active
+	for (UYSEnemySpawnRule* Rule : SpawnRules)
+	{
+		if (Rule && Rule->bEnabled && Rule->EnemyClasses.Num() > 0)
+		{
+			const int32 Count = EnemiesPerPlayer * Rule->GetPlayersInMatchCount();
+			const int32 Spawned = Rule->SpawnEnemies(Count);
+			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Vague bonus (%s) : %d / %d NME"), Reason, Spawned, Count);
+			return Spawned;
+		}
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[YSGameMode] Vague bonus (%s) : aucune règle de spawn avec des NME"), Reason);
+	return 0;
+}
+
+AYSTreasureMap* AYSGameMode::SpawnTreasureMap()
+{
+	const AYSTreasureMap* Settings = TreasureMapClass ? TreasureMapClass->GetDefaultObject<AYSTreasureMap>() : nullptr;
+	if (!Settings)
+	{
+		return nullptr;
+	}
+
+	for (int32 Attempt = 0; Attempt < TreasureMapSpawnAttempts; ++Attempt)
+	{
+		const FVector Candidate = TreasureMapAreaCenter + FVector(FMath::FRandRange(-TreasureMapAreaExtent.X, TreasureMapAreaExtent.X),
+			FMath::FRandRange(-TreasureMapAreaExtent.Y, TreasureMapAreaExtent.Y), 0.0f);
+		FVector Ground;
+		if (AYSTreasureMap::FindPathGround(GetWorld(), Candidate, TreasureMapAreaCenter.Z, Settings->GetMaxHeightDifference(), Ground))
+		{
+			if (AYSTreasureMap* TreasureMap = SpawnTreasureMapAt(Ground))
+			{
+				return TreasureMap;
+			}
+		}
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[YSGameMode] Carte au trésor : aucun emplacement avec un chemin complet après %d essais"), TreasureMapSpawnAttempts);
+	return nullptr;
+}
+
+AYSTreasureMap* AYSGameMode::SpawnTreasureMapAt(const FVector& Location)
+{
+	const AYSTreasureMap* Settings = TreasureMapClass ? TreasureMapClass->GetDefaultObject<AYSTreasureMap>() : nullptr;
+	TArray<FVector> Path;
+	if (!Settings || !Settings->BuildPath(GetWorld(), Location, Path))
+	{
+		return nullptr;
+	}
+
+	const FTransform Transform(FRotator(0.0f, FMath::FRandRange(0.0f, 360.0f), 0.0f), Location);
+	AYSTreasureMap* TreasureMap = GetWorld()->SpawnActorDeferred<AYSTreasureMap>(TreasureMapClass, Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!TreasureMap)
+	{
+		return nullptr;
+	}
+	TreasureMap->SetPath(Path);
+	TreasureMap->FinishSpawning(Transform);
+
+	float Length = 0.0f;
+	for (int32 Index = 1; Index < Path.Num(); ++Index)
+	{
+		Length += FVector::Dist2D(Path[Index - 1], Path[Index]);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Carte au trésor %s à (%.0f, %.0f) : %d segments, %.0f cm, arrivée (%.0f, %.0f)"), *TreasureMap->GetName(),
+		Location.X, Location.Y, Path.Num() - 1, Length, Path.Last().X, Path.Last().Y);
+	return TreasureMap;
 }

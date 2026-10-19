@@ -8,6 +8,7 @@
 class AYSPlayerCharacter;
 class UYSEnemySpawnRule;
 class AYSFoeCharacter;
+class AYSTreasureMap;
 class UTexture2D;
 
 /**
@@ -18,7 +19,7 @@ class UTexture2D;
  *  XP commune à l'équipe (AddTeamExperience) : à chaque niveau, partie en pause et choix d'une upgrade par joueur.
  *  Classe de base de BP_TestGameMode.
  */
-UCLASS(meta=(PrioritizeCategories="Spawn Objective DayNight Level"))
+UCLASS(meta=(PrioritizeCategories="Spawn Objective TreasureMap DayNight Level"))
 class AYSGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
@@ -72,6 +73,22 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="1"))
 	int32 DoubloonGoal = 100;
 
+	/** Carte au trésor qui apparaît au hasard au début de chaque jour (vide = aucune) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap")
+	TSubclassOf<AYSTreasureMap> TreasureMapClass;
+
+	/** Zone d'apparition de la carte : centre (Z = hauteur du sol attendue) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap")
+	FVector TreasureMapAreaCenter = FVector::ZeroVector;
+
+	/** Zone d'apparition de la carte : demi-largeur en X et Y autour du centre */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap", meta=(Units="Centimeters"))
+	FVector2D TreasureMapAreaExtent = FVector2D(4500.0f, 4500.0f);
+
+	/** Emplacements essayés (sol + chemin complet) avant d'abandonner la carte du jour */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap", meta=(ClampMin="1"))
+	int32 TreasureMapSpawnAttempts = 30;
+
 public:
 
 	AYSGameMode();
@@ -121,6 +138,15 @@ public:
 
 	/** Doublons gagnés par l'équipe (vente au Brooker ; serveur) */
 	void AddDoubloons(int32 Amount);
+
+	/** Vague supplémentaire hors écran : EnemiesPerPlayer × joueurs de la partie (NME de la première règle de spawn active) */
+	int32 SpawnBonusWave(int32 EnemiesPerPlayer, const TCHAR* Reason);
+
+	/** Carte au trésor au hasard dans la zone (début de jour) ; nullptr si aucun emplacement n'a de chemin complet */
+	AYSTreasureMap* SpawnTreasureMap();
+
+	/** Carte au trésor posée à Location si un chemin complet en part (debug) */
+	AYSTreasureMap* SpawnTreasureMapAt(const FVector& Location);
 
 protected:
 

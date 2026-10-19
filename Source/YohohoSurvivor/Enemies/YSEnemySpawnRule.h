@@ -60,6 +60,12 @@ public:
 	/** Appelé par le GameMode à chaque tick tant que la partie est en cours */
 	void Tick(float DeltaSeconds);
 
+	/** Joueurs de la partie pour la taille des vagues : vivants + morts (pas ceux qui n'ont pas encore choisi) */
+	int32 GetPlayersInMatchCount() const;
+
+	/** Fait apparaître Count NME, chacun à un emplacement hors écran différent. Renvoie le nombre réellement apparus. */
+	int32 SpawnEnemies(int32 Count);
+
 protected:
 
 	virtual void StartRule() {}
@@ -76,14 +82,8 @@ protected:
 	/** Pawns des joueurs en jeu (ayant leur personnage, vivants) : servent au placement */
 	TArray<APawn*> GetActivePlayers() const;
 
-	/** Joueurs de la partie pour la taille des vagues : vivants + morts (pas ceux qui n'ont pas encore choisi) */
-	int32 GetPlayersInMatchCount() const;
-
 	/** Secondes écoulées depuis le démarrage de la partie */
 	float GetMatchElapsedTime() const;
-
-	/** Fait apparaître Count NME, chacun à un emplacement hors écran différent. Renvoie le nombre réellement apparus. */
-	int32 SpawnEnemies(int32 Count);
 
 	/** Emplacement au sol hors de SafeRadius de tous les joueurs, dans la bande autour de l'un d'eux */
 	bool FindSpawnLocation(const TArray<APawn*>& Players, float CapsuleHalfHeight, FVector& OutLocation) const;
