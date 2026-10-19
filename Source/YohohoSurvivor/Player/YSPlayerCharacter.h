@@ -256,6 +256,23 @@ protected:
 	float CriticalDamageMultiplier = 1.5f;
 
 	/**
+	 *  Pushback des NME touchés par ce personnage, proportionnel à la part de leur vie retirée par le coup
+	 *  (dégâts / PV max de la cible) : sous Min Damage Ratio rien, à partir de Max Damage Ratio la force max,
+	 *  entre les deux la force passe linéairement de Min Force à Max Force. Direction = celle du coup (hitbox, projectile).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Pushback", meta=(ClampMin="0", ClampMax="1"))
+	float PushbackMinDamageRatio = 0.05f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Pushback", meta=(ClampMin="0", ClampMax="1"))
+	float PushbackMaxDamageRatio = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond"))
+	float PushbackMinForce = 200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond"))
+	float PushbackMaxForce = 1000.0f;
+
+	/**
 	 *  Bloodlust (upgrade d'arme des épées ; serveur, répliqué pour l'UI et la prédiction de la recharge) :
 	 *  BL stacks gagnées par les Auto swing qui touchent, perdues toutes d'un coup après BloodlustDuration sans toucher.
 	 *  BloodlustMaxStacks 0 = Bloodlust pas débloqué.
@@ -560,6 +577,9 @@ public:
 	bool IsBloodlustCritical() const { return bGoldenBloodlust && BloodlustMaxStacks > 0 && BloodlustStacks >= BloodlustMaxStacks; }
 
 	float GetCriticalDamageMultiplier() const { return CriticalDamageMultiplier; }
+
+	/** Force du pushback d'un coup de Damage sur une cible de TargetMaxHealth PV max (0 = aucun) */
+	float ComputePushbackForce(float Damage, float TargetMaxHealth) const;
 
 	/** A déjà au moins un bonus de cette upgrade (n'importe quelle variante) */
 	bool HasUpgrade(const UYSUpgrade* Upgrade) const;

@@ -86,7 +86,10 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 	}
 
 	HitActors.Add(OtherActor);
-	OtherActor->TakeDamage(Damage, FDamageEvent(), GetInstigatorController(), this);
+	// direction du coup = sens de vol de la balle (pushback)
+	const FVector ShotDirection = GetVelocity().IsNearlyZero() ? GetActorForwardVector() : GetVelocity().GetSafeNormal();
+	const FPointDamageEvent DamageEvent(Damage, SweepResult, ShotDirection, nullptr);
+	OtherActor->TakeDamage(Damage, DamageEvent, GetInstigatorController(), this);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s : %.1f dégâts (ricochets restants %d)"), *GetName(), *OtherActor->GetName(), Damage, RemainingRicochets);
 
 	// ricochet vers une autre cible, sinon la balle disparaît

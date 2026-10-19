@@ -127,8 +127,41 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	if (Health <= 0.0f)
 	{
 		Die();
+		return Damage;
 	}
+
+	ApplyPushback(Damage, DamageEvent, EventInstigator);
 	return Damage;
+}
+
+void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator)
+{
+	// direction du coup portée par l'événement (hitbox de l'arme, vol du projectile) ; force réglée sur le personnage qui frappe
+	const AYSPlayerCharacter* Attacker = EventInstigator ? Cast<AYSPlayerCharacter>(EventInstigator->GetPawn()) : nullptr;
+	if (!Attacker || !DamageEvent.IsOfType(FPointDamageEvent::ClassID))
+	{
+		return;
+	}
+	const FVector Direction = static_cast<const FPointDamageEvent&>(DamageEvent).ShotDirection.GetSafeNormal2D();
+	const float Force = Attacker->ComputePushbackForce(Damage, MaxHealth);
+	if (Direction.IsNearlyZero() || Force <= 0.0f)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSPushback] %s : %.0f dégâts sur %.0f PV max (%.1f %%), pas de pushback"), *GetName(), Damage, MaxHealth, 100.0f * Damage / FMath::Max(MaxHealth, 1.0f));
+		return;
+	}
+
+	// serveur : le mouvement est répliqué aux clients
+	LaunchCharacter(Direction * Force, true, false);
+
+	// debug : distance réellement parcourue après 0,5 s (log Verbose)
+	const FVector Start = GetActorLocation();
+	FTimerHandle Timer;
+	GetWorldTimerManager().SetTimer(Timer, FTimerDelegate::CreateWeakLambda(this, [this, Start]()
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSPushback] %s : %.0f cm parcourus en 0,5 s"), *GetName(), FVector::Dist2D(Start, GetActorLocation()));
+	}), 0.5f, false);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPushback] %s : %.0f dégâts sur %.0f PV max (%.1f %%), pushback %.0f vers (%.2f, %.2f)"), *GetName(), Damage, MaxHealth,
+		100.0f * Damage / FMath::Max(MaxHealth, 1.0f), Force, Direction.X, Direction.Y);
 }
 
 void AYSFoeCharacter::Die()

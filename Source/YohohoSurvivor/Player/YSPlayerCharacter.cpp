@@ -1400,6 +1400,26 @@ bool AYSPlayerCharacter::HasUpgrade(const UYSUpgrade* Upgrade) const
 	});
 }
 
+float AYSPlayerCharacter::ComputePushbackForce(float Damage, float TargetMaxHealth) const
+{
+	if (Damage <= 0.0f || TargetMaxHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// part de la vie de la cible retirée par le coup : rien sous le premier palier, force max à partir du second
+	const float Ratio = Damage / TargetMaxHealth;
+	if (Ratio < PushbackMinDamageRatio)
+	{
+		return 0.0f;
+	}
+	if (Ratio >= PushbackMaxDamageRatio || PushbackMaxDamageRatio <= PushbackMinDamageRatio)
+	{
+		return PushbackMaxForce;
+	}
+	const float Alpha = (Ratio - PushbackMinDamageRatio) / (PushbackMaxDamageRatio - PushbackMinDamageRatio);
+	return FMath::Lerp(PushbackMinForce, PushbackMaxForce, Alpha);
+}
+
 float AYSPlayerCharacter::GetUnmodifiedWalkSpeed() const
 {
 	const float CarryMultiplier = IsValid(CarriedObject) ? CarriedObject->GetCarrierSpeedMultiplier() : 1.0f;
