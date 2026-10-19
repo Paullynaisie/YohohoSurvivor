@@ -236,6 +236,9 @@ public:
 
 	virtual bool Initialize() override;
 
+	/** Clic dans le champ du pseudo : l'ancien pseudo est effacé pour taper directement le nouveau */
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+
 	/** Crée un bouton par nom (une seule fois) */
 	void SetCharacters(const TArray<FText>& Names);
 
@@ -319,6 +322,12 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UEditableTextBox> NicknameBox;
+
+	/** Le champ du pseudo avait le focus à la dernière frame (clic dessus = pseudo effacé) */
+	bool bNicknameHadFocus = false;
+
+	/** Pseudo avant le clic : remis si on valide le champ vide */
+	FText NicknameBeforeEdit;
 
 	/** Colonnes centre (personnalisation) et droite (aperçu) */
 	UPROPERTY(Transient)

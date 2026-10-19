@@ -111,7 +111,7 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
 	TitleText = Title;
-	Title->SetText(NSLOCTEXT("YS", "CharacterSelectTitle", "Choisis ton Mouss"));
+	Title->SetText(NSLOCTEXT("YS", "CharacterSelectTitle", "Choisis ta classe"));
 	YSCharacterSelect::SetFontSize(Title, TitleFontSize);
 	Title->SetColorAndOpacity(FSlateColor(FLinearColor::White));
 	UVerticalBoxSlot* TitleSlot = Column->AddChildToVerticalBox(Title);
@@ -325,8 +325,33 @@ void UYSCharacterSelectWidget::SetPreviewTexture(UTexture* Texture)
 	}
 }
 
+void UYSCharacterSelectWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	if (!NicknameBox)
+	{
+		return;
+	}
+
+	// focus pris (clic) : l'ancien pseudo est vidé (l'indication « Ton pseudo » s'affiche)
+	const bool bHasFocus = NicknameBox->HasKeyboardFocus();
+	if (bHasFocus && !bNicknameHadFocus)
+	{
+		NicknameBeforeEdit = NicknameBox->GetText();
+		NicknameBox->SetText(FText::GetEmpty());
+	}
+	bNicknameHadFocus = bHasFocus;
+}
+
 void UYSCharacterSelectWidget::HandleNicknameCommitted(const FText& Text, ETextCommit::Type CommitMethod)
 {
+	// validé sans rien taper : on garde l'ancien pseudo
+	if (Text.ToString().TrimStartAndEnd().IsEmpty())
+	{
+		NicknameBox->SetText(NicknameBeforeEdit);
+		return;
+	}
 	OnNicknameCommitted.ExecuteIfBound(Text.ToString());
 }
 

@@ -1324,7 +1324,8 @@ void AYSPlayerCharacter::UpdateNameplate()
 
 	if (UYSNameplateWidget* Widget = Cast<UYSNameplateWidget>(Nameplate->GetUserWidgetObject()))
 	{
-		Widget->SetPlayer(FText::FromString(OwningPlayerState->GetPlayerName()), Health, GetMaxHealth());
+		const AYSPlayerState* YSOwningState = Cast<AYSPlayerState>(OwningPlayerState);
+		Widget->SetPlayer(FText::FromString(YSOwningState ? YSOwningState->GetDisplayName() : OwningPlayerState->GetPlayerName()), Health, GetMaxHealth());
 	}
 }
 

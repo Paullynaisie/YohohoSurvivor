@@ -61,6 +61,12 @@ public:
 
 	bool HasSelectedCharacter() const { return SelectedCharacterIndex != INDEX_NONE; }
 
+	/**
+	 *  Nom affiché en jeu (HUD, alliés, au-dessus du perso) : nom du personnage puis pseudo, ex. « Mouss Player 1 »
+	 *  (personnage contrôlé, sinon celui choisi ; pseudo seul tant qu'aucun n'est choisi)
+	 */
+	FString GetDisplayName() const;
+
 	bool IsDead() const { return bIsDead; }
 
 	bool IsReady() const { return bReady; }

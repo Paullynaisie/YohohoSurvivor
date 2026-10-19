@@ -60,6 +60,10 @@ private:
 	UFUNCTION()
 	void HandleQuitClicked();
 
+	/** Met l'IP de ce PC dans le presse-papier (à envoyer aux autres joueurs) */
+	UFUNCTION()
+	void HandleCopyAddressClicked();
+
 	UFUNCTION()
 	void HandleAddressCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 

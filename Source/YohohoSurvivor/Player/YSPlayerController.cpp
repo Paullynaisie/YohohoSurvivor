@@ -600,9 +600,9 @@ void AYSPlayerController::UpdatePlayerHUD()
 
 	PlayerHUD->SetVisibility(bInMatch ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	PlayerHUD->SetHealth(PlayerCharacter != nullptr, PlayerCharacter ? PlayerCharacter->GetHealth() : 0.0f, PlayerCharacter ? PlayerCharacter->GetMaxHealth() : 0.0f);
-	if (const APlayerState* MyPlayerState = GetPlayerState<APlayerState>())
+	if (const AYSPlayerState* MyPlayerState = GetPlayerState<AYSPlayerState>())
 	{
-		PlayerHUD->SetPlayerName(FText::FromString(MyPlayerState->GetPlayerName()));
+		PlayerHUD->SetPlayerName(FText::FromString(MyPlayerState->GetDisplayName()));
 	}
 	if (YSGameState)
 	{
@@ -680,7 +680,7 @@ void AYSPlayerController::UpdatePlayerHUD()
 
 		const AYSPlayerCharacter* OtherCharacter = Cast<AYSPlayerCharacter>(OtherState->GetPawn());
 		FYSHUDPlayerInfo& Info = Allies.AddDefaulted_GetRef();
-		Info.Name = FText::FromString(OtherState->GetPlayerName());
+		Info.Name = FText::FromString(OtherState->GetDisplayName());
 		GetIcon(OtherState, Info.Color, Info.Face);
 		Info.bAlive = OtherCharacter && OtherCharacter->IsAlive();
 		Info.Health = OtherCharacter ? OtherCharacter->GetHealth() : 0.0f;

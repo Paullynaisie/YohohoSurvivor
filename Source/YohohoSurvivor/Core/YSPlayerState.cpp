@@ -1,6 +1,24 @@
 #include "Core/YSPlayerState.h"
+#include "Core/YSGameState.h"
+#include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
+
+FString AYSPlayerState::GetDisplayName() const
+{
+	// personnage en jeu, sinon celui choisi dans le menu (aussi après la mort)
+	const AYSPlayerCharacter* Character = GetPawn<AYSPlayerCharacter>();
+	if (!Character)
+	{
+		const AYSGameState* GameState = GetWorld() ? GetWorld()->GetGameState<AYSGameState>() : nullptr;
+		const TArray<TSubclassOf<AYSPlayerCharacter>>* Characters = GameState ? &GameState->GetSelectableCharacters() : nullptr;
+		if (Characters && Characters->IsValidIndex(SelectedCharacterIndex) && (*Characters)[SelectedCharacterIndex])
+		{
+			Character = (*Characters)[SelectedCharacterIndex]->GetDefaultObject<AYSPlayerCharacter>();
+		}
+	}
+	return Character ? FString::Printf(TEXT("%s %s"), *Character->GetCharacterName().ToString(), *GetPlayerName()) : GetPlayerName();
+}
 
 void AYSPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {

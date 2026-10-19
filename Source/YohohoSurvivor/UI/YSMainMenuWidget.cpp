@@ -10,6 +10,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Core/YSGameInstance.h"
+#include "HAL/PlatformApplicationMisc.h"
 #include "Kismet/KismetSystemLibrary.h"
 
 namespace YSMainMenu
@@ -78,7 +79,14 @@ void UYSMainMenuWidget::BuildWidgetTree()
 	LocalAddressText->SetJustification(ETextJustify::Center);
 	UVerticalBoxSlot* LocalAddressSlot = Column->AddChildToVerticalBox(LocalAddressText);
 	LocalAddressSlot->SetHorizontalAlignment(HAlign_Center);
-	LocalAddressSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 32.0f));
+	LocalAddressSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 4.0f));
+
+	UButton* CopyAddressButton = AddButton(Column, NSLOCTEXT("YS", "CopyAddressButton", "Copier mon IP"), ButtonColor, TEXT("CopyAddressButton"));
+	CopyAddressButton->OnClicked.AddDynamic(this, &UYSMainMenuWidget::HandleCopyAddressClicked);
+	if (UVerticalBoxSlot* CopyAddressSlot = Cast<UVerticalBoxSlot>(CopyAddressButton->GetParent()->Slot))
+	{
+		CopyAddressSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 32.0f));
+	}
 
 	USizeBox* AddressSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("AddressSize"));
 	AddressSize->SetWidthOverride(MenuWidth);
@@ -203,6 +211,20 @@ void UYSMainMenuWidget::HandleJoinClicked()
 void UYSMainMenuWidget::HandleQuitClicked()
 {
 	UKismetSystemLibrary::QuitGame(this, GetOwningPlayer(), EQuitPreference::Quit, false);
+}
+
+void UYSMainMenuWidget::HandleCopyAddressClicked()
+{
+	// première IP trouvée (réseau local, ou VPN s'il est le seul) ; les autres restent affichées au-dessus
+	const TArray<FString> LocalAddresses = UYSGameInstance::GetLocalIPv4Addresses();
+	if (LocalAddresses.Num() == 0)
+	{
+		SetStatus(NSLOCTEXT("YS", "NoLocalAddressToCopy", "Aucune IP locale à copier."), true);
+		return;
+	}
+
+	FPlatformApplicationMisc::ClipboardCopy(*LocalAddresses[0]);
+	SetStatus(FText::Format(NSLOCTEXT("YS", "AddressCopied", "IP copiée : {0}"), FText::FromString(LocalAddresses[0])));
 }
 
 void UYSMainMenuWidget::HandleAddressCommitted(const FText& Text, ETextCommit::Type CommitMethod)

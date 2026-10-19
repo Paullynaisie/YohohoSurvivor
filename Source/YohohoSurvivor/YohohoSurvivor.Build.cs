@@ -26,7 +26,7 @@ public class YohohoSurvivor : ModuleRules
 			"Sockets"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		PrivateDependencyModuleNames.AddRange(new string[] { "ApplicationCore" });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"YohohoSurvivor",
