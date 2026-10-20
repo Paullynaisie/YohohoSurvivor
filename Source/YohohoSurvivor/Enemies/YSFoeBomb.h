@@ -8,6 +8,7 @@
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UStaticMeshComponent;
+class UYSGroundZoneComponent;
 
 /** Lancer d'une bombe : tout ce qu'il faut pour rejouer la même trajectoire et la même explosion sur chaque machine */
 USTRUCT()
@@ -99,9 +100,9 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UStaticMeshComponent> BombMesh;
 
-	/** Disque rouge au sol au point d'impact (coordonnées monde) */
+	/** Disque rouge posé sur le relief au point d'impact (coordonnées monde) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<UStaticMeshComponent> LandingZone;
+	TObjectPtr<UYSGroundZoneComponent> LandingZone;
 
 	/** Sphère de l'explosion (coordonnées monde) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))

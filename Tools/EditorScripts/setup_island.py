@@ -1,10 +1,11 @@
-"""
+﻿"""
 Île pirate (TestGround) :
   - le sol plat « Ground » est remplacé par un Landscape « Island » (4 x 4 composants de 63 quads, 50 cm par quad = 126 m de côté)
     sculpté par une formule : côte irrégulière, collines douces (pentes < 20°, toujours praticables à pied), plage en pente légère,
-    puis falaise sous-marine qui fait tomber sous la KillZ (deadzone)
+    jusqu'au bord de l'eau, puis à pic sous la mer (on passe à travers l'océan et on tombe sous la KillZ : deadzone)
   - matériau /Game/Art/Materials/M_IslandGround : sable en bas, herbe en haut (selon l'altitude : suit les retouches au sculpt)
-  - océan : grand plane bleu au niveau de la mer (/Game/Art/Materials/M_Ocean), sans collision, autour de l'île
+  - océan : acteur AYSOcean (plane bleu /Game/Art/Materials/M_Ocean, sans collision) au niveau de la mer : niveau de la mer
+    pour le jeu (pas de NME ni de carte au trésor sous l'eau, balles et zones au sol au-dessus de la surface)
   - Brooker en bord de mer au sud (-X : bas de l'écran), les 4 PlayerStart juste à côté, ponton (/Game/Art/Props/BP_Prop_Pier) qui part
     vers la mer à côté du Brooker
   - palmiers : les anciens sont retirés, de nouveaux placés sur l'île (graine fixe : même placement à chaque lancement)
@@ -31,7 +32,6 @@ PALM_BP = f"{PROPS_DIR}/BP_Prop_PalmTree"
 BROWN = "/Game/Art/Materials/PH_materials/m_PH_monochrome_Brown"
 CUBE = "/Engine/BasicShapes/Cube"
 CYLINDER = "/Engine/BasicShapes/Cylinder"
-PLANE = "/Engine/BasicShapes/Plane"
 
 # landscape
 COMPONENTS = 4
@@ -44,7 +44,8 @@ SEA_LEVEL = -30.0
 # forme de l'île
 ISLAND_RADIUS = 4600.0
 LAND_HEIGHT = 30.0        # plateau côtier
-SHORE_DEPTH = -45.0       # au bord de l'eau (d = 1)
+SHORE_DEPTH = -22.0       # au bord de l'eau (d = 1) : juste au-dessus de la mer
+CLIFF_WIDTH = 0.02        # puis à pic jusqu'au fond (~1 m) : on tombe dans l'eau au lieu d'y marcher
 SEA_FLOOR = -650.0        # sous la KillZ (-300) : tomber dans l'océan = mort
 HILLS = [                 # (x, y, hauteur, rayon) ; sud = -X
     (1600.0, 600.0, 380.0, 1500.0),
@@ -80,13 +81,13 @@ def coast_radius(theta):
 def height(x, y):
     r = math.hypot(x, y)
     d = r / coast_radius(math.atan2(y, x))
-    # profil de côte : plateau, plage, falaise sous-marine
+    # profil de côte : plateau, plage jusqu'au bord de l'eau, puis à pic
     if d <= 0.82:
         base = LAND_HEIGHT
     elif d <= 1.0:
         base = LAND_HEIGHT + (SHORE_DEPTH - LAND_HEIGHT) * smoothstep((d - 0.82) / 0.18)
     else:
-        base = SHORE_DEPTH + (SEA_FLOOR - SHORE_DEPTH) * smoothstep((d - 1.0) / 0.12)
+        base = SHORE_DEPTH + (SEA_FLOOR - SHORE_DEPTH) * smoothstep((d - 1.0) / CLIFF_WIDTH)
     # collines (seulement à l'intérieur des terres) + petites ondulations
     inland = smoothstep((0.82 - d) / 0.25)
     hills = sum(h * math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (2.0 * s * s)) for cx, cy, h, s in HILLS)
@@ -101,7 +102,10 @@ def max_land_slope_deg(heights):
             h = heights[j * SIZE + i]
             if h < SEA_LEVEL:
                 continue
-            for dh in (heights[j * SIZE + i + 1] - h, heights[(j + 1) * SIZE + i] - h):
+            for neighbor in (heights[j * SIZE + i + 1], heights[(j + 1) * SIZE + i]):
+                if neighbor < SEA_LEVEL:
+                    continue  # bord à pic sous l'eau : pas une pente de marche
+                dh = neighbor - h
                 worst = max(worst, math.degrees(math.atan(abs(dh) / QUAD_SIZE)))
     return worst
 
@@ -255,13 +259,10 @@ try:
     log(f"landscape : {landscape.get_actor_label()} ({SIZE} x {SIZE} sommets, {COMPONENTS * QUADS * QUAD_SIZE / 100:.0f} m de côté)")
 
     # océan
-    ocean = spawn(unreal.StaticMeshActor, unreal.Vector(0, 0, SEA_LEVEL), label="Ocean")
-    smc = ocean.static_mesh_component
-    smc.set_static_mesh(assets.load_asset(PLANE))
-    smc.set_material(0, ocean_mat)
-    smc.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+    ocean = spawn(unreal.YSOcean, unreal.Vector(0, 0, SEA_LEVEL), label="Ocean")
+    ocean.get_component_by_class(unreal.StaticMeshComponent).set_material(0, ocean_mat)
     ocean.set_actor_scale3d(unreal.Vector(800.0, 800.0, 1.0))
-    log(f"océan : plane de 800 m à Z {SEA_LEVEL:.0f}")
+    log(f"océan : AYSOcean, plane de 800 m à Z {SEA_LEVEL:.0f} (sans collision)")
 
     # Brooker au bord de la mer, au sud ; joueurs juste au nord de lui ; ponton à côté vers la mer
     brooker_x = shore_x(LAND_HEIGHT - 5.0) + 150.0

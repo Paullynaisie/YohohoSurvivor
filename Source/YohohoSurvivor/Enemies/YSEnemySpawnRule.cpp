@@ -7,6 +7,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerState.h"
+#include "Map/YSOcean.h"
 #include "Player/YSPlayerCharacter.h"
 
 void UYSEnemySpawnRule::Start(AYSGameMode* InGameMode)
@@ -207,6 +208,12 @@ bool UYSEnemySpawnRule::FindSpawnLocation(const TArray<APawn*>& Players, float C
 	const FVector TraceEnd(Candidate.X, Candidate.Y, Center.Z - 5000.0f);
 	FCollisionObjectQueryParams Objects(ECC_WorldStatic);
 	if (!World->LineTraceSingleByObjectType(Hit, TraceStart, TraceEnd, Objects) || Hit.ImpactNormal.Z < 0.7f)
+	{
+		return false;
+	}
+
+	// pas dans l'océan (fond marin ou bord de plage sous l'eau)
+	if (AYSOcean::IsUnderwater(World, Hit.ImpactPoint))
 	{
 		return false;
 	}

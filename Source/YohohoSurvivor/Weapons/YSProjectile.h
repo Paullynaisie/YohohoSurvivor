@@ -10,7 +10,7 @@ class USphereComponent;
 class UStaticMeshComponent;
 
 /**
- *  Projectile en ligne droite. Touche uniquement les acteurs portant un des HitTags
+ *  Projectile en ligne droite (à hauteur constante au-dessus du relief si bFollowGround). Touche uniquement les acteurs portant un des HitTags
  *  (via IGameplayTagAssetInterface), traverse les autres pawns, est détruit contre le décor.
  *  Les dégâts sont fixés par la capacité qui le tire (SetDamage) et appliqués sur le serveur.
  *  Classe de base du Blueprint PetoirAMMO.
@@ -50,6 +50,22 @@ protected:
 	/** Détruit le projectile quand il heurte le décor (murs, obstacles) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Collision")
 	bool bDestroyOnWorldHit = true;
+
+	/** Relief : la balle garde pendant tout son vol sa hauteur au-dessus du sol prise au tir (au-dessus de la mer s'il y a un océan) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground")
+	bool bFollowGround = true;
+
+	/** Montée max du sol suivie d'une image à l'autre ; au-delà c'est un mur (tronc, falaise) : la balle le heurte */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground", meta=(ClampMin="0", Units="Centimeters", EditCondition="bFollowGround"))
+	float GroundFollowMaxStep = 100.0f;
+
+	/** La balle regarde le sol ce temps devant elle pour monter avant la pente (sinon elle la heurte) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground", meta=(ClampMin="0", Units="Seconds", EditCondition="bFollowGround"))
+	float GroundFollowLookAhead = 0.1f;
+
+	/** Descente : vitesse à laquelle la balle redescend à la hauteur voulue (0 = immédiat ; plus petit = plus doux). Les montées sont immédiates */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground", meta=(ClampMin="0", EditCondition="bFollowGround"))
+	float GroundFollowInterpSpeed = 15.0f;
 
 	/** Couleur appliquée au mesh */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Appearance")
@@ -95,6 +111,10 @@ private:
 	/** Cibles déjà touchées (un ricochet ne les retouche pas) */
 	TArray<TWeakObjectPtr<AActor>> HitActors;
 
+	/** Suivi du sol : hauteur voulue au-dessus du sol (prise au tir) et dernier sol trouvé ; négatif = pas de suivi */
+	float HeightAboveGround = -1.0f;
+	float LastGroundZ = 0.0f;
+
 public:
 
 	AYSProjectile();
@@ -104,6 +124,10 @@ public:
 	virtual void PostInitializeComponents() override;
 
 	virtual void BeginPlay() override;
+
+	virtual void Tick(float DeltaSeconds) override;
+
+	virtual void LifeSpanExpired() override;
 
 	void SetDamage(float NewDamage) { Damage = NewDamage; }
 
@@ -127,10 +151,20 @@ protected:
 	/** Repart vers la cible du ricochet (une autre si elle a disparu pendant l'arrêt, sinon la balle disparaît) */
 	void LaunchRicochet();
 
+	/** Sol sous (X, Y) cherché entre ReferenceZ + MaxStepUp et ReferenceZ - MaxStepDown, ramené au niveau de la mer ; faux sans sol */
+	bool FindGroundZ(const FVector2D& Point, float ReferenceZ, float MaxStepUp, float MaxStepDown, float& OutGroundZ) const;
+
 protected:
 
 	UFUNCTION()
 	void OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	/** Vrai si ce choc est contre le sol suivi (pente praticable) et non contre un mur */
+	bool IsGroundHit(const FHitResult& Hit) const;
+
+	/** Le composant de mouvement s'est arrêté sur un choc : contre une pente, la balle reprend sa hauteur et repart */
+	UFUNCTION()
+	void OnProjectileStopped(const FHitResult& Hit);
 
 	UFUNCTION()
 	void OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);

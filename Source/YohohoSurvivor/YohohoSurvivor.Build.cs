@@ -23,7 +23,8 @@ public class YohohoSurvivor : ModuleRules
 			"Slate",
 			"SlateCore",
 			"GameplayTags",
-			"Sockets"
+			"Sockets",
+			"ProceduralMeshComponent"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "ApplicationCore" });

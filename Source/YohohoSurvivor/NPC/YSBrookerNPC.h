@@ -6,7 +6,7 @@
 
 class AYSInteractiveObject;
 class UTexture2D;
-class UStaticMeshComponent;
+class UYSGroundZoneComponent;
 class UMaterialInterface;
 
 /**
@@ -14,7 +14,7 @@ class UMaterialInterface;
  *  AcceptRange de lui est pris (l'objet disparaît) et l'équipe gagne ses doublons (objectif commun, AYSGameState).
  *  Quand le joueur local porte un objet, une bulle indique le Brooker le plus proche (au-dessus de lui à l'écran,
  *  ou au bord de l'écran dans sa direction).
- *  Zone de rachat visible au sol (AcceptZone : disque translucide de rayon AcceptRange, aussi dans l'éditeur).
+ *  Zone de rachat visible au sol (GroundZone : disque translucide de rayon AcceptRange posé sur le relief, aussi dans l'éditeur).
  *  Origine de l'acteur = ses pieds : il se pose au sol au démarrage. Visuel (primitives) dans le Blueprint enfant.
  *  Classe de base du Blueprint BP_NPC_Brooker.
  */
@@ -28,9 +28,9 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USceneComponent> Root;
 
-	/** Zone de rachat au sol : disque (cylindre aplati) mis à l'échelle de AcceptRange dans OnConstruction */
+	/** Zone de rachat au sol : disque de rayon AcceptRange qui épouse le relief, reconstruit dans OnConstruction et BeginPlay */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<UStaticMeshComponent> AcceptZone;
+	TObjectPtr<UYSGroundZoneComponent> GroundZone;
 
 protected:
 
@@ -81,7 +81,7 @@ protected:
 
 	/** Hauteur du disque au-dessus du sol (évite qu'il clignote avec le sol) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Brooker|Zone", meta=(Units="Centimeters"))
-	float ZoneHeight = 2.0f;
+	float ZoneHeight = 5.0f;
 
 public:
 

@@ -6,6 +6,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Map/YSGroundZoneComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
@@ -13,12 +14,11 @@
 
 namespace YSFoeBomb
 {
-	/** Formes moteur : sphère et cylindre de 100 cm (rayon 50) */
+	/** Sphère moteur de 100 cm (rayon 50) */
 	constexpr float ShapeRadius = 50.0f;
 
-	/** Épaisseur du disque d'impact (échelle Z du cylindre) et hauteur au-dessus du sol */
-	constexpr float ZoneThickness = 0.01f;
-	constexpr float ZoneHeight = 2.0f;
+	/** Hauteur du disque d'impact au-dessus du sol */
+	constexpr float ZoneHeight = 5.0f;
 
 	/** Rayon de la bombe en vol */
 	constexpr float BombRadius = 20.0f;
@@ -38,13 +38,9 @@ AYSFoeBomb::AYSFoeBomb()
 	BombMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BombMesh->SetRelativeScale3D(FVector(YSFoeBomb::BombRadius / YSFoeBomb::ShapeRadius));
 
-	LandingZone = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LandingZone"));
+	LandingZone = CreateDefaultSubobject<UYSGroundZoneComponent>(TEXT("LandingZone"));
 	LandingZone->SetupAttachment(BombMesh);
 	LandingZone->SetUsingAbsoluteLocation(true);
-	LandingZone->SetUsingAbsoluteRotation(true);
-	LandingZone->SetUsingAbsoluteScale(true);
-	LandingZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	LandingZone->SetCastShadow(false);
 
 	ExplosionSphere = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ExplosionSphere"));
 	ExplosionSphere->SetupAttachment(BombMesh);
@@ -56,15 +52,10 @@ AYSFoeBomb::AYSFoeBomb()
 	ExplosionSphere->SetVisibility(false);
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	if (Sphere.Succeeded())
 	{
 		BombMesh->SetStaticMesh(Sphere.Object);
 		ExplosionSphere->SetStaticMesh(Sphere.Object);
-	}
-	if (Cylinder.Succeeded())
-	{
-		LandingZone->SetStaticMesh(Cylinder.Object);
 	}
 
 	HitTags.AddTag(YSTags::Team_Player);
@@ -118,10 +109,9 @@ void AYSFoeBomb::ApplyThrowVisuals()
 	BombMaterialInstance = Throw.BombMaterial ? BombMesh->CreateDynamicMaterialInstance(0, Throw.BombMaterial) : BombMesh->CreateDynamicMaterialInstance(0);
 	SetFuseAlpha(0.0f);
 
-	// prévisualisation de l'impact : disque rouge au sol, de la taille de l'explosion
-	const float ZoneScale = FMath::Max(Throw.ExplosionRadius, 1.0f) / YSFoeBomb::ShapeRadius;
-	LandingZone->SetWorldLocationAndRotation(Throw.Target + FVector(0.0f, 0.0f, YSFoeBomb::ZoneHeight), FRotator::ZeroRotator);
-	LandingZone->SetWorldScale3D(FVector(ZoneScale, ZoneScale, YSFoeBomb::ZoneThickness));
+	// prévisualisation de l'impact : disque rouge posé sur le relief, de la taille de l'explosion
+	LandingZone->SetWorldLocation(Throw.Target);
+	LandingZone->BuildZone(FMath::Max(Throw.ExplosionRadius, 1.0f), YSFoeBomb::ZoneHeight);
 	if (Throw.LandingZoneMaterial)
 	{
 		UMaterialInstanceDynamic* ZoneMaterial = LandingZone->CreateDynamicMaterialInstance(0, Throw.LandingZoneMaterial);

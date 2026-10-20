@@ -7,12 +7,30 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameplayTagAssetInterface.h"
+#include "Map/YSOcean.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
+namespace YSProjectile
+{
+	/** Suivi du sol : profondeur cherchée sous la balle au tir, puis sous le dernier sol trouvé */
+	constexpr float InitialGroundSearch = 2000.0f;
+	constexpr float GroundSearchDown = 1000.0f;
+
+	/** Écart minimal entre le bas de la balle et le sol */
+	constexpr float MinGroundClearance = 10.0f;
+
+	/** Un choc contre une surface au moins aussi plate (pente < 45°) est le sol, pas un mur */
+	constexpr float GroundNormalZ = 0.7f;
+}
+
 AYSProjectile::AYSProjectile()
 {
+	// Tick = suivi du relief (activé au BeginPlay si un sol est trouvé)
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
+
 	bReplicates = true;
 	SetReplicatingMovement(true);
 
@@ -69,6 +87,7 @@ void AYSProjectile::PostInitializeComponents()
 
 	Collision->OnComponentBeginOverlap.AddDynamic(this, &AYSProjectile::OnCollisionOverlap);
 	Collision->OnComponentHit.AddDynamic(this, &AYSProjectile::OnCollisionHit);
+	ProjectileMovement->OnProjectileStop.AddDynamic(this, &AYSProjectile::OnProjectileStopped);
 }
 
 void AYSProjectile::BeginPlay()
@@ -76,6 +95,83 @@ void AYSProjectile::BeginPlay()
 	Super::BeginPlay();
 
 	SetLifeSpan(LifeTime);
+
+	// relief : hauteur au-dessus du sol prise au tir, gardée pendant tout le vol (même calcul sur toutes les machines)
+	float GroundZ = 0.0f;
+	if (bFollowGround && FindGroundZ(FVector2D(GetActorLocation().X, GetActorLocation().Y), GetActorLocation().Z, 0.0f, YSProjectile::InitialGroundSearch, GroundZ))
+	{
+		// au moins un peu plus que le rayon de la balle, pour ne pas frotter le sol
+		HeightAboveGround = FMath::Max(GetActorLocation().Z - GroundZ, Collision->GetScaledSphereRadius() + YSProjectile::MinGroundClearance);
+		LastGroundZ = GroundZ;
+
+		// vol à plat : la hauteur ne vient que du sol
+		const FVector FlatDirection = FVector(ProjectileMovement->Velocity.X, ProjectileMovement->Velocity.Y, 0.0f).GetSafeNormal();
+		if (!FlatDirection.IsNearlyZero())
+		{
+			ProjectileMovement->Velocity = FlatDirection * Speed;
+		}
+	}
+	SetActorTickEnabled(HeightAboveGround >= 0.0f);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s tirée en (%.0f, %.0f, %.0f) : %.0f cm au-dessus du sol (suivi du relief %d)"), *GetName(),
+		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, HeightAboveGround, HeightAboveGround >= 0.0f);
+}
+
+bool AYSProjectile::FindGroundZ(const FVector2D& Point, float ReferenceZ, float MaxStepUp, float MaxStepDown, float& OutGroundZ) const
+{
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSProjectileGround), false, this);
+	Params.AddIgnoredActor(GetInstigator());
+	const FVector Start(Point.X, Point.Y, ReferenceZ + MaxStepUp);
+	const FVector End(Point.X, Point.Y, ReferenceZ - MaxStepDown);
+	if (!GetWorld()->LineTraceSingleByObjectType(Hit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+	{
+		return false;
+	}
+	// au-dessus de l'eau, la balle reste au-dessus de la surface au lieu de suivre le fond
+	OutGroundZ = AYSOcean::ClampAboveSea(GetWorld(), Hit.ImpactPoint.Z);
+	return true;
+}
+
+void AYSProjectile::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	if (HeightAboveGround < 0.0f || bRicochetPaused)
+	{
+		return;
+	}
+
+	// sol sous la balle et un peu devant elle (pour monter avant la pente) ;
+	// sol trop haut (mur) ou absent (bord du monde) : la balle continue tout droit et heurte le mur
+	FVector Location = GetActorLocation();
+	const FVector2D Here(Location.X, Location.Y);
+	const FVector2D Ahead = Here + FVector2D(GetVelocity().X, GetVelocity().Y) * GroundFollowLookAhead;
+	float GroundZ = 0.0f;
+	if (FindGroundZ(Here, LastGroundZ, GroundFollowMaxStep, YSProjectile::GroundSearchDown, GroundZ))
+	{
+		LastGroundZ = GroundZ;
+	}
+	float AheadGroundZ = LastGroundZ;
+	if (GroundFollowLookAhead > 0.0f && FindGroundZ(Ahead, LastGroundZ, GroundFollowMaxStep, YSProjectile::GroundSearchDown, GroundZ))
+	{
+		AheadGroundZ = GroundZ;
+	}
+
+	// montée immédiate (ne jamais toucher la pente), descente adoucie
+	const float TargetZ = FMath::Max(LastGroundZ, AheadGroundZ) + HeightAboveGround;
+	const float NewZ = TargetZ >= Location.Z || GroundFollowInterpSpeed <= 0.0f ? TargetZ : FMath::FInterpTo(Location.Z, TargetZ, DeltaSeconds, GroundFollowInterpSpeed);
+	if (!FMath::IsNearlyEqual(NewZ, Location.Z, 0.1f))
+	{
+		Location.Z = NewZ;
+		SetActorLocation(Location);
+	}
+}
+
+void AYSProjectile::LifeSpanExpired()
+{
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s en fin de vie en (%.0f, %.0f, %.0f), sol %.0f"), *GetName(),
+		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, LastGroundZ);
+	Super::LifeSpanExpired();
 }
 
 void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
@@ -91,7 +187,8 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 	const FVector ShotDirection = GetVelocity().IsNearlyZero() ? GetActorForwardVector() : GetVelocity().GetSafeNormal();
 	const FPointDamageEvent DamageEvent(Damage, SweepResult, ShotDirection, nullptr);
 	OtherActor->TakeDamage(Damage, DamageEvent, GetInstigatorController(), this);
-	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s : %.1f dégâts (ricochets restants %d)"), *GetName(), *OtherActor->GetName(), Damage, RemainingRicochets);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s en (%.0f, %.0f, %.0f), sol %.0f : %.1f dégâts (ricochets restants %d)"), *GetName(), *OtherActor->GetName(),
+		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, LastGroundZ, Damage, RemainingRicochets);
 
 	// ricochet vers une autre cible, sinon la balle disparaît
 	if (RemainingRicochets > 0 && Ricochet())
@@ -179,10 +276,43 @@ AActor* AYSProjectile::FindRicochetTarget() const
 	return BestTarget;
 }
 
+bool AYSProjectile::IsGroundHit(const FHitResult& Hit) const
+{
+	return HeightAboveGround >= 0.0f && Hit.ImpactNormal.Z >= YSProjectile::GroundNormalZ;
+}
+
+void AYSProjectile::OnProjectileStopped(const FHitResult& Hit)
+{
+	// heurt d'une pente praticable (grosse image : la balle a avancé d'un coup dans la colline) : elle reprend sa hauteur et repart
+	if (!IsGroundHit(Hit) || bHasHit || bRicochetPaused || IsActorBeingDestroyed())
+	{
+		return;
+	}
+
+	const FVector Direction = FVector(Hit.TraceEnd.X - Hit.TraceStart.X, Hit.TraceEnd.Y - Hit.TraceStart.Y, 0.0f).GetSafeNormal();
+	LastGroundZ = AYSOcean::ClampAboveSea(GetWorld(), Hit.ImpactPoint.Z);
+	FVector Location = GetActorLocation();
+	Location.Z = LastGroundZ + HeightAboveGround;
+	SetActorLocation(Location);
+	ProjectileMovement->SetUpdatedComponent(Collision);
+	ProjectileMovement->Velocity = (Direction.IsNearlyZero() ? GetActorForwardVector() : Direction) * Speed;
+	ProjectileMovement->UpdateComponentVelocity();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s a touché la pente en (%.0f, %.0f, %.0f) : remise à %.0f cm au-dessus du sol"), *GetName(),
+		Hit.ImpactPoint.X, Hit.ImpactPoint.Y, Hit.ImpactPoint.Z, HeightAboveGround);
+}
+
 void AYSProjectile::OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+	// une pente de sol n'est pas un mur : la balle repart (OnProjectileStopped)
+	if (IsGroundHit(Hit))
+	{
+		return;
+	}
+
 	if (HasAuthority() && bDestroyOnWorldHit)
 	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s arrêtée par %s en (%.0f, %.0f, %.0f), sol %.0f"), *GetName(), OtherActor ? *OtherActor->GetName() : TEXT("?"),
+			Hit.ImpactPoint.X, Hit.ImpactPoint.Y, Hit.ImpactPoint.Z, LastGroundZ);
 		Destroy();
 	}
 }

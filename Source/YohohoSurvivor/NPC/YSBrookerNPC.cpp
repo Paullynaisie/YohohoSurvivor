@@ -1,21 +1,10 @@
 ﻿#include "NPC/YSBrookerNPC.h"
-#include "Components/StaticMeshComponent.h"
 #include "Core/YSGameMode.h"
-#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Interaction/YSInteractiveObject.h"
+#include "Map/YSGroundZoneComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
-#include "UObject/ConstructorHelpers.h"
-
-namespace YSBrooker
-{
-	/** Rayon du cylindre moteur (100 x 100 x 100) */
-	constexpr float CylinderRadius = 50.0f;
-
-	/** Épaisseur du disque de la zone (échelle Z du cylindre) */
-	constexpr float ZoneThickness = 0.01f;
-}
 
 AYSBrookerNPC::AYSBrookerNPC()
 {
@@ -26,17 +15,9 @@ AYSBrookerNPC::AYSBrookerNPC()
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RootComponent = Root;
 
-	// zone de rachat : disque translucide au sol, sans collision ni ombre
-	AcceptZone = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AcceptZone"));
-	AcceptZone->SetupAttachment(Root);
-	AcceptZone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	AcceptZone->SetCastShadow(false);
-	AcceptZone->SetCanEverAffectNavigation(false);
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Disc(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-	if (Disc.Succeeded())
-	{
-		AcceptZone->SetStaticMesh(Disc.Object);
-	}
+	// zone de rachat : disque translucide posé sur le relief, sans collision ni ombre
+	GroundZone = CreateDefaultSubobject<UYSGroundZoneComponent>(TEXT("GroundZone"));
+	GroundZone->SetupAttachment(Root);
 
 	BrookerName = NSLOCTEXT("YS", "BrookerName", "Brooker");
 }
@@ -51,15 +32,14 @@ void AYSBrookerNPC::OnConstruction(const FTransform& Transform)
 
 void AYSBrookerNPC::ApplyZone()
 {
-	// la zone suit AcceptRange
-	AcceptZone->SetVisibility(bShowZone && AcceptRange > 0.0f);
-	const float Scale = FMath::Max(AcceptRange, 1.0f) / YSBrooker::CylinderRadius;
-	AcceptZone->SetRelativeScale3D(FVector(Scale, Scale, YSBrooker::ZoneThickness));
-	AcceptZone->SetRelativeLocation(FVector(0.0f, 0.0f, ZoneHeight));
+	// la zone suit AcceptRange et le relief autour du Brooker
+	const bool bVisible = bShowZone && AcceptRange > 0.0f;
+	GroundZone->SetVisibility(bVisible);
+	GroundZone->BuildZone(bVisible ? AcceptRange : 0.0f, ZoneHeight);
 
 	if (ZoneMaterial)
 	{
-		UMaterialInstanceDynamic* Material = AcceptZone->CreateDynamicMaterialInstance(0, ZoneMaterial);
+		UMaterialInstanceDynamic* Material = GroundZone->CreateDynamicMaterialInstance(0, ZoneMaterial);
 		Material->SetVectorParameterValue(TEXT("Color"), ZoneColor);
 		Material->SetScalarParameterValue(TEXT("Glow"), ZoneGlow);
 		Material->SetScalarParameterValue(TEXT("FillOpacity"), ZoneFillOpacity);
@@ -79,9 +59,10 @@ void AYSBrookerNPC::BeginPlay()
 	// OnConstruction ne tourne pas pour un Brooker chargé avec la map : matériau de zone recréé ici
 	ApplyZone();
 
-	const UMaterialInterface* ZoneMaterialUsed = AcceptZone->GetMaterial(0);
-	UE_LOG(LogTemp, Verbose, TEXT("[YSBrooker] %s : zone %.0f cm, matériau %s (parent %s), visible %d"), *GetName(), AcceptRange,
-		ZoneMaterialUsed ? *ZoneMaterialUsed->GetName() : TEXT("aucun"), ZoneMaterialUsed && ZoneMaterialUsed->GetMaterial() ? *ZoneMaterialUsed->GetMaterial()->GetName() : TEXT("-"), AcceptZone->IsVisible());
+	const UMaterialInterface* ZoneMaterialUsed = GroundZone->GetMaterial(0);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBrooker] %s : zone %.0f cm, matériau %s (parent %s), visible %d, %d sommets"), *GetName(), AcceptRange,
+		ZoneMaterialUsed ? *ZoneMaterialUsed->GetName() : TEXT("aucun"), ZoneMaterialUsed && ZoneMaterialUsed->GetMaterial() ? *ZoneMaterialUsed->GetMaterial()->GetName() : TEXT("-"), GroundZone->IsVisible(),
+		GroundZone->GetNumSections() > 0 ? GroundZone->GetProcMeshSection(0)->ProcVertexBuffer.Num() : 0);
 }
 
 bool AYSBrookerNPC::TryBuy(AYSInteractiveObject* Object)

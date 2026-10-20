@@ -4,6 +4,7 @@
 #include "Core/YSGameMode.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Map/YSOcean.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
@@ -112,7 +113,8 @@ bool AYSTreasureMap::FindPathGround(const UWorld* World, const FVector& Location
 	const FVector Start(Location.X, Location.Y, ReferenceZ + YSTreasureMap::GroundTraceRange);
 	const FVector End(Location.X, Location.Y, ReferenceZ - YSTreasureMap::GroundTraceRange);
 	if (!World->LineTraceSingleByObjectType(Hit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params)
-		|| FMath::Abs(Hit.ImpactPoint.Z - ReferenceZ) > MaxHeight)
+		|| FMath::Abs(Hit.ImpactPoint.Z - ReferenceZ) > MaxHeight
+		|| AYSOcean::IsUnderwater(World, Hit.ImpactPoint))
 	{
 		return false;
 	}
