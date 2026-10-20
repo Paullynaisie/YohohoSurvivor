@@ -37,12 +37,20 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
 	TArray<TSubclassOf<AYSPlayerCharacter>> SelectableCharacters;
 
-	/** Couleurs proposées à l'écran de sélection (matériau appliqué au « Head Feature » du personnage) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	/** Couleurs proposées à l'écran de sélection : une ligne par couleur (DT_CustomizationColors), dans l'ordre des boutons */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select", meta=(RowType="/Script/YohohoSurvivor.YSCustomizationColor"))
+	TObjectPtr<UDataTable> CustomizationColorTable;
+
+	/** Visages proposés à l'écran de sélection : une ligne par visage (DT_CustomizationFaces), dans l'ordre des boutons */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select", meta=(RowType="/Script/YohohoSurvivor.YSCustomizationFace"))
+	TObjectPtr<UDataTable> CustomizationFaceTable;
+
+	/** Sans table de couleurs : couleurs proposées (ancienne liste, vidée une fois reprise dans la table) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select|Without Table")
 	TArray<FYSCustomizationColor> CustomizationColors;
 
-	/** Visages proposés à l'écran de sélection (texture du decal de visage) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select")
+	/** Sans table de visages : visages proposés (ancienne liste, vidée une fois reprise dans la table) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Select|Without Table")
 	TArray<TObjectPtr<UTexture2D>> CustomizationFaces;
 
 	/** Longueur max d'un pseudo */

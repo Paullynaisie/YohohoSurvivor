@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "Core/YSCustomization.h"
 #include "YSEditorScriptLibrary.generated.h"
 
 class UAnimSequence;
@@ -42,5 +43,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category="YS|Editor", meta=(WorldContext="WorldContextObject"))
 	static class ALandscape* CreateLandscapeFromHeights(UObject* WorldContextObject, FVector MinCorner, FVector Scale, int32 ComponentCount, int32 QuadsPerComponent,
 		const TArray<float>& HeightsCm, class UMaterialInterface* Material, const FString& Label);
+
+	/** Ajoute une ligne de couleur de personnalisation (DT_CustomizationColors) ; remplace la ligne du même nom */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static bool AddCustomizationColorRow(class UDataTable* Table, FName RowName, const FYSCustomizationColor& Color);
+
+	/** Ajoute une ligne de visage de personnalisation (DT_CustomizationFaces) ; remplace la ligne du même nom */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static bool AddCustomizationFaceRow(class UDataTable* Table, FName RowName, class UTexture2D* Face);
 #endif
 };

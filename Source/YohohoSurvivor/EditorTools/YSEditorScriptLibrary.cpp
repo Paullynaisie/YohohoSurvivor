@@ -6,6 +6,8 @@
 
 #if WITH_EDITOR
 #include "Engine/Engine.h"
+#include "Engine/DataTable.h"
+#include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "Landscape.h"
 #include "LandscapeInfo.h"
@@ -129,6 +131,32 @@ ALandscape* UYSEditorScriptLibrary::CreateLandscapeFromHeights(UObject* WorldCon
 		Landscape->SetActorLabel(Label);
 	}
 	return Landscape;
+}
+
+bool UYSEditorScriptLibrary::AddCustomizationColorRow(UDataTable* Table, FName RowName, const FYSCustomizationColor& Color)
+{
+	if (!Table || Table->GetRowStruct() != FYSCustomizationColor::StaticStruct() || RowName.IsNone())
+	{
+		return false;
+	}
+	Table->Modify();
+	Table->AddRow(RowName, Color);
+	Table->MarkPackageDirty();
+	return true;
+}
+
+bool UYSEditorScriptLibrary::AddCustomizationFaceRow(UDataTable* Table, FName RowName, UTexture2D* Face)
+{
+	if (!Table || Table->GetRowStruct() != FYSCustomizationFace::StaticStruct() || RowName.IsNone() || !Face)
+	{
+		return false;
+	}
+	FYSCustomizationFace Row;
+	Row.Face = Face;
+	Table->Modify();
+	Table->AddRow(RowName, Row);
+	Table->MarkPackageDirty();
+	return true;
 }
 
 #endif

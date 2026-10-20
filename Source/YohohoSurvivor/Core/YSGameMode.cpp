@@ -50,6 +50,29 @@ void AYSGameMode::InitGameState()
 {
 	Super::InitGameState();
 
+	// personnalisation : les Data Tables (ordre des lignes) remplacent les listes
+	if (CustomizationColorTable)
+	{
+		CustomizationColors.Reset();
+		CustomizationColorTable->ForeachRow<FYSCustomizationColor>(TEXT("YSCustomizationColors"), [this](const FName&, const FYSCustomizationColor& Row)
+		{
+			CustomizationColors.Add(Row);
+		});
+	}
+	if (CustomizationFaceTable)
+	{
+		CustomizationFaces.Reset();
+		CustomizationFaceTable->ForeachRow<FYSCustomizationFace>(TEXT("YSCustomizationFaces"), [this](const FName&, const FYSCustomizationFace& Row)
+		{
+			if (Row.Face)
+			{
+				CustomizationFaces.Add(Row.Face);
+			}
+		});
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Personnalisation : %d couleur(s) (%s), %d visage(s) (%s)"), CustomizationColors.Num(),
+		CustomizationColorTable ? *CustomizationColorTable->GetName() : TEXT("liste"), CustomizationFaces.Num(), CustomizationFaceTable ? *CustomizationFaceTable->GetName() : TEXT("liste"));
+
 	// la liste est répliquée par le GameState pour que les clients puissent construire leurs boutons
 	if (AYSGameState* YSGameState = GetGameState<AYSGameState>())
 	{
