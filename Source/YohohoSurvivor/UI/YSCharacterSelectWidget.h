@@ -189,6 +189,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
 	float SwatchFrameThickness = 4.0f;
 
+	/** Nombre max de boutons carrés par ligne (couleurs, visages) : au-delà, retour à la ligne sous les premiers */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization", meta=(ClampMin="1"))
+	int32 SwatchesPerRow = 8;
+
+	/** Espace vertical entre deux lignes de boutons carrés */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	float SwatchRowSpacing = 12.0f;
+
 	/** « Choisis ta main » : boutons Droitier / Gaucher */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
 	FVector2D HandednessButtonSize = FVector2D(150.0f, 48.0f);
@@ -296,7 +304,8 @@ private:
 	void AddChoiceButton(UWidget* Content);
 
 	/** Bouton carré encadré (couleur ou visage) ajouté à Row ; renvoie le cadre */
-	UBorder* AddSwatchButton(UHorizontalBox* Row, int32 Group, int32 Index, const FLinearColor& ButtonColor, UTexture2D* Icon, UButton*& OutButton);
+	/** Ajoute un bouton carré dans la grille (lignes de SwatchesPerRow, la dernière alignée à gauche) */
+	UBorder* AddSwatchButton(UVerticalBox* Grid, int32 Group, int32 Index, const FLinearColor& ButtonColor, UTexture2D* Icon, UButton*& OutButton);
 
 	UFUNCTION()
 	void HandleNicknameCommitted(const FText& Text, ETextCommit::Type CommitMethod);
@@ -340,10 +349,10 @@ private:
 	TObjectPtr<UImage> PreviewImage;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UHorizontalBox> ColorRow;
+	TObjectPtr<UVerticalBox> ColorRow;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UHorizontalBox> FaceRow;
+	TObjectPtr<UVerticalBox> FaceRow;
 
 	/** Cadres des boutons de couleur / visage (sélection) */
 	UPROPERTY(Transient)

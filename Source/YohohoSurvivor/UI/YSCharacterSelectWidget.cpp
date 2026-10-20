@@ -137,13 +137,13 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	UVerticalBoxSlot* ColorTitleSlot = Customization->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "ColorTitle", "Choisis ta couleur"), SectionTitleFontSize));
 	ColorTitleSlot->SetHorizontalAlignment(HAlign_Center);
 	ColorTitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, SectionTitleSpacing));
-	ColorRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Colors"));
+	ColorRow = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Colors"));
 	Customization->AddChildToVerticalBox(ColorRow)->SetHorizontalAlignment(HAlign_Center);
 
 	UVerticalBoxSlot* FaceTitleSlot = Customization->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "FaceTitle", "Choisis ton visage"), SectionTitleFontSize));
 	FaceTitleSlot->SetHorizontalAlignment(HAlign_Center);
 	FaceTitleSlot->SetPadding(FMargin(0.0f, SectionSpacing, 0.0f, SectionTitleSpacing));
-	FaceRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Faces"));
+	FaceRow = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Faces"));
 	Customization->AddChildToVerticalBox(FaceRow)->SetHorizontalAlignment(HAlign_Center);
 
 	// droitier / gaucher
@@ -222,7 +222,7 @@ void UYSCharacterSelectWidget::SetTakenColors(const TArray<bool>& Taken)
 	}
 }
 
-UBorder* UYSCharacterSelectWidget::AddSwatchButton(UHorizontalBox* Row, int32 Group, int32 Index, const FLinearColor& ButtonColor, UTexture2D* Icon, UButton*& OutButton)
+UBorder* UYSCharacterSelectWidget::AddSwatchButton(UVerticalBox* Grid, int32 Group, int32 Index, const FLinearColor& ButtonColor, UTexture2D* Icon, UButton*& OutButton)
 {
 	// cadre (sélection) > bouton carré (couleur) > icône (visage)
 	UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
@@ -251,6 +251,17 @@ UBorder* UYSCharacterSelectWidget::AddSwatchButton(UHorizontalBox* Row, int32 Gr
 	Proxy->Menu = this;
 	Button->OnClicked.AddDynamic(Proxy, &UYSCharacterSelectButtonProxy::HandleClicked);
 	ButtonProxies.Add(Proxy);
+
+	// lignes de SwatchesPerRow boutons ; une ligne incomplète commence sous les premiers (alignée à gauche)
+	const int32 PerRow = FMath::Max(SwatchesPerRow, 1);
+	if (Index % PerRow == 0 || Grid->GetChildrenCount() == 0)
+	{
+		UHorizontalBox* NewRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+		UVerticalBoxSlot* RowSlot = Grid->AddChildToVerticalBox(NewRow);
+		RowSlot->SetHorizontalAlignment(HAlign_Left);
+		RowSlot->SetPadding(FMargin(0.0f, Grid->GetChildrenCount() > 1 ? SwatchRowSpacing : 0.0f, 0.0f, 0.0f));
+	}
+	UHorizontalBox* Row = Cast<UHorizontalBox>(Grid->GetChildAt(Grid->GetChildrenCount() - 1));
 
 	UHorizontalBoxSlot* FrameSlot = Row->AddChildToHorizontalBox(Frame);
 	FrameSlot->SetPadding(FMargin(SwatchSpacing * 0.5f, 0.0f));
