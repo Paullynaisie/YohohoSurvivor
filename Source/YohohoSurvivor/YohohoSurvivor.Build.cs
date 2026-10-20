@@ -28,6 +28,12 @@ public class YohohoSurvivor : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "ApplicationCore" });
 
+		// outils éditeur (YSEditorScriptLibrary : création du landscape de l'île)
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("Landscape");
+		}
+
 		PublicIncludePaths.AddRange(new string[] {
 			"YohohoSurvivor",
 			"YohohoSurvivor/Variant_Strategy",

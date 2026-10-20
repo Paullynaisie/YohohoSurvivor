@@ -31,5 +31,16 @@ public:
 	/** Ajoute (ou met à jour) un socket sur un squelette ; retourne false si l'os n'existe pas */
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static bool SetSkeletonSocket(USkeleton* Skeleton, FName SocketName, FName BoneName, FVector RelativeLocation, FRotator RelativeRotation);
+
+	/**
+	 *  Crée un Landscape dans le monde de l'éditeur, comme le panneau « New Landscape » (calques d'édition, collisions) :
+	 *  ComponentCount x ComponentCount composants de QuadsPerComponent quads (1 section par composant),
+	 *  coin (X, Y min) à MinCorner, échelle Scale (Z = 100 : une unité de hauteur = 1/128 cm).
+	 *  HeightsCm = hauteur en cm de chaque sommet, ligne par ligne (Y puis X), (ComponentCount x QuadsPerComponent + 1)² valeurs.
+	 *  Retourne le Landscape créé (nullptr si les données ne correspondent pas).
+	 */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor", meta=(WorldContext="WorldContextObject"))
+	static class ALandscape* CreateLandscapeFromHeights(UObject* WorldContextObject, FVector MinCorner, FVector Scale, int32 ComponentCount, int32 QuadsPerComponent,
+		const TArray<float>& HeightsCm, class UMaterialInterface* Material, const FString& Label);
 #endif
 };
