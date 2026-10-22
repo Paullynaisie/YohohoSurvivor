@@ -155,8 +155,17 @@ public:
 	 */
 	bool EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const;
 
-	/** Déclenche l'attaque (serveur) si elle est disponible */
-	void StartAttack();
+	/** Déclenche l'attaque (serveur) si elle est disponible ; vrai si elle part */
+	bool StartAttack();
+
+	/** Arme de NME (non répliquée) : joue l'animation de l'attaque sur cette machine (NetMulticast du NME) */
+	void PlayAttackLocally();
+
+	/** Attaque lancée par son porteur (NME : sa hitbox de contact), pas par la détection en cône du joueur */
+	bool IsTriggeredByHolder() const;
+
+	/** Logique de combat : sur la machine qui fait autorité sur le PORTEUR (serveur), pas sur l'arme (arme de NME locale partout) */
+	bool HasHolderAuthority() const;
 
 protected:
 

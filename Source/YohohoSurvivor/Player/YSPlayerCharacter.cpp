@@ -26,6 +26,8 @@
 #include "UI/YSNameplateWidget.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSCombat.h"
+#include "Enemies/YSFoeCharacter.h"
+#include "Engine/DamageEvents.h"
 #include "Core/YSDamageTypes.h"
 #include "Core/YSGameplayTags.h"
 #include "Core/YSGameState.h"
@@ -227,8 +229,45 @@ float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Dam
 	if (!IsAlive())
 	{
 		Die();
+		return Damage;
 	}
+
+	ApplyPushback(Damage, DamageEvent, EventInstigator, DamageCauser);
 	return Damage;
+}
+
+void AYSPlayerCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator, const AActor* DamageCauser)
+{
+	// NME qui frappe : celui du contrôleur (coup d'épée) ou l'instigateur du projectile
+	const AYSFoeCharacter* Attacker = EventInstigator ? Cast<AYSFoeCharacter>(EventInstigator->GetPawn()) : nullptr;
+	if (!Attacker && DamageCauser)
+	{
+		Attacker = Cast<AYSFoeCharacter>(DamageCauser->GetInstigator());
+	}
+	if (!Attacker || !DamageEvent.IsOfType(FPointDamageEvent::ClassID))
+	{
+		return;
+	}
+	const FVector Direction = static_cast<const FPointDamageEvent&>(DamageEvent).ShotDirection.GetSafeNormal2D();
+	const float Force = Attacker->ComputePushbackForce(Damage, GetMaxHealth());
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPushback] %s frappé par %s : %.0f dégâts sur %.0f PV max (%.1f %%), pushback %.0f vers (%.2f, %.2f)"), *GetName(), *Attacker->GetName(),
+		Damage, GetMaxHealth(), 100.0f * Damage / FMath::Max(GetMaxHealth(), 1.0f), Force, Direction.X, Direction.Y);
+	if (Direction.IsNearlyZero() || Force <= 0.0f)
+	{
+		return;
+	}
+
+	// serveur + client qui contrôle le personnage (prédiction du mouvement)
+	LaunchCharacter(Direction * Force, true, false);
+	if (!IsLocallyControlled())
+	{
+		ClientLaunch(Direction * Force);
+	}
+}
+
+void AYSPlayerCharacter::ClientLaunch_Implementation(FVector_NetQuantize10 LaunchVelocity)
+{
+	LaunchCharacter(LaunchVelocity, true, false);
 }
 
 void AYSPlayerCharacter::Die()
@@ -1417,22 +1456,7 @@ bool AYSPlayerCharacter::HasUpgrade(const UYSUpgrade* Upgrade) const
 
 float AYSPlayerCharacter::ComputePushbackForce(float Damage, float TargetMaxHealth) const
 {
-	if (Damage <= 0.0f || TargetMaxHealth <= 0.0f)
-	{
-		return 0.0f;
-	}
-	// part de la vie de la cible retirée par le coup : rien sous le premier palier, force max à partir du second
-	const float Ratio = Damage / TargetMaxHealth;
-	if (Ratio < PushbackMinDamageRatio)
-	{
-		return 0.0f;
-	}
-	if (Ratio >= PushbackMaxDamageRatio || PushbackMaxDamageRatio <= PushbackMinDamageRatio)
-	{
-		return PushbackMaxForce;
-	}
-	const float Alpha = (Ratio - PushbackMinDamageRatio) / (PushbackMaxDamageRatio - PushbackMinDamageRatio);
-	return FMath::Lerp(PushbackMinForce, PushbackMaxForce, Alpha);
+	return YSCombat::ComputePushbackForce(Damage, TargetMaxHealth, PushbackMinDamageRatio, PushbackMaxDamageRatio, PushbackMinForce, PushbackMaxForce);
 }
 
 float AYSPlayerCharacter::GetUnmodifiedWalkSpeed() const

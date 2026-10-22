@@ -16,4 +16,10 @@ namespace YSCombat
 	void ConfigureHurtbox(UPrimitiveComponent* Component);
 
 	void ConfigureHitbox(UPrimitiveComponent* Component);
+
+	/**
+	 *  Force du pushback d'un coup de Damage sur une cible de TargetMaxHealth PV max, selon la part de vie retirée :
+	 *  sous MinRatio rien, à partir de MaxRatio MaxForce, entre les deux de MinForce à MaxForce (linéaire). Joueurs et NME.
+	 */
+	float ComputePushbackForce(float Damage, float TargetMaxHealth, float MinRatio, float MaxRatio, float MinForce, float MaxForce);
 }

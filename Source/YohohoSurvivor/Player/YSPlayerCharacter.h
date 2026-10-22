@@ -587,6 +587,16 @@ public:
 	/** Force du pushback d'un coup de Damage sur une cible de TargetMaxHealth PV max (0 = aucun) */
 	float ComputePushbackForce(float Damage, float TargetMaxHealth) const;
 
+	/**
+	 *  Pushback reçu d'un NME (serveur), comme celui des NME frappés par le joueur : direction du coup (FPointDamageEvent),
+	 *  force selon la part de vie retirée, réglée sur le NME qui frappe (Foe|Pushback)
+	 */
+	void ApplyPushback(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator, const AActor* DamageCauser);
+
+	/** Pushback : même impulsion sur le client qui contrôle ce personnage (sinon sa prédiction l'annule) */
+	UFUNCTION(Client, Reliable)
+	void ClientLaunch(FVector_NetQuantize10 LaunchVelocity);
+
 	/** A déjà au moins un bonus de cette upgrade (n'importe quelle variante) */
 	bool HasUpgrade(const UYSUpgrade* Upgrade) const;
 

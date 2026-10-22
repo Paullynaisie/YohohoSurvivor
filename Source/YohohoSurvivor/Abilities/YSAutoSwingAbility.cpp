@@ -49,8 +49,9 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	}
 #endif
 
-	// logique de combat : serveur uniquement (les clients ne font que jouer l'animation)
-	if (!GetOwner() || !GetOwner()->HasAuthority())
+	// logique de combat : serveur uniquement (les clients ne font que jouer l'animation). Autorité du PORTEUR :
+	// une arme de NME n'est pas répliquée, chaque machine a la sienne et en est « autorité »
+	if (!HasHolderAuthority())
 	{
 		return;
 	}
@@ -62,8 +63,8 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	}
 
 	// déclenchement automatique : seulement pour l'attaque auto (une sous-classe en Ability est lancée par le clic)
-	// ; en akimbo, la main gauche est déclenchée par la droite
-	if (!IsAutomatic() || IsOffHandOfAkimbo() || !IsReady() || !CanStartByPriority() || !FindAutoTarget())
+	// ; en akimbo, la main gauche est déclenchée par la droite ; NME : déclenchée par sa hitbox (AYSFoeCharacter)
+	if (!IsAutomatic() || IsTriggeredByHolder() || IsOffHandOfAkimbo() || !IsReady() || !CanStartByPriority() || !FindAutoTarget())
 	{
 		return;
 	}
@@ -94,11 +95,30 @@ AActor* UYSAutoSwingAbility::FindAutoTarget() const
 	return FindTargetInCone(GetWorld(), Holder->GetActorLocation(), Holder->GetActorForwardVector(), DetectionDistance, DetectionAngle, HitTags, Holder);
 }
 
-void UYSAutoSwingAbility::StartAttack()
+bool UYSAutoSwingAbility::HasHolderAuthority() const
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !IsReady() || !CanStartByPriority())
+	const APawn* Holder = GetHolderPawn();
+	return Holder ? Holder->HasAuthority() : GetOwner() && GetOwner()->HasAuthority();
+}
+
+bool UYSAutoSwingAbility::IsTriggeredByHolder() const
+{
+	// le joueur déclenche ses attaques auto par la détection en cône ; un NME par sa hitbox de contact
+	return GetHolderPawn() && !Cast<AYSPlayerCharacter>(GetHolderPawn());
+}
+
+void UYSAutoSwingAbility::PlayAttackLocally()
+{
+	// NME (arme locale, non répliquée) : l'animation part sur cette machine à la réception du NetMulticast du NME
+	HitThisSwing.Reset();
+	NotifyActivated();
+}
+
+bool UYSAutoSwingAbility::StartAttack()
+{
+	if (!HasHolderAuthority() || !IsReady() || !CanStartByPriority())
 	{
-		return;
+		return false;
 	}
 	CancelLowerPriorityActions();
 
@@ -109,6 +129,7 @@ void UYSAutoSwingAbility::StartAttack()
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s attaque à %.2f, prête à %.2f%s"), *GetOwner()->GetName(), *GetName(), GetServerTime(), ReadyServerTime, bCriticalSwing ? TEXT(" (critique)") : TEXT(""));
 	HitThisSwing.Reset();
 	MulticastActivated();
+	return true;
 }
 
 float UYSAutoSwingAbility::GetCooldownMultiplier() const

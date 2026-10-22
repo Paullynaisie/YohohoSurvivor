@@ -16,13 +16,28 @@ class AYSWeapon;
 class UChildActorComponent;
 class UYSWeaponSet;
 class UMaterialInterface;
+class UYSAutoSwingAbility;
+class UYSGroundZoneComponent;
+class AYSProjectile;
+
+/** Attaque à distance d'un NME (bRanged) */
+UENUM(BlueprintType)
+enum class EYSFoeRangedAttack : uint8
+{
+	/** Bombe en cloche vers le sol sous la cible (Skull Bomb) */
+	Bomb,
+	/** Visée (ligne au sol, direction figée au début) puis balle lente qui touche les joueurs (Skull Gun) */
+	Shot,
+};
 
 /**
  *  Ennemi de base : attiré en ligne droite vers le joueur le plus proche, sans pathfinding,
  *  et toujours tourné vers lui. Meurt (détruit) quand ses points de vie tombent à 0 et donne alors de l'XP à l'équipe.
  *  Niveau (Level) : PV, dégâts de contact et XP = valeur de base + bonus par niveau (catégorie Foe|Level).
  *  DA « primitives » comme le joueur : cylindre (BodyMesh, aussi sa hurtbox) + visage en decal, sans inclinaison (perf).
- *  Contact : sa Hitbox inflige ContactDamage à la hurtbox (corps) des joueurs, puis toutes les ContactDamageInterval secondes.
+ *  Contact : sa Hitbox déclenche l'attaque de son arme de mêlée (NME sword : swing du joueur) ; sans arme de mêlée, elle
+ *  inflige ContactDamage à la hurtbox (corps) des joueurs, puis toutes les ContactDamageInterval secondes.
+ *  À distance (bRanged) : bombe (Skull Bomb) ou visée + balle (Skull Gun), voir Foe|Ranged.
  *  La logique tourne uniquement sur le serveur ; position, rotation et vie sont répliquées aux clients.
  *  Classe de base du Blueprint FoeCharacter_Skull : les réglages se font dans le Blueprint.
  */
@@ -69,6 +84,10 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UChildActorComponent> RightHandWeapon;
+
+	/** Skull Gun : ligne de visée posée sur le sol pendant la visée (coordonnées monde) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UYSGroundZoneComponent> AimLine;
 
 protected:
 
@@ -145,9 +164,30 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Attack", meta=(ClampMin="0.05", Units="s"))
 	float ContactDamageInterval = 1.0f;
 
-	/** Cibles blessées au contact : acteurs portant un de ces tags */
+	/**
+	 *  Cibles de la hitbox : acteurs portant un de ces tags. NME armé d'une arme de mêlée (Auto swing, ex. NME sword) :
+	 *  la hitbox ne blesse plus, elle DÉCLENCHE l'attaque de l'arme (animation du swing du joueur, la hitbox de l'arme
+	 *  inflige ContactDamage aux joueurs) ; sinon dégâts de contact directs toutes les ContactDamageInterval secondes.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Attack")
 	FGameplayTagContainer ContactHitTags;
+
+	/**
+	 *  Pushback des joueurs touchés par ce NME (coup d'épée, balle), exactement comme celui des NME frappés par le joueur :
+	 *  selon la part de la vie du joueur retirée par le coup ; sous Min Damage Ratio rien, à partir de Max Damage Ratio la
+	 *  force max, entre les deux de Min Force à Max Force. Direction = celle du coup.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Pushback", meta=(ClampMin="0", ClampMax="1"))
+	float PushbackMinDamageRatio = 0.05f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Pushback", meta=(ClampMin="0", ClampMax="1"))
+	float PushbackMaxDamageRatio = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond"))
+	float PushbackMinForce = 200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond"))
+	float PushbackMaxForce = 1000.0f;
 
 	/** Tags portés par l'ennemi (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Tags")
@@ -224,6 +264,10 @@ protected:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged")
 	bool bRanged = false;
+
+	/** Attaque à distance : bombe (Skull Bomb) ou tir (Skull Gun) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
+	EYSFoeRangedAttack RangedAttack = EYSFoeRangedAttack::Bomb;
 
 	/** S'arrête à cette distance de sa cible (au-delà, il fonce vers elle) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Centimeters"))
@@ -310,6 +354,43 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Foe|Ranged")
 	float BombDamage = 20.0f;
 
+	/**
+	 *  Tir (Skull Gun) : à portée et rechargé (Throw Interval), le NME vise pendant ShotAimDuration en affichant une ligne
+	 *  au sol dans la direction de sa cible AU DÉBUT de la visée (il ne réajuste pas), immobile, puis tire une balle
+	 *  (ShotProjectileClass, HitTags Team.Player) dans cette direction depuis le Muzzle de son arme.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="0", Units="Seconds"))
+	float ShotAimDuration = 1.0f;
+
+	/** Balle tirée (BP enfant de PetoirAMMO qui touche les joueurs : NME_GunAMMO) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged"))
+	TSubclassOf<AYSProjectile> ShotProjectileClass;
+
+	/** Dégâts de la balle au niveau 0 (x Damage Multiplier) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="0"))
+	float BaseShotDamage = 20.0f;
+
+	/** Dégâts de la balle ajoutés par niveau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="0"))
+	float ShotDamagePerLevel = 0.0f;
+
+	/** Ligne de visée au sol : longueur et largeur (à peu près celle de la balle) ; matériau = Landing Zone Material */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="0", Units="Centimeters"))
+	float AimLineLength = 2000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="1", Units="Centimeters"))
+	float AimLineWidth = 90.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged"))
+	FLinearColor AimLineColor = FLinearColor(1.0f, 0.1f, 0.05f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="0", ClampMax="1"))
+	float AimLineOpacity = 0.35f;
+
+	/** Dégâts de la balle, calculés au spawn depuis le niveau */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Foe|Ranged|Shot")
+	float ShotDamage = 20.0f;
+
 	/** Joueur actuellement ciblé (renseigné sur le serveur uniquement) */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Foe")
 	TObjectPtr<APawn> Target;
@@ -331,6 +412,9 @@ public:
 	 *  de sa vie retirée (réglages du personnage qui frappe, catégorie 3C|Pushback ; AYSPlayerCharacter::ComputePushbackForce)
 	 */
 	void ApplyPushback(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator);
+
+	/** Force du pushback que ce NME inflige à un joueur (réglages Foe|Pushback) */
+	float ComputePushbackForce(float Damage, float TargetMaxHealth) const;
 
 	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override { TagContainer.AppendTags(GameplayTags); }
 
@@ -389,6 +473,38 @@ protected:
 	/** NME à distance : lance une bombe vers le sol sous sa cible (serveur) */
 	void ThrowBomb(const APawn* BombTarget);
 
+	/** Actions de mêlée (Auto swing) des armes tenues */
+	void GetMeleeActions(TArray<UYSAutoSwingAbility*>& OutActions) const;
+
+	/** NME armé : un joueur touche la hitbox -> l'attaque de l'arme part si elle est prête (serveur) */
+	void TriggerMeleeAttack();
+
+	/** Une attaque de mêlée est en cours sur cette machine (animation) */
+	bool IsMeleeAttacking() const;
+
+	/** Animation de l'attaque de mêlée sur toutes les machines (armes de NME locales, non répliquées) */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastMeleeAttack();
+
+	/** Skull Gun : début de la visée dans la direction de sa cible (serveur) ; tir à la fin de ShotAimDuration */
+	void StartAim(const APawn* AimTarget);
+
+	/** Skull Gun : tire la balle dans la direction de la visée (serveur) */
+	void FireShot();
+
+	/** Ligne de visée au sol sur toutes les machines (direction figée) */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastAimStarted(FVector_NetQuantize Start, FVector_NetQuantizeNormal Direction);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastAimEnded();
+
+	/** Affiche (ou cache) la ligne de visée sur cette machine */
+	void ShowAimLine(bool bShow, const FVector& Start, const FVector& Direction);
+
+	/** Point de départ du tir : Muzzle de l'arme tenue, sinon au-dessus du NME (ThrowHeight) */
+	FVector GetShotOrigin() const;
+
 	/** Armes des mains selon le set (ou les armes par main) et gaucher / droitier */
 	void ApplyWeaponClasses();
 
@@ -410,6 +526,11 @@ private:
 
 	/** Recharge de la bombe depuis la dernière (serveur, plafonnée à ThrowInterval) */
 	float ThrowTimer = 0.0f;
+
+	/** Skull Gun : visée en cours (serveur), direction figée et temps restant */
+	bool bAiming = false;
+	FVector AimDirection = FVector::ForwardVector;
+	float AimTimeLeft = 0.0f;
 
 
 	/** Prochain instant (temps du monde) où chaque joueur touché peut reprendre des dégâts de contact */

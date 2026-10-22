@@ -24,11 +24,18 @@
 #include "Components/ChildActorComponent.h"
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
+#include "Abilities/YSAutoSwingAbility.h"
+#include "Map/YSGroundZoneComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Weapons/YSProjectile.h"
 
 namespace YSFoe
 {
 	/** Au-delà de cet écart (téléportation), une main rejoint sa cible sans retard */
 	constexpr float HandSnapDistance = 300.0f;
+
+	/** Ligne de visée du Skull Gun : hauteur au-dessus du sol */
+	constexpr float AimLineHeight = 5.0f;
 }
 
 AYSFoeCharacter::AYSFoeCharacter()
@@ -120,6 +127,12 @@ AYSFoeCharacter::AYSFoeCharacter()
 	};
 	CreateHand(TEXT("LeftHand"), TEXT("LeftHandMesh"), TEXT("LeftHandWeapon"), LeftHand, LeftHandMesh, LeftHandWeapon);
 	CreateHand(TEXT("RightHand"), TEXT("RightHandMesh"), TEXT("RightHandWeapon"), RightHand, RightHandMesh, RightHandWeapon);
+
+	// Skull Gun : ligne de visée au sol (coordonnées monde), cachée hors visée
+	AimLine = CreateDefaultSubobject<UYSGroundZoneComponent>(TEXT("AimLine"));
+	AimLine->SetupAttachment(RootComponent);
+	AimLine->SetUsingAbsoluteLocation(true);
+	AimLine->SetVisibility(false);
 }
 
 void AYSFoeCharacter::OnConstruction(const FTransform& Transform)
@@ -215,8 +228,9 @@ FRotator AYSFoeCharacter::GetHandTargetRotation(bool bLeft) const
 
 void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 {
-	// perf : pur visuel local (rien n'est répliqué) ; hors écran les mains restent figées
-	if (bHandsInitialized && GetWorld() && GetWorld()->IsGameWorld() && !WasRecentlyRendered(HandsOffscreenFreezeDelay))
+	// perf : pur visuel local (rien n'est répliqué) ; hors écran les mains restent figées, SAUF sur le serveur pendant une
+	// attaque de mêlée : la hitbox de l'arme suit la main (un client peut se battre hors de l'écran de l'hôte)
+	if (bHandsInitialized && GetWorld() && GetWorld()->IsGameWorld() && !WasRecentlyRendered(HandsOffscreenFreezeDelay) && !(HasAuthority() && IsMeleeAttacking()))
 	{
 		return;
 	}
@@ -244,8 +258,32 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 			WorldLocation = FMath::VInterpTo(WorldLocation, Target, DeltaSeconds, HandFollowSpeed);
 		}
 
-		Hand->SetWorldLocation(WorldLocation);
-		Hand->SetRelativeRotation(GetHandTargetRotation(bLeft));
+		FVector FinalLocation = WorldLocation;
+		FQuat FinalRotation = GetHandTargetRotation(bLeft).Quaternion();
+
+		// attaque de mêlée (Auto swing de l'arme) : même animation que le joueur, la pose animée remplace la pose normale
+		// sans retard ; poses exprimées pour la main droite, symétrisées pour la gauche
+		const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
+		const UYSAutoSwingAbility* Swing = Weapon ? Cast<UYSAutoSwingAbility>(Weapon->GetAutoAction()) : nullptr;
+		float IdleWeight = 1.0f;
+		FVector PoseLocation = FVector::ZeroVector;
+		FQuat PoseRotation = FQuat::Identity;
+		if (Swing && Swing->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation))
+		{
+			if (bLeft)
+			{
+				PoseLocation.Y = -PoseLocation.Y;
+				FRotator Mirrored = PoseRotation.Rotator();
+				Mirrored.Yaw = -Mirrored.Yaw;
+				Mirrored.Roll = -Mirrored.Roll;
+				PoseRotation = Mirrored.Quaternion();
+			}
+			FinalLocation = FMath::Lerp(BodyTransform.TransformPosition(PoseLocation), FinalLocation, IdleWeight);
+			FinalRotation = FQuat::Slerp(PoseRotation, FinalRotation, IdleWeight);
+		}
+
+		Hand->SetWorldLocation(FinalLocation);
+		Hand->SetRelativeRotation(FinalRotation);
 	};
 
 	UpdateHand(LeftHand, LeftHandWorldLocation, true, 0.0f);
@@ -416,6 +454,7 @@ void AYSFoeCharacter::BeginPlay()
 		MaxHealth = (BaseHealth + HealthPerLevel * Level) * HealthMultiplier;
 		ContactDamage = (BaseContactDamage + ContactDamagePerLevel * Level) * DamageMultiplier;
 		BombDamage = (BaseBombDamage + BombDamagePerLevel * Level) * DamageMultiplier;
+		ShotDamage = (BaseShotDamage + ShotDamagePerLevel * Level) * DamageMultiplier;
 		Health = MaxHealth;
 
 		if (bIsElite && YSGameState)
@@ -443,9 +482,31 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// corps à corps : la hitbox déclenche l'attaque de l'arme de mêlée, sinon blesse directement au contact
 	if (!bRanged)
 	{
-		ApplyContactDamage();
+		TArray<UYSAutoSwingAbility*> MeleeActions;
+		GetMeleeActions(MeleeActions);
+		if (MeleeActions.Num() > 0)
+		{
+			TriggerMeleeAttack();
+		}
+		else
+		{
+			ApplyContactDamage();
+		}
+	}
+
+	// Skull Gun en visée : immobile, tourné vers la direction figée au début de la visée, tire à la fin
+	if (bAiming)
+	{
+		SetActorRotation(FRotator(0.0f, AimDirection.Rotation().Yaw, 0.0f));
+		AimTimeLeft -= DeltaSeconds;
+		if (AimTimeLeft <= 0.0f)
+		{
+			FireShot();
+		}
+		return;
 	}
 
 	Target = FindNearestPlayer();
@@ -473,6 +534,11 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		if (ThrowTimer >= ThrowInterval)
 		{
 			ThrowTimer = 0.0f;
+			if (RangedAttack == EYSFoeRangedAttack::Shot)
+			{
+				StartAim(Target);
+				return;
+			}
 			ThrowBomb(Target);
 		}
 	}
@@ -586,5 +652,171 @@ void AYSFoeCharacter::ApplyContactDamage()
 		NextTime = Now + ContactDamageInterval;
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur le joueur
 		Player->TakeDamage(ContactDamage, FDamageEvent(), GetController(), nullptr);
+	}
+}
+
+float AYSFoeCharacter::ComputePushbackForce(float Damage, float TargetMaxHealth) const
+{
+	return YSCombat::ComputePushbackForce(Damage, TargetMaxHealth, PushbackMinDamageRatio, PushbackMaxDamageRatio, PushbackMinForce, PushbackMaxForce);
+}
+
+void AYSFoeCharacter::GetMeleeActions(TArray<UYSAutoSwingAbility*>& OutActions) const
+{
+	for (const AYSWeapon* Weapon : { GetLeftHandWeapon(), GetRightHandWeapon() })
+	{
+		if (UYSAutoSwingAbility* Swing = Weapon ? Cast<UYSAutoSwingAbility>(Weapon->GetAutoAction()) : nullptr)
+		{
+			OutActions.Add(Swing);
+		}
+	}
+}
+
+bool AYSFoeCharacter::IsMeleeAttacking() const
+{
+	TArray<UYSAutoSwingAbility*> MeleeActions;
+	GetMeleeActions(MeleeActions);
+	return MeleeActions.ContainsByPredicate([](const UYSAutoSwingAbility* Swing) { return Swing->IsActionInProgress(); });
+}
+
+void AYSFoeCharacter::TriggerMeleeAttack()
+{
+	if (Health <= 0.0f)
+	{
+		return;
+	}
+
+	// un joueur vivant (sa hurtbox, pas sa capsule) touche la hitbox de contact : déclencheur de l'attaque
+	TArray<UPrimitiveComponent*> Touching;
+	Hitbox->GetOverlappingComponents(Touching);
+	const bool bPlayerInReach = Touching.ContainsByPredicate([this](const UPrimitiveComponent* Component)
+	{
+		const AYSPlayerCharacter* Player = Component ? Cast<AYSPlayerCharacter>(Component->GetOwner()) : nullptr;
+		return Player && Component == Player->GetHurtbox() && Player->IsAlive() && Player->HasAnyMatchingGameplayTags(ContactHitTags);
+	});
+	if (!bPlayerInReach)
+	{
+		return;
+	}
+
+	// l'arme frappe avec les dégâts du NME (niveau, élite) ; pas d'upgrade pour les NME
+	TArray<UYSAutoSwingAbility*> MeleeActions;
+	GetMeleeActions(MeleeActions);
+	bool bStarted = false;
+	for (UYSAutoSwingAbility* Swing : MeleeActions)
+	{
+		Swing->Damage = ContactDamage;
+		bStarted |= Swing->StartAttack();
+	}
+	if (bStarted)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s attaque (%.0f dégâts)"), *GetName(), ContactDamage);
+		MulticastMeleeAttack();
+	}
+}
+
+void AYSFoeCharacter::MulticastMeleeAttack_Implementation()
+{
+	// serveur : déjà lancée par StartAttack ; clients : leur arme locale joue l'animation
+	if (HasAuthority())
+	{
+		return;
+	}
+	TArray<UYSAutoSwingAbility*> MeleeActions;
+	GetMeleeActions(MeleeActions);
+	for (UYSAutoSwingAbility* Swing : MeleeActions)
+	{
+		Swing->PlayAttackLocally();
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s attaque (client, %d arme(s))"), *GetName(), MeleeActions.Num());
+}
+
+FVector AYSFoeCharacter::GetShotOrigin() const
+{
+	for (const AYSWeapon* Weapon : { GetRightHandWeapon(), GetLeftHandWeapon() })
+	{
+		if (Weapon)
+		{
+			return Weapon->GetMuzzleLocation();
+		}
+	}
+	return GetActorLocation() + FVector(0.0f, 0.0f, ThrowHeight);
+}
+
+void AYSFoeCharacter::StartAim(const APawn* AimTarget)
+{
+	if (!AimTarget)
+	{
+		return;
+	}
+
+	// direction FIGÉE : celle de la cible au début de la visée, le NME ne réajuste pas
+	FVector Direction = AimTarget->GetActorLocation() - GetActorLocation();
+	Direction.Z = 0.0f;
+	if (Direction.IsNearlyZero())
+	{
+		Direction = GetActorForwardVector();
+	}
+	AimDirection = Direction.GetSafeNormal2D();
+	AimTimeLeft = ShotAimDuration;
+	bAiming = true;
+	SetActorRotation(FRotator(0.0f, AimDirection.Rotation().Yaw, 0.0f));
+
+	const FVector Start = AYSInteractiveObject::FindGround(GetWorld(), GetActorLocation(), this);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s vise %s pendant %.2f s, direction (%.2f, %.2f)"), *GetName(), *AimTarget->GetName(), ShotAimDuration, AimDirection.X, AimDirection.Y);
+	MulticastAimStarted(Start, AimDirection);
+}
+
+void AYSFoeCharacter::FireShot()
+{
+	bAiming = false;
+	MulticastAimEnded();
+	if (!ShotProjectileClass)
+	{
+		return;
+	}
+
+	const FVector Origin = GetShotOrigin();
+	const FTransform SpawnTransform(AimDirection.Rotation(), Origin);
+	AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ShotProjectileClass, SpawnTransform, this, this, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (Projectile)
+	{
+		Projectile->SetDamage(ShotDamage);
+		Projectile->FinishSpawning(SpawnTransform);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s tire (%.0f dégâts) depuis (%.0f, %.0f, %.0f)"), *GetName(), ShotDamage, Origin.X, Origin.Y, Origin.Z);
+}
+
+void AYSFoeCharacter::MulticastAimStarted_Implementation(FVector_NetQuantize Start, FVector_NetQuantizeNormal Direction)
+{
+	ShowAimLine(true, Start, Direction);
+}
+
+void AYSFoeCharacter::MulticastAimEnded_Implementation()
+{
+	ShowAimLine(false, FVector::ZeroVector, FVector::ForwardVector);
+}
+
+void AYSFoeCharacter::ShowAimLine(bool bShow, const FVector& Start, const FVector& Direction)
+{
+	AimLine->SetVisibility(bShow);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s ligne de visée %s (%s)"), *GetName(), bShow ? TEXT("affichée") : TEXT("cachée"), HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	if (!bShow)
+	{
+		AimLine->ClearAllMeshSections();
+		return;
+	}
+
+	// bande posée sur le relief, du NME vers la cible ; matériau de la prévisualisation de la bombe (bord désactivé : rayon immense)
+	AimLine->SetWorldLocation(Start);
+	AimLine->BuildStrip(Direction, AimLineLength, AimLineWidth, YSFoe::AimLineHeight);
+	if (LandingZoneMaterial)
+	{
+		UMaterialInstanceDynamic* Material = AimLine->CreateDynamicMaterialInstance(0, LandingZoneMaterial);
+		Material->SetVectorParameterValue(TEXT("Color"), AimLineColor);
+		Material->SetScalarParameterValue(TEXT("Glow"), 0.3f);
+		Material->SetScalarParameterValue(TEXT("FillOpacity"), AimLineOpacity);
+		Material->SetScalarParameterValue(TEXT("EdgeOpacity"), 0.0f);
+		Material->SetScalarParameterValue(TEXT("Radius"), AimLineLength * 10.0f);
+		Material->SetScalarParameterValue(TEXT("EdgeWidth"), 1.0f);
 	}
 }

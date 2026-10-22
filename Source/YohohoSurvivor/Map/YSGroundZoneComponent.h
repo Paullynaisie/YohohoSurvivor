@@ -39,6 +39,9 @@ public:
 	/** Reconstruit le disque de rayon Radius centré sous le composant, HeightAboveGround au-dessus du sol */
 	void BuildZone(float Radius, float HeightAboveGround);
 
+	/** Reconstruit une bande posée sur le sol (ex. ligne de visée du Skull Gun) : part du composant dans Direction, Length x Width */
+	void BuildStrip(const FVector& Direction, float Length, float Width, float HeightAboveGround);
+
 private:
 
 	/** Sol sous (X, Y) cherché entre ReferenceZ + MaxStepHeight et ReferenceZ - MaxStepDown ; ReferenceZ sans sol */

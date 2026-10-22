@@ -114,3 +114,55 @@ void UYSGroundZoneComponent::BuildZone(float Radius, float HeightAboveGround)
 
 	CreateMeshSection_LinearColor(0, Vertices, Triangles, Normals, UVs, TArray<FLinearColor>(), TArray<FProcMeshTangent>(), false);
 }
+
+void UYSGroundZoneComponent::BuildStrip(const FVector& Direction, float Length, float Width, float HeightAboveGround)
+{
+	ClearAllMeshSections();
+	const FVector Forward = FVector(Direction.X, Direction.Y, 0.0f).GetSafeNormal();
+	if (Length <= 0.0f || Width <= 0.0f || Forward.IsNearlyZero())
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	const FVector Center = GetComponentLocation();
+	const FVector Right = FVector::CrossProduct(FVector::UpVector, Forward);
+	const int32 Rows = FMath::Max(1, FMath::CeilToInt(Length / FMath::Max(VertexSpacing, 10.0f))) + 1;
+	constexpr int32 Columns = 3;
+
+	// chaque colonne (bord gauche, milieu, bord droit) suit le sol de proche en proche depuis le départ
+	TArray<FVector> Vertices;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	float PreviousGroundZ[Columns];
+	for (int32 Row = 0; Row < Rows; ++Row)
+	{
+		const float Along = Length * Row / (Rows - 1);
+		for (int32 Column = 0; Column < Columns; ++Column)
+		{
+			const float Across = Width * (static_cast<float>(Column) / (Columns - 1) - 0.5f);
+			const FVector Point = Center + Forward * Along + Right * Across;
+			const float GroundZ = FindGroundZ(Point.X, Point.Y, Row == 0 ? Center.Z : PreviousGroundZ[Column]);
+			PreviousGroundZ[Column] = GroundZ;
+			const float SurfaceZ = bClampAboveSea ? AYSOcean::ClampAboveSea(World, GroundZ) : GroundZ;
+			Vertices.Add(FVector(Point.X - Center.X, Point.Y - Center.Y, SurfaceZ + HeightAboveGround - Center.Z));
+			Normals.Add(FVector::UpVector);
+			UVs.Add(FVector2D(Along / Length, static_cast<float>(Column) / (Columns - 1)));
+		}
+	}
+
+	TArray<int32> Triangles;
+	for (int32 Row = 0; Row + 1 < Rows; ++Row)
+	{
+		for (int32 Column = 0; Column + 1 < Columns; ++Column)
+		{
+			const int32 A = Row * Columns + Column;
+			const int32 B = A + 1;
+			const int32 C = A + Columns;
+			const int32 D = C + 1;
+			Triangles.Append({ A, C, B, B, C, D });
+		}
+	}
+
+	CreateMeshSection_LinearColor(0, Vertices, Triangles, Normals, UVs, TArray<FLinearColor>(), TArray<FProcMeshTangent>(), false);
+}
