@@ -12,6 +12,9 @@ class UWidgetComponent;
 class UYSFaceDecalComponent;
 class AYSInteractiveObject;
 class AYSFoeBomb;
+class AYSWeapon;
+class UChildActorComponent;
+class UYSWeaponSet;
 class UMaterialInterface;
 
 /**
@@ -45,6 +48,27 @@ private:
 	/** Barre de vie au-dessus de la tête (cachée tant que les PV sont au max) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UWidgetComponent> HealthBar;
+
+	/** Mains (comme le joueur) : points d'attache des armes, position monde calculée par UpdateHands */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> LeftHand;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> RightHand;
+
+	/** Sphères visibles des mains */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UStaticMeshComponent> LeftHandMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UStaticMeshComponent> RightHandMesh;
+
+	/** Armes des mains (acteurs enfants ; armes de NME NON répliquées : créées localement sur chaque machine) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> LeftHandWeapon;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> RightHandWeapon;
 
 protected:
 
@@ -136,6 +160,59 @@ protected:
 	/** Vitesse à laquelle l'ennemi se tourne vers sa cible (0 = instantané) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement", meta=(ClampMin="0"))
 	float TurnSpeed = 10.0f;
+
+	/**
+	 *  Position par défaut de la main droite, par rapport au corps (centre de la capsule) ; la gauche est symétrique (Y inversé).
+	 *  Une arme peut la remplacer (Weapon > Hand Location). Mêmes réglages que le joueur (3C|Hands).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands")
+	FVector HandLocation = FVector(0.0f, 55.0f, -10.0f);
+
+	/** Rotation par défaut de la main droite, par rapport au corps ; la gauche est symétrique (Yaw et Roll inversés) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands")
+	FRotator HandRotation = FRotator::ZeroRotator;
+
+	/** Écart maximal de l'oscillation des mains autour de leur position (0 = pas d'oscillation) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands", meta=(ClampMin="0", Units="Centimeters"))
+	float HandSwayAmplitude = 5.0f;
+
+	/** Vitesse de l'oscillation (bruit de Perlin) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands", meta=(ClampMin="0"))
+	float HandSwaySpeed = 0.6f;
+
+	/** Réactivité des mains au mouvement du corps : plus petit = plus de retard (0 = aucun retard) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands", meta=(ClampMin="0"))
+	float HandFollowSpeed = 12.0f;
+
+	/** Les sphères des mains reprennent le matériau du corps (BodyMesh) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands")
+	bool bHandsUseBodyMaterial = true;
+
+	/** Perf : les mains ne sont animées que si le NME a été affiché il y a moins de ce temps (hors écran : figées) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands", meta=(ClampMin="0", Units="Seconds"))
+	float HandsOffscreenFreezeDelay = 0.2f;
+
+	/** Set d'arme (Data Asset : arme de chaque main, /Game/Core/WeaponSets) ; prioritaire sur les armes par main ci-dessous */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Weapons")
+	TObjectPtr<UYSWeaponSet> WeaponSet;
+
+	/** Armes par main, utilisées seulement sans set (tests) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Weapons", meta=(EditCondition="WeaponSet == nullptr"))
+	TSubclassOf<AYSWeapon> LeftHandWeaponClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Weapons", meta=(EditCondition="WeaponSet == nullptr"))
+	TSubclassOf<AYSWeapon> RightHandWeaponClass;
+
+	/** Chance (0 à 1) d'être gaucher à l'apparition : le set est réglé droitier, un gaucher a les armes des deux mains échangées */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Weapons", meta=(ClampMin="0", ClampMax="1"))
+	float LeftHandedChance = 0.0f;
+
+	/** Gaucher (tiré par le serveur à l'apparition, répliqué) */
+	UPROPERTY(ReplicatedUsing=OnRep_LeftHanded, VisibleInstanceOnly, BlueprintReadOnly, Category="Foe|Weapons")
+	bool bLeftHanded = false;
+
+	UFUNCTION()
+	void OnRep_LeftHanded();
 
 	/** Apparition dans les vagues : chance relative face aux autres NME de la règle de spawn (1 = normal ; 0.25 face à des NME à 1 = 1 sur 5) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn", meta=(ClampMin="0"))
@@ -271,6 +348,14 @@ public:
 
 	float GetSpawnWeight() const { return SpawnWeight; }
 
+	virtual void OnConstruction(const FTransform& Transform) override;
+
+	AYSWeapon* GetLeftHandWeapon() const;
+
+	AYSWeapon* GetRightHandWeapon() const;
+
+	bool IsLeftHanded() const { return bLeftHanded; }
+
 	/** Nom affiché (repli sur le nom de la classe) */
 	FText GetFoeName() const { return FoeName.IsEmpty() ? FText::FromString(GetClass()->GetName().Replace(TEXT("_C"), TEXT(""))) : FoeName; }
 
@@ -304,7 +389,24 @@ protected:
 	/** NME à distance : lance une bombe vers le sol sous sa cible (serveur) */
 	void ThrowBomb(const APawn* BombTarget);
 
+	/** Armes des mains selon le set (ou les armes par main) et gaucher / droitier */
+	void ApplyWeaponClasses();
+
+	/** Mains : position cible + oscillation, suivie avec retard ; rotation ; arme pouvant imposer sa pose (visuel, toutes machines) */
+	void UpdateHands(float DeltaSeconds);
+
+	FVector GetHandTargetLocation(bool bLeft) const;
+
+	FRotator GetHandTargetRotation(bool bLeft) const;
+
 private:
+
+	/** Mains : position monde lissée, temps de l'oscillation, première image */
+	FVector LeftHandWorldLocation = FVector::ZeroVector;
+	FVector RightHandWorldLocation = FVector::ZeroVector;
+	float HandSwayTime = 0.0f;
+	bool bHandsInitialized = false;
+
 
 	/** Recharge de la bombe depuis la dernière (serveur, plafonnée à ThrowInterval) */
 	float ThrowTimer = 0.0f;

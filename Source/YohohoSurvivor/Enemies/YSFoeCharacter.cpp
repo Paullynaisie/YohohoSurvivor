@@ -21,6 +21,15 @@
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSPlayerCharacter.h"
 #include "UI/YSHealthBarWidget.h"
+#include "Components/ChildActorComponent.h"
+#include "Weapons/YSWeapon.h"
+#include "Weapons/YSWeaponSet.h"
+
+namespace YSFoe
+{
+	/** Au-delà de cet écart (téléportation), une main rejoint sa cible sans retard */
+	constexpr float HandSnapDistance = 300.0f;
+}
 
 AYSFoeCharacter::AYSFoeCharacter()
 {
@@ -85,6 +94,163 @@ AYSFoeCharacter::AYSFoeCharacter()
 	HealthBar->SetDrawAtDesiredSize(true);
 	HealthBar->SetWidgetClass(UYSHealthBarWidget::StaticClass());
 	HealthBar->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// mains comme le joueur : un point d'attache par côté (position monde calculée par UpdateHands) + une petite sphère
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultHand(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	auto CreateHand = [this](const TCHAR* SocketName, const TCHAR* MeshName, const TCHAR* WeaponName,
+		TObjectPtr<USceneComponent>& OutSocket, TObjectPtr<UStaticMeshComponent>& OutMesh, TObjectPtr<UChildActorComponent>& OutWeapon)
+	{
+		OutSocket = CreateDefaultSubobject<USceneComponent>(SocketName);
+		OutSocket->SetupAttachment(RootComponent);
+		OutSocket->SetUsingAbsoluteLocation(true);
+
+		OutMesh = CreateDefaultSubobject<UStaticMeshComponent>(MeshName);
+		OutMesh->SetupAttachment(OutSocket);
+		OutMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		OutMesh->SetRelativeScale3D(FVector(0.25f));
+		if (DefaultHand.Succeeded())
+		{
+			OutMesh->SetStaticMesh(DefaultHand.Object);
+		}
+
+		// arme : acteur enfant ; les armes de NME ne sont pas répliquées (Replicates décoché) : chaque machine crée la sienne
+		OutWeapon = CreateDefaultSubobject<UChildActorComponent>(WeaponName);
+		OutWeapon->SetupAttachment(OutSocket);
+		OutWeapon->SetChildActorOwnerOnCreation(true);
+	};
+	CreateHand(TEXT("LeftHand"), TEXT("LeftHandMesh"), TEXT("LeftHandWeapon"), LeftHand, LeftHandMesh, LeftHandWeapon);
+	CreateHand(TEXT("RightHand"), TEXT("RightHandMesh"), TEXT("RightHandWeapon"), RightHand, RightHandMesh, RightHandWeapon);
+}
+
+void AYSFoeCharacter::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	// changer le set dans le Blueprint met à jour son visuel immédiatement
+	ApplyWeaponClasses();
+
+	// exécuté aussi dans l'éditeur : changer le matériau du corps change celui des mains
+	if (bHandsUseBodyMaterial)
+	{
+		for (UStaticMeshComponent* HandMesh : { LeftHandMesh.Get(), RightHandMesh.Get() })
+		{
+			for (int32 Index = 0; Index < HandMesh->GetNumMaterials(); ++Index)
+			{
+				HandMesh->SetMaterial(Index, BodyMesh->GetMaterial(0));
+			}
+		}
+	}
+
+	// mains à leur position cible (sans retard) : visible dans l'éditeur et point de départ en jeu
+	bHandsInitialized = false;
+	UpdateHands(0.0f);
+}
+
+void AYSFoeCharacter::ApplyWeaponClasses()
+{
+	// gaucher : miroir du NME (réglé droitier) = armes des deux mains échangées
+	UClass* SetRightClass = WeaponSet ? WeaponSet->RightHandWeapon.Get() : RightHandWeaponClass.Get();
+	UClass* SetLeftClass = WeaponSet ? WeaponSet->LeftHandWeapon.Get() : LeftHandWeaponClass.Get();
+	UClass* LeftClass = bLeftHanded ? SetRightClass : SetLeftClass;
+	UClass* RightClass = bLeftHanded ? SetLeftClass : SetRightClass;
+	for (const TPair<UChildActorComponent*, UClass*> Hand : { TPair<UChildActorComponent*, UClass*>(LeftHandWeapon, LeftClass), TPair<UChildActorComponent*, UClass*>(RightHandWeapon, RightClass) })
+	{
+		if (Hand.Key->GetChildActorClass() != Hand.Value)
+		{
+			Hand.Key->SetChildActorClass(Hand.Value);
+		}
+	}
+}
+
+void AYSFoeCharacter::OnRep_LeftHanded()
+{
+	ApplyWeaponClasses();
+	bHandsInitialized = false;
+}
+
+AYSWeapon* AYSFoeCharacter::GetLeftHandWeapon() const
+{
+	return Cast<AYSWeapon>(LeftHandWeapon->GetChildActor());
+}
+
+AYSWeapon* AYSFoeCharacter::GetRightHandWeapon() const
+{
+	return Cast<AYSWeapon>(RightHandWeapon->GetChildActor());
+}
+
+FVector AYSFoeCharacter::GetHandTargetLocation(bool bLeft) const
+{
+	// l'arme tenue peut imposer sa position de main ; valeurs exprimées pour la main droite
+	FVector Location = HandLocation;
+	const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
+	FVector WeaponLocation;
+	if (Weapon && Weapon->GetHandLocationOverride(WeaponLocation))
+	{
+		Location = WeaponLocation;
+	}
+	if (bLeft)
+	{
+		Location.Y = -Location.Y;
+	}
+	return Location;
+}
+
+FRotator AYSFoeCharacter::GetHandTargetRotation(bool bLeft) const
+{
+	FRotator Rotation = HandRotation;
+	const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
+	FRotator WeaponRotation;
+	if (Weapon && Weapon->GetHandRotationOverride(WeaponRotation))
+	{
+		Rotation = WeaponRotation;
+	}
+	// symétrie par rapport au plan avant/haut du corps : Yaw et Roll s'inversent
+	if (bLeft)
+	{
+		Rotation.Yaw = -Rotation.Yaw;
+		Rotation.Roll = -Rotation.Roll;
+	}
+	return Rotation;
+}
+
+void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
+{
+	// perf : pur visuel local (rien n'est répliqué) ; hors écran les mains restent figées
+	if (bHandsInitialized && GetWorld() && GetWorld()->IsGameWorld() && !WasRecentlyRendered(HandsOffscreenFreezeDelay))
+	{
+		return;
+	}
+
+	HandSwayTime += DeltaSeconds;
+	const FTransform& BodyTransform = GetRootComponent()->GetComponentTransform();
+
+	auto UpdateHand = [this, DeltaSeconds, &BodyTransform](USceneComponent* Hand, FVector& WorldLocation, bool bLeft, float NoiseSeed)
+	{
+		// oscillation : bruit de Perlin sur chaque axe, limité à HandSwayAmplitude autour de la cible
+		const float NoiseTime = HandSwayTime * HandSwaySpeed + NoiseSeed;
+		const FVector Sway = FVector(
+			FMath::PerlinNoise1D(NoiseTime),
+			FMath::PerlinNoise1D(NoiseTime + 31.7f),
+			FMath::PerlinNoise1D(NoiseTime + 67.3f)) * HandSwayAmplitude;
+		const FVector Target = BodyTransform.TransformPosition(GetHandTargetLocation(bLeft) + Sway.GetClampedToMaxSize(HandSwayAmplitude));
+
+		// retard : la main rejoint sa cible progressivement (téléportation / première image : directement)
+		if (!bHandsInitialized || HandFollowSpeed <= 0.0f || FVector::DistSquared(WorldLocation, Target) > FMath::Square(YSFoe::HandSnapDistance))
+		{
+			WorldLocation = Target;
+		}
+		else
+		{
+			WorldLocation = FMath::VInterpTo(WorldLocation, Target, DeltaSeconds, HandFollowSpeed);
+		}
+
+		Hand->SetWorldLocation(WorldLocation);
+		Hand->SetRelativeRotation(GetHandTargetRotation(bLeft));
+	};
+
+	UpdateHand(LeftHand, LeftHandWorldLocation, true, 0.0f);
+	UpdateHand(RightHand, RightHandWorldLocation, false, 100.0f);
+	bHandsInitialized = true;
 }
 
 void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -94,6 +260,7 @@ void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(AYSFoeCharacter, MaxHealth);
 	DOREPLIFETIME(AYSFoeCharacter, Health);
 	DOREPLIFETIME(AYSFoeCharacter, Level);
+	DOREPLIFETIME(AYSFoeCharacter, bLeftHanded);
 }
 
 void AYSFoeCharacter::OnRep_Health()
@@ -235,6 +402,10 @@ void AYSFoeCharacter::BeginPlay()
 
 	if (HasAuthority())
 	{
+		// gaucher ou droitier (répliqué : chaque machine échange alors ses armes locales)
+		bLeftHanded = LeftHandedChance > 0.0f && FMath::FRand() < LeftHandedChance;
+		ApplyWeaponClasses();
+
 		AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
 		if (bLevelFromDay && YSGameState)
 		{
@@ -262,6 +433,9 @@ void AYSFoeCharacter::BeginPlay()
 void AYSFoeCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// mains : visuel local sur toutes les machines
+	UpdateHands(DeltaSeconds);
 
 	// serveur autoritaire : les clients reçoivent position et rotation par réplication
 	if (!HasAuthority())
