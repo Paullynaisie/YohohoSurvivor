@@ -133,6 +133,24 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
 	FLinearColor GoldColor = FLinearColor(1.0f, 0.8f, 0.1f);
 
+	/** Upgrade requise : celle-ci n'est proposée que si le joueur a déjà l'autre (ex. Atk speed / Shoot system après Atk critique) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Requirements")
+	TObjectPtr<UYSUpgrade> RequiredUpgrade;
+
+	/**
+	 *  Upgrade jumelle (Ricochet <-> Bloodlust, Atk speed <-> Shoot system) : jamais proposée si le joueur a déjà l'autre ;
+	 *  au changement de set d'arme, si ce set n'est pas compatible avec celle-ci mais l'est avec la jumelle, la progression
+	 *  est convertie (même variante, chaque bonus gardant sa rareté)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Twin")
+	TObjectPtr<UYSUpgrade> TwinUpgrade;
+
+	/** Le personnage a ce qu'il faut pour cette variante (arme, type d'action) ; conversion des jumelles */
+	virtual bool IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const { return true; }
+
+	/** Upgrade requise obtenue et jumelle pas encore prise */
+	bool PassesRequirements(const AYSPlayerCharacter* Character) const;
+
 	/** Nombre de variantes (chacune proposée et cumulée séparément) */
 	virtual int32 GetVariantCount() const { return 1; }
 
@@ -202,6 +220,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
 	float GoldValue = 0.9f;
 
+	/**
+	 *  Effet en plus : chaque bonus augmente aussi les dégâts des coups critiques selon sa rareté (0 = rien ; Atk speed et
+	 *  Shoot system : 0.1 / 0.2 / 0.3). Dégâts critiques = Critical Damage Multiplier du perso x (1 + somme de ces bonus)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Critical", meta=(ClampMin="0"))
+	float CriticalDamageBronze = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Critical", meta=(ClampMin="0"))
+	float CriticalDamageSilver = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Critical", meta=(ClampMin="0"))
+	float CriticalDamageGold = 0.0f;
+
+	/** Bonus aux dégâts critiques d'un bonus de cette rareté */
+	float GetCriticalDamageBonus(EYSUpgradeRarity Rarity) const;
+
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
 	virtual float GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const override;
@@ -249,6 +283,16 @@ public:
 	/** Nom du bonus (« Damage bonus », « CD reduction ») */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
 	FText BonusName;
+
+	/** Variantes proposées : Ability (action du clic) et / ou Auto atk (ex. CD reduction : Ability seule ; Atk speed : Auto atk seule) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Variants")
+	bool bAbilityVariant = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Variants")
+	bool bAutoAtkVariant = true;
+
+	/** Variante proposée par cet asset et une arme tenue a une action éligible de ce type */
+	virtual bool IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	static EYSActionSlot GetSlot(int32 Variant) { return Variant == 1 ? EYSActionSlot::AutoAtk : EYSActionSlot::Ability; }
 
@@ -538,16 +582,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
 	float SuperWeight = 10.0f;
 
-	/**
-	 *  Upgrade jumelle (ex. Ricochet <-> Bloodlust) : jamais proposée si le joueur a déjà l'autre ; au changement de set
-	 *  d'arme, si ce set n'est pas compatible avec celle-ci mais l'est avec la jumelle, la progression est convertie
-	 *  palier par palier (même rareté pour chaque bonus)
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Twin")
-	TObjectPtr<UYSWeaponUpgrade> TwinUpgrade;
-
-	/** Une arme tenue a l'action requise */
-	bool IsCompatibleWith(const AYSPlayerCharacter* Character) const { return GetRequiredActions(Character).Num() > 0; }
+	/** Une arme tenue a l'action requise (jumelle : Upgrade > Twin Upgrade, conversion palier par palier) */
+	virtual bool IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const override { return GetRequiredActions(Character).Num() > 0; }
 
 	static EYSWeaponUpgradeTier GetTier(int32 Variant) { return static_cast<EYSWeaponUpgradeTier>(FMath::Clamp(Variant, 0, 2)); }
 
@@ -664,6 +700,50 @@ protected:
  *  Ancien mode (si TargetWeaponSet est vide) : remplace le personnage par un TargetClass (AYSPlayerCharacter::ChangeClass).
  *  Conditions remplies seulement si renseignées : set d'arme actuel = SourceWeaponSet, classe = SourceClass / ExtraSourceClasses.
  */
+/**
+ *  « Atk critique » (unique, une fois) : les attaques auto deviennent régulièrement critiques.
+ *  Auto swing (Melee Swing) : chaque arme compte ses attaques auto, la SwingCriticalInterval-ième (5e) est toujours critique.
+ *  PewPew (Auto atk des Guns) : chaque NME compte les balles d'attaque auto reçues de chaque joueur, la BulletCriticalInterval-ième
+ *  (3e) est toujours critique. Proposée si une arme tenue a une de ces attaques auto ; débloque Atk speed et Shoot system
+ *  (leur Required Upgrade). Dégâts critiques = Critical Damage Multiplier du perso x (1 + bonus critiques d'Atk speed / Shoot system).
+ */
+UCLASS(meta=(DisplayName="Upgrade spéciale : Atk critique"))
+class UYSCriticalAttackUpgrade : public UYSUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSCriticalAttackUpgrade();
+
+	/** Auto swing : une attaque auto sur N est critique */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="1"))
+	int32 SwingCriticalInterval = 5;
+
+	/** PewPew : une balle sur N reçue par un même NME est critique */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="1"))
+	int32 BulletCriticalInterval = 3;
+
+	/** Descriptions du bouton ({0} = l'intervalle) selon l'attaque auto du joueur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText SwingDescription;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText BulletDescription;
+
+	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
+	virtual bool IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
+
+	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
+	/** Attaque auto Swing / PewPew parmi les armes tenues */
+	static bool HasSwingAutoAttack(const AYSPlayerCharacter* Character);
+	static bool HasPewPewAutoAttack(const AYSPlayerCharacter* Character);
+};
+
 UCLASS(meta=(DisplayName="Upgrade de classe"))
 class UYSClassUpgrade : public UYSUpgrade
 {

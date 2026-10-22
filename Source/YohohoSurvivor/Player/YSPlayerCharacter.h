@@ -255,9 +255,21 @@ protected:
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TMap<FName, float> WeaponStats;
 
-	/** Coup critique : dégâts x ce multiplicateur (Golden bloodlust ; sera upgradable) */
+	/** Coup critique : dégâts x ce multiplicateur (Golden bloodlust, Atk critique), augmenté par les bonus critiques d'Atk speed / Shoot system */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Combat", meta=(ClampMin="1"))
 	float CriticalDamageMultiplier = 1.5f;
+
+	/** Somme des bonus aux dégâts critiques des upgrades (Atk speed / Shoot system ; serveur, répliquée pour l'affichage des upgrades) */
+	UPROPERTY(Transient, Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Combat")
+	float CriticalDamageBonus = 0.0f;
+
+	/** Atk critique : une attaque auto Swing sur N est critique (0 = pas l'upgrade ; serveur) */
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Combat")
+	int32 CriticalSwingInterval = 0;
+
+	/** Atk critique : une balle PewPew sur N reçue par un même NME est critique (0 = pas l'upgrade ; serveur) */
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Combat")
+	int32 CriticalBulletInterval = 0;
 
 	/**
 	 *  Pushback des NME touchés par ce personnage, proportionnel à la part de leur vie retirée par le coup
@@ -582,7 +594,22 @@ public:
 	/** Golden bloodlust et toutes les stacks : les Auto swing sont critiques */
 	bool IsBloodlustCritical() const { return bGoldenBloodlust && BloodlustMaxStacks > 0 && BloodlustStacks >= BloodlustMaxStacks; }
 
-	float GetCriticalDamageMultiplier() const { return CriticalDamageMultiplier; }
+	/** Dégâts des coups critiques : Critical Damage Multiplier x (1 + bonus critiques des upgrades Atk speed / Shoot system) */
+	float GetCriticalDamageMultiplier() const { return CriticalDamageMultiplier * (1.0f + CriticalDamageBonus); }
+
+	float GetBaseCriticalDamageMultiplier() const { return CriticalDamageMultiplier; }
+
+	float GetCriticalDamageBonus() const { return CriticalDamageBonus; }
+
+	/** Somme des bonus critiques de toutes les upgrades de stat obtenues (chaque bonus selon sa rareté ; serveur) */
+	void RecomputeCriticalDamageBonus();
+
+	/** Atk critique : une attaque auto Swing sur SwingInterval, une balle PewPew sur BulletInterval par NME (0 = non ; serveur) */
+	void SetAutoAttackCriticals(int32 SwingInterval, int32 BulletInterval) { CriticalSwingInterval = SwingInterval; CriticalBulletInterval = BulletInterval; }
+
+	int32 GetCriticalSwingInterval() const { return CriticalSwingInterval; }
+
+	int32 GetCriticalBulletInterval() const { return CriticalBulletInterval; }
 
 	/** Force du pushback d'un coup de Damage sur une cible de TargetMaxHealth PV max (0 = aucun) */
 	float ComputePushbackForce(float Damage, float TargetMaxHealth) const;

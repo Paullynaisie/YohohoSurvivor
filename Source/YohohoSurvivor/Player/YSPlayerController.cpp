@@ -247,11 +247,27 @@ void AYSPlayerController::ServerCheatAtkSpeed_Implementation()
 		return;
 	}
 
-	// Atk speed = variante Auto atk de la CD reduction ; 10 bonus Silver, sans dépasser le maximum de l'upgrade
+	// Atk speed = upgrade de recharge de l'Auto atk (DA_Upgrade_AtkSpeed) ; 10 bonus Silver, sans dépasser le maximum de l'upgrade
 	const TArray<TObjectPtr<UYSUpgrade>>& Pool = PlayerCharacter->GetUpgradePool();
-	const int32 PoolIndex = Pool.IndexOfByPredicate([](const TObjectPtr<UYSUpgrade>& Upgrade) { return Cast<UYSHandCooldownReductionUpgrade>(Upgrade.Get()) != nullptr; });
+	const int32 PoolIndex = Pool.IndexOfByPredicate([](const TObjectPtr<UYSUpgrade>& Upgrade)
+	{
+		const UYSHandCooldownReductionUpgrade* Cooldown = Cast<UYSHandCooldownReductionUpgrade>(Upgrade.Get());
+		return Cooldown && Cooldown->bAutoAtkVariant;
+	});
 	const UYSHandCooldownReductionUpgrade* AtkSpeed = Pool.IsValidIndex(PoolIndex) ? Cast<UYSHandCooldownReductionUpgrade>(Pool[PoolIndex].Get()) : nullptr;
 	const int32 Variant = UYSHandStatUpgrade::MakeVariant(EYSActionSlot::AutoAtk);
+
+	// upgrade requise (Atk critique) donnée d'abord si le joueur ne l'a pas
+	const int32 RequiredIndex = AtkSpeed && AtkSpeed->RequiredUpgrade ? Pool.IndexOfByKey(AtkSpeed->RequiredUpgrade) : INDEX_NONE;
+	if (RequiredIndex != INDEX_NONE && !PlayerCharacter->HasUpgrade(AtkSpeed->RequiredUpgrade)
+		&& Pool[RequiredIndex]->CanBeOffered(PlayerCharacter, 0, PlayerCharacter->GetUpgradeProgress(RequiredIndex, 0)))
+	{
+		FYSUpgradeOffer Required;
+		Required.PoolIndex = RequiredIndex;
+		Required.Rarity = EYSUpgradeRarity::Silver;
+		PlayerCharacter->ApplyUpgrade(Required);
+		UE_LOG(LogTemp, Log, TEXT("[YSCheat] Atk speed : %s donnée d'abord (requise)"), *Pool[RequiredIndex]->GetName());
+	}
 	if (!AtkSpeed || !AtkSpeed->CanBeOffered(PlayerCharacter, Variant, PlayerCharacter->GetUpgradeProgress(PoolIndex, Variant)))
 	{
 		UE_LOG(LogTemp, Log, TEXT("[YSCheat] Atk speed : pas disponible (pas d'attaque auto éligible, ou maximum atteint)"));

@@ -55,9 +55,28 @@ UYSStatUpgrade::UYSStatUpgrade()
 	UpgradeType = EYSUpgradeType::Stat;
 }
 
+bool UYSUpgrade::PassesRequirements(const AYSPlayerCharacter* Character) const
+{
+	// upgrade requise déjà obtenue (ex. Atk critique avant Atk speed / Shoot system), jumelle pas encore prise
+	return Character
+		&& (!RequiredUpgrade || Character->HasUpgrade(RequiredUpgrade))
+		&& (!TwinUpgrade || !Character->HasUpgrade(TwinUpgrade));
+}
+
 bool UYSStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	return Progress.Stacks < MaxStacks;
+	return Progress.Stacks < MaxStacks && PassesRequirements(Character);
+}
+
+float UYSStatUpgrade::GetCriticalDamageBonus(EYSUpgradeRarity Rarity) const
+{
+	switch (Rarity)
+	{
+	case EYSUpgradeRarity::Bronze:	return CriticalDamageBronze;
+	case EYSUpgradeRarity::Silver:	return CriticalDamageSilver;
+	case EYSUpgradeRarity::Gold:	return CriticalDamageGold;
+	default:						return 0.0f;
+	}
 }
 
 bool UYSUpgrade::SupportsRarity(int32 Variant, EYSUpgradeRarity Rarity) const
@@ -120,6 +139,23 @@ void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Va
 	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetStatValue(BaseValue, Progress.TotalValue + GetBonusValue(Variant, Rarity))));
 	NewValue.FontSize = 18;
 	NewValue.bBold = true;
+
+	// effet en plus : dégâts des coups critiques (Atk speed, Shoot system)
+	const float CriticalBonus = GetCriticalDamageBonus(Rarity);
+	if (CriticalBonus > 0.0f && Character)
+	{
+		FYSChoiceLine& OldCritical = OutLines.AddDefaulted_GetRef();
+		OldCritical.Text = FText::Format(NSLOCTEXT("YS", "CriticalDamageValue", "Dégâts critiques (%) : {0}"), YSUpgradeText::FormatStat(Character->GetCriticalDamageMultiplier() * 100.0f));
+		OldCritical.Color = FLinearColor(0.65f, 0.65f, 0.65f);
+		OldCritical.FontSize = 14;
+		OldCritical.bStrikethrough = true;
+
+		FYSChoiceLine& NewCritical = OutLines.AddDefaulted_GetRef();
+		NewCritical.Text = FText::Format(NSLOCTEXT("YS", "CriticalDamageValue", "Dégâts critiques (%) : {0}"),
+			YSUpgradeText::FormatStat(Character->GetBaseCriticalDamageMultiplier() * (1.0f + Character->GetCriticalDamageBonus() + CriticalBonus) * 100.0f));
+		NewCritical.FontSize = 16;
+		NewCritical.bBold = true;
+	}
 }
 
 void UYSStatUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
@@ -127,6 +163,7 @@ void UYSStatUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const F
 	if (Character)
 	{
 		ApplyBonus(Character, Variant, Progress.TotalValue);
+		Character->RecomputeCriticalDamageBonus();
 		UE_LOG(LogTemp, Log, TEXT("[YSStatUpgrade] %s : %s, somme des bonus %.3f (%d bonus) -> %.3f"), *Character->GetName(), *GetVariantNameFor(Character, Variant).ToString(),
 			Progress.TotalValue, Progress.Stacks, GetStatValue(GetBaseStatValue(Character, Variant), Progress.TotalValue));
 	}
@@ -158,8 +195,14 @@ FText UYSHandStatUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character,
 
 bool UYSHandStatUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	// une arme du set doit avoir une action de ce type (Ability = clic, Auto atk = attaque auto)
-	return GetSlotAction(Character, Variant) && Super::CanBeOffered(Character, Variant, Progress);
+	// variante proposée par cet asset, et une arme du set doit avoir une action de ce type (Ability = clic, Auto atk = attaque auto)
+	return IsCompatibleWith(Character, Variant) && Super::CanBeOffered(Character, Variant, Progress);
+}
+
+bool UYSHandStatUpgrade::IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	const bool bVariantEnabled = GetSlot(Variant) == EYSActionSlot::AutoAtk ? bAutoAtkVariant : bAbilityVariant;
+	return bVariantEnabled && GetSlotAction(Character, Variant) != nullptr;
 }
 
 TArray<UYSAbilityComponent*> UYSHandStatUpgrade::GetSlotActions(const AYSPlayerCharacter* Character, int32 Variant) const
@@ -438,8 +481,8 @@ bool UYSWeaponUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 V
 		return false;
 	}
 
-	// jumelles (Ricochet / Bloodlust) : jamais l'une si le joueur a déjà l'autre
-	if (TwinUpgrade && Character->HasUpgrade(TwinUpgrade))
+	// jumelles (Ricochet / Bloodlust) : jamais l'une si le joueur a déjà l'autre ; upgrade requise
+	if (!PassesRequirements(Character))
 	{
 		return false;
 	}
@@ -646,3 +689,85 @@ void UYSClassUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const 
 	}
 }
 
+
+UYSCriticalAttackUpgrade::UYSCriticalAttackUpgrade()
+{
+	UpgradeType = EYSUpgradeType::Special;
+	DisplayName = NSLOCTEXT("YS", "CriticalAttackName", "Atk critique");
+	SwingDescription = NSLOCTEXT("YS", "CriticalAttackSwing", "La {0}e atk est toujours critique");
+	BulletDescription = NSLOCTEXT("YS", "CriticalAttackBullet", "La {0}e balle sur un même NME\nest toujours critique");
+	bCanBeBronze = false;
+	bCanBeGold = false;
+}
+
+bool UYSCriticalAttackUpgrade::HasSwingAutoAttack(const AYSPlayerCharacter* Character)
+{
+	for (const AYSWeapon* Weapon : Character ? Character->GetHeldWeapons() : TArray<AYSWeapon*>())
+	{
+		const UYSAutoSwingAbility* Swing = Weapon ? Cast<UYSAutoSwingAbility>(Weapon->GetAutoAction()) : nullptr;
+		if (Swing && Swing->MeleeSystem == EYSMeleeSystem::Swing)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UYSCriticalAttackUpgrade::HasPewPewAutoAttack(const AYSPlayerCharacter* Character)
+{
+	for (const AYSWeapon* Weapon : Character ? Character->GetHeldWeapons() : TArray<AYSWeapon*>())
+	{
+		const UYSCoupDPetoirAbility* Gun = Weapon ? Cast<UYSCoupDPetoirAbility>(Weapon->GetAutoAction()) : nullptr;
+		if (Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->ShootSystem == EYSShootSystem::PewPew)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UYSCriticalAttackUpgrade::IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	return HasSwingAutoAttack(Character) || HasPewPewAutoAttack(Character);
+}
+
+bool UYSCriticalAttackUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	// unique : une seule fois, pour un joueur qui a une attaque auto Swing ou PewPew
+	return Progress.Stacks == 0 && PassesRequirements(Character) && IsCompatibleWith(Character, Variant);
+}
+
+void UYSCriticalAttackUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+{
+	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
+	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), DisplayName, YSUpgradeText::RarityName(Rarity));
+	Title.Color = GetRarityColor(Rarity);
+	Title.FontSize = 20;
+	Title.bBold = true;
+
+	// description selon l'attaque auto du joueur (les deux s'il a les deux)
+	auto AddDescription = [&OutLines](const FText& Text, int32 Interval)
+	{
+		FYSChoiceLine& Line = OutLines.AddDefaulted_GetRef();
+		Line.Text = FText::Format(Text, Interval);
+		Line.FontSize = 15;
+		Line.bBold = true;
+	};
+	if (HasSwingAutoAttack(Character))
+	{
+		AddDescription(SwingDescription, SwingCriticalInterval);
+	}
+	if (HasPewPewAutoAttack(Character))
+	{
+		AddDescription(BulletDescription, BulletCriticalInterval);
+	}
+}
+
+void UYSCriticalAttackUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	if (Character && Progress.Stacks > 0)
+	{
+		Character->SetAutoAttackCriticals(SwingCriticalInterval, BulletCriticalInterval);
+		UE_LOG(LogTemp, Log, TEXT("[YSCritical] %s : Atk critique (1 swing sur %d, 1 balle sur %d par NME)"), *Character->GetName(), SwingCriticalInterval, BulletCriticalInterval);
+	}
+}

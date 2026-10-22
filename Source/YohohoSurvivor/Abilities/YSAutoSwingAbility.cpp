@@ -126,6 +126,16 @@ bool UYSAutoSwingAbility::StartAttack()
 	// Golden bloodlust : l'attaque est critique si toutes les BL stacks sont là au moment où elle part
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	bCriticalSwing = Character && Character->IsBloodlustCritical();
+	// Atk critique : chaque arme compte ses attaques auto, une sur N est toujours critique
+	if (Character && IsAutomatic() && MeleeSystem == EYSMeleeSystem::Swing && Character->GetCriticalSwingInterval() > 0)
+	{
+		++AutoSwingCount;
+		if (AutoSwingCount % Character->GetCriticalSwingInterval() == 0)
+		{
+			bCriticalSwing = true;
+			UE_LOG(LogTemp, Verbose, TEXT("[YSCritical] %s.%s : %de attaque auto, critique"), *GetOwner()->GetName(), *GetName(), AutoSwingCount);
+		}
+	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s attaque à %.2f, prête à %.2f%s"), *GetOwner()->GetName(), *GetName(), GetServerTime(), ReadyServerTime, bCriticalSwing ? TEXT(" (critique)") : TEXT(""));
 	HitThisSwing.Reset();
 	MulticastActivated();

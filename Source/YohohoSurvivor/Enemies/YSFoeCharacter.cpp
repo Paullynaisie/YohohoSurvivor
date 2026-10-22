@@ -842,3 +842,16 @@ void AYSFoeCharacter::MulticastRangedAttack_Implementation()
 		Action->PlayAttackLocally();
 	}
 }
+
+bool AYSFoeCharacter::RegisterCriticalBullet(const AActor* Shooter, int32 Interval)
+{
+	if (!Shooter || Interval <= 0)
+	{
+		return false;
+	}
+	int32& Count = CriticalBulletCounts.FindOrAdd(Shooter, 0);
+	++Count;
+	const bool bCritical = Count % Interval == 0;
+	UE_LOG(LogTemp, Verbose, TEXT("[YSCritical] %s : balle %d de %s%s"), *GetName(), Count, *Shooter->GetName(), bCritical ? TEXT(", critique") : TEXT(""));
+	return bCritical;
+}

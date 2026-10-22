@@ -176,6 +176,12 @@ void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 Bull
 	if (Projectile)
 	{
 		Projectile->SetDamage(Damage * GetDamageMultiplier());
+		// Atk critique : les balles d'attaque auto PewPew comptent sur chaque NME, une sur N est critique
+		const AYSPlayerCharacter* HolderCharacter = Cast<AYSPlayerCharacter>(Shooter);
+		if (IsAutomatic() && ShootSystem == EYSShootSystem::PewPew && HolderCharacter)
+		{
+			Projectile->SetCriticalBulletInterval(HolderCharacter->GetCriticalBulletInterval());
+		}
 		// upgrades d'arme (Ricochet) : seulement pour l'Ability, pas pour l'Auto shot
 		if (!IsAutomatic())
 		{

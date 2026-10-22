@@ -279,6 +279,9 @@ public:
 	/** Force du pushback que ce NME inflige à un joueur (réglages Foe|Pushback) */
 	float ComputePushbackForce(float Damage, float TargetMaxHealth) const;
 
+	/** Atk critique : compte une balle d'attaque auto reçue de Shooter ; vrai si c'est la N-ième (critique ; serveur) */
+	bool RegisterCriticalBullet(const AActor* Shooter, int32 Interval);
+
 	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override { TagContainer.AppendTags(GameplayTags); }
 
 	UFUNCTION(BlueprintPure, Category="Foe|Health")
@@ -407,6 +410,9 @@ private:
 	FVector AimDirection = FVector::ForwardVector;
 	float AimTimeLeft = 0.0f;
 
+
+	/** Atk critique : balles d'attaque auto reçues de chaque tireur (serveur) */
+	TMap<TWeakObjectPtr<const AActor>, int32> CriticalBulletCounts;
 
 	/** Prochain instant (temps du monde) où chaque joueur touché peut reprendre des dégâts de contact */
 	TMap<TWeakObjectPtr<AActor>, double> NextContactDamageTime;

@@ -8,6 +8,9 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameplayTagAssetInterface.h"
 #include "Map/YSOcean.h"
+#include "Core/YSDamageTypes.h"
+#include "Enemies/YSFoeCharacter.h"
+#include "Player/YSPlayerCharacter.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
@@ -185,10 +188,19 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 	HitActors.Add(OtherActor);
 	// direction du coup = sens de vol de la balle (pushback)
 	const FVector ShotDirection = GetVelocity().IsNearlyZero() ? GetActorForwardVector() : GetVelocity().GetSafeNormal();
-	const FPointDamageEvent DamageEvent(Damage, SweepResult, ShotDirection, nullptr);
-	OtherActor->TakeDamage(Damage, DamageEvent, GetInstigatorController(), this);
-	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s en (%.0f, %.0f, %.0f), sol %.0f : %.1f dégâts (ricochets restants %d)"), *GetName(), *OtherActor->GetName(),
-		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, LastGroundZ, Damage, RemainingRicochets);
+	// Atk critique : le NME compte les balles reçues de ce tireur, une sur N est critique
+	bool bCritical = false;
+	float HitDamage = Damage;
+	if (AYSFoeCharacter* Foe = CriticalBulletInterval > 0 ? Cast<AYSFoeCharacter>(OtherActor) : nullptr)
+	{
+		const AYSPlayerCharacter* Shooter = Cast<AYSPlayerCharacter>(GetInstigator());
+		bCritical = Shooter && Foe->RegisterCriticalBullet(GetInstigator(), CriticalBulletInterval);
+		HitDamage *= bCritical ? Shooter->GetCriticalDamageMultiplier() : 1.0f;
+	}
+	const FPointDamageEvent DamageEvent(HitDamage, SweepResult, ShotDirection, bCritical ? UYSCriticalDamageType::StaticClass() : nullptr);
+	OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s en (%.0f, %.0f, %.0f), sol %.0f : %.1f dégâts%s (ricochets restants %d)"), *GetName(), *OtherActor->GetName(),
+		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, LastGroundZ, HitDamage, bCritical ? TEXT(" CRITIQUE") : TEXT(""), RemainingRicochets);
 
 	// ricochet vers une autre cible, sinon la balle disparaît
 	if (RemainingRicochets > 0 && Ricochet())

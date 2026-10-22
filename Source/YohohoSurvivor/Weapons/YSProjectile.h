@@ -108,6 +108,9 @@ private:
 
 	FTimerHandle RicochetPauseTimer;
 
+	/** Atk critique : une balle sur N reçue par un même NME est critique (0 = non ; fixé au tir) */
+	int32 CriticalBulletInterval = 0;
+
 	/** Cibles déjà touchées (un ricochet ne les retouche pas) */
 	TArray<TWeakObjectPtr<AActor>> HitActors;
 
@@ -133,6 +136,9 @@ public:
 
 	/** Ricochets (upgrade Ricochet) : nombre et multiplicateur de dégâts à chaque ricochet */
 	void SetRicochets(int32 Count, float DamageMultiplier) { RemainingRicochets = Count; RicochetDamageMultiplier = DamageMultiplier; }
+
+	/** Atk critique (balles d'attaque auto PewPew) : une balle sur N reçue par un même NME (de ce tireur) est critique ; 0 = non */
+	void SetCriticalBulletInterval(int32 Interval) { CriticalBulletInterval = Interval; }
 
 	/** Tags des acteurs que ce projectile peut toucher */
 	const FGameplayTagContainer& GetHitTags() const { return HitTags; }

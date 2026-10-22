@@ -183,6 +183,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustDuration);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustAtkSpeedPerStack);
 	DOREPLIFETIME(AYSPlayerCharacter, bGoldenBloodlust);
+	DOREPLIFETIME(AYSPlayerCharacter, CriticalDamageBonus);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustExpireServerTime);
 }
 
@@ -1231,26 +1232,35 @@ void AYSPlayerCharacter::RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& O
 		Entry.PoolIndex = NewIndex;
 	}
 
-	// upgrade d'arme incompatible avec le nouveau set (ex. Ricochet sans pistolet) : convertie vers sa jumelle
-	// (Bloodlust), palier par palier, chaque bonus gardant sa rareté
+	// upgrade incompatible avec le nouveau set (ex. Ricochet sans pistolet, Atk speed sans épée) : convertie vers sa jumelle
+	// (Bloodlust, Shoot system), même variante (palier, type d'action), chaque bonus gardant sa rareté
 	for (FYSUpgradeProgress& Entry : UpgradeProgress)
 	{
-		const UYSWeaponUpgrade* Upgrade = Cast<UYSWeaponUpgrade>(UpgradePool[Entry.PoolIndex]);
-		const UYSWeaponUpgrade* Twin = Upgrade ? Upgrade->TwinUpgrade.Get() : nullptr;
+		const UYSUpgrade* Upgrade = UpgradePool[Entry.PoolIndex];
+		const UYSUpgrade* Twin = Upgrade ? Upgrade->TwinUpgrade.Get() : nullptr;
 		const int32 TwinIndex = Twin ? UpgradePool.IndexOfByKey(Twin) : INDEX_NONE;
-		if (!Twin || TwinIndex == INDEX_NONE || Upgrade->IsCompatibleWith(this) || !Twin->IsCompatibleWith(this))
+		if (!Twin || TwinIndex == INDEX_NONE || Upgrade->IsCompatibleWith(this, Entry.Variant) || !Twin->IsCompatibleWith(this, Entry.Variant))
 		{
 			continue;
 		}
 
-		// rareté de chaque bonus (anciennes parties sans rareté notée : déduite de la valeur, Gold si plus proche de la valeur Gold)
+		// rareté de chaque bonus (anciennes parties sans rareté notée : celle dont la valeur est la plus proche)
 		TArray<EYSUpgradeRarity> Rarities = Entry.BonusRarities;
 		for (int32 Index = Rarities.Num(); Index < Entry.Stacks; ++Index)
 		{
 			const float Value = Entry.BonusValues.IsValidIndex(Index) ? Entry.BonusValues[Index] : 0.0f;
-			const bool bGold = UYSWeaponUpgrade::GetTier(Entry.Variant) == EYSWeaponUpgradeTier::Super
-				|| (UYSWeaponUpgrade::GetTier(Entry.Variant) == EYSWeaponUpgradeTier::Bonus && Value >= (Upgrade->BonusSilverValue + Upgrade->BonusGoldValue) * 0.5f);
-			Rarities.Add(bGold ? EYSUpgradeRarity::Gold : EYSUpgradeRarity::Silver);
+			EYSUpgradeRarity Closest = EYSUpgradeRarity::Silver;
+			float ClosestGap = TNumericLimits<float>::Max();
+			for (const EYSUpgradeRarity Rarity : { EYSUpgradeRarity::Bronze, EYSUpgradeRarity::Silver, EYSUpgradeRarity::Gold })
+			{
+				const float Gap = FMath::Abs(Upgrade->GetBonusValue(Entry.Variant, Rarity) - Value);
+				if (Upgrade->SupportsRarity(Entry.Variant, Rarity) && Gap < ClosestGap)
+				{
+					Closest = Rarity;
+					ClosestGap = Gap;
+				}
+			}
+			Rarities.Add(Closest);
 		}
 
 		Entry.PoolIndex = TwinIndex;
@@ -1670,4 +1680,27 @@ bool AYSPlayerCharacter::IsInvulnerable() const
 	bool bInvulnerable = false;
 	ForEachHeldAction([&bInvulnerable](const UYSAbilityComponent* Action) { bInvulnerable = bInvulnerable || Action->IsGrantingInvulnerability(); });
 	return bInvulnerable;
+}
+
+void AYSPlayerCharacter::RecomputeCriticalDamageBonus()
+{
+	// chaque bonus des upgrades de stat qui ont un effet critique (Atk speed, Shoot system), selon sa rareté
+	float Bonus = 0.0f;
+	for (const FYSUpgradeProgress& Entry : UpgradeProgress)
+	{
+		const UYSStatUpgrade* Stat = UpgradePool.IsValidIndex(Entry.PoolIndex) ? Cast<UYSStatUpgrade>(UpgradePool[Entry.PoolIndex].Get()) : nullptr;
+		if (!Stat)
+		{
+			continue;
+		}
+		for (const EYSUpgradeRarity Rarity : Entry.BonusRarities)
+		{
+			Bonus += Stat->GetCriticalDamageBonus(Rarity);
+		}
+	}
+	if (!FMath::IsNearlyEqual(Bonus, CriticalDamageBonus))
+	{
+		CriticalDamageBonus = Bonus;
+		UE_LOG(LogTemp, Log, TEXT("[YSCritical] %s : bonus critique %.2f -> dégâts critiques x%.3f"), *GetName(), CriticalDamageBonus, GetCriticalDamageMultiplier());
+	}
 }

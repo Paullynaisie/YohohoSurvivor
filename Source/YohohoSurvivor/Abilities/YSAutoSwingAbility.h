@@ -184,6 +184,9 @@ protected:
 	/** Coupe en cours critique (Golden bloodlust au maximum de stacks au début de l'attaque ; serveur) */
 	bool bCriticalSwing = false;
 
+	/** Atk critique : attaques auto déjà lancées par cette arme (serveur) */
+	int32 AutoSwingCount = 0;
+
 private:
 
 	/** Vrai en akimbo si cette épée est dans l'autre main que la principale (elle suit la principale) */
