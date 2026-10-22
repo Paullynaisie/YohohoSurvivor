@@ -158,13 +158,9 @@ try:
     if not assets.does_asset_exist(SKULL_GUN):
         tools.duplicate_asset(SKULL_GUN_NAME, CHAR_DIR, assets.load_asset(SKULL_BOMB))
         unreal.BlueprintEditorLibrary.compile_blueprint(assets.load_asset(SKULL_GUN))
-        bomb = cdo(SKULL_BOMB)
+        # l'attaque (tir) est celle de son arme : action « Shot » de BP_NME_Pistol (setup_foe_weapon_attacks.py)
         gun = cdo(SKULL_GUN)
         gun.set_editor_property("foe_name", "Skull Gun")
-        gun.set_editor_property("ranged_attack", unreal.YSFoeRangedAttack.SHOT)
-        gun.set_editor_property("shot_projectile_class", assets.load_blueprint_class(GUN_AMMO))
-        gun.set_editor_property("base_shot_damage", bomb.get_editor_property("base_bomb_damage"))
-        gun.set_editor_property("shot_damage_per_level", bomb.get_editor_property("bomb_damage_per_level"))
         gun.set_editor_property("weapon_set", weapon_set)
         gun.set_editor_property("left_handed_chance", LEFT_HANDED_CHANCE)
         assets.save_asset(SKULL_GUN, only_if_is_dirty=False)
@@ -198,8 +194,7 @@ try:
         f"matériaux {sorted(set(m.get_name() for _, o in components(assets.load_asset(NME_PISTOL)) if isinstance(o, unreal.StaticMeshComponent) for m in o.get_materials() if m))}")
     gun = cdo(SKULL_GUN)
     log("relu : Skull Gun " + ", ".join(f"{p} {gun.get_editor_property(p)}" for p in
-        ["foe_name", "ranged", "ranged_attack", "attack_range", "throw_interval", "base_health", "health_per_level", "move_speed", "spawn_weight",
-         "base_shot_damage", "shot_damage_per_level", "left_handed_chance"]) + f", set {gun.get_editor_property('weapon_set').get_name()}")
+        ["foe_name", "base_health", "health_per_level", "move_speed", "spawn_weight", "left_handed_chance"]) + f", set {gun.get_editor_property('weapon_set').get_name()}")
     log(f"relu : vagues {[c.get_name() for c in wave.get_editor_property('enemy_classes')]}")
     log("OK")
 except Exception as e:

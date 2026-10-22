@@ -27,7 +27,7 @@
 #include "Abilities/YSAutoSwingAbility.h"
 #include "Map/YSGroundZoneComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
-#include "Weapons/YSProjectile.h"
+#include "Enemies/YSFoeRangedAction.h"
 
 namespace YSFoe
 {
@@ -36,6 +36,9 @@ namespace YSFoe
 
 	/** Ligne de visée du Skull Gun : hauteur au-dessus du sol */
 	constexpr float AimLineHeight = 5.0f;
+
+	/** Attaque à distance sans arme (repli) : hauteur de départ au-dessus du centre du NME */
+	constexpr float DefaultAttackHeight = 80.0f;
 }
 
 AYSFoeCharacter::AYSFoeCharacter()
@@ -45,7 +48,6 @@ AYSFoeCharacter::AYSFoeCharacter()
 	// un contrôleur IA est nécessaire pour que le CharacterMovementComponent consomme l'input
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 	AIControllerClass = AAIController::StaticClass();
-	BombClass = AYSFoeBomb::StaticClass();
 
 	GetCapsuleComponent()->InitCapsuleSize(42.0f, 96.0f);
 
@@ -419,11 +421,6 @@ void AYSFoeCharacter::BeginPlay()
 	// réappliqué en jeu : les collisions de combat ne dépendent pas de réglages sauvegardés dans le Blueprint
 	YSCombat::ConfigureHurtbox(BodyMesh);
 	YSCombat::ConfigureHitbox(Hitbox);
-	// NME à distance : pas de corps à corps
-	if (bRanged)
-	{
-		Hitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	}
 
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
 
@@ -453,8 +450,6 @@ void AYSFoeCharacter::BeginPlay()
 		// statistiques du niveau (MaxHealth est répliqué pour les barres de vie)
 		MaxHealth = (BaseHealth + HealthPerLevel * Level) * HealthMultiplier;
 		ContactDamage = (BaseContactDamage + ContactDamagePerLevel * Level) * DamageMultiplier;
-		BombDamage = (BaseBombDamage + BombDamagePerLevel * Level) * DamageMultiplier;
-		ShotDamage = (BaseShotDamage + ShotDamagePerLevel * Level) * DamageMultiplier;
 		Health = MaxHealth;
 
 		if (bIsElite && YSGameState)
@@ -483,7 +478,9 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	}
 
 	// corps à corps : la hitbox déclenche l'attaque de l'arme de mêlée, sinon blesse directement au contact
-	if (!bRanged)
+	// (NME armé d'une attaque à distance : pas de corps à corps)
+	UYSFoeRangedAction* Ranged = GetRangedAction();
+	if (!Ranged)
 	{
 		TArray<UYSAutoSwingAbility*> MeleeActions;
 		GetMeleeActions(MeleeActions);
@@ -522,24 +519,22 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
-	// à distance : la bombe se recharge en permanence (même hors de portée) ; rechargée, elle part dès que la cible
-	// est à portée, et le NME s'arrête à portée
-	if (bRanged)
+	// à distance (action de l'arme) : l'attaque se recharge en permanence (même hors de portée) ; rechargée, elle part dès
+	// que la cible est à portée, et le NME s'arrête à portée
+	if (Ranged)
 	{
-		ThrowTimer = FMath::Min(ThrowTimer + DeltaSeconds, ThrowInterval);
+		ThrowTimer = FMath::Min(ThrowTimer + DeltaSeconds, Ranged->AttackInterval);
 	}
-	const bool bInRange = bRanged && ToTarget.SizeSquared() <= FMath::Square(AttackRange);
+	const bool bInRange = Ranged && ToTarget.SizeSquared() <= FMath::Square(Ranged->AttackRange);
 	if (bInRange)
 	{
-		if (ThrowTimer >= ThrowInterval)
+		if (ThrowTimer >= Ranged->AttackInterval && Ranged->StartAttack(this, Target, GetAttackOrigin(Ranged)))
 		{
 			ThrowTimer = 0.0f;
-			if (RangedAttack == EYSFoeRangedAttack::Shot)
+			if (bAiming)
 			{
-				StartAim(Target);
 				return;
 			}
-			ThrowBomb(Target);
 		}
 	}
 	else
@@ -549,45 +544,6 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 
 	const FRotator Desired(0.0f, ToTarget.Rotation().Yaw, 0.0f);
 	SetActorRotation(TurnSpeed > 0.0f ? FMath::RInterpTo(GetActorRotation(), Desired, DeltaSeconds, TurnSpeed) : Desired);
-}
-
-void AYSFoeCharacter::ThrowBomb(const APawn* BombTarget)
-{
-	if (!BombClass || !BombTarget)
-	{
-		return;
-	}
-
-	// vise le sol sous la cible au moment du lancer
-	FYSBombThrow Throw;
-	Throw.Start = GetActorLocation() + FVector(0.0f, 0.0f, ThrowHeight);
-	Throw.Target = AYSInteractiveObject::FindGround(GetWorld(), BombTarget->GetActorLocation(), BombTarget);
-	Throw.ApexHeight = BombApexHeight;
-	Throw.FlightDuration = BombFlightDuration;
-	Throw.FuseDuration = BombFuseDuration;
-	Throw.BombColor = BombColor;
-	Throw.FuseColor = FuseColor;
-	Throw.FuseGlow = FuseGlow;
-	Throw.BombMaterial = BombMaterial;
-	Throw.Damage = BombDamage;
-	Throw.ExplosionRadius = ExplosionRadius;
-	Throw.ExplosionGrowDuration = ExplosionGrowDuration;
-	Throw.ExplosionFadeDuration = ExplosionFadeDuration;
-	Throw.ExplosionColor = ExplosionColor;
-	Throw.LandingZoneColor = LandingZoneColor;
-	Throw.LandingZoneFillOpacity = LandingZoneFillOpacity;
-	Throw.LandingZoneEdgeOpacity = LandingZoneEdgeOpacity;
-	Throw.LandingZoneMaterial = LandingZoneMaterial;
-	Throw.ExplosionMaterial = ExplosionMaterial;
-
-	const FTransform SpawnTransform(Throw.Start);
-	AYSFoeBomb* Bomb = GetWorld()->SpawnActorDeferred<AYSFoeBomb>(BombClass, SpawnTransform, this, this, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-	if (Bomb)
-	{
-		Bomb->SetThrow(Throw);
-		Bomb->FinishSpawning(SpawnTransform);
-	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s lance une bombe sur %s (%.0f cm)"), *GetName(), *BombTarget->GetName(), FVector::Dist2D(Throw.Start, Throw.Target));
 }
 
 APawn* AYSFoeCharacter::FindNearestPlayer() const
@@ -730,23 +686,33 @@ void AYSFoeCharacter::MulticastMeleeAttack_Implementation()
 	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s attaque (client, %d arme(s))"), *GetName(), MeleeActions.Num());
 }
 
-FVector AYSFoeCharacter::GetShotOrigin() const
+UYSFoeRangedAction* AYSFoeCharacter::GetRangedAction() const
 {
 	for (const AYSWeapon* Weapon : { GetRightHandWeapon(), GetLeftHandWeapon() })
 	{
-		if (Weapon)
+		if (UYSFoeRangedAction* Action = Weapon ? Weapon->FindComponentByClass<UYSFoeRangedAction>() : nullptr)
 		{
-			return Weapon->GetMuzzleLocation();
+			return Action;
 		}
 	}
-	return GetActorLocation() + FVector(0.0f, 0.0f, ThrowHeight);
+	return nullptr;
 }
 
-void AYSFoeCharacter::StartAim(const APawn* AimTarget)
+FVector AYSFoeCharacter::GetAttackOrigin(const UYSFoeRangedAction* Action) const
+{
+	// Muzzle de l'arme qui porte l'attaque (canon du pistolet, bombe dans la main)
+	if (const AYSWeapon* Weapon = Action ? Cast<AYSWeapon>(Action->GetOwner()) : nullptr)
+	{
+		return Weapon->GetMuzzleLocation();
+	}
+	return GetActorLocation() + FVector(0.0f, 0.0f, YSFoe::DefaultAttackHeight);
+}
+
+bool AYSFoeCharacter::StartAim(const APawn* AimTarget, float AimDuration)
 {
 	if (!AimTarget)
 	{
-		return;
+		return false;
 	}
 
 	// direction FIGÉE : celle de la cible au début de la visée, le NME ne réajuste pas
@@ -757,33 +723,24 @@ void AYSFoeCharacter::StartAim(const APawn* AimTarget)
 		Direction = GetActorForwardVector();
 	}
 	AimDirection = Direction.GetSafeNormal2D();
-	AimTimeLeft = ShotAimDuration;
+	AimTimeLeft = AimDuration;
 	bAiming = true;
 	SetActorRotation(FRotator(0.0f, AimDirection.Rotation().Yaw, 0.0f));
 
 	const FVector Start = AYSInteractiveObject::FindGround(GetWorld(), GetActorLocation(), this);
-	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s vise %s pendant %.2f s, direction (%.2f, %.2f)"), *GetName(), *AimTarget->GetName(), ShotAimDuration, AimDirection.X, AimDirection.Y);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s vise %s pendant %.2f s, direction (%.2f, %.2f)"), *GetName(), *AimTarget->GetName(), AimDuration, AimDirection.X, AimDirection.Y);
 	MulticastAimStarted(Start, AimDirection);
+	return true;
 }
 
 void AYSFoeCharacter::FireShot()
 {
 	bAiming = false;
 	MulticastAimEnded();
-	if (!ShotProjectileClass)
+	if (const UYSFoeShotAction* Shot = Cast<UYSFoeShotAction>(GetRangedAction()))
 	{
-		return;
+		Shot->Fire(this, GetAttackOrigin(Shot), AimDirection);
 	}
-
-	const FVector Origin = GetShotOrigin();
-	const FTransform SpawnTransform(AimDirection.Rotation(), Origin);
-	AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ShotProjectileClass, SpawnTransform, this, this, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-	if (Projectile)
-	{
-		Projectile->SetDamage(ShotDamage);
-		Projectile->FinishSpawning(SpawnTransform);
-	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s tire (%.0f dégâts) depuis (%.0f, %.0f, %.0f)"), *GetName(), ShotDamage, Origin.X, Origin.Y, Origin.Z);
 }
 
 void AYSFoeCharacter::MulticastAimStarted_Implementation(FVector_NetQuantize Start, FVector_NetQuantizeNormal Direction)
@@ -798,6 +755,9 @@ void AYSFoeCharacter::MulticastAimEnded_Implementation()
 
 void AYSFoeCharacter::ShowAimLine(bool bShow, const FVector& Start, const FVector& Direction)
 {
+	// réglages de la ligne : action de tir de l'arme (arme locale sur chaque machine)
+	const UYSFoeShotAction* Shot = Cast<UYSFoeShotAction>(GetRangedAction());
+	bShow = bShow && Shot;
 	AimLine->SetVisibility(bShow);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s ligne de visée %s (%s)"), *GetName(), bShow ? TEXT("affichée") : TEXT("cachée"), HasAuthority() ? TEXT("serveur") : TEXT("client"));
 	if (!bShow)
@@ -808,15 +768,15 @@ void AYSFoeCharacter::ShowAimLine(bool bShow, const FVector& Start, const FVecto
 
 	// bande posée sur le relief, du NME vers la cible ; matériau de la prévisualisation de la bombe (bord désactivé : rayon immense)
 	AimLine->SetWorldLocation(Start);
-	AimLine->BuildStrip(Direction, AimLineLength, AimLineWidth, YSFoe::AimLineHeight);
-	if (LandingZoneMaterial)
+	AimLine->BuildStrip(Direction, Shot->AimLineLength, Shot->AimLineWidth, YSFoe::AimLineHeight);
+	if (Shot->PreviewMaterial)
 	{
-		UMaterialInstanceDynamic* Material = AimLine->CreateDynamicMaterialInstance(0, LandingZoneMaterial);
-		Material->SetVectorParameterValue(TEXT("Color"), AimLineColor);
+		UMaterialInstanceDynamic* Material = AimLine->CreateDynamicMaterialInstance(0, Shot->PreviewMaterial);
+		Material->SetVectorParameterValue(TEXT("Color"), Shot->PreviewColor);
 		Material->SetScalarParameterValue(TEXT("Glow"), 0.3f);
-		Material->SetScalarParameterValue(TEXT("FillOpacity"), AimLineOpacity);
+		Material->SetScalarParameterValue(TEXT("FillOpacity"), Shot->AimLineOpacity);
 		Material->SetScalarParameterValue(TEXT("EdgeOpacity"), 0.0f);
-		Material->SetScalarParameterValue(TEXT("Radius"), AimLineLength * 10.0f);
+		Material->SetScalarParameterValue(TEXT("Radius"), Shot->AimLineLength * 10.0f);
 		Material->SetScalarParameterValue(TEXT("EdgeWidth"), 1.0f);
 	}
 }

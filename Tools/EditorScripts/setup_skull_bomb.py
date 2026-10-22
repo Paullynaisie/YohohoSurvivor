@@ -73,15 +73,9 @@ try:
     # Skull Bomb : à distance, matériaux de la bombe, 1 apparition sur 5 (réglages de Paul conservés au 2e passage)
     bomb_class = assets.load_blueprint_class(BOMB_BP)
     bomb_cdo = unreal.get_default_object(bomb_class)
-    if not bomb_cdo.get_editor_property("ranged"):
-        bomb_cdo.set_editor_property("ranged", True)
+    # l'attaque (portée, bombe, matériaux) est maintenant celle de son arme BP_NME_Bomb : setup_foe_weapon_attacks.py
+    if bomb_cdo.get_editor_property("spawn_weight") == 1.0:
         bomb_cdo.set_editor_property("spawn_weight", BOMB_SPAWN_WEIGHT)
-    if bomb_cdo.get_editor_property("landing_zone_material") is None:
-        bomb_cdo.set_editor_property("landing_zone_material", assets.load_asset(ZONE_MATERIAL))
-    if bomb_cdo.get_editor_property("explosion_material") is None:
-        bomb_cdo.set_editor_property("explosion_material", assets.load_asset(EXPLOSION_MATERIAL))
-    if bomb_cdo.get_editor_property("bomb_material") is None:
-        bomb_cdo.set_editor_property("bomb_material", assets.load_asset(BOMB_MATERIAL))
     if str(bomb_cdo.get_editor_property("foe_name")) == "":
         bomb_cdo.set_editor_property("foe_name", "Skull Bomb")
     assets.save_asset(BOMB_BP, only_if_is_dirty=False)
@@ -101,9 +95,7 @@ try:
     # relecture
     check_bomb = unreal.get_default_object(assets.load_blueprint_class(BOMB_BP))
     check_rules = unreal.get_default_object(assets.load_blueprint_class(GAME_MODE_BP)).get_editor_property("spawn_rules")
-    log(f"relu : Skull Bomb ranged {check_bomb.get_editor_property('ranged')}, portée {check_bomb.get_editor_property('attack_range')}, "
-        f"poids {check_bomb.get_editor_property('spawn_weight')}, zone {check_bomb.get_editor_property('landing_zone_material').get_name()}, "
-        f"explosion {check_bomb.get_editor_property('explosion_material').get_name()}, bombe {check_bomb.get_editor_property('bomb_material').get_name()}, sommet {check_bomb.get_editor_property('bomb_apex_height')}, vol {check_bomb.get_editor_property('bomb_flight_duration')} ; vagues "
+    log(f"relu : Skull Bomb poids {check_bomb.get_editor_property('spawn_weight')} ; vagues "
         f"{[[c.get_name() for c in r.get_editor_property('enemy_classes')] for r in check_rules if r]}")
     log("OK")
 except Exception as e:

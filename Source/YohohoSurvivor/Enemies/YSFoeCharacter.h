@@ -16,19 +16,10 @@ class AYSWeapon;
 class UChildActorComponent;
 class UYSWeaponSet;
 class UMaterialInterface;
+class UYSFoeRangedAction;
 class UYSAutoSwingAbility;
 class UYSGroundZoneComponent;
 class AYSProjectile;
-
-/** Attaque à distance d'un NME (bRanged) */
-UENUM(BlueprintType)
-enum class EYSFoeRangedAttack : uint8
-{
-	/** Bombe en cloche vers le sol sous la cible (Skull Bomb) */
-	Bomb,
-	/** Visée (ligne au sol, direction figée au début) puis balle lente qui touche les joueurs (Skull Gun) */
-	Shot,
-};
 
 /**
  *  Ennemi de base : attiré en ligne droite vers le joueur le plus proche, sans pathfinding,
@@ -37,7 +28,8 @@ enum class EYSFoeRangedAttack : uint8
  *  DA « primitives » comme le joueur : cylindre (BodyMesh, aussi sa hurtbox) + visage en decal, sans inclinaison (perf).
  *  Contact : sa Hitbox déclenche l'attaque de son arme de mêlée (NME sword : swing du joueur) ; sans arme de mêlée, elle
  *  inflige ContactDamage à la hurtbox (corps) des joueurs, puis toutes les ContactDamageInterval secondes.
- *  À distance (bRanged) : bombe (Skull Bomb) ou visée + balle (Skull Gun), voir Foe|Ranged.
+ *  C'EST L'ARME QUI DÉFINIT L'ATTAQUE : arme avec une action à distance (UYSFoeRangedAction : NME bomb, NME pistol) -> le NME
+ *  court jusqu'à sa portée, s'arrête et attaque (bombe, visée + balle) ; arme avec un Auto swing -> sa hitbox déclenche le coup.
  *  La logique tourne uniquement sur le serveur ; position, rotation et vie sont répliquées aux clients.
  *  Classe de base du Blueprint FoeCharacter_Skull : les réglages se font dans le Blueprint.
  */
@@ -262,139 +254,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn", meta=(ClampMin="-1", ClampMax="9"))
 	int32 NumpadSpawnKey = -1;
 
-	/**
-	 *  NME à distance (Skull Bomb) : pas de dégâts de contact (hitbox désactivée) ; avance vers sa cible jusqu'à AttackRange
-	 *  puis s'arrête et lance une bombe en cloche toutes les ThrowInterval secondes passées à portée
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged")
-	bool bRanged = false;
-
-	/** Attaque à distance : bombe (Skull Bomb) ou tir (Skull Gun) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
-	EYSFoeRangedAttack RangedAttack = EYSFoeRangedAttack::Bomb;
-
-	/** S'arrête à cette distance de sa cible (au-delà, il fonce vers elle) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Centimeters"))
-	float AttackRange = 1000.0f;
-
-	/** Recharge de la bombe (en continu, même hors de portée) ; rechargée, elle part dès que la cible est à portée */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0.1", Units="Seconds"))
-	float ThrowInterval = 5.0f;
-
-	/** La bombe part de cette hauteur au-dessus du centre du NME */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", Units="Centimeters"))
-	float ThrowHeight = 80.0f;
-
-	/** Sommet de la cloche : hauteur au-dessus du plus haut entre le départ et l'impact */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Centimeters"))
-	float BombApexHeight = 300.0f;
-
-	/** Durée du vol de la bombe (la cloche est calculée pour atterrir pile à ce moment) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0.05", Units="Seconds"))
-	float BombFlightDuration = 1.5f;
-
-	/** Posée au sol, la bombe attend ce temps avant d'exploser, en passant progressivement de BombColor à FuseColor lumineux */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Seconds"))
-	float BombFuseDuration = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
-	FLinearColor BombColor = FLinearColor(0.02f, 0.02f, 0.02f);
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
-	FLinearColor FuseColor = FLinearColor(1.0f, 0.05f, 0.02f);
-
-	/** Intensité de la lueur (émissif) à la fin de la mèche */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0"))
-	float FuseGlow = 20.0f;
-
-	/** Matériau de la bombe (M_FoeBomb : paramètres Color et Emissive) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
-	TObjectPtr<UMaterialInterface> BombMaterial;
-
-	/** Dégâts de l'explosion au niveau 0 (x Damage Multiplier) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0"))
-	float BaseBombDamage = 20.0f;
-
-	/** Dégâts de l'explosion ajoutés par niveau */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0"))
-	float BombDamagePerLevel = 0.0f;
-
-	/** Rayon de l'explosion (joueurs dont le corps touche la sphère) et de la prévisualisation au sol */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="1", Units="Centimeters"))
-	float ExplosionRadius = 500.0f;
-
-	/** La sphère de l'explosion grossit de 0 au rayon en ce temps, puis s'efface en ExplosionFadeDuration */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Seconds"))
-	float ExplosionGrowDuration = 0.14f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", Units="Seconds"))
-	float ExplosionFadeDuration = 0.2f;
-
-	/** Couleur de la sphère d'explosion (alpha = opacité) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
-	FLinearColor ExplosionColor = FLinearColor(1.0f, 0.0f, 0.0f, 0.35f);
-
-	/** Prévisualisation de l'impact au sol pendant le vol (disque de la zone du Brooker) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
-	FLinearColor LandingZoneColor = FLinearColor(1.0f, 0.1f, 0.05f);
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", ClampMax="1"))
-	float LandingZoneFillOpacity = 0.15f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged", ClampMin="0", ClampMax="1"))
-	float LandingZoneEdgeOpacity = 0.7f;
-
-	/** Matériaux : disque d'impact (M_BrookerZone) et sphère d'explosion (M_FoeExplosion : Color, Opacity) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
-	TObjectPtr<UMaterialInterface> LandingZoneMaterial;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
-	TObjectPtr<UMaterialInterface> ExplosionMaterial;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged", meta=(EditCondition="bRanged"))
-	TSubclassOf<AYSFoeBomb> BombClass;
-
-	/** Dégâts de l'explosion, calculés au spawn depuis le niveau */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Foe|Ranged")
-	float BombDamage = 20.0f;
-
-	/**
-	 *  Tir (Skull Gun) : à portée et rechargé (Throw Interval), le NME vise pendant ShotAimDuration en affichant une ligne
-	 *  au sol dans la direction de sa cible AU DÉBUT de la visée (il ne réajuste pas), immobile, puis tire une balle
-	 *  (ShotProjectileClass, HitTags Team.Player) dans cette direction depuis le Muzzle de son arme.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="0", Units="Seconds"))
-	float ShotAimDuration = 1.0f;
-
-	/** Balle tirée (BP enfant de PetoirAMMO qui touche les joueurs : NME_GunAMMO) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged"))
-	TSubclassOf<AYSProjectile> ShotProjectileClass;
-
-	/** Dégâts de la balle au niveau 0 (x Damage Multiplier) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="0"))
-	float BaseShotDamage = 20.0f;
-
-	/** Dégâts de la balle ajoutés par niveau */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="0"))
-	float ShotDamagePerLevel = 0.0f;
-
-	/** Ligne de visée au sol : longueur et largeur (à peu près celle de la balle) ; matériau = Landing Zone Material */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="0", Units="Centimeters"))
-	float AimLineLength = 2000.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="1", Units="Centimeters"))
-	float AimLineWidth = 90.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged"))
-	FLinearColor AimLineColor = FLinearColor(1.0f, 0.1f, 0.05f);
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Ranged|Shot", meta=(EditCondition="bRanged", ClampMin="0", ClampMax="1"))
-	float AimLineOpacity = 0.35f;
-
-	/** Dégâts de la balle, calculés au spawn depuis le niveau */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Foe|Ranged|Shot")
-	float ShotDamage = 20.0f;
-
 	/** Joueur actuellement ciblé (renseigné sur le serveur uniquement) */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Foe")
 	TObjectPtr<APawn> Target;
@@ -438,6 +297,14 @@ public:
 
 	int32 GetNumpadSpawnKey() const { return NumpadSpawnKey; }
 
+	float GetDamageMultiplier() const { return DamageMultiplier; }
+
+	/** Attaque à distance de l'arme tenue (la première trouvée, main droite d'abord), ou nullptr : le NME est alors au corps à corps */
+	UYSFoeRangedAction* GetRangedAction() const;
+
+	/** Tir (NME shot) : début de la visée dans la direction de sa cible (serveur) ; tir à la fin de AimDuration. Faux si impossible */
+	bool StartAim(const APawn* AimTarget, float AimDuration);
+
 	virtual void OnConstruction(const FTransform& Transform) override;
 
 	AYSWeapon* GetLeftHandWeapon() const;
@@ -476,9 +343,6 @@ protected:
 	/** Blesse les joueurs dont la hurtbox touche la Hitbox (serveur) */
 	void ApplyContactDamage();
 
-	/** NME à distance : lance une bombe vers le sol sous sa cible (serveur) */
-	void ThrowBomb(const APawn* BombTarget);
-
 	/** Actions de mêlée (Auto swing) des armes tenues */
 	void GetMeleeActions(TArray<UYSAutoSwingAbility*>& OutActions) const;
 
@@ -491,9 +355,6 @@ protected:
 	/** Animation de l'attaque de mêlée sur toutes les machines (armes de NME locales, non répliquées) */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastMeleeAttack();
-
-	/** Skull Gun : début de la visée dans la direction de sa cible (serveur) ; tir à la fin de ShotAimDuration */
-	void StartAim(const APawn* AimTarget);
 
 	/** Skull Gun : tire la balle dans la direction de la visée (serveur) */
 	void FireShot();
@@ -508,8 +369,8 @@ protected:
 	/** Affiche (ou cache) la ligne de visée sur cette machine */
 	void ShowAimLine(bool bShow, const FVector& Start, const FVector& Direction);
 
-	/** Point de départ du tir : Muzzle de l'arme tenue, sinon au-dessus du NME (ThrowHeight) */
-	FVector GetShotOrigin() const;
+	/** Point de départ d'une attaque à distance : Muzzle de l'arme qui la porte, sinon au-dessus du NME */
+	FVector GetAttackOrigin(const UYSFoeRangedAction* Action) const;
 
 	/** Armes des mains selon le set (ou les armes par main) et gaucher / droitier */
 	void ApplyWeaponClasses();
