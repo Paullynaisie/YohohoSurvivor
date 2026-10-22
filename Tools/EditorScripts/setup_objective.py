@@ -7,7 +7,7 @@ Objectif du jeu (doublons) et objets interactifs :
   - /Game/Placeable/NPC/BP_NPC_Brooker                        : Brooker (YSBrookerNPC, primitives)
   - BP_YSPlayerController : ObjectiveWidgetClass = WBP_Objective
   - FoeCharacter_Skull_Elite : DeathLootClass = coffre
-  - TestGround : un Brooker et un coffre de test (s'ils n'y sont pas)
+  - GameMap : un Brooker et un coffre de test (s'ils n'y sont pas)
 Ne recrée pas ce qui existe déjà (les réglages de Paul sont conservés).
 
 Lancement (éditeur fermé) :
@@ -23,7 +23,7 @@ OBJECTS_DIR = "/Game/Placeable/InteractiveObjects"
 NPC_DIR = "/Game/Placeable/NPC"
 PC_BP = "/Game/Core/Player/BP_YSPlayerController"
 ELITE_BP = "/Game/Placeable/Character/FoeCharacter_Skull_Elite"
-LEVEL_PATH = "/Game/Maps/TestMaps/TestGround"
+LEVEL_PATH = "/Game/Maps/GameMap"
 MATERIALS = "/Game/Art/Materials/PH_materials"
 CUBE = "/Engine/BasicShapes/Cube.Cube"
 CYLINDER = "/Engine/BasicShapes/Cylinder.Cylinder"
@@ -136,7 +136,7 @@ try:
         elite_cdo.set_editor_property("death_loot_class", chest_class)
         assets.save_asset(ELITE_BP, only_if_is_dirty=False)
 
-    # TestGround : un Brooker à l'est des points d'apparition, un coffre de test devant eux
+    # GameMap : un Brooker à l'est des points d'apparition, un coffre de test devant eux
     levels = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     if not levels.load_level(LEVEL_PATH):

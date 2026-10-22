@@ -6,7 +6,7 @@ Bateau pirate : /Game/Placeable/Ship/BP_PirateShip, enfant de AYSPirateShip (Shi
     vu de dessus), nid de pie, drapeau, beaupré, canons, planche d'embarquement à bâbord
   - collision : coque, pont, bastingage, gaillard, escalier, mâts, canons, planche = WorldStatic bloquant (sol pour
     les persos, les traces de sol et les balles) ; voiles, vergues, drapeau, cordages sans collision ; tout en Movable
-  - TestGround : un bateau amarré au bout du ponton (planche d'embarquement contre le ponton), s'il n'y en a pas déjà
+  - GameMap : un bateau amarré au bout du ponton (planche d'embarquement contre le ponton), s'il n'y en a pas déjà
 Ne recrée pas le Blueprint s'il existe (le visuel retouché par Paul est conservé).
 
 Lancement (éditeur fermé) :
@@ -20,7 +20,7 @@ import unreal
 SHIP_DIR = "/Game/Placeable/Ship"
 NAME = "BP_PirateShip"
 SHIP_BP = f"{SHIP_DIR}/{NAME}"
-LEVEL = "/Game/Maps/TestMaps/TestGround"
+LEVEL = "/Game/Maps/GameMap"
 MAT = "/Game/Art/Materials/PH_materials"
 BROWN = f"{MAT}/m_PH_monochrome_Brown"
 SAND = f"{MAT}/m_PH_monochrome_Sand"
@@ -45,7 +45,7 @@ STEPS = 6
 CASTLE_TOP = DECK + STEP_RISE * STEPS
 GAP_HALF = 200.0         # ouverture du bastingage à bâbord (-Y), centrée en X = 0
 
-# amarrage dans TestGround (bout du ponton BP_Prop_Pier, qui part vers -X)
+# amarrage dans GameMap (bout du ponton BP_Prop_Pier, qui part vers -X)
 PIER_LABEL = "Pier"
 PIER_LENGTH = 1500.0
 DOCK_GAP = 0.0
@@ -201,15 +201,15 @@ try:
         log(f"existe déjà : {SHIP_BP}")
     ship_class = assets.load_blueprint_class(SHIP_BP)
 
-    # TestGround : amarré au bout du ponton, flanc bâbord (ouverture) contre le ponton
+    # GameMap : amarré au bout du ponton, flanc bâbord (ouverture) contre le ponton
     levels.load_level(LEVEL)
     existing = [a for a in actors_sub.get_all_level_actors() if isinstance(a, unreal.YSPirateShip)]
     pier = next((a for a in actors_sub.get_all_level_actors() if a.get_actor_label() == PIER_LABEL), None)
     ocean = next((a for a in actors_sub.get_all_level_actors() if isinstance(a, unreal.YSOcean)), None)
     if existing:
-        log(f"TestGround : bateau déjà placé ({existing[0].get_actor_label()})")
+        log(f"GameMap : bateau déjà placé ({existing[0].get_actor_label()})")
     elif pier is None:
-        log("TestGround : pas de ponton « Pier », bateau non placé")
+        log("GameMap : pas de ponton « Pier », bateau non placé")
     else:
         sea = ocean.get_actor_location().z if ocean else -30.0
         pier_end = pier.get_actor_location() + pier.get_actor_forward_vector() * PIER_LENGTH
@@ -219,7 +219,7 @@ try:
         ship.set_actor_label("PirateShip")
         ship.set_folder_path("Island")
         levels.save_current_level()
-        log(f"TestGround : bateau amarré en ({center.x:.0f}, {center.y:.0f}, {center.z:.0f}), bout du ponton ({pier_end.x:.0f}, {pier_end.y:.0f})")
+        log(f"GameMap : bateau amarré en ({center.x:.0f}, {center.y:.0f}, {center.z:.0f}), bout du ponton ({pier_end.x:.0f}, {pier_end.y:.0f})")
     log("OK")
 except Exception as e:
     log(f"ERREUR : {e!r}")

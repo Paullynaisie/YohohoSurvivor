@@ -255,6 +255,13 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerCheatAtkSpeed();
 
+	/** Map de test : touche du pavé numérique -> NME de cette touche devant le personnage (si le GameMode l'autorise).  Ex : YSNumpadSpawn 2 */
+	UFUNCTION(Exec)
+	void YSNumpadSpawn(int32 Key);
+
+	UFUNCTION(Server, Reliable)
+	void ServerNumpadSpawn(int32 Key);
+
 	/** Debug : fixe les BL stacks du Bloodlust (si débloqué) et relance leur délai.  Ex : YSSetBloodlustStacks 5 */
 	UFUNCTION(Exec)
 	void YSSetBloodlustStacks(int32 Stacks);

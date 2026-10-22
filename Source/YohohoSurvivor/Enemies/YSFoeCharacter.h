@@ -258,6 +258,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn", meta=(ClampMin="0"))
 	float SpawnWeight = 1.0f;
 
+	/** Map de test (GameMode avec Numpad Foe Spawn) : touche du pavé numérique (0 à 9) qui fait apparaître ce NME ; -1 = aucune */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn", meta=(ClampMin="-1", ClampMax="9"))
+	int32 NumpadSpawnKey = -1;
+
 	/**
 	 *  NME à distance (Skull Bomb) : pas de dégâts de contact (hitbox désactivée) ; avance vers sa cible jusqu'à AttackRange
 	 *  puis s'arrête et lance une bombe en cloche toutes les ThrowInterval secondes passées à portée
@@ -431,6 +435,8 @@ public:
 	float GetSizeMultiplier() const { return SizeMultiplier; }
 
 	float GetSpawnWeight() const { return SpawnWeight; }
+
+	int32 GetNumpadSpawnKey() const { return NumpadSpawnKey; }
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 

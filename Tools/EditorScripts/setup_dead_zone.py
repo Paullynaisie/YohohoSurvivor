@@ -8,7 +8,7 @@ UnrealEditor.exe <uproject> -ExecutePythonScript="Tools/EditorScripts/setup_dead
 """
 import unreal
 
-MAPS = ["/Game/Maps/TestMaps/TestGround"]
+MAPS = ["/Game/Maps/GameMap", "/Game/Maps/TestMaps/TestMap"]
 DEAD_ZONE_DEPTH = 300.0
 
 report = []

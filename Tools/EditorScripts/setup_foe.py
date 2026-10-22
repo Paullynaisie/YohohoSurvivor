@@ -1,7 +1,7 @@
 """
-Crée le Blueprint d'ennemi de base et en place quelques-uns dans TestGround pour les tests :
+Crée le Blueprint d'ennemi de base et en place quelques-uns dans GameMap pour les tests :
   - /Game/Placeable/Character/FoeCharacter_Skull  (Blueprint, parent AYSFoeCharacter)
-  - 3 FoeCharacter_Skull dans /Game/Maps/TestMaps/TestGround (seulement s'il n'y en a aucun)
+  - 3 FoeCharacter_Skull dans /Game/Maps/GameMap (seulement s'il n'y en a aucun)
 
 Lancement (éditeur fermé) :
   UnrealEditor.exe YohohoSurvivor.uproject -ExecutePythonScript="Tools/EditorScripts/setup_foe.py"
@@ -11,7 +11,7 @@ import os
 import unreal
 
 FOE_DIR, FOE_NAME = "/Game/Placeable/Character", "FoeCharacter_Skull"
-LEVEL_PATH = "/Game/Maps/TestMaps/TestGround"
+LEVEL_PATH = "/Game/Maps/GameMap"
 TEST_SPAWNS = [(1500, 0), (-1200, 1200), (0, -1800)]
 MESH_MATERIAL = "/Game/PresetProject/Characters/Mannequins/Materials/Manny/MI_Manny_01_New"
 

@@ -10,7 +10,7 @@ class UStaticMeshComponent;
  *  Océan d'une map : surface bleue sans collision (on passe au travers et on tombe dans la KillZ),
  *  dont la hauteur donne le niveau de la mer. Le sol sous l'eau n'est pas jouable : pas de NME ni de carte au trésor
  *  (IsUnderwater), et les balles et zones au sol restent au-dessus de la surface (ClampAboveSea).
- *  Placé une fois par map (TestGround : Tools/EditorScripts/setup_island.py).
+ *  Placé une fois par map (GameMap : Tools/EditorScripts/setup_island.py).
  */
 UCLASS(meta=(PrioritizeCategories="Ocean"))
 class AYSOcean : public AActor

@@ -4,7 +4,7 @@ Zone de rachat du Brooker :
     sur le bord (distance au centre de l'objet / Radius ; largeur EdgeWidth en cm). Paramètres réglés par AYSBrookerNPC
     (Brooker|Zone) : Color, Glow, FillOpacity, EdgeOpacity, Radius (= AcceptRange), EdgeWidth.
   - BP_NPC_Brooker : ZoneMaterial = M_BrookerZone
-  - TestGround : le coffre de test (Chest_Test) reprend la valeur du Blueprint (sa valeur d'instance était à 0),
+  - GameMap : le coffre de test (Chest_Test) reprend la valeur du Blueprint (sa valeur d'instance était à 0),
     les Brookers placés reprennent le matériau de zone du Blueprint
 Ne recrée pas le matériau s'il existe déjà.
 
@@ -20,7 +20,7 @@ MATERIAL_NAME = "M_BrookerZone"
 MATERIAL_PATH = f"{MATERIAL_DIR}/{MATERIAL_NAME}"
 BROOKER_BP = "/Game/Placeable/NPC/BP_NPC_Brooker"
 CHEST_BP = "/Game/Placeable/InteractiveObjects/BP_InteractiveObject_Chest"
-LEVEL_PATH = "/Game/Maps/TestMaps/TestGround"
+LEVEL_PATH = "/Game/Maps/GameMap"
 # reconstruit le matériau (à remettre à False une fois réglé par Paul)
 REBUILD_MATERIAL = False
 

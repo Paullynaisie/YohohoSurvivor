@@ -2,7 +2,7 @@
 Crée (ou met à jour) les assets de la boucle de test multijoueur :
   - /Game/Placeable/Character/PlayerCharacter_mouss  (Blueprint, parent AYSPlayerCharacter)
   - /Game/Core/GameModes/BP_TestGameMode               (Blueprint GameMode, pawn = PlayerCharacter_mouss)
-  - /Game/Maps/TestMaps/TestGround                     (Level : sol grille, lumière, 4 PlayerStart)
+  - /Game/Maps/GameMap                     (Level : sol grille, lumière, 4 PlayerStart)
 
 Lancement (éditeur fermé) :
   UnrealEditor.exe YohohoSurvivor.uproject -ExecutePythonScript="Tools/EditorScripts/setup_testground.py"
@@ -13,7 +13,7 @@ import unreal
 
 CHAR_DIR, CHAR_NAME = "/Game/Placeable/Character", "PlayerCharacter_mouss"
 GM_DIR, GM_NAME = "/Game/Core/GameModes", "BP_TestGameMode"
-LEVEL_PATH = "/Game/Maps/TestMaps/TestGround"
+LEVEL_PATH = "/Game/Maps/GameMap"
 GRID_MATERIAL = "/Engine/EngineMaterials/WorldGridMaterial"
 PLANE_MESH = "/Engine/BasicShapes/Plane"
 

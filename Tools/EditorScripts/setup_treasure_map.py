@@ -2,7 +2,7 @@
 Carte au trésor :
   - /Game/Placeable/InteractiveObjects/BP_InteractiveObject_TreasureChest : coffre au trésor (enfant du coffre), 30 doublons
   - /Game/Placeable/InteractiveObjects/BP_InteractiveObject_TreasureMap   : carte (YSTreasureMap, primitives), récompense = coffre au trésor
-  - BP_TestGameMode : TreasureMapClass = la carte, zone d'apparition = sol de TestGround (moins une marge)
+  - BP_TestGameMode : TreasureMapClass = la carte, zone d'apparition = sol de GameMap (moins une marge)
 Ne recrée pas ce qui existe déjà (les réglages de Paul sont conservés).
 
 Lancement (éditeur fermé) :
@@ -16,7 +16,7 @@ OBJECTS_DIR = "/Game/Placeable/InteractiveObjects"
 CHEST_BP = f"{OBJECTS_DIR}/BP_InteractiveObject_Chest"
 PROMPT_WBP = "/Game/Core/UI/WBP_InteractPrompt"
 GAME_MODE_BP = "/Game/Core/GameModes/BP_TestGameMode"
-LEVEL_PATH = "/Game/Maps/TestMaps/TestGround"
+LEVEL_PATH = "/Game/Maps/GameMap"
 MATERIALS = "/Game/Art/Materials/PH_materials"
 CUBE = "/Engine/BasicShapes/Cube.Cube"
 CYLINDER = "/Engine/BasicShapes/Cylinder.Cylinder"
@@ -69,7 +69,7 @@ def add_shape(bp, name, mesh, material, location, scale, rotation=None):
 
 
 def ground_bounds():
-    """Sol le plus large de TestGround : (centre, demi-largeur X, demi-largeur Y, dessus)."""
+    """Sol le plus large de GameMap : (centre, demi-largeur X, demi-largeur Y, dessus)."""
     levels = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     if not levels.load_level(LEVEL_PATH):
@@ -81,7 +81,7 @@ def ground_bounds():
             if best is None or extent.x * extent.y > best[1].x * best[1].y:
                 best = (origin, extent)
     if best is None:
-        raise RuntimeError("aucun sol trouvé dans TestGround")
+        raise RuntimeError("aucun sol trouvé dans GameMap")
     origin, extent = best
     return origin, extent.x, extent.y, origin.z + extent.z
 
@@ -123,7 +123,7 @@ try:
     assets.save_asset(map_path, only_if_is_dirty=False)
     map_class = assets.load_blueprint_class(map_path)
 
-    # GameMode : une carte par jour, dans la zone du sol de TestGround
+    # GameMode : une carte par jour, dans la zone du sol de GameMap
     center, half_x, half_y, top = ground_bounds()
     gm_cdo = unreal.get_default_object(assets.load_blueprint_class(GAME_MODE_BP))
     if gm_cdo.get_editor_property("treasure_map_class") is None:

@@ -196,6 +196,29 @@ void AYSPlayerController::SetupInputComponent()
 	// codes de triche pour les tests (absents des builds Shipping)
 	InputComponent->BindKey(EKeys::Right, IE_Pressed, this, &AYSPlayerController::YSCheatAtkSpeed);
 #endif
+
+	// pavé numérique : apparition manuelle de NME (seulement si le GameMode de la map l'autorise, ex. TestMap)
+	const FKey NumpadKeys[] = { EKeys::NumPadZero, EKeys::NumPadOne, EKeys::NumPadTwo, EKeys::NumPadThree, EKeys::NumPadFour,
+		EKeys::NumPadFive, EKeys::NumPadSix, EKeys::NumPadSeven, EKeys::NumPadEight, EKeys::NumPadNine };
+	for (int32 Key = 0; Key < UE_ARRAY_COUNT(NumpadKeys); ++Key)
+	{
+		FInputKeyBinding Binding(FInputChord(NumpadKeys[Key]), IE_Pressed);
+		Binding.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [this, Key]() { YSNumpadSpawn(Key); });
+		InputComponent->KeyBindings.Add(Binding);
+	}
+}
+
+void AYSPlayerController::YSNumpadSpawn(int32 Key)
+{
+	ServerNumpadSpawn(Key);
+}
+
+void AYSPlayerController::ServerNumpadSpawn_Implementation(int32 Key)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->SpawnNumpadFoe(this, Key);
+	}
 }
 
 void AYSPlayerController::YSSetBloodlustStacks(int32 Stacks)
@@ -1215,12 +1238,8 @@ void AYSPlayerController::YSSpawnFoe(const FString& Name, float Distance)
 	}
 
 	// au sol devant le personnage, tourné vers lui
-	const FVector Forward = MyPawn->GetActorForwardVector().GetSafeNormal2D();
-	const FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), MyPawn->GetActorLocation() + Forward * Distance, MyPawn);
-	const float HalfHeight = FoeClass->GetDefaultObject<AYSFoeCharacter>()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	FActorSpawnParameters Params;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-	const AActor* Foe = GetWorld()->SpawnActor<AYSFoeCharacter>(FoeClass, Ground + FVector(0.0f, 0.0f, HalfHeight + 2.0f), (-Forward).Rotation(), Params);
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	const AActor* Foe = GameMode ? GameMode->SpawnFoeInFront(FoeClass, MyPawn, Distance) : nullptr;
 	UE_LOG(LogTemp, Log, TEXT("[YSSpawnFoe] %s"), Foe ? *Foe->GetName() : TEXT("échec"));
 }
 

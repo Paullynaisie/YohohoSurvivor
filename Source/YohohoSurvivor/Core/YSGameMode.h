@@ -73,9 +73,27 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))
 	int32 ClassUpgradeLevel = 5;
 
+	/** Cycle jour / nuit (désactivé : toujours le jour 1, pas de nuit ; la mort d'un élite ne change pas de jour) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DayNight")
+	bool bDayNightCycle = true;
+
 	/** Durée du jour ; ensuite la nuit commence et dure tant que l'élite est en vie */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DayNight", meta=(ClampMin="1", Units="s"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DayNight", meta=(ClampMin="1", Units="s", EditCondition="bDayNightCycle"))
 	float DayDuration = 30.0f;
+
+	/**
+	 *  Map de test : les touches du pavé numérique (0 à 9) font apparaître un NME devant le personnage du joueur qui appuie.
+	 *  Touche de chaque NME = son Numpad Spawn Key (Foe|Spawn) ; NME proposés = Numpad Foe Classes.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test")
+	bool bNumpadFoeSpawn = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn"))
+	TArray<TSubclassOf<AYSFoeCharacter>> NumpadFoeClasses;
+
+	/** Distance devant le personnage où apparaît le NME */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn", ClampMin="0", Units="Centimeters"))
+	float NumpadSpawnDistance = 900.0f;
 
 	/** Objectif commun : doublons à réunir en revendant des coffres au Brooker (jauge d'objectif du HUD) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="1"))
@@ -143,6 +161,12 @@ public:
 
 	/** Mort de l'élite : la nuit se termine, jour suivant */
 	void OnEliteKilled(AYSFoeCharacter* Elite);
+
+	/** Pavé numérique (map de test) : NME dont le Numpad Spawn Key vaut Key, devant le personnage du joueur ; nullptr si rien */
+	AYSFoeCharacter* SpawnNumpadFoe(const APlayerController* Player, int32 Key);
+
+	/** NME de la classe posé au sol à Distance devant Pawn, tourné vers lui (debug, pavé numérique) */
+	AYSFoeCharacter* SpawnFoeInFront(UClass* FoeClass, const APawn* Pawn, float Distance);
 
 	/** Doublons gagnés par l'équipe (vente au Brooker ; serveur) */
 	void AddDoubloons(int32 Amount);

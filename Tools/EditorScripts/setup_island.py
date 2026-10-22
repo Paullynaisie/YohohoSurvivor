@@ -1,5 +1,5 @@
 ﻿"""
-Île pirate (TestGround) :
+Île pirate (GameMap) :
   - le sol plat « Ground » est remplacé par un Landscape « Island » (4 x 4 composants de 63 quads, 50 cm par quad = 126 m de côté)
     sculpté par une formule : côte irrégulière, collines douces (pentes < 20°, toujours praticables à pied), plage en pente légère,
     jusqu'au bord de l'eau, puis à pic sous la mer (on passe à travers l'océan et on tombe sous la KillZ : deadzone)
@@ -21,7 +21,7 @@ import os
 import random
 import unreal
 
-LEVEL = "/Game/Maps/TestMaps/TestGround"
+LEVEL = "/Game/Maps/GameMap"
 MAT_DIR = "/Game/Art/Materials"
 GROUND_MAT = f"{MAT_DIR}/M_IslandGround"
 OCEAN_MAT = f"{MAT_DIR}/M_Ocean"

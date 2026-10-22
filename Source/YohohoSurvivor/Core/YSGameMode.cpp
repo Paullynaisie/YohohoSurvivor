@@ -4,6 +4,8 @@
 #include "Enemies/YSEnemySpawnRule.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Interaction/YSTreasureMap.h"
+#include "Interaction/YSInteractiveObject.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/YSPlayerCharacter.h"
@@ -32,7 +34,7 @@ void AYSGameMode::Tick(float DeltaSeconds)
 	}
 
 	// fin du jour : la nuit commence (elle ne se termine qu'à la mort de l'élite)
-	if (!YSGameState->IsNight() && YSGameState->GetDayElapsedTime() >= DayDuration)
+	if (bDayNightCycle && !YSGameState->IsNight() && YSGameState->GetDayElapsedTime() >= DayDuration)
 	{
 		StartNight();
 	}
@@ -360,7 +362,7 @@ bool AYSGameMode::HasCharacter(const AController* Controller)
 void AYSGameMode::StartNight()
 {
 	AYSGameState* YSGameState = GetGameState<AYSGameState>();
-	if (!YSGameState || !YSGameState->IsMatchStarted() || YSGameState->IsNight())
+	if (!bDayNightCycle || !YSGameState || !YSGameState->IsMatchStarted() || YSGameState->IsNight())
 	{
 		return;
 	}
@@ -563,4 +565,42 @@ AYSTreasureMap* AYSGameMode::SpawnTreasureMapAt(const FVector& Location)
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Carte au trésor %s à (%.0f, %.0f) : %d segments, %.0f cm, arrivée (%.0f, %.0f)"), *TreasureMap->GetName(),
 		Location.X, Location.Y, Path.Num() - 1, Length, Path.Last().X, Path.Last().Y);
 	return TreasureMap;
+}
+
+AYSFoeCharacter* AYSGameMode::SpawnNumpadFoe(const APlayerController* Player, int32 Key)
+{
+	const APawn* Pawn = Player ? Player->GetPawn() : nullptr;
+	if (!bNumpadFoeSpawn || !Pawn)
+	{
+		return nullptr;
+	}
+
+	for (const TSubclassOf<AYSFoeCharacter>& FoeClass : NumpadFoeClasses)
+	{
+		if (FoeClass && FoeClass->GetDefaultObject<AYSFoeCharacter>()->GetNumpadSpawnKey() == Key)
+		{
+			AYSFoeCharacter* Foe = SpawnFoeInFront(FoeClass, Pawn, NumpadSpawnDistance);
+			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Pavé numérique %d : %s"), Key, Foe ? *Foe->GetName() : TEXT("échec"));
+			return Foe;
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Pavé numérique %d : aucun NME sur cette touche"), Key);
+	return nullptr;
+}
+
+AYSFoeCharacter* AYSGameMode::SpawnFoeInFront(UClass* FoeClass, const APawn* Pawn, float Distance)
+{
+	if (!FoeClass || !Pawn || !FoeClass->IsChildOf(AYSFoeCharacter::StaticClass()))
+	{
+		return nullptr;
+	}
+
+	// au sol devant le personnage, tourné vers lui
+	const FVector Forward = Pawn->GetActorForwardVector().GetSafeNormal2D();
+	const FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), Pawn->GetActorLocation() + Forward * Distance, Pawn);
+	const AYSFoeCharacter* FoeDefaults = FoeClass->GetDefaultObject<AYSFoeCharacter>();
+	const float HalfHeight = FoeDefaults->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * FoeDefaults->GetSizeMultiplier();
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	return GetWorld()->SpawnActor<AYSFoeCharacter>(FoeClass, Ground + FVector(0.0f, 0.0f, HalfHeight + 2.0f), (-Forward).Rotation(), Params);
 }
