@@ -17,6 +17,9 @@ AYSWeapon::AYSWeapon()
 
 	Muzzle = CreateDefaultSubobject<USceneComponent>(TEXT("Muzzle"));
 	Muzzle->SetupAttachment(Root);
+
+	OffHandSocket = CreateDefaultSubobject<USceneComponent>(TEXT("OffHandSocket"));
+	OffHandSocket->SetupAttachment(Root);
 }
 
 UYSAbilityComponent* AYSWeapon::GetAction() const

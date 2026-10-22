@@ -290,6 +290,20 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 
 	UpdateHand(LeftHand, LeftHandWorldLocation, true, 0.0f);
 	UpdateHand(RightHand, RightHandWorldLocation, false, 100.0f);
+
+	// arme à deux mains : l'autre main toujours sur le socket de l'arme, sans retard, même pendant le swing
+	// (après la main qui la tient : l'arme, attachée à cette main, l'a déjà suivie)
+	for (const bool bWeaponInLeft : { false, true })
+	{
+		const AYSWeapon* Weapon = bWeaponInLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
+		const USceneComponent* Socket = Weapon && Weapon->IsTwoHanded() ? Weapon->GetOffHandSocket() : nullptr;
+		if (Socket)
+		{
+			USceneComponent* OtherHand = bWeaponInLeft ? RightHand : LeftHand;
+			OtherHand->SetWorldLocationAndRotation(Socket->GetComponentLocation(), Socket->GetComponentQuat());
+			(bWeaponInLeft ? RightHandWorldLocation : LeftHandWorldLocation) = Socket->GetComponentLocation();
+		}
+	}
 	bHandsInitialized = true;
 }
 

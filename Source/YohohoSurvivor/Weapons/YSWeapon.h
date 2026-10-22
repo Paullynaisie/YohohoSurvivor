@@ -33,11 +33,23 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USceneComponent> Muzzle;
 
+	/** Arme à deux mains : position et rotation de l'AUTRE main du porteur (à placer sur la poignée dans le Blueprint) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> OffHandSocket;
+
 protected:
 
 	/** Nom affiché */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon")
 	FText DisplayName;
+
+	/**
+	 *  Arme à deux mains : tenue par une main (la pose et les attaques, ex. swing, ne concernent que cette main), l'autre main
+	 *  se place TOUJOURS sur le socket OffHandSocket de l'arme, sans retard, même pendant les attaques. L'autre main ne
+	 *  doit pas avoir d'arme (set : une seule main). NME pour l'instant.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon")
+	bool bTwoHanded = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon", meta=(InlineEditConditionToggle))
 	bool bOverrideHandLocation = false;
@@ -106,6 +118,11 @@ public:
 	APawn* GetHolder() const;
 
 	FVector GetMuzzleLocation() const;
+
+	bool IsTwoHanded() const { return bTwoHanded; }
+
+	/** Socket de l'autre main (armes à deux mains) */
+	USceneComponent* GetOffHandSocket() const { return OffHandSocket.Get(); }
 
 	UStaticMeshComponent* GetMesh() const { return Mesh.Get(); }
 };
