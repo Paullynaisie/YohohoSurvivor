@@ -232,7 +232,7 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 {
 	// perf : pur visuel local (rien n'est répliqué) ; hors écran les mains restent figées, SAUF sur le serveur pendant une
 	// attaque de mêlée : la hitbox de l'arme suit la main (un client peut se battre hors de l'écran de l'hôte)
-	if (bHandsInitialized && GetWorld() && GetWorld()->IsGameWorld() && !WasRecentlyRendered(HandsOffscreenFreezeDelay) && !(HasAuthority() && IsMeleeAttacking()))
+	if (bHandsInitialized && GetWorld() && GetWorld()->IsGameWorld() && !WasRecentlyRendered(HandsOffscreenFreezeDelay) && !(HasAuthority() && (IsMeleeAttacking() || (GetRangedAction() && GetRangedAction()->IsAnimating()))))
 	{
 		return;
 	}
@@ -261,16 +261,28 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 		}
 
 		FVector FinalLocation = WorldLocation;
-		FQuat FinalRotation = GetHandTargetRotation(bLeft).Quaternion();
+		FRotator HandRotator = GetHandTargetRotation(bLeft);
 
-		// attaque de mêlée (Auto swing de l'arme) : même animation que le joueur, la pose animée remplace la pose normale
-		// sans retard ; poses exprimées pour la main droite, symétrisées pour la gauche
+		// recul après un tir (NME shot) : comme le pistolet du joueur, main reculée le long de l'axe de l'arme et cabrée,
+		// ajouté après le lissage pour rester sec
 		const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
+		const UYSFoeRangedAction* Ranged = Weapon ? Weapon->FindComponentByClass<UYSFoeRangedAction>() : nullptr;
+		float RecoilPitch = 0.0f;
+		float RecoilKickBack = 0.0f;
+		if (Ranged && Ranged->GetRecoil(RecoilPitch, RecoilKickBack))
+		{
+			FinalLocation += BodyTransform.TransformVectorNoScale(-HandRotator.Vector() * RecoilKickBack);
+			HandRotator.Pitch += RecoilPitch;
+		}
+		FQuat FinalRotation = HandRotator.Quaternion();
+
+		// attaque animée de l'arme (Auto swing : même animation que le joueur ; lancer de la NME bomb) : la pose animée
+		// remplace la pose normale sans retard ; poses exprimées pour la main droite, symétrisées pour la gauche
 		const UYSAutoSwingAbility* Swing = Weapon ? Cast<UYSAutoSwingAbility>(Weapon->GetAutoAction()) : nullptr;
 		float IdleWeight = 1.0f;
 		FVector PoseLocation = FVector::ZeroVector;
 		FQuat PoseRotation = FQuat::Identity;
-		if (Swing && Swing->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation))
+		if ((Swing && Swing->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation)) || (Ranged && Ranged->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation)))
 		{
 			if (bLeft)
 			{
@@ -484,6 +496,17 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 
 	// mains : visuel local sur toutes les machines
 	UpdateHands(DeltaSeconds);
+
+	// arme cachée un moment (bombe partie de la main, pas encore revenue) : visuel local
+	for (AYSWeapon* Weapon : { GetLeftHandWeapon(), GetRightHandWeapon() })
+	{
+		const UYSFoeRangedAction* Ranged = Weapon ? Weapon->FindComponentByClass<UYSFoeRangedAction>() : nullptr;
+		const bool bWeaponHidden = Ranged && Ranged->IsWeaponHidden();
+		if (Weapon && Weapon->IsHidden() != bWeaponHidden)
+		{
+			Weapon->SetActorHiddenInGame(bWeaponHidden);
+		}
+	}
 
 	// serveur autoritaire : les clients reçoivent position et rotation par réplication
 	if (!HasAuthority())
@@ -722,7 +745,7 @@ FVector AYSFoeCharacter::GetAttackOrigin(const UYSFoeRangedAction* Action) const
 	return GetActorLocation() + FVector(0.0f, 0.0f, YSFoe::DefaultAttackHeight);
 }
 
-bool AYSFoeCharacter::StartAim(const APawn* AimTarget, float AimDuration)
+bool AYSFoeCharacter::StartAim(const APawn* AimTarget, float AimDuration, float YawOffset)
 {
 	if (!AimTarget)
 	{
@@ -736,13 +759,14 @@ bool AYSFoeCharacter::StartAim(const APawn* AimTarget, float AimDuration)
 	{
 		Direction = GetActorForwardVector();
 	}
-	AimDirection = Direction.GetSafeNormal2D();
+	// imprécision de l'arme : décalage de YawOffset degrés
+	AimDirection = Direction.GetSafeNormal2D().RotateAngleAxis(YawOffset, FVector::UpVector);
 	AimTimeLeft = AimDuration;
 	bAiming = true;
 	SetActorRotation(FRotator(0.0f, AimDirection.Rotation().Yaw, 0.0f));
 
 	const FVector Start = AYSInteractiveObject::FindGround(GetWorld(), GetActorLocation(), this);
-	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s vise %s pendant %.2f s, direction (%.2f, %.2f)"), *GetName(), *AimTarget->GetName(), AimDuration, AimDirection.X, AimDirection.Y);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s vise %s pendant %.2f s, direction (%.2f, %.2f), décalage %.1f°"), *GetName(), *AimTarget->GetName(), AimDuration, AimDirection.X, AimDirection.Y, YawOffset);
 	MulticastAimStarted(Start, AimDirection);
 	return true;
 }
@@ -751,9 +775,11 @@ void AYSFoeCharacter::FireShot()
 {
 	bAiming = false;
 	MulticastAimEnded();
-	if (const UYSFoeShotAction* Shot = Cast<UYSFoeShotAction>(GetRangedAction()))
+	if (UYSFoeShotAction* Shot = Cast<UYSFoeShotAction>(GetRangedAction()))
 	{
 		Shot->Fire(this, GetAttackOrigin(Shot), AimDirection);
+		// recul du pistolet sur toutes les machines
+		NotifyRangedAttack(Shot);
 	}
 }
 
@@ -792,5 +818,27 @@ void AYSFoeCharacter::ShowAimLine(bool bShow, const FVector& Start, const FVecto
 		Material->SetScalarParameterValue(TEXT("EdgeOpacity"), 0.0f);
 		Material->SetScalarParameterValue(TEXT("Radius"), Shot->AimLineLength * 10.0f);
 		Material->SetScalarParameterValue(TEXT("EdgeWidth"), 1.0f);
+	}
+}
+
+void AYSFoeCharacter::NotifyRangedAttack(UYSFoeRangedAction* Action)
+{
+	if (Action)
+	{
+		Action->PlayAttackLocally();
+	}
+	MulticastRangedAttack();
+}
+
+void AYSFoeCharacter::MulticastRangedAttack_Implementation()
+{
+	// serveur : déjà joué par NotifyRangedAttack ; clients : l'arme locale joue l'animation (lancer, recul)
+	if (HasAuthority())
+	{
+		return;
+	}
+	if (UYSFoeRangedAction* Action = GetRangedAction())
+	{
+		Action->PlayAttackLocally();
 	}
 }

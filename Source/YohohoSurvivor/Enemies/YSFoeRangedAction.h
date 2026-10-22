@@ -54,6 +54,32 @@ public:
 
 	/** Lance l'attaque vers la cible (serveur) ; vrai si elle part. Origin = Muzzle de l'arme */
 	virtual bool StartAttack(AYSFoeCharacter* Foe, const APawn* Target, const FVector& Origin) { return false; }
+
+	/** Moment visible de l'attaque (début du lancer, tir) sur cette machine : animations locales (NetMulticast du NME) */
+	void PlayAttackLocally();
+
+	/** Secondes depuis PlayAttackLocally sur cette machine (très grand si jamais) */
+	float GetTimeSinceAttack() const;
+
+	/**
+	 *  Pose animée de la main qui tient l'arme (main droite, relative au corps), comme l'Auto swing : OutIdleWeight = part de
+	 *  la pose normale (1 = normale). Faux hors animation.
+	 */
+	virtual bool EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const { return false; }
+
+	/** Recul après un tir : cabrage (degrés) et recul le long de l'axe de l'arme (cm) ; faux au repos */
+	virtual bool GetRecoil(float& OutPitch, float& OutKickBack) const { return false; }
+
+	/** L'arme est cachée en ce moment (ex. bombe partie, pas encore revenue dans la main) */
+	virtual bool IsWeaponHidden() const { return false; }
+
+	/** Animation de l'attaque en cours sur cette machine (les mains du serveur ne sont alors jamais figées) */
+	virtual bool IsAnimating() const { return false; }
+
+private:
+
+	/** Instant (temps local) du dernier PlayAttackLocally */
+	double LastAttackTime = -1.0e6;
 };
 
 /**
@@ -121,9 +147,61 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Bomb")
 	TSubclassOf<AYSFoeBomb> BombClass;
 
+	/** La bombe vise un point au hasard autour de la cible, à une distance entre 0 et ce rayon (0 = pile sur la cible) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Bomb", meta=(ClampMin="0", Units="Centimeters"))
+	float TargetScatterRadius = 350.0f;
+
+	/** Lancer, phase 1 : la main recule et monte (pose de préparation) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Throw Anim", meta=(ClampMin="0.01", Units="Seconds"))
+	float ThrowWindupDuration = 0.3f;
+
+	/** Phase 2 : la main part vers l'avant ; la bombe quitte la main à la fin de cette phase */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Throw Anim", meta=(ClampMin="0.01", Units="Seconds"))
+	float ThrowDuration = 0.12f;
+
+	/** Phase 3 : retour à la pose normale */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Throw Anim", meta=(ClampMin="0.01", Units="Seconds"))
+	float ThrowRecoverDuration = 0.35f;
+
+	/** Pose de préparation (main droite, relative au corps ; X avant, Y droite, Z haut) : derrière l'épaule */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Throw Anim")
+	FVector WindupHandLocation = FVector(-40.0f, 45.0f, 50.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Throw Anim")
+	FRotator WindupHandRotation = FRotator(-30.0f, 0.0f, 0.0f);
+
+	/** Pose au lâcher : bras tendu devant, en hauteur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Throw Anim")
+	FVector ReleaseHandLocation = FVector(70.0f, 30.0f, 40.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Throw Anim")
+	FRotator ReleaseHandRotation = FRotator(20.0f, 0.0f, 0.0f);
+
+	/** Courbes : préparation EaseOut, lancer EaseOut marqué, retour EaseInOut */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Throw Anim", meta=(ClampMin="1"))
+	float ThrowEaseExponent = 3.0f;
+
+	/** La bombe réapparaît dans la main ce temps après l'avoir quittée */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Throw Anim", meta=(ClampMin="0", Units="Seconds"))
+	float BombReappearDelay = 1.0f;
+
 	UYSFoeBombAction();
 
+	/** Démarre l'animation de lancer (serveur) ; la bombe part au lâcher (fin de ThrowDuration), vers le point visé au début */
 	virtual bool StartAttack(AYSFoeCharacter* Foe, const APawn* Target, const FVector& Origin) override;
+
+	virtual bool EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const override;
+
+	virtual bool IsWeaponHidden() const override;
+
+	virtual bool IsAnimating() const override { return GetTimeSinceAttack() < ThrowWindupDuration + ThrowDuration + ThrowRecoverDuration; }
+
+private:
+
+	/** Lâcher (serveur) : la bombe part du Muzzle de l'arme (dans la main) vers Target */
+	void ReleaseBomb(TWeakObjectPtr<AYSFoeCharacter> Foe, FVector Target);
+
+	FTimerHandle ReleaseTimer;
 };
 
 /**
@@ -155,6 +233,30 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Preview", meta=(ClampMin="0", ClampMax="1"))
 	float AimLineOpacity = 0.35f;
+
+	/** Imprécision : la direction de visée est décalée au hasard de +/- cet angle (ligne de visée comprise) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Shot", meta=(ClampMin="0", ClampMax="90", Units="Degrees"))
+	float AimSpread = 5.0f;
+
+	/** Recul après le tir (mêmes réglages et même animation que le pistolet du joueur, catégorie Recoil) : cabrage de la main */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Recoil", meta=(Units="Degrees"))
+	float RecoilPitch = 25.0f;
+
+	/** Recul de la main le long de l'axe de l'arme */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Recoil", meta=(ClampMin="0", Units="Centimeters"))
+	float RecoilKickBack = 10.0f;
+
+	/** Durée du coup (EaseOut) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Recoil", meta=(ClampMin="0.001", Units="Seconds"))
+	float RecoilKickDuration = 0.05f;
+
+	/** Durée du retour (EaseInOut) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Recoil", meta=(ClampMin="0.001", Units="Seconds"))
+	float RecoilRecoverDuration = 0.25f;
+
+	virtual bool GetRecoil(float& OutPitch, float& OutKickBack) const override;
+
+	virtual bool IsAnimating() const override { return GetTimeSinceAttack() < RecoilKickDuration + RecoilRecoverDuration; }
 
 	/** Démarre la visée du NME (le tir part à la fin, AYSFoeCharacter::FireShot) */
 	virtual bool StartAttack(AYSFoeCharacter* Foe, const APawn* Target, const FVector& Origin) override;

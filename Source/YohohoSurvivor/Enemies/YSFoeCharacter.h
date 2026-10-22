@@ -302,8 +302,14 @@ public:
 	/** Attaque à distance de l'arme tenue (la première trouvée, main droite d'abord), ou nullptr : le NME est alors au corps à corps */
 	UYSFoeRangedAction* GetRangedAction() const;
 
-	/** Tir (NME shot) : début de la visée dans la direction de sa cible (serveur) ; tir à la fin de AimDuration. Faux si impossible */
-	bool StartAim(const APawn* AimTarget, float AimDuration);
+	/** Tir (NME shot) : début de la visée dans la direction de sa cible décalée de YawOffset degrés (serveur) ; tir à la fin de AimDuration */
+	bool StartAim(const APawn* AimTarget, float AimDuration, float YawOffset);
+
+	/** Point de départ d'une attaque à distance : Muzzle de l'arme qui la porte, sinon au-dessus du NME */
+	FVector GetAttackOrigin(const UYSFoeRangedAction* Action) const;
+
+	/** Moment visible d'une attaque à distance (serveur) : animations de l'arme ici et sur les clients (lancer, recul) */
+	void NotifyRangedAttack(UYSFoeRangedAction* Action);
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 
@@ -366,11 +372,13 @@ protected:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastAimEnded();
 
+	/** Animation de l'attaque à distance de l'arme sur les clients (armes de NME locales) */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastRangedAttack();
+
 	/** Affiche (ou cache) la ligne de visée sur cette machine */
 	void ShowAimLine(bool bShow, const FVector& Start, const FVector& Direction);
 
-	/** Point de départ d'une attaque à distance : Muzzle de l'arme qui la porte, sinon au-dessus du NME */
-	FVector GetAttackOrigin(const UYSFoeRangedAction* Action) const;
 
 	/** Armes des mains selon le set (ou les armes par main) et gaucher / droitier */
 	void ApplyWeaponClasses();

@@ -4,6 +4,8 @@
 #include "Engine/DamageEvents.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/StaticMesh.h"
+#include "Components/ChildActorComponent.h"
+#include "Weapons/YSWeapon.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Map/YSGroundZoneComponent.h"
@@ -37,6 +39,11 @@ AYSFoeBomb::AYSFoeBomb()
 	RootComponent = BombMesh;
 	BombMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BombMesh->SetRelativeScale3D(FVector(YSFoeBomb::BombRadius / YSFoeBomb::ShapeRadius));
+
+	// visuel : copie locale de l'arme qui l'a lancée (échelle absolue : celle de l'arme dans la main)
+	Visual = CreateDefaultSubobject<UChildActorComponent>(TEXT("Visual"));
+	Visual->SetupAttachment(BombMesh);
+	Visual->SetUsingAbsoluteScale(true);
 
 	LandingZone = CreateDefaultSubobject<UYSGroundZoneComponent>(TEXT("LandingZone"));
 	LandingZone->SetupAttachment(BombMesh);
@@ -106,7 +113,19 @@ void AYSFoeBomb::BeginPlay()
 
 void AYSFoeBomb::ApplyThrowVisuals()
 {
-	BombMaterialInstance = Throw.BombMaterial ? BombMesh->CreateDynamicMaterialInstance(0, Throw.BombMaterial) : BombMesh->CreateDynamicMaterialInstance(0);
+	// visuel de l'arme (bombe en primitives de BP_NME_Bomb) à la place de la sphère ; la mèche colore son mesh principal
+	UStaticMeshComponent* ColoredMesh = BombMesh;
+	if (Throw.VisualClass)
+	{
+		Visual->SetChildActorClass(Throw.VisualClass);
+		Visual->SetWorldScale3D(Throw.VisualScale);
+		if (const AYSWeapon* WeaponVisual = Cast<AYSWeapon>(Visual->GetChildActor()))
+		{
+			BombMesh->SetVisibility(false);
+			ColoredMesh = WeaponVisual->GetMesh();
+		}
+	}
+	BombMaterialInstance = Throw.BombMaterial ? ColoredMesh->CreateDynamicMaterialInstance(0, Throw.BombMaterial) : ColoredMesh->CreateDynamicMaterialInstance(0);
 	SetFuseAlpha(0.0f);
 
 	// prévisualisation de l'impact : disque rouge posé sur le relief, de la taille de l'explosion
@@ -207,6 +226,10 @@ void AYSFoeBomb::MulticastExploded_Implementation()
 	SetActorLocation(Throw.Target);
 	BombMesh->SetVisibility(false);
 	LandingZone->SetVisibility(false);
+	if (AActor* WeaponVisual = Visual->GetChildActor())
+	{
+		WeaponVisual->SetActorHiddenInGame(true);
+	}
 	ExplosionSphere->SetVisibility(true);
 	UpdateExplosion();
 }

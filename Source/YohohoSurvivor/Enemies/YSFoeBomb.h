@@ -8,6 +8,7 @@
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UStaticMeshComponent;
+class UChildActorComponent;
 class UYSGroundZoneComponent;
 
 /** Lancer d'une bombe : tout ce qu'il faut pour rejouer la même trajectoire et la même explosion sur chaque machine */
@@ -81,6 +82,13 @@ struct FYSBombThrow
 	/** Matériau de la bombe (M_FoeBomb : paramètres Color et Emissive) */
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> BombMaterial;
+
+	/** Visuel de la bombe en vol : l'arme qui l'a lancée (copie locale non répliquée ; vide = sphère par défaut) et son échelle */
+	UPROPERTY()
+	TSubclassOf<AActor> VisualClass;
+
+	UPROPERTY()
+	FVector VisualScale = FVector::OneVector;
 };
 
 /**
@@ -99,6 +107,10 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UStaticMeshComponent> BombMesh;
+
+	/** Visuel de l'arme qui l'a lancée (Throw.VisualClass), à la place de BombMesh */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> Visual;
 
 	/** Disque rouge posé sur le relief au point d'impact (coordonnées monde) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))

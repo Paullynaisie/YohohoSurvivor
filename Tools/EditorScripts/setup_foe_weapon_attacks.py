@@ -21,6 +21,8 @@ BASE_WEAPON = "/Game/Placeable/Weapons/BP_Arme"
 NME_BOMB_NAME = "BP_NME_Bomb"
 NME_BOMB = f"{FOE_WEAPONS}/{NME_BOMB_NAME}"
 NME_PISTOL = f"{FOE_WEAPONS}/BP_NME_Pistol"
+PLAYER_PISTOL = "/Game/Placeable/Weapons/BP_Pistolet"
+RECOIL_PROPS = ["recoil_pitch", "recoil_kick_back", "recoil_kick_duration", "recoil_recover_duration"]
 SETS_DIR = "/Game/Core/WeaponSets"
 BOMB_SET_NAME = "DA_WeaponSet_NME_Bomb"
 BOMB_SET = f"{SETS_DIR}/{BOMB_SET_NAME}"
@@ -153,6 +155,20 @@ try:
         log("BP_NME_Pistol : action de tir ajoutée")
     else:
         log("BP_NME_Pistol : action de tir déjà là")
+
+    # 4) recul du NME pistol = celui du pistolet du joueur (Recoil de son Rolling shot), tant qu'il est aux valeurs par défaut
+    player_shot = next(c for c in components(assets.load_asset(PLAYER_PISTOL)) if isinstance(c, unreal.YSCoupDPetoirAbility))
+    pistol = assets.load_asset(NME_PISTOL)
+    shot = next(c for c in components(pistol) if isinstance(c, unreal.YSFoeShotAction))
+    defaults = unreal.get_default_object(unreal.YSFoeShotAction)
+    if all(shot.get_editor_property(p) == defaults.get_editor_property(p) for p in RECOIL_PROPS):
+        for prop in RECOIL_PROPS:
+            shot.set_editor_property(prop, player_shot.get_editor_property(prop))
+        unreal.BlueprintEditorLibrary.compile_blueprint(pistol)
+        assets.save_asset(NME_PISTOL, only_if_is_dirty=False)
+        log(f"BP_NME_Pistol : recul copié de {player_shot.get_name()} : " + ", ".join(f"{p} {player_shot.get_editor_property(p)}" for p in RECOIL_PROPS))
+    else:
+        log("BP_NME_Pistol : recul déjà réglé, inchangé")
 
     # relecture
     for path in (NME_BOMB, NME_PISTOL):
