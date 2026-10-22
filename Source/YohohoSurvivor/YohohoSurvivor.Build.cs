@@ -29,11 +29,9 @@ public class YohohoSurvivor : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "ApplicationCore" });
 
-		// outils éditeur (YSEditorScriptLibrary : création du landscape de l'île)
-		if (Target.bBuildEditor)
-		{
-			PrivateDependencyModuleNames.Add("Landscape");
-		}
+		// YSEditorScriptLibrary (création du landscape de l'île) : les fonctions sont réservées à l'éditeur, mais le code généré
+		// par UHT référence ALandscape dans toutes les cibles (sinon le packaging échoue : LANDSCAPE_API inconnu)
+		PrivateDependencyModuleNames.Add("Landscape");
 
 		PublicIncludePaths.AddRange(new string[] {
 			"YohohoSurvivor",
