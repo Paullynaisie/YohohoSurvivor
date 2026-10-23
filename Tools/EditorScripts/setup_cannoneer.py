@@ -9,7 +9,7 @@ Second personnage jouable : le Cannoneer (base = Mouss ; seuls la coiffure « He
   - /Game/Core/WeaponSets/DA_WeaponSet_Shotgun (main droite : BP_Shotgun)
   - /Game/Placeable/Character/Player/PlayerCharacter_Cannoneer : copie de PlayerCharacter_mouss (« Cannoneer », set Shotgun) ;
     Head Feature : bandana retiré, tresses plaquées (4 rangées de nattes sur le crâne + 4 cordes qui pendent derrière),
-    mèche devant le visage, 2 cylindres de lunettes ; tout est enfant de Head Feature (prend la couleur de la personnalisation)
+    mèche devant le visage (corde BraidRope5 qui pend droit vers le bas), 2 cylindres de lunettes ; tout est enfant de Head Feature (prend la couleur de la personnalisation)
   - sélection (BP_TestGameMode / BP_TestMapGameMode) : Mouss, Cannoneer, ..., JohnnyPlaytest toujours en dernier
 Ne recrée rien qui existe déjà (réglages de Paul conservés).
 
@@ -177,27 +177,36 @@ def setup_hair(bp):
         for i, a in enumerate(angles):
             phi = math.radians(a)
             shape(bp, f"Braid{r + 1}_{i + 1}", SPHERE, color, vec(radius * math.cos(phi), y, radius * math.sin(phi)),
-                  rot(pitch=90.0 - a, yaw=180.0), vec(0.24, 0.15, 0.13), head_handle)
+                  rot(pitch=90.0 - a, yaw=180.0), vec(0.24, 0.30, 0.13), head_handle)
         # bout de la natte qui pend derrière la tête (corde)
         phi = math.radians(172.0)
         _, chain = add_component(bp, unreal.YSDanglingChainComponent, f"BraidRope{r + 1}", head_handle)
         chain.set_editor_property("relative_location", vec(radius * math.cos(phi), y, radius * math.sin(phi)))
         chain.set_editor_property("segment_count", 5)
         chain.set_editor_property("segment_length", 9.0)
-        chain.set_editor_property("segment_radius", 4.0)
+        chain.set_editor_property("segment_radius", 8.0)
         chain.set_editor_property("segment_mesh", assets.load_asset(CYLINDER))
         chain.set_editor_property("segment_material", color)
     log("tresses plaquées : 4 rangées de 6 nattes + 4 cordes (BraidRope1..4)")
 
-    # mèche devant le visage et lunettes : placées dans l'espace du corps (le visage est à x 42, z 10)
+    # mèche devant le visage = corde qui pend droit vers le bas (placement de Paul, repère local de Head Feature)
+    _, lock = add_component(bp, unreal.YSDanglingChainComponent, "BraidRope5", head_handle)
+    lock.set_editor_property("relative_location", vec(47.3, 24.2, -16.8))
+    lock.set_editor_property("relative_scale3d", vec(2.0, 2.0, 2.0))
+    lock.set_editor_property("segment_count", 5)
+    lock.set_editor_property("segment_length", 9.0)
+    lock.set_editor_property("segment_radius", 4.0)
+    lock.set_editor_property("trail_acceleration", 0.0)
+    lock.set_editor_property("segment_mesh", assets.load_asset(CYLINDER))
+    lock.set_editor_property("segment_material", color)
+
+    # lunettes : placées dans l'espace du corps (le visage est à x 42, z 10)
     space = HeadSpace(head)
-    shape(bp, "FaceLock", SPHERE, color, space.location(48.0, -9.0, 24.0), rot(pitch=-space.pitch),
-          space.scale3d(0.06, 0.14, 0.42), head_handle, decals=False)
     for side, y in (("Left", -12.0), ("Right", 12.0)):
         # cylindres sur le front, ouverture vers l'avant et un peu vers le haut
         shape(bp, f"Goggle{side}", CYLINDER, color, space.location(GOGGLE_X, y, GOGGLE_Z), rot(pitch=GOGGLE_PITCH - space.pitch),
               space.scale3d(*GOGGLE_SCALE), head_handle, decals=False)
-    log("mèche FaceLock et lunettes GoggleLeft / GoggleRight ajoutées")
+    log("mèche BraidRope5 (pend devant le visage) et lunettes GoggleLeft / GoggleRight ajoutées")
 
 
 try:

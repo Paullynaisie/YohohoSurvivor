@@ -53,7 +53,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Physics")
 	FVector Gravity = FVector(0.0f, 0.0f, -980.0f);
 
-	/** Poussée vers l'arrière du personnage (fait flotter la chaîne derrière lui) */
+	/** Poussée vers l'arrière du personnage (fait flotter la chaîne derrière lui) ; 0 = la chaîne pend droit vers le bas */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Physics", meta=(Units="CentimetersPerSecondSquared"))
 	float TrailAcceleration = 600.0f;
 

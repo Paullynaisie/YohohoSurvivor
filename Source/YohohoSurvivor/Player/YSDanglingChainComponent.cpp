@@ -126,7 +126,8 @@ FVector UYSDanglingChainComponent::GetTrailDirection() const
 void UYSDanglingChainComponent::ResetPoints()
 {
 	const FVector Anchor = GetComponentLocation();
-	const FVector RestDirection = (GetTrailDirection() - FVector::UpVector).GetSafeNormal();
+	// repos : vers l'arrière et vers le bas ; sans poussée vers l'arrière, droit vers le bas (ex. mèche devant le visage)
+	const FVector RestDirection = TrailAcceleration > 0.0f ? (GetTrailDirection() - FVector::UpVector).GetSafeNormal() : -FVector::UpVector;
 
 	Points.SetNum(SegmentCount + 1);
 	for (int32 Index = 0; Index < Points.Num(); ++Index)
