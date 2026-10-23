@@ -116,7 +116,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Movement", meta=(ClampMin="0", Units="CentimetersPerSecond"))
 	float MoveSpeed = 600.0f;
 
-	/** Points de vie max de base (avant Hps bonus) */
+	/** Points de vie max de base (avant Hps bonus) ; remplacés par ceux du set d'arme s'il en fixe (Weapon Set > Health) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category="3C|Health", meta=(ClampMin="1"))
 	float MaxHealth = 20.0f;
 
@@ -286,6 +286,7 @@ protected:
 	 *  Pushback des NME touchés par ce personnage, proportionnel à la part de leur vie retirée par le coup
 	 *  (dégâts / PV max de la cible) : sous Min Damage Ratio rien, à partir de Max Damage Ratio la force max,
 	 *  entre les deux la force passe linéairement de Min Force à Max Force. Direction = celle du coup (hitbox, projectile).
+	 *  Remplacés par ceux du set d'arme s'il en fixe (Weapon Set > Pushback).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Pushback", meta=(ClampMin="0", ClampMax="1"))
 	float PushbackMinDamageRatio = 0.05f;
@@ -489,10 +490,10 @@ public:
 	bool IsAlive() const { return Health > 0.0f; }
 
 	UFUNCTION(BlueprintPure, Category="3C|Health")
-	float GetMaxHealth() const { return MaxHealth * MaxHealthMultiplier; }
+	float GetMaxHealth() const { return GetBaseMaxHealth() * MaxHealthMultiplier; }
 
-	/** PV max sans bonus */
-	float GetBaseMaxHealth() const { return MaxHealth; }
+	/** PV max sans bonus : ceux du set d'arme s'il les fixe, sinon Max Health du personnage */
+	float GetBaseMaxHealth() const;
 
 	/** Vitesse de déplacement sans bonus */
 	float GetBaseMoveSpeed() const { return MoveSpeed; }

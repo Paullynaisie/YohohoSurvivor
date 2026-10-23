@@ -105,6 +105,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil", meta=(ClampMin="0.001", Units="Seconds"))
 	float RecoilRecoverDuration = 0.25f;
 
+	/** Courbe du coup (EaseOut : 1 = vitesse constante, plus grand = départ plus sec) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil", meta=(ClampMin="1"))
+	float RecoilKickEaseExponent = 2.0f;
+
+	/** Courbe du retour en place (EaseInOut : 1 = vitesse constante, plus grand = plus doux au début et à la fin) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Recoil", meta=(ClampMin="1"))
+	float RecoilRecoverEaseExponent = 2.0f;
+
 	/**
 	 *  Rafale : si la balle suivante de la même arme part avant la fin du recul (coup + retour), le recul est accéléré
 	 *  pour se jouer entièrement d'ici là (l'écart entre les tirs ne change pas). La dernière balle joue le recul normal.

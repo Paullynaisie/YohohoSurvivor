@@ -138,6 +138,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Requirements")
 	TObjectPtr<UYSUpgrade> RequiredUpgrade;
 
+	/** Tant que le joueur n'a pas cette upgrade, celle-ci n'est proposée qu'en Bronze (ex. Atk speed / Shoot system avant Atk critique) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Requirements")
+	TObjectPtr<UYSUpgrade> HigherRaritiesUpgrade;
+
 	/**
 	 *  Upgrade jumelle (Ricochet <-> Bloodlust, Atk speed <-> Shoot system) : jamais proposée si le joueur a déjà l'autre ;
 	 *  au changement de set d'arme, si ce set n'est pas compatible avec celle-ci mais l'est avec la jumelle, la progression
@@ -169,6 +173,9 @@ public:
 
 	/** La variante peut être proposée dans cette rareté (par défaut bCanBeBronze / Silver / Gold) */
 	virtual bool SupportsRarity(int32 Variant, EYSUpgradeRarity Rarity) const;
+
+	/** Proposable à ce joueur dans cette rareté : SupportsRarity, et au-dessus du Bronze seulement s'il a Higher Rarities Upgrade */
+	bool CanOfferRarity(const AYSPlayerCharacter* Character, int32 Variant, EYSUpgradeRarity Rarity) const;
 
 	/** Valeur ajoutée à Progress.TotalValue par un bonus de cette rareté */
 	virtual float GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const { return 0.0f; }
@@ -756,12 +763,12 @@ protected:
  *  Conditions remplies seulement si renseignées : set d'arme actuel = SourceWeaponSet, classe = SourceClass / ExtraSourceClasses.
  */
 /**
- *  « Atk critique » (unique, une fois) : les attaques auto deviennent régulièrement critiques.
+ *  « Atk critique » (unique, une fois, Gold uniquement) : les attaques auto deviennent régulièrement critiques.
  *  Auto swing (Melee Swing) : chaque arme compte ses attaques auto, la SwingCriticalInterval-ième (5e) est toujours critique.
  *  PewPew (Auto atk des Guns) : chaque NME compte les balles d'attaque auto reçues de chaque joueur, la BulletCriticalInterval-ième
  *  (3e) est toujours critique. Shotgun (Auto atk) : sur un même tir, après ShotgunCriticalHits (4) AMMO qui touchent, les suivantes
- *  sont critiques (remis à zéro à chaque tir). Proposée si une arme tenue a une de ces attaques auto ; débloque Atk speed et Shoot system
- *  (leur Required Upgrade). Dégâts critiques = Critical Damage Multiplier du perso x (1 + bonus critiques d'Atk speed / Shoot system).
+ *  sont critiques (remis à zéro à chaque tir). Proposée si une arme tenue a une de ces attaques auto ; débloque les raretés Silver et Gold d Atk speed et Shoot system
+ *  (leur Higher Rarities Upgrade : sans elle, Bronze seulement). Dégâts critiques = Critical Damage Multiplier du perso x (1 + bonus critiques d'Atk speed / Shoot system).
  */
 UCLASS(meta=(DisplayName="Upgrade spéciale : Atk critique"))
 class UYSCriticalAttackUpgrade : public UYSUpgrade

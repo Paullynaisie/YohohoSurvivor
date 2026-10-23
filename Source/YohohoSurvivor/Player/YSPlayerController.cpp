@@ -958,8 +958,9 @@ void AYSPlayerController::YSUpgradeOdds(int32 Draws)
 		{
 			const FString Name = PlayerCharacter->GetUpgradePool()[Offers[Slot].PoolIndex]->GetVariantNameFor(PlayerCharacter, Offers[Slot].Variant).ToString();
 			TArray<int32>& SlotCounts = Counts.FindOrAdd(Name);
-			SlotCounts.SetNumZeroed(3);
+			SlotCounts.SetNumZeroed(6);
 			++SlotCounts[Slot];
+			++SlotCounts[2 + static_cast<int32>(Offers[Slot].Rarity)];
 			++RarityCounts[static_cast<int32>(Offers[Slot].Rarity)];
 			++TotalOffers;
 		}
@@ -967,8 +968,8 @@ void AYSPlayerController::YSUpgradeOdds(int32 Draws)
 
 	for (const TPair<FString, TArray<int32>>& Entry : Counts)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[YSUpgradeOdds] %-22s proposition 1 : %5.1f %%  2 : %5.1f %%  3 : %5.1f %%"), *Entry.Key,
-			100.0f * Entry.Value[0] / Draws, 100.0f * Entry.Value[1] / Draws, 100.0f * Entry.Value[2] / Draws);
+		UE_LOG(LogTemp, Log, TEXT("[YSUpgradeOdds] %-22s proposition 1 : %5.1f %%  2 : %5.1f %%  3 : %5.1f %%  (Bronze %d / Silver %d / Gold %d)"), *Entry.Key,
+			100.0f * Entry.Value[0] / Draws, 100.0f * Entry.Value[1] / Draws, 100.0f * Entry.Value[2] / Draws, Entry.Value[3], Entry.Value[4], Entry.Value[5]);
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSUpgradeOdds] Raretés (toutes propositions) : Bronze %.1f %%  Silver %.1f %%  Gold %.1f %%  (chances : %.0f / %.0f / %.0f, Luck %.0f)"),
 		100.0f * RarityCounts[1] / FMath::Max(1, TotalOffers), 100.0f * RarityCounts[2] / FMath::Max(1, TotalOffers), 100.0f * RarityCounts[3] / FMath::Max(1, TotalOffers),

@@ -91,6 +91,13 @@ bool UYSUpgrade::SupportsRarity(int32 Variant, EYSUpgradeRarity Rarity) const
 	}
 }
 
+bool UYSUpgrade::CanOfferRarity(const AYSPlayerCharacter* Character, int32 Variant, EYSUpgradeRarity Rarity) const
+{
+	// ex. Atk speed / Shoot system : seulement en Bronze tant que le joueur n'a pas Atk critique
+	const bool bHigherAllowed = !HigherRaritiesUpgrade || (Character && Character->HasUpgrade(HigherRaritiesUpgrade));
+	return SupportsRarity(Variant, Rarity) && (Rarity == EYSUpgradeRarity::Bronze || bHigherAllowed);
+}
+
 float UYSStatUpgrade::GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const
 {
 	switch (Rarity)
@@ -755,7 +762,7 @@ UYSCriticalAttackUpgrade::UYSCriticalAttackUpgrade()
 	BulletDescription = NSLOCTEXT("YS", "CriticalAttackBullet", "La {0}e balle sur un même NME\nest toujours critique");
 	ShotgunDescription = NSLOCTEXT("YS", "CriticalAttackShotgun", "Sur un même tir, après {0} AMMO\nqui touchent, les suivantes\nsont critiques");
 	bCanBeBronze = false;
-	bCanBeGold = false;
+	bCanBeSilver = false;
 }
 
 bool UYSCriticalAttackUpgrade::HasSwingAutoAttack(const AYSPlayerCharacter* Character)

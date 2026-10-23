@@ -377,7 +377,7 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		{
 			bAvailable[RarityIndex] = Candidates.ContainsByPredicate([this, RarityIndex](const FYSUpgradeOffer& Candidate)
 			{
-				return UpgradePool[Candidate.PoolIndex]->SupportsRarity(Candidate.Variant, Rarities[RarityIndex]);
+				return UpgradePool[Candidate.PoolIndex]->CanOfferRarity(this, Candidate.Variant, Rarities[RarityIndex]);
 			});
 			bAnyAvailable |= bAvailable[RarityIndex];
 			RarityChances[RarityIndex] = bAvailable[RarityIndex] ? GetRarityChance(Rarities[RarityIndex]) : 0.0f;
@@ -424,7 +424,7 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		for (const FYSUpgradeOffer& Candidate : Candidates)
 		{
 			const UYSUpgrade* Upgrade = UpgradePool[Candidate.PoolIndex];
-			TotalWeight += Upgrade->SupportsRarity(Candidate.Variant, Rarity) ? Upgrade->GetOfferWeight(Candidate.Variant) : 0.0f;
+			TotalWeight += Upgrade->CanOfferRarity(this, Candidate.Variant, Rarity) ? Upgrade->GetOfferWeight(Candidate.Variant) : 0.0f;
 		}
 
 		int32 Picked = INDEX_NONE;
@@ -432,7 +432,7 @@ TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
 		for (int32 Index = 0; Index < Candidates.Num(); ++Index)
 		{
 			const UYSUpgrade* Upgrade = UpgradePool[Candidates[Index].PoolIndex];
-			if (Upgrade->SupportsRarity(Candidates[Index].Variant, Rarity))
+			if (Upgrade->CanOfferRarity(this, Candidates[Index].Variant, Rarity))
 			{
 				Picked = Index;
 				Roll -= Upgrade->GetOfferWeight(Candidates[Index].Variant);
@@ -1493,7 +1493,18 @@ bool AYSPlayerCharacter::HasUpgrade(const UYSUpgrade* Upgrade) const
 
 float AYSPlayerCharacter::ComputePushbackForce(float Damage, float TargetMaxHealth) const
 {
+	// réglages du set d'arme s'il en fixe, sinon ceux du personnage
+	if (WeaponSet && WeaponSet->bOverridePushback)
+	{
+		return YSCombat::ComputePushbackForce(Damage, TargetMaxHealth, WeaponSet->PushbackMinDamageRatio, WeaponSet->PushbackMaxDamageRatio,
+			WeaponSet->PushbackMinForce, WeaponSet->PushbackMaxForce);
+	}
 	return YSCombat::ComputePushbackForce(Damage, TargetMaxHealth, PushbackMinDamageRatio, PushbackMaxDamageRatio, PushbackMinForce, PushbackMaxForce);
+}
+
+float AYSPlayerCharacter::GetBaseMaxHealth() const
+{
+	return WeaponSet && WeaponSet->bOverrideMaxHealth ? WeaponSet->MaxHealth : MaxHealth;
 }
 
 float AYSPlayerCharacter::GetUnmodifiedWalkSpeed() const

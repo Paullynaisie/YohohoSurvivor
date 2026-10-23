@@ -291,9 +291,9 @@ float UYSCoupDPetoirAbility::GetRecoilAlpha() const
 	// coup sec puis retour plus doux
 	if (Elapsed < KickDuration)
 	{
-		return FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / KickDuration, 2.0f);
+		return FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / KickDuration, RecoilKickEaseExponent);
 	}
-	return FMath::InterpEaseInOut(1.0f, 0.0f, (Elapsed - KickDuration) / RecoverDuration, 2.0f);
+	return FMath::InterpEaseInOut(1.0f, 0.0f, (Elapsed - KickDuration) / RecoverDuration, RecoilRecoverEaseExponent);
 }
 
 float UYSCoupDPetoirAbility::GetTimeSinceReload() const
