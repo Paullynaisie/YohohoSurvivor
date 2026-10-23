@@ -770,6 +770,9 @@ protected:
 	/** Armes cachées pendant le portage (toutes machines) */
 	void ApplyCarryVisuals();
 
+	/** Couleur des armes (composant Coloration) : main principale, autre main, ou set d'upgrade de classe ; local */
+	void UpdateWeaponColoration();
+
 	/** Invite « E » sur l'objet devant le joueur local */
 	void UpdateInteractPrompt();
 

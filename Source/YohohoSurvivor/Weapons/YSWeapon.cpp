@@ -2,6 +2,7 @@
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Abilities/YSAbilityComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInterface.h"
 #include "GameFramework/Pawn.h"
 
 AYSWeapon::AYSWeapon()
@@ -20,6 +21,52 @@ AYSWeapon::AYSWeapon()
 
 	OffHandSocket = CreateDefaultSubobject<USceneComponent>(TEXT("OffHandSocket"));
 	OffHandSocket->SetupAttachment(Root);
+
+	MainHandMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Art/Materials/PH_materials/m_PH_emissive_turboBlue.m_PH_emissive_turboBlue")));
+	OffHandMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Art/Materials/PH_materials/m_PH_emissive_turboGreen.m_PH_emissive_turboGreen")));
+	ClassUpgradeMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Art/Materials/PH_materials/m_PH_emissive_turboYellow.m_PH_emissive_turboYellow")));
+}
+
+void AYSWeapon::SetColoration(EYSWeaponColoration NewColoration)
+{
+	if (NewColoration == AppliedColoration || NewColoration == EYSWeaponColoration::None)
+	{
+		return;
+	}
+	AppliedColoration = NewColoration;
+
+	const TSoftObjectPtr<UMaterialInterface>& MaterialPtr = NewColoration == EYSWeaponColoration::MainHand ? MainHandMaterial
+		: NewColoration == EYSWeaponColoration::OffHand ? OffHandMaterial : ClassUpgradeMaterial;
+	UMaterialInterface* Material = MaterialPtr.LoadSynchronous();
+	if (!Material)
+	{
+		return;
+	}
+
+	// composant Coloration du Blueprint (nom de variable, espaces ignorés), puis tous ses descendants
+	const FString WantedName = ColorationComponentName.ToString().Replace(TEXT(" "), TEXT(""));
+	TInlineComponentArray<USceneComponent*> Components(this);
+	for (USceneComponent* Component : Components)
+	{
+		if (!Component->GetName().Replace(TEXT(" "), TEXT("")).Equals(WantedName, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+		TArray<USceneComponent*> Targets;
+		Component->GetChildrenComponents(true, Targets);
+		Targets.Add(Component);
+		for (USceneComponent* Target : Targets)
+		{
+			if (UMeshComponent* MeshComponent = Cast<UMeshComponent>(Target))
+			{
+				for (int32 Index = 0; Index < MeshComponent->GetNumMaterials(); ++Index)
+				{
+					MeshComponent->SetMaterial(Index, Material);
+				}
+			}
+		}
+		return;
+	}
 }
 
 UYSAbilityComponent* AYSWeapon::GetAction() const

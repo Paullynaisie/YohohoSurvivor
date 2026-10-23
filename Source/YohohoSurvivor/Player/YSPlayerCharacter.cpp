@@ -572,6 +572,8 @@ void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
 		}
 	}
 
+	UpdateWeaponColoration();
+
 	// mains à leur position cible (sans retard) : visible dans l'éditeur et point de départ en jeu
 	bHandsInitialized = false;
 	UpdateHands(0.0f);
@@ -608,6 +610,8 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateStrafeAnimation(DeltaSeconds);
 	UpdateBodyPivot(DeltaSeconds);
 	UpdateHands(DeltaSeconds);
+	// les armes répliquées arrivent après le perso chez les clients : réappliqué tant qu'elles changent (sinon rien)
+	UpdateWeaponColoration();
 	UpdateDayNight(DeltaSeconds);
 	UpdateNameplate();
 	UpdateInteractPrompt();
@@ -1699,6 +1703,22 @@ void AYSPlayerCharacter::ApplyCarryVisuals()
 		{
 			Weapon->SetActorHiddenInGame(IsCarrying());
 		}
+	}
+}
+
+void AYSPlayerCharacter::UpdateWeaponColoration()
+{
+	// set différent de celui du Blueprint du personnage = obtenu par une upgrade de classe
+	const AYSPlayerCharacter* Defaults = GetClass()->GetDefaultObject<AYSPlayerCharacter>();
+	const bool bClassUpgraded = WeaponSet && Defaults && Defaults->WeaponSet && WeaponSet != Defaults->WeaponSet;
+
+	if (AYSWeapon* MainWeapon = GetMainHandWeapon())
+	{
+		MainWeapon->SetColoration(bClassUpgraded ? EYSWeaponColoration::ClassUpgrade : EYSWeaponColoration::MainHand);
+	}
+	if (AYSWeapon* OffWeapon = GetOffHandWeapon())
+	{
+		OffWeapon->SetColoration(bClassUpgraded ? EYSWeaponColoration::ClassUpgrade : EYSWeaponColoration::OffHand);
 	}
 }
 
