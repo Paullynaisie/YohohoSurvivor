@@ -8,6 +8,24 @@ class AYSFoeCharacter;
 class AYSGameMode;
 class APawn;
 
+/** « Circle spawn » : une immense vague de NME répartis sur tout le contour de la plage de l'île */
+USTRUCT(BlueprintType)
+struct FYSCircleSpawn
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn")
+	bool bEnabled = true;
+
+	/** NME du cercle (un tiré au hasard par emplacement, selon leur Spawn Weight) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn")
+	TArray<TSubclassOf<AYSFoeCharacter>> EnemyClasses;
+
+	/** Nombre max de NME du cercle (répartis à intervalles réguliers sur le contour ; moins si une direction n'a pas de plage) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn", meta=(ClampMin="0"))
+	int32 MaxEnemies = 50;
+};
+
 /**
  *  Règle de spawn des NME (serveur uniquement), instanciée dans le GameMode (liste SpawnRules, catégorie Spawn) :
  *  on choisit le type de règle dans la liste déroulante et on règle ses paramètres directement dans le BP du GameMode.
@@ -80,6 +98,12 @@ protected:
 	/** Fait apparaître un NME de Class hors écran ; nullptr si aucun emplacement trouvé */
 	AYSFoeCharacter* SpawnEnemy(TSubclassOf<AYSFoeCharacter> EnemyClass);
 
+	/** Fait apparaître un NME de Class posé sur le sol Ground (taille de l'élite comprise), tourné vers FacingTarget */
+	AYSFoeCharacter* SpawnEnemyOnGround(TSubclassOf<AYSFoeCharacter> EnemyClass, const FVector& Ground, const FVector& FacingTarget);
+
+	/** Sol de l'île (Landscape seulement : ponton, bateau, palmiers traversés) à la verticale de Point, hors de l'eau */
+	bool FindIslandGround(const FVector& Point, FVector& OutGround) const;
+
 	virtual UWorld* GetWorld() const override;
 
 	/** Pawns des joueurs en jeu (ayant leur personnage, vivants) : servent au placement */
@@ -100,7 +124,9 @@ protected:
 /**
  *  Vagues jour / nuit : toutes les WaveInterval secondes (NightWaveInterval la nuit), X NME apparaissent,
  *  X = nb de joueurs de la partie (morts compris) × EnemiesPerPlayer (NightEnemiesPerPlayer la nuit) × jour en cours.
- *  Au début de chaque nuit, un élite (EliteClasses) apparaît ; sa mort fait passer au jour suivant (AYSGameMode).
+ *  Au début de chaque nuit, un élite (EliteClasses) apparaît au centre de l'île ; sa mort fait passer au jour suivant (AYSGameMode).
+ *  La nuit, pas de vagues par timer (bNightTimedWaves) : seuls les events font apparaître des NME (circle spawn sur la plage
+ *  avec l'élite, second circle spawn quand l'élite passe sous EliteHealthCircleThreshold de ses PV).
  *  La première vague d'une phase arrive FirstWaveDelay secondes après son début.
  */
 UCLASS(meta=(DisplayName="Vagues jour / nuit (par joueur et par jour)"))
@@ -134,6 +160,42 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night")
 	TArray<TSubclassOf<AYSFoeCharacter>> EliteClasses;
 
+	/** Nuit : vagues par timer (NightWaveInterval / NightEnemiesPerPlayer). Décoché = la nuit, seuls les events (élite, circle spawns) font apparaître des NME */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night")
+	bool bNightTimedWaves = false;
+
+	/** Nuit : l'élite apparaît au centre de l'île (IslandCenter) ; sinon hors écran comme les autres NME */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night")
+	bool bEliteAtIslandCenter = true;
+
+	/** Circle spawn lancé en même temps que l'élite, au début de la nuit */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events")
+	FYSCircleSpawn NightStartCircleSpawn;
+
+	/** Circle spawn lancé une fois par nuit quand l'élite passe sous EliteHealthCircleThreshold de ses PV max */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events")
+	FYSCircleSpawn EliteHealthCircleSpawn;
+
+	/** Part des PV max de l'élite sous laquelle EliteHealthCircleSpawn se déclenche */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events", meta=(ClampMin="0", ClampMax="1"))
+	float EliteHealthCircleThreshold = 0.5f;
+
+	/** Centre de l'île (apparition de l'élite, centre des circle spawns) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Island")
+	FVector IslandCenter = FVector::ZeroVector;
+
+	/** Circle spawn : distance au centre d'où l'on part du large pour chercher la plage (au-delà de la côte la plus lointaine) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Island", meta=(ClampMin="0", Units="cm"))
+	float ShoreSearchRadius = 6300.0f;
+
+	/** Circle spawn : pas de la recherche de la plage, du large vers le centre */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Island", meta=(ClampMin="10", Units="cm"))
+	float ShoreSearchStep = 50.0f;
+
+	/** Circle spawn : les NME sont posés à cette distance à l'intérieur de la limite de l'eau */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Island", meta=(ClampMin="0", Units="cm"))
+	float ShoreInset = 200.0f;
+
 	/** Taille de vague calculée maintenant (nb de joueurs × NME par joueur (jour ou nuit) × jour en cours) */
 	int32 GetWaveSize() const;
 
@@ -148,6 +210,12 @@ protected:
 	/** Fait apparaître l'élite ; faux si aucun emplacement trouvé (réessayé au tick suivant) */
 	bool SpawnElite();
 
+	/** Circle spawn : NME répartis sur le contour de la plage ; renvoie le nombre apparus */
+	int32 SpawnCircle(const FYSCircleSpawn& Circle, const TCHAR* Reason);
+
+	/** Point de plage dans la direction Angle (radians) depuis IslandCenter : premier sol hors de l'eau en venant du large, puis ShoreInset vers l'intérieur */
+	bool FindShorePoint(float Angle, FVector& OutGround) const;
+
 	bool IsNight() const;
 
 	int32 GetDayNumber() const;
@@ -161,4 +229,8 @@ protected:
 	/** Prochain essai d'apparition de l'élite (temps de partie) et échec déjà signalé dans le log */
 	float NextEliteAttemptTime = 0.0f;
 	bool bEliteFailureLogged = false;
+
+	/** Élite de la nuit en cours, et circle spawn de ses PV déjà lancé */
+	TWeakObjectPtr<AYSFoeCharacter> NightElite;
+	bool bEliteHealthCircleDone = false;
 };
