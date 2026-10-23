@@ -278,6 +278,10 @@ protected:
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Combat")
 	int32 CriticalBulletInterval = 0;
 
+	/** Atk critique : sur un même tir de Shotgun, une fois que N AMMO ont touché, les suivantes sont critiques (0 = pas l'upgrade ; serveur) */
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Combat")
+	int32 CriticalShotgunHits = 0;
+
 	/**
 	 *  Pushback des NME touchés par ce personnage, proportionnel à la part de leur vie retirée par le coup
 	 *  (dégâts / PV max de la cible) : sous Min Damage Ratio rien, à partir de Max Damage Ratio la force max,
@@ -609,7 +613,7 @@ public:
 	float GetCriticalDamageAdd() const { return CriticalDamageAdd; }
 
 	/** Le personnage peut faire des coups critiques (Atk critique ou Golden bloodlust) */
-	bool CanCriticalHit() const { return CriticalSwingInterval > 0 || CriticalBulletInterval > 0 || bGoldenBloodlust; }
+	bool CanCriticalHit() const { return CriticalSwingInterval > 0 || CriticalBulletInterval > 0 || CriticalShotgunHits > 0 || bGoldenBloodlust; }
 
 	/** Atk critique : une attaque auto Swing de plus pour le personnage (serveur), renvoie le total */
 	int32 RegisterAutoSwing() { return ++AutoSwingCounter; }
@@ -621,12 +625,22 @@ public:
 	/** Somme des bonus critiques de toutes les upgrades de stat obtenues (chaque bonus selon sa rareté ; serveur) */
 	void RecomputeCriticalDamageBonus();
 
-	/** Atk critique : une attaque auto Swing sur SwingInterval, une balle PewPew sur BulletInterval par NME (0 = non ; serveur) */
-	void SetAutoAttackCriticals(int32 SwingInterval, int32 BulletInterval) { CriticalSwingInterval = SwingInterval; CriticalBulletInterval = BulletInterval; }
+	/**
+	 *  Atk critique : une attaque auto Swing sur SwingInterval, une balle PewPew sur BulletInterval par NME,
+	 *  et sur un même tir de Shotgun les AMMO qui touchent après les ShotgunHits premières (0 = non ; serveur)
+	 */
+	void SetAutoAttackCriticals(int32 SwingInterval, int32 BulletInterval, int32 ShotgunHits)
+	{
+		CriticalSwingInterval = SwingInterval;
+		CriticalBulletInterval = BulletInterval;
+		CriticalShotgunHits = ShotgunHits;
+	}
 
 	int32 GetCriticalSwingInterval() const { return CriticalSwingInterval; }
 
 	int32 GetCriticalBulletInterval() const { return CriticalBulletInterval; }
+
+	int32 GetCriticalShotgunHits() const { return CriticalShotgunHits; }
 
 	/** Force du pushback d'un coup de Damage sur une cible de TargetMaxHealth PV max (0 = aucun) */
 	float ComputePushbackForce(float Damage, float TargetMaxHealth) const;

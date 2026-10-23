@@ -197,6 +197,17 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 		bCritical = Shooter && Foe->RegisterCriticalBullet(GetInstigator(), CriticalBulletInterval);
 		HitDamage *= bCritical ? Shooter->GetCriticalDamageMultiplier() : 1.0f;
 	}
+	// Atk critique (Shotgun) : sur un même tir, une fois N AMMO touchées, les suivantes sont critiques
+	if (ShotgunVolley.IsValid())
+	{
+		const AYSPlayerCharacter* Shooter = Cast<AYSPlayerCharacter>(GetInstigator());
+		if (Shooter && ShotgunVolley->CriticalAfterHits > 0 && ShotgunVolley->Hits >= ShotgunVolley->CriticalAfterHits)
+		{
+			bCritical = true;
+			HitDamage *= Shooter->GetCriticalDamageMultiplier();
+		}
+		++ShotgunVolley->Hits;
+	}
 	const FPointDamageEvent DamageEvent(HitDamage, SweepResult, ShotDirection, bCritical ? UYSCriticalDamageType::StaticClass() : nullptr);
 	OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s en (%.0f, %.0f, %.0f), sol %.0f : %.1f dégâts%s (ricochets restants %d)"), *GetName(), *OtherActor->GetName(),

@@ -2,6 +2,7 @@
 #include "Abilities/YSAbilityComponent.h"
 #include "Abilities/YSAutoSwingAbility.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
+#include "Abilities/YSRollAndBombAbility.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
@@ -129,13 +130,13 @@ void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Va
 	// valeurs concrètes : actuelle rayée, nouvelle en gras
 
 	FYSChoiceLine& OldValue = OutLines.AddDefaulted_GetRef();
-	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetDisplayValue(Character, Variant, Progress.TotalValue)));
+	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), GetStatLabel(Character, Variant), YSUpgradeText::FormatStat(GetDisplayValue(Character, Variant, Progress.TotalValue)));
 	OldValue.Color = FLinearColor(0.65f, 0.65f, 0.65f);
 	OldValue.FontSize = 16;
 	OldValue.bStrikethrough = true;
 
 	FYSChoiceLine& NewValue = OutLines.AddDefaulted_GetRef();
-	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetDisplayValue(Character, Variant, Progress.TotalValue + GetBonusValue(Variant, Rarity))));
+	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), GetStatLabel(Character, Variant), YSUpgradeText::FormatStat(GetDisplayValue(Character, Variant, Progress.TotalValue + GetBonusValue(Variant, Rarity))));
 	NewValue.FontSize = 18;
 	NewValue.bBold = true;
 
@@ -309,6 +310,7 @@ UYSShootSystemUpgrade::UYSShootSystemUpgrade()
 	DisplayName = NSLOCTEXT("YS", "ShootSystemName", "Shoot system");
 	BonusName = NSLOCTEXT("YS", "ShootSystemBonus", "Shoot system");
 	StatLabel = NSLOCTEXT("YS", "ShootSystemStat", "Balles par rafale");
+	ShotgunStatLabel = NSLOCTEXT("YS", "ShootSystemShotgunStat", "Shotgun AMMO par tir");
 	BronzeValue = 1.0f;
 	SilverValue = 2.0f;
 	GoldValue = 3.0f;
@@ -317,18 +319,41 @@ UYSShootSystemUpgrade::UYSShootSystemUpgrade()
 bool UYSShootSystemUpgrade::IsActionEligible(const UYSAbilityComponent* Action) const
 {
 	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(Action);
-	return Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->IsAutomatic() && Gun->ShootSystem == EYSShootSystem::PewPew;
+	return Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->IsAutomatic()
+		&& (Gun->ShootSystem == EYSShootSystem::PewPew || Gun->ShootSystem == EYSShootSystem::Shotgun);
+}
+
+float UYSShootSystemUpgrade::GetAmmoPerBonus(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(GetSlotAction(Character, Variant));
+	return Gun && Gun->ShootSystem == EYSShootSystem::Shotgun ? ShotgunAmmoPerLevel : 1.0f;
 }
 
 float UYSShootSystemUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
 {
 	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(GetSlotAction(Character, Variant));
-	return Gun ? Gun->BulletsPerBurst : 0.0f;
+	if (!Gun)
+	{
+		return 0.0f;
+	}
+	return Gun->ShootSystem == EYSShootSystem::Shotgun ? Gun->ShotgunAmmoPerShot : Gun->BulletsPerBurst;
+}
+
+FText UYSShootSystemUpgrade::GetStatLabel(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(GetSlotAction(Character, Variant));
+	return Gun && Gun->ShootSystem == EYSShootSystem::Shotgun ? ShotgunStatLabel : StatLabel;
+}
+
+float UYSShootSystemUpgrade::GetDisplayValue(const AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
+{
+	return GetStatValue(GetBaseStatValue(Character, Variant), TotalBonus * GetAmmoPerBonus(Character, Variant));
 }
 
 void UYSShootSystemUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
-	Character->SetShootSystemBonus(GetSlot(Variant), TotalBonus);
+	// le bonus est gardé en points de rareté (1 / 2 / 3) : converti en balles selon le shoot system des armes tenues
+	Character->SetShootSystemBonus(GetSlot(Variant), TotalBonus * GetAmmoPerBonus(Character, Variant));
 }
 
 UYSMoveSpeedBonusUpgrade::UYSMoveSpeedBonusUpgrade()
@@ -495,7 +520,8 @@ TArray<UYSAbilityComponent*> UYSWeaponUpgrade::GetRequiredActions(const AYSPlaye
 		TInlineComponentArray<UYSAbilityComponent*> Actions(Weapon);
 		for (UYSAbilityComponent* Action : Actions)
 		{
-			if (Action->IsA(RequiredActionClass) && Action->GetActionSlot() == RequiredSlot)
+			const bool bExcluded = ExcludedActionClasses.ContainsByPredicate([Action](const TSubclassOf<UYSAbilityComponent>& Excluded) { return Excluded && Action->IsA(Excluded); });
+			if (Action->IsA(RequiredActionClass) && Action->GetActionSlot() == RequiredSlot && !bExcluded)
 			{
 				Required.Add(Action);
 			}
@@ -613,6 +639,7 @@ UYSRicochetUpgrade::UYSRicochetUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "RicochetName", "Ricochet");
 	RequiredActionClass = UYSCoupDPetoirAbility::StaticClass();
+	ExcludedActionClasses.Add(UYSRollAndBombAbility::StaticClass());
 	UnlockName = NSLOCTEXT("YS", "RicochetUnlockName", "Ricochet");
 	UnlockDescription = NSLOCTEXT("YS", "RicochetUnlockDesc", "Après avoir touché, la balle ricoche\nvers le NME le plus proche");
 	BonusName = NSLOCTEXT("YS", "RicochetBonusName", "Ricochet bonus");
@@ -726,6 +753,7 @@ UYSCriticalAttackUpgrade::UYSCriticalAttackUpgrade()
 	DisplayName = NSLOCTEXT("YS", "CriticalAttackName", "Atk critique");
 	SwingDescription = NSLOCTEXT("YS", "CriticalAttackSwing", "La {0}e atk est toujours critique");
 	BulletDescription = NSLOCTEXT("YS", "CriticalAttackBullet", "La {0}e balle sur un même NME\nest toujours critique");
+	ShotgunDescription = NSLOCTEXT("YS", "CriticalAttackShotgun", "Sur un même tir, après {0} AMMO\nqui touchent, les suivantes\nsont critiques");
 	bCanBeBronze = false;
 	bCanBeGold = false;
 }
@@ -743,12 +771,12 @@ bool UYSCriticalAttackUpgrade::HasSwingAutoAttack(const AYSPlayerCharacter* Char
 	return false;
 }
 
-bool UYSCriticalAttackUpgrade::HasPewPewAutoAttack(const AYSPlayerCharacter* Character)
+bool UYSCriticalAttackUpgrade::HasGunAutoAttack(const AYSPlayerCharacter* Character, EYSShootSystem System)
 {
 	for (const AYSWeapon* Weapon : Character ? Character->GetHeldWeapons() : TArray<AYSWeapon*>())
 	{
 		const UYSCoupDPetoirAbility* Gun = Weapon ? Cast<UYSCoupDPetoirAbility>(Weapon->GetAutoAction()) : nullptr;
-		if (Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->ShootSystem == EYSShootSystem::PewPew)
+		if (Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->ShootSystem == System)
 		{
 			return true;
 		}
@@ -756,14 +784,24 @@ bool UYSCriticalAttackUpgrade::HasPewPewAutoAttack(const AYSPlayerCharacter* Cha
 	return false;
 }
 
+bool UYSCriticalAttackUpgrade::HasPewPewAutoAttack(const AYSPlayerCharacter* Character)
+{
+	return HasGunAutoAttack(Character, EYSShootSystem::PewPew);
+}
+
+bool UYSCriticalAttackUpgrade::HasShotgunAutoAttack(const AYSPlayerCharacter* Character)
+{
+	return HasGunAutoAttack(Character, EYSShootSystem::Shotgun);
+}
+
 bool UYSCriticalAttackUpgrade::IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	return HasSwingAutoAttack(Character) || HasPewPewAutoAttack(Character);
+	return HasSwingAutoAttack(Character) || HasPewPewAutoAttack(Character) || HasShotgunAutoAttack(Character);
 }
 
 bool UYSCriticalAttackUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	// unique : une seule fois, pour un joueur qui a une attaque auto Swing ou PewPew
+	// unique : une seule fois, pour un joueur qui a une attaque auto Swing, PewPew ou Shotgun
 	return Progress.Stacks == 0 && PassesRequirements(Character) && IsCompatibleWith(Character, Variant);
 }
 
@@ -791,13 +829,18 @@ void UYSCriticalAttackUpgrade::GetOfferLines(const AYSPlayerCharacter* Character
 	{
 		AddDescription(BulletDescription, BulletCriticalInterval);
 	}
+	if (HasShotgunAutoAttack(Character))
+	{
+		AddDescription(ShotgunDescription, ShotgunCriticalHits);
+	}
 }
 
 void UYSCriticalAttackUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
 	if (Character && Progress.Stacks > 0)
 	{
-		Character->SetAutoAttackCriticals(SwingCriticalInterval, BulletCriticalInterval);
-		UE_LOG(LogTemp, Log, TEXT("[YSCritical] %s : Atk critique (1 swing sur %d, 1 balle sur %d par NME)"), *Character->GetName(), SwingCriticalInterval, BulletCriticalInterval);
+		Character->SetAutoAttackCriticals(SwingCriticalInterval, BulletCriticalInterval, ShotgunCriticalHits);
+		UE_LOG(LogTemp, Log, TEXT("[YSCritical] %s : Atk critique (1 swing sur %d, 1 balle sur %d par NME, Shotgun : critiques après %d AMMO touchées)"), *Character->GetName(),
+			SwingCriticalInterval, BulletCriticalInterval, ShotgunCriticalHits);
 	}
 }

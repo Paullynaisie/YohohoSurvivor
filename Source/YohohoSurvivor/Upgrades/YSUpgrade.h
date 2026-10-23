@@ -10,6 +10,7 @@ class AYSPlayerCharacter;
 class AYSWeapon;
 class UYSAbilityComponent;
 class UYSWeaponSet;
+enum class EYSShootSystem : uint8;
 
 /** Catégorie d'upgrade : définit son comportement */
 UENUM(BlueprintType)
@@ -253,6 +254,9 @@ protected:
 	/** Valeur de la stat pour une somme de bonus : base x (1 + somme) par défaut (additive : base + somme) */
 	virtual float GetStatValue(float BaseValue, float TotalBonus) const { return BaseValue * (1.0f + TotalBonus); }
 
+	/** Nom de la stat sur le bouton (défaut : StatLabel) */
+	virtual FText GetStatLabel(const AYSPlayerCharacter* Character, int32 Variant) const { return StatLabel; }
+
 	/** Valeur concrète affichée sur le bouton pour une somme de bonus (défaut : GetStatValue de la valeur de base) */
 	virtual float GetDisplayValue(const AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const { return GetStatValue(GetBaseStatValue(Character, Variant), TotalBonus); }
 
@@ -389,7 +393,8 @@ protected:
 /**
  *  Shoot system (Auto atk des Guns du set seulement ; leur Ability garde la CD reduction) : améliore le shoot system.
  *  PewPew : Bronze / Silver / Gold Value (1 / 2 / 3) balles de plus à chaque rafale (même durée de rafale).
- *  Shotgun / Piercing : à venir (pas proposée pour ces systèmes).
+ *  Shotgun : Shotgun Ammo Per Level (2) AMMO de plus par tir et par niveau de rareté (Bronze 2 / Silver 4 / Gold 6).
+ *  Piercing : à venir (pas proposée pour ce système).
  */
 UCLASS(meta=(DisplayName="Upgrade de stat : Shoot system (Guns du set)"))
 class UYSShootSystemUpgrade : public UYSHandStatUpgrade
@@ -400,17 +405,33 @@ public:
 
 	UYSShootSystemUpgrade();
 
+	/** Shotgun : AMMO de plus par tir pour chaque point de bonus (Bronze / Silver / Gold Value 1 / 2 / 3 -> 2 / 4 / 6) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Shotgun", meta=(ClampMin="0"))
+	float ShotgunAmmoPerLevel = 2.0f;
+
+	/** Shotgun : nom de la stat sur le bouton */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Shotgun")
+	FText ShotgunStatLabel;
+
 protected:
 
-	/** Auto atk de Gun dont le shoot system a une amélioration (PewPew pour l'instant) */
+	/** Auto atk de Gun dont le shoot system a une amélioration (PewPew, Shotgun) */
 	virtual bool IsActionEligible(const UYSAbilityComponent* Action) const override;
 
-	/** PewPew : balles par rafale de base */
+	/** PewPew : balles par rafale de base ; Shotgun : AMMO par tir de base */
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
 
+	virtual FText GetStatLabel(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	/** Shotgun : chaque point de bonus vaut Shotgun Ammo Per Level AMMO */
+	virtual float GetDisplayValue(const AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
+
 	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
+
+	/** Balles ajoutées par point de bonus pour le shoot system de l'action du type Variant (PewPew 1, Shotgun Ammo Per Level) */
+	float GetAmmoPerBonus(const AYSPlayerCharacter* Character, int32 Variant) const;
 };
 
 /** Move speed bonus : vitesse de déplacement (MoveSpeed du personnage) x (1 + somme des bonus) */
@@ -568,6 +589,10 @@ public:
 	/** Action d'arme requise (classe ou sous-classe) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
 	TSubclassOf<UYSAbilityComponent> RequiredActionClass;
+
+	/** Sous-classes de Required Action Class non concernées (ex. Ricochet : pas la Roll and Bomb, qui ne tire pas de balle) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	TArray<TSubclassOf<UYSAbilityComponent>> ExcludedActionClasses;
 
 	/** Type d'action concerné : Ability (clic) ou Auto atk (ex. le Ricochet ne touche que le Coup d'Petoir en Ability, pas l'Auto shot) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
@@ -734,7 +759,8 @@ protected:
  *  « Atk critique » (unique, une fois) : les attaques auto deviennent régulièrement critiques.
  *  Auto swing (Melee Swing) : chaque arme compte ses attaques auto, la SwingCriticalInterval-ième (5e) est toujours critique.
  *  PewPew (Auto atk des Guns) : chaque NME compte les balles d'attaque auto reçues de chaque joueur, la BulletCriticalInterval-ième
- *  (3e) est toujours critique. Proposée si une arme tenue a une de ces attaques auto ; débloque Atk speed et Shoot system
+ *  (3e) est toujours critique. Shotgun (Auto atk) : sur un même tir, après ShotgunCriticalHits (4) AMMO qui touchent, les suivantes
+ *  sont critiques (remis à zéro à chaque tir). Proposée si une arme tenue a une de ces attaques auto ; débloque Atk speed et Shoot system
  *  (leur Required Upgrade). Dégâts critiques = Critical Damage Multiplier du perso x (1 + bonus critiques d'Atk speed / Shoot system).
  */
 UCLASS(meta=(DisplayName="Upgrade spéciale : Atk critique"))
@@ -754,12 +780,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="1"))
 	int32 BulletCriticalInterval = 3;
 
+	/** Shotgun : sur un même tir, une fois ce nombre d'AMMO touchées, toutes les suivantes sont critiques (remis à zéro à chaque tir) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="1"))
+	int32 ShotgunCriticalHits = 4;
+
 	/** Descriptions du bouton ({0} = l'intervalle) selon l'attaque auto du joueur */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
 	FText SwingDescription;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
 	FText BulletDescription;
+
+	/** Shotgun ({0} = Shotgun Critical Hits) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText ShotgunDescription;
 
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
@@ -769,9 +803,13 @@ public:
 
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
-	/** Attaque auto Swing / PewPew parmi les armes tenues */
+	/** Attaque auto Swing / PewPew / Shotgun parmi les armes tenues */
 	static bool HasSwingAutoAttack(const AYSPlayerCharacter* Character);
 	static bool HasPewPewAutoAttack(const AYSPlayerCharacter* Character);
+	static bool HasShotgunAutoAttack(const AYSPlayerCharacter* Character);
+
+	/** Attaque auto de Gun avec ce shoot system parmi les armes tenues */
+	static bool HasGunAutoAttack(const AYSPlayerCharacter* Character, EYSShootSystem System);
 };
 
 UCLASS(meta=(DisplayName="Upgrade de classe"))

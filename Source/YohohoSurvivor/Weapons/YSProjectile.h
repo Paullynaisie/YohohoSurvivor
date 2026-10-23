@@ -9,6 +9,16 @@ class UProjectileMovementComponent;
 class USphereComponent;
 class UStaticMeshComponent;
 
+/** Un tir de Shotgun (serveur) : partagé par toutes ses AMMO, compte celles qui ont touché (Atk critique) */
+struct FYSShotgunVolley
+{
+	/** AMMO du tir qui ont déjà infligé des dégâts */
+	int32 Hits = 0;
+
+	/** Une fois ce nombre d'AMMO touchées, les suivantes sont critiques (0 = pas de critique) */
+	int32 CriticalAfterHits = 0;
+};
+
 /**
  *  Projectile en ligne droite (à hauteur constante au-dessus du relief si bFollowGround). Touche uniquement les acteurs portant un des HitTags
  *  (via IGameplayTagAssetInterface), traverse les autres pawns, est détruit contre le décor.
@@ -111,6 +121,9 @@ private:
 	/** Atk critique : une balle sur N reçue par un même NME est critique (0 = non ; fixé au tir) */
 	int32 CriticalBulletInterval = 0;
 
+	/** Tir de Shotgun auquel appartient cette AMMO (critiques comptés sur le tir ; nul sinon) */
+	TSharedPtr<FYSShotgunVolley> ShotgunVolley;
+
 	/** Cibles déjà touchées (un ricochet ne les retouche pas) */
 	TArray<TWeakObjectPtr<AActor>> HitActors;
 
@@ -139,6 +152,9 @@ public:
 
 	/** Atk critique (balles d'attaque auto PewPew) : une balle sur N reçue par un même NME (de ce tireur) est critique ; 0 = non */
 	void SetCriticalBulletInterval(int32 Interval) { CriticalBulletInterval = Interval; }
+
+	/** Shotgun : tir auquel appartient cette AMMO (Atk critique : critique une fois assez d'AMMO du tir touchées) */
+	void SetShotgunVolley(const TSharedPtr<FYSShotgunVolley>& Volley) { ShotgunVolley = Volley; }
 
 	/** Tags des acteurs que ce projectile peut toucher */
 	const FGameplayTagContainer& GetHitTags() const { return HitTags; }

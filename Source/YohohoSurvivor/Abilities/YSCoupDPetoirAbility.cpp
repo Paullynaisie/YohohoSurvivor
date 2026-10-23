@@ -56,13 +56,47 @@ void UYSCoupDPetoirAbility::OnActivationPredicted(const FVector& TargetLocation)
 
 void UYSCoupDPetoirAbility::StartBurst(const FVector& TargetLocation)
 {
-	// PewPew : rafale de BulletsPerBurst balles réparties sur BurstDuration (Shotgun / Piercing : à venir)
+	// PewPew : rafale de BulletsPerBurst balles réparties sur BurstDuration ; Shotgun : toutes les AMMO d'un coup (Piercing : à venir)
 	GetWorld()->GetTimerManager().ClearTimer(BurstTimer);
 	BurstTargetLocation = TargetLocation;
 	BulletsFired = 0;
 	BurstShooters.Reset();
 	BurstBulletCount = GetBulletsPerBurst();
+	if (ShootSystem == EYSShootSystem::Shotgun)
+	{
+		FireShotgun(TargetLocation);
+		return;
+	}
 	FireNextBullet();
+}
+
+void UYSCoupDPetoirAbility::FireShotgun(const FVector& TargetLocation)
+{
+	FVector Muzzle;
+	FVector Direction;
+	if (!ComputeShot(TargetLocation, Muzzle, Direction))
+	{
+		return;
+	}
+
+	// un seul tir : les AMMO partagent le compteur de l'Atk critique (attaque auto), remis à zéro au tir suivant
+	TSharedPtr<FYSShotgunVolley> Volley = MakeShared<FYSShotgunVolley>();
+	const AYSPlayerCharacter* HolderCharacter = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	Volley->CriticalAfterHits = IsAutomatic() && HolderCharacter ? HolderCharacter->GetCriticalShotgunHits() : 0;
+
+	const float BaseYaw = Direction.Rotation().Yaw;
+	for (int32 Index = 0; Index < BurstBulletCount; ++Index)
+	{
+		const float Yaw = BaseYaw + FMath::FRandRange(-ShotgunSpread, ShotgunSpread);
+		SpawnProjectile(Muzzle, FRotator(0.0f, Yaw, 0.0f).Vector(), Volley);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s Shotgun : %d AMMO (+/- %.0f°) à %.2f, critiques après %d touchées"), *GetOwner()->GetName(), *GetName(),
+		BurstBulletCount, ShotgunSpread, GetWorld()->GetTimeSeconds(), Volley->CriticalAfterHits);
+
+	// recul sur toutes les machines, puis l'animation de rechargement
+	MulticastBulletFired(0, 0.0f);
+	BurstShooters.AddUnique(this);
+	PlayReloadAnims();
 }
 
 void UYSCoupDPetoirAbility::FireNextBullet()
@@ -83,6 +117,11 @@ void UYSCoupDPetoirAbility::FireNextBullet()
 		return;
 	}
 
+	PlayReloadAnims();
+}
+
+void UYSCoupDPetoirAbility::PlayReloadAnims()
+{
 	// fin de rafale : chaque arme qui a tiré joue l'animation de rechargement
 	for (const TWeakObjectPtr<UYSCoupDPetoirAbility>& Shooter : BurstShooters)
 	{
@@ -97,7 +136,7 @@ void UYSCoupDPetoirAbility::FireNextBullet()
 
 float UYSCoupDPetoirAbility::GetTimeToNextShot(int32 BulletIndex, int32 BulletCount) const
 {
-	if (BulletCount <= 1)
+	if (BulletCount <= 1 || ShootSystem != EYSShootSystem::PewPew)
 	{
 		return 0.0f;
 	}
@@ -141,18 +180,18 @@ bool UYSCoupDPetoirAbility::IsActionInProgress() const
 	return Super::IsActionInProgress() || (World && World->GetTimerManager().IsTimerActive(BurstTimer));
 }
 
-void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 BulletIndex, float TimeToNextShot)
+bool UYSCoupDPetoirAbility::ComputeShot(const FVector& TargetLocation, FVector& OutMuzzle, FVector& OutDirection) const
 {
-	AActor* Owner = GetOwner();
+	const AActor* Owner = GetOwner();
 	if (!ProjectileClass || !Owner)
 	{
-		return;
+		return false;
 	}
 
 	// l'action vit sur une arme : on tire depuis sa bouche, au nom du pawn qui la tient
 	const AYSWeapon* Weapon = Cast<AYSWeapon>(Owner);
-	APawn* Shooter = Weapon ? Weapon->GetHolder() : Cast<APawn>(Owner);
-	const FVector Muzzle = Weapon ? Weapon->GetMuzzleLocation() : Owner->GetActorLocation();
+	const APawn* Shooter = Weapon ? Weapon->GetHolder() : Cast<APawn>(Owner);
+	OutMuzzle = Weapon ? Weapon->GetMuzzleLocation() : Owner->GetActorLocation();
 	const AActor* Aimer = Shooter ? static_cast<const AActor*>(Shooter) : Owner;
 
 	// visée assistée : un NME proche de la direction visée remplace le point visé
@@ -163,33 +202,55 @@ void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 Bull
 	}
 
 	// trajectoire parallèle au sol
-	FVector Direction = AimPoint - Muzzle;
-	Direction.Z = 0.0f;
-	if (Direction.SizeSquared() < FMath::Square(YSGun::MinAimDistance))
+	OutDirection = AimPoint - OutMuzzle;
+	OutDirection.Z = 0.0f;
+	if (OutDirection.SizeSquared() < FMath::Square(YSGun::MinAimDistance))
 	{
-		Direction = Aimer->GetActorForwardVector();
-		Direction.Z = 0.0f;
+		OutDirection = Aimer->GetActorForwardVector();
+		OutDirection.Z = 0.0f;
+	}
+	OutDirection = OutDirection.GetSafeNormal();
+	return true;
+}
+
+void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector& Direction, const TSharedPtr<FYSShotgunVolley>& Volley)
+{
+	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
+	APawn* Shooter = Weapon ? Weapon->GetHolder() : Cast<APawn>(GetOwner());
+	const FTransform SpawnTransform(Direction.Rotation(), Muzzle);
+	AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ProjectileClass, SpawnTransform, Shooter, Shooter, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!Projectile)
+	{
+		return;
 	}
 
-	const FTransform SpawnTransform(Direction.GetSafeNormal().Rotation(), Muzzle);
-	AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ProjectileClass, SpawnTransform, Shooter, Shooter, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-	if (Projectile)
+	Projectile->SetDamage(Damage * GetDamageMultiplier());
+	// Atk critique : les balles d'attaque auto PewPew comptent sur chaque NME, une sur N est critique ; Shotgun : compté sur le tir
+	const AYSPlayerCharacter* HolderCharacter = Cast<AYSPlayerCharacter>(Shooter);
+	if (IsAutomatic() && ShootSystem == EYSShootSystem::PewPew && HolderCharacter)
 	{
-		Projectile->SetDamage(Damage * GetDamageMultiplier());
-		// Atk critique : les balles d'attaque auto PewPew comptent sur chaque NME, une sur N est critique
-		const AYSPlayerCharacter* HolderCharacter = Cast<AYSPlayerCharacter>(Shooter);
-		if (IsAutomatic() && ShootSystem == EYSShootSystem::PewPew && HolderCharacter)
-		{
-			Projectile->SetCriticalBulletInterval(HolderCharacter->GetCriticalBulletInterval());
-		}
-		// upgrades d'arme (Ricochet) : seulement pour l'Ability, pas pour l'Auto shot
-		if (!IsAutomatic())
-		{
-			Projectile->SetRicochets(FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::RicochetCountStat, 0.0f)), 1.0f + GetWeaponStat(UYSRicochetUpgrade::RicochetDamageBonusStat, 0.0f));
-		}
-		Projectile->FinishSpawning(SpawnTransform);
+		Projectile->SetCriticalBulletInterval(HolderCharacter->GetCriticalBulletInterval());
 	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s balle %d à %.2f"), *Owner->GetName(), *GetName(), BulletIndex + 1, GetWorld()->GetTimeSeconds());
+	Projectile->SetShotgunVolley(Volley);
+	// upgrades d'arme (Ricochet) : seulement pour l'Ability, pas pour l'Auto shot
+	if (!IsAutomatic())
+	{
+		Projectile->SetRicochets(FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::RicochetCountStat, 0.0f)), 1.0f + GetWeaponStat(UYSRicochetUpgrade::RicochetDamageBonusStat, 0.0f));
+	}
+	Projectile->FinishSpawning(SpawnTransform);
+}
+
+void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 BulletIndex, float TimeToNextShot)
+{
+	FVector Muzzle;
+	FVector Direction;
+	if (!ComputeShot(TargetLocation, Muzzle, Direction))
+	{
+		return;
+	}
+
+	SpawnProjectile(Muzzle, Direction, nullptr);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s balle %d à %.2f"), *GetOwner()->GetName(), *GetName(), BulletIndex + 1, GetWorld()->GetTimeSeconds());
 	MulticastBulletFired(BulletIndex, TimeToNextShot);
 }
 
@@ -262,5 +323,6 @@ int32 UYSCoupDPetoirAbility::GetBulletsPerBurst() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	const float Bonus = Character ? Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 0.0f;
-	return FMath::Max(1, BulletsPerBurst + FMath::RoundToInt(Bonus));
+	const int32 BaseCount = ShootSystem == EYSShootSystem::Shotgun ? ShotgunAmmoPerShot : BulletsPerBurst;
+	return FMath::Max(1, BaseCount + FMath::RoundToInt(Bonus));
 }

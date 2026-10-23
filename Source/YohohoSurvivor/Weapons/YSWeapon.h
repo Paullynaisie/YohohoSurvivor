@@ -46,7 +46,7 @@ protected:
 	/**
 	 *  Arme à deux mains : tenue par une main (la pose et les attaques, ex. swing, ne concernent que cette main), l'autre main
 	 *  se place TOUJOURS sur le socket OffHandSocket de l'arme, sans retard, même pendant les attaques. L'autre main ne
-	 *  doit pas avoir d'arme (set : une seule main). NME pour l'instant.
+	 *  doit pas avoir d'arme (set : une seule main). NME et joueurs (ex. Shotgun du Cannoneer).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon")
 	bool bTwoHanded = false;

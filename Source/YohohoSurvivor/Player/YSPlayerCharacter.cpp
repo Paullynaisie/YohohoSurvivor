@@ -20,6 +20,7 @@
 #include "Components/ChildActorComponent.h"
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
+#include "Weapons/YSProjectile.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSDanglingChainComponent.h"
 #include "Components/WidgetComponent.h"
@@ -688,9 +689,17 @@ const AActor* AYSPlayerCharacter::GetHandAssistTarget(bool bLeft) const
 	}
 
 	// la direction de la souris est celle du regard du personnage (répliquée : identique sur toutes les machines)
+	// action de tir du clic, sinon l'attaque auto (ex. Shotgun : son Ability, Roll and Bomb, ne tire pas)
 	const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
-	const UYSCoupDPetoirAbility* Petoir = Weapon ? Cast<UYSCoupDPetoirAbility>(Weapon->GetActiveAction()) : nullptr;
-	return Petoir ? Petoir->FindAssistTarget(GetActorLocation(), GetActorForwardVector()) : nullptr;
+	for (const UYSAbilityComponent* Action : { Weapon ? Weapon->GetActiveAction() : nullptr, Weapon ? Weapon->GetAutoAction() : nullptr })
+	{
+		const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(Action);
+		if (Gun && Gun->ProjectileClass)
+		{
+			return Gun->FindAssistTarget(GetActorLocation(), GetActorForwardVector());
+		}
+	}
+	return nullptr;
 }
 
 void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
@@ -804,6 +813,23 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 
 	UpdateHand(LeftHand, LeftHandWorldLocation, LeftHandYaw, true, 0.0f);
 	UpdateHand(RightHand, RightHandWorldLocation, RightHandYaw, false, 100.0f);
+
+	// arme à deux mains (ex. Shotgun) : l'autre main toujours sur le socket de l'arme, sans retard, même pendant le recul
+	// (après la main qui la tient : l'arme, attachée à cette main, l'a déjà suivie) ; pas pendant le port d'un objet
+	if (!IsValid(CarriedObject))
+	{
+		for (const bool bWeaponInLeft : { false, true })
+		{
+			const AYSWeapon* Weapon = bWeaponInLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
+			const USceneComponent* Socket = Weapon && Weapon->IsTwoHanded() ? Weapon->GetOffHandSocket() : nullptr;
+			if (Socket)
+			{
+				USceneComponent* OtherHand = bWeaponInLeft ? RightHand : LeftHand;
+				OtherHand->SetWorldLocationAndRotation(Socket->GetComponentLocation(), Socket->GetComponentQuat());
+				(bWeaponInLeft ? RightHandWorldLocation : LeftHandWorldLocation) = Socket->GetComponentLocation();
+			}
+		}
+	}
 	bHandsInitialized = true;
 }
 

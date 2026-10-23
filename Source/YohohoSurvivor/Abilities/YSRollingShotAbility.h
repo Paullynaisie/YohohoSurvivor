@@ -75,7 +75,7 @@ public:
 	UYSRollingShotAbility();
 
 	/** Roulade + visée + rafale, puis la recharge (CD reduction : seulement la recharge) */
-	virtual float GetCooldownDuration() const override { return RollDuration + AimDuration + BurstDuration + Cooldown * GetCooldownMultiplier(); }
+	virtual float GetCooldownDuration() const override { return RollDuration + AimDuration + GetBurstTime() + Cooldown * GetCooldownMultiplier(); }
 
 	/** Priorités : en cours pendant la roulade, la visée et le recul des balles */
 	virtual float GetActionDuration() const override { return RollDuration + AimDuration + Super::GetActionDuration(); }
@@ -113,10 +113,10 @@ protected:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastRollStarted();
 
-private:
-
 	/** Lance la roulade (bonus de vitesse, traversée des NME) et note son début */
 	void StartRoll();
+
+private:
 
 	/** Fin de la visée : rafale de cette arme, puis de l'autre en akimbo (serveur) */
 	void Shoot();
