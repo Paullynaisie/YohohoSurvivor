@@ -784,7 +784,8 @@ UYSCriticalAttackUpgrade::UYSCriticalAttackUpgrade()
 	DisplayName = NSLOCTEXT("YS", "CriticalAttackName", "Atk critique");
 	SwingDescription = NSLOCTEXT("YS", "CriticalAttackSwing", "La {0}e atk est toujours critique");
 	BulletDescription = NSLOCTEXT("YS", "CriticalAttackBullet", "La {0}e balle sur un même NME\nest toujours critique");
-	ShotgunDescription = NSLOCTEXT("YS", "CriticalAttackShotgun", "Sur un même tir, après {0} AMMO\nqui touchent, les suivantes\nsont critiques");
+	ShotgunDescription = NSLOCTEXT("YS", "CriticalAttackShotgun", "Les AMMO sont critiques sur les NME\nà moins de {0} du joueur");
+	SniperDescription = NSLOCTEXT("YS", "CriticalAttackSniper", "Les balles sont critiques sur les NME\nà plus de {0} du joueur");
 	bCanBeBronze = false;
 	bCanBeSilver = false;
 }
@@ -817,8 +818,7 @@ bool UYSCriticalAttackUpgrade::HasGunAutoAttack(const AYSPlayerCharacter* Charac
 
 bool UYSCriticalAttackUpgrade::HasPewPewAutoAttack(const AYSPlayerCharacter* Character)
 {
-	// le Sniper compte ses balles sur chaque NME comme le PewPew
-	return HasGunAutoAttack(Character, EYSShootSystem::PewPew) || HasGunAutoAttack(Character, EYSShootSystem::Sniper);
+	return HasGunAutoAttack(Character, EYSShootSystem::PewPew);
 }
 
 bool UYSCriticalAttackUpgrade::HasShotgunAutoAttack(const AYSPlayerCharacter* Character)
@@ -826,14 +826,19 @@ bool UYSCriticalAttackUpgrade::HasShotgunAutoAttack(const AYSPlayerCharacter* Ch
 	return HasGunAutoAttack(Character, EYSShootSystem::Shotgun);
 }
 
+bool UYSCriticalAttackUpgrade::HasSniperAutoAttack(const AYSPlayerCharacter* Character)
+{
+	return HasGunAutoAttack(Character, EYSShootSystem::Sniper);
+}
+
 bool UYSCriticalAttackUpgrade::IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	return HasSwingAutoAttack(Character) || HasPewPewAutoAttack(Character) || HasShotgunAutoAttack(Character);
+	return HasSwingAutoAttack(Character) || HasPewPewAutoAttack(Character) || HasShotgunAutoAttack(Character) || HasSniperAutoAttack(Character);
 }
 
 bool UYSCriticalAttackUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
-	// unique : une seule fois, pour un joueur qui a une attaque auto Swing, PewPew ou Shotgun
+	// unique : une seule fois, pour un joueur qui a une attaque auto Swing, PewPew, Shotgun ou Sniper
 	return Progress.Stacks == 0 && PassesRequirements(Character) && IsCompatibleWith(Character, Variant);
 }
 
@@ -845,11 +850,11 @@ void UYSCriticalAttackUpgrade::GetOfferLines(const AYSPlayerCharacter* Character
 	Title.FontSize = 20;
 	Title.bBold = true;
 
-	// description selon l'attaque auto du joueur (les deux s'il a les deux)
-	auto AddDescription = [&OutLines](const FText& Text, int32 Interval)
+	// description selon l'attaque auto du joueur (toutes celles qu'il a)
+	auto AddDescription = [&OutLines](const FText& Text, int32 Value)
 	{
 		FYSChoiceLine& Line = OutLines.AddDefaulted_GetRef();
-		Line.Text = FText::Format(Text, Interval);
+		Line.Text = FText::Format(Text, Value);
 		Line.FontSize = 15;
 		Line.bBold = true;
 	};
@@ -863,7 +868,11 @@ void UYSCriticalAttackUpgrade::GetOfferLines(const AYSPlayerCharacter* Character
 	}
 	if (HasShotgunAutoAttack(Character))
 	{
-		AddDescription(ShotgunDescription, ShotgunCriticalHits);
+		AddDescription(ShotgunDescription, FMath::RoundToInt(ShotgunCriticalMaxDistance));
+	}
+	if (HasSniperAutoAttack(Character))
+	{
+		AddDescription(SniperDescription, FMath::RoundToInt(SniperCriticalMinDistance));
 	}
 }
 
@@ -871,8 +880,8 @@ void UYSCriticalAttackUpgrade::Apply(AYSPlayerCharacter* Character, int32 Varian
 {
 	if (Character && Progress.Stacks > 0)
 	{
-		Character->SetAutoAttackCriticals(SwingCriticalInterval, BulletCriticalInterval, ShotgunCriticalHits);
-		UE_LOG(LogTemp, Log, TEXT("[YSCritical] %s : Atk critique (1 swing sur %d, 1 balle sur %d par NME, Shotgun : critiques après %d AMMO touchées)"), *Character->GetName(),
-			SwingCriticalInterval, BulletCriticalInterval, ShotgunCriticalHits);
+		Character->SetAutoAttackCriticals(SwingCriticalInterval, BulletCriticalInterval, ShotgunCriticalMaxDistance, SniperCriticalMinDistance);
+		UE_LOG(LogTemp, Log, TEXT("[YSCritical] %s : Atk critique (1 swing sur %d, 1 balle sur %d par NME, Shotgun à moins de %.0f, Sniper à plus de %.0f)"), *Character->GetName(),
+			SwingCriticalInterval, BulletCriticalInterval, ShotgunCriticalMaxDistance, SniperCriticalMinDistance);
 	}
 }

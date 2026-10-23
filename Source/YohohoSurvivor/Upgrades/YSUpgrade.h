@@ -774,8 +774,9 @@ protected:
  *  « Atk critique » (unique, une fois, Gold uniquement) : les attaques auto deviennent régulièrement critiques.
  *  Auto swing (Melee Swing) : chaque arme compte ses attaques auto, la SwingCriticalInterval-ième (5e) est toujours critique.
  *  PewPew (Auto atk des Guns) : chaque NME compte les balles d'attaque auto reçues de chaque joueur, la BulletCriticalInterval-ième
- *  (3e) est toujours critique. Shotgun (Auto atk) : sur un même tir, après ShotgunCriticalHits (4) AMMO qui touchent, les suivantes
- *  sont critiques (remis à zéro à chaque tir). Proposée si une arme tenue a une de ces attaques auto ; débloque les raretés Silver et Gold d Atk speed et Shoot system
+ *  (3e) est toujours critique. Shotgun : AMMO critique sur un NME à moins de ShotgunCriticalMaxDistance (200) du joueur.
+ *  Sniper : balle critique sur un NME à plus de SniperCriticalMinDistance (1000) du joueur (distances au moment du coup).
+ *  Proposée si une arme tenue a une de ces attaques auto ; débloque les raretés Silver et Gold d Atk speed et Shoot system
  *  (leur Higher Rarities Upgrade : sans elle, Bronze seulement). Dégâts critiques = Critical Damage Multiplier du perso x (1 + bonus critiques d'Atk speed / Shoot system).
  */
 UCLASS(meta=(DisplayName="Upgrade spéciale : Atk critique"))
@@ -795,20 +796,28 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="1"))
 	int32 BulletCriticalInterval = 3;
 
-	/** Shotgun : sur un même tir, une fois ce nombre d'AMMO touchées, toutes les suivantes sont critiques (remis à zéro à chaque tir) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="1"))
-	int32 ShotgunCriticalHits = 4;
+	/** Shotgun : une AMMO est critique sur un NME à moins de cette distance du joueur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="1", Units="Centimeters"))
+	float ShotgunCriticalMaxDistance = 200.0f;
 
-	/** Descriptions du bouton ({0} = l'intervalle) selon l'attaque auto du joueur */
+	/** Sniper : une balle est critique sur un NME à plus de cette distance du joueur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(ClampMin="1", Units="Centimeters"))
+	float SniperCriticalMinDistance = 1000.0f;
+
+	/** Descriptions du bouton ({0} = l'intervalle ou la distance) selon l'attaque auto du joueur */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
 	FText SwingDescription;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
 	FText BulletDescription;
 
-	/** Shotgun ({0} = Shotgun Critical Hits) */
+	/** Shotgun ({0} = Shotgun Critical Max Distance) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
 	FText ShotgunDescription;
+
+	/** Sniper ({0} = Sniper Critical Min Distance) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
+	FText SniperDescription;
 
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
@@ -818,10 +827,11 @@ public:
 
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
-	/** Attaque auto Swing / PewPew / Shotgun parmi les armes tenues */
+	/** Attaque auto Swing / PewPew / Shotgun / Sniper parmi les armes tenues */
 	static bool HasSwingAutoAttack(const AYSPlayerCharacter* Character);
 	static bool HasPewPewAutoAttack(const AYSPlayerCharacter* Character);
 	static bool HasShotgunAutoAttack(const AYSPlayerCharacter* Character);
+	static bool HasSniperAutoAttack(const AYSPlayerCharacter* Character);
 
 	/** Attaque auto de Gun avec ce shoot system parmi les armes tenues */
 	static bool HasGunAutoAttack(const AYSPlayerCharacter* Character, EYSShootSystem System);

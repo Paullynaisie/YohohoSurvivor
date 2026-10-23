@@ -197,16 +197,16 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 		bCritical = Shooter && Foe->RegisterCriticalBullet(GetInstigator(), CriticalBulletInterval);
 		HitDamage *= bCritical ? Shooter->GetCriticalDamageMultiplier() : 1.0f;
 	}
-	// Atk critique (Shotgun) : sur un même tir, une fois N AMMO touchées, les suivantes sont critiques
-	if (ShotgunVolley.IsValid())
+	// Atk critique à la distance du point d'impact (bord du NME, gros NME compris) au tireur : Shotgun = proche, Sniper = loin
+	const AYSPlayerCharacter* DistanceShooter = Cast<AYSPlayerCharacter>(GetInstigator());
+	if (!bCritical && DistanceShooter && (CriticalWithinDistance > 0.0f || CriticalBeyondDistance > 0.0f) && Cast<AYSFoeCharacter>(OtherActor))
 	{
-		const AYSPlayerCharacter* Shooter = Cast<AYSPlayerCharacter>(GetInstigator());
-		if (Shooter && ShotgunVolley->CriticalAfterHits > 0 && ShotgunVolley->Hits >= ShotgunVolley->CriticalAfterHits)
+		const float Distance = FVector::Dist2D(DistanceShooter->GetActorLocation(), GetActorLocation());
+		if ((CriticalWithinDistance > 0.0f && Distance < CriticalWithinDistance) || (CriticalBeyondDistance > 0.0f && Distance > CriticalBeyondDistance))
 		{
 			bCritical = true;
-			HitDamage *= Shooter->GetCriticalDamageMultiplier();
+			HitDamage *= DistanceShooter->GetCriticalDamageMultiplier();
 		}
-		++ShotgunVolley->Hits;
 	}
 	const FPointDamageEvent DamageEvent(HitDamage, SweepResult, ShotDirection, bCritical ? UYSCriticalDamageType::StaticClass() : nullptr);
 	OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);

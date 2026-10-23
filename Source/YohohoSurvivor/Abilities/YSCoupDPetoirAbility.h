@@ -5,7 +5,6 @@
 #include "YSCoupDPetoirAbility.generated.h"
 
 class AYSProjectile;
-struct FYSShotgunVolley;
 
 /** Shoot system d'une action de Gun */
 UENUM(BlueprintType)
@@ -233,7 +232,7 @@ private:
 	bool ComputeShot(const FVector& TargetLocation, FVector& OutMuzzle, FVector& OutDirection) const;
 
 	/** Lance un projectile depuis Muzzle dans Direction, avec les dégâts et les upgrades de l'action (serveur) */
-	void SpawnProjectile(const FVector& Muzzle, const FVector& Direction, const TSharedPtr<FYSShotgunVolley>& Volley);
+	void SpawnProjectile(const FVector& Muzzle, const FVector& Direction);
 
 	/** Animation de rechargement des armes qui ont tiré (fin de rafale / tir) */
 	void PlayReloadAnims();

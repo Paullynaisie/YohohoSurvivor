@@ -79,19 +79,14 @@ void UYSCoupDPetoirAbility::FireShotgun(const FVector& TargetLocation)
 		return;
 	}
 
-	// un seul tir : les AMMO partagent le compteur de l'Atk critique (attaque auto), remis à zéro au tir suivant
-	TSharedPtr<FYSShotgunVolley> Volley = MakeShared<FYSShotgunVolley>();
-	const AYSPlayerCharacter* HolderCharacter = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	Volley->CriticalAfterHits = IsAutomatic() && HolderCharacter ? HolderCharacter->GetCriticalShotgunHits() : 0;
-
 	const float BaseYaw = Direction.Rotation().Yaw;
 	for (int32 Index = 0; Index < BurstBulletCount; ++Index)
 	{
 		const float Yaw = BaseYaw + FMath::FRandRange(-ShotgunSpread, ShotgunSpread);
-		SpawnProjectile(Muzzle, FRotator(0.0f, Yaw, 0.0f).Vector(), Volley);
+		SpawnProjectile(Muzzle, FRotator(0.0f, Yaw, 0.0f).Vector());
 	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s Shotgun : %d AMMO (+/- %.0f°) à %.2f, critiques après %d touchées"), *GetOwner()->GetName(), *GetName(),
-		BurstBulletCount, ShotgunSpread, GetWorld()->GetTimeSeconds(), Volley->CriticalAfterHits);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s Shotgun : %d AMMO (+/- %.0f°) à %.2f"), *GetOwner()->GetName(), *GetName(),
+		BurstBulletCount, ShotgunSpread, GetWorld()->GetTimeSeconds());
 
 	// recul sur toutes les machines, puis l'animation de rechargement
 	MulticastBulletFired(0, 0.0f);
@@ -213,7 +208,7 @@ bool UYSCoupDPetoirAbility::ComputeShot(const FVector& TargetLocation, FVector& 
 	return true;
 }
 
-void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector& Direction, const TSharedPtr<FYSShotgunVolley>& Volley)
+void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector& Direction)
 {
 	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 	APawn* Shooter = Weapon ? Weapon->GetHolder() : Cast<APawn>(GetOwner());
@@ -225,13 +220,18 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 	}
 
 	Projectile->SetDamage(Damage * GetDamageMultiplier());
-	// Atk critique : les balles d'attaque auto PewPew / Sniper comptent sur chaque NME, une sur N est critique ; Shotgun : compté sur le tir
+	// Atk critique (attaques auto) : PewPew = les balles comptent sur chaque NME, une sur N est critique ;
+	// Shotgun = critique sur les NME proches du tireur ; Sniper = critique sur les NME loin du tireur
 	const AYSPlayerCharacter* HolderCharacter = Cast<AYSPlayerCharacter>(Shooter);
-	if (IsAutomatic() && ShootSystem != EYSShootSystem::Shotgun && HolderCharacter)
+	if (IsAutomatic() && HolderCharacter)
 	{
-		Projectile->SetCriticalBulletInterval(HolderCharacter->GetCriticalBulletInterval());
+		switch (ShootSystem)
+		{
+		case EYSShootSystem::PewPew:	Projectile->SetCriticalBulletInterval(HolderCharacter->GetCriticalBulletInterval()); break;
+		case EYSShootSystem::Shotgun:	Projectile->SetCriticalDistances(HolderCharacter->GetCriticalShotgunMaxDistance(), 0.0f); break;
+		case EYSShootSystem::Sniper:	Projectile->SetCriticalDistances(0.0f, HolderCharacter->GetCriticalSniperMinDistance()); break;
+		}
 	}
-	Projectile->SetShotgunVolley(Volley);
 	// Sniper : la balle traverse les NME
 	Projectile->SetMaxHits(GetMaxHitsPerBullet());
 	// upgrades d'arme (Ricochet) : seulement pour l'Ability, pas pour l'Auto shot
@@ -251,7 +251,7 @@ void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 Bull
 		return;
 	}
 
-	SpawnProjectile(Muzzle, Direction, nullptr);
+	SpawnProjectile(Muzzle, Direction);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s balle %d à %.2f"), *GetOwner()->GetName(), *GetName(), BulletIndex + 1, GetWorld()->GetTimeSeconds());
 	MulticastBulletFired(BulletIndex, TimeToNextShot);
 }

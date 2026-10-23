@@ -9,16 +9,6 @@ class UProjectileMovementComponent;
 class USphereComponent;
 class UStaticMeshComponent;
 
-/** Un tir de Shotgun (serveur) : partagé par toutes ses AMMO, compte celles qui ont touché (Atk critique) */
-struct FYSShotgunVolley
-{
-	/** AMMO du tir qui ont déjà infligé des dégâts */
-	int32 Hits = 0;
-
-	/** Une fois ce nombre d'AMMO touchées, les suivantes sont critiques (0 = pas de critique) */
-	int32 CriticalAfterHits = 0;
-};
-
 /**
  *  Projectile en ligne droite (à hauteur constante au-dessus du relief si bFollowGround). Touche uniquement les acteurs portant un des HitTags
  *  (via IGameplayTagAssetInterface), traverse les autres pawns, est détruit contre le décor.
@@ -127,8 +117,9 @@ private:
 	/** NME déjà touchés (traversée du Sniper) */
 	int32 HitCount = 0;
 
-	/** Tir de Shotgun auquel appartient cette AMMO (critiques comptés sur le tir ; nul sinon) */
-	TSharedPtr<FYSShotgunVolley> ShotgunVolley;
+	/** Atk critique à la distance (0 = non ; fixé au tir) : critique sur un NME à moins de Within (Shotgun) / à plus de Beyond (Sniper) du tireur */
+	float CriticalWithinDistance = 0.0f;
+	float CriticalBeyondDistance = 0.0f;
 
 	/** Cibles déjà touchées (un ricochet ne les retouche pas) */
 	TArray<TWeakObjectPtr<AActor>> HitActors;
@@ -162,8 +153,8 @@ public:
 	/** Sniper : la balle traverse les NME et en touche Count avant de disparaître (1 = s'arrête au premier) */
 	void SetMaxHits(int32 Count) { MaxHits = FMath::Max(1, Count); }
 
-	/** Shotgun : tir auquel appartient cette AMMO (Atk critique : critique une fois assez d'AMMO du tir touchées) */
-	void SetShotgunVolley(const TSharedPtr<FYSShotgunVolley>& Volley) { ShotgunVolley = Volley; }
+	/** Atk critique à la distance : critique si le point d'impact est à moins de Within / à plus de Beyond du tireur (0 = non) */
+	void SetCriticalDistances(float Within, float Beyond) { CriticalWithinDistance = Within; CriticalBeyondDistance = Beyond; }
 
 	/** Tags des acteurs que ce projectile peut toucher */
 	const FGameplayTagContainer& GetHitTags() const { return HitTags; }
