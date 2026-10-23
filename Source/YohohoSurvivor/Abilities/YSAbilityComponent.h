@@ -176,6 +176,15 @@ public:
 	/** Le regard du personnage est figé dans cette direction (le curseur n'est plus suivi), ex. Dashing Slash */
 	virtual bool GetLockedAimDirection(FVector& OutDirection) const { return false; }
 
+	/**
+	 *  Pose animée d'une main (exprimée pour la main droite, relative au corps) pendant l'action ; false hors animation.
+	 *  OutIdleWeight = part de la pose normale de la main à mélanger (1 = pose normale).
+	 */
+	virtual bool EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const { return false; }
+
+	/** La pose animée est celle de l'AUTRE main (arme à deux mains : la main posée sur l'Off Hand Socket), pas celle qui tient l'arme */
+	virtual bool AnimatesOffHand() const { return false; }
+
 protected:
 
 	/** Effets visuels de l'activation sur toutes les machines (le client qui tire les a déjà joués par prédiction) */

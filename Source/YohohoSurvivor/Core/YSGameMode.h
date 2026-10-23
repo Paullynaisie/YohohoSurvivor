@@ -95,6 +95,26 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn", ClampMin="0", Units="Centimeters"))
 	float NumpadSpawnDistance = 900.0f;
 
+	/** Ctrl gauche + touche du pavé numérique : circle spawn de ce nombre de NME de la touche sur le contour de la plage */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn", ClampMin="1"))
+	int32 NumpadCircleCount = 50;
+
+	/** Centre de l'île (apparition de l'élite la nuit, centre des circle spawns) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island")
+	FVector IslandCenter = FVector::ZeroVector;
+
+	/** Circle spawn : distance au centre d'où l'on part du large pour chercher la plage (au-delà de la côte la plus lointaine) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island", meta=(ClampMin="0", Units="Centimeters"))
+	float ShoreSearchRadius = 6300.0f;
+
+	/** Circle spawn : pas de la recherche de la plage, du large vers le centre */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island", meta=(ClampMin="10", Units="Centimeters"))
+	float ShoreSearchStep = 50.0f;
+
+	/** Circle spawn : les NME sont posés à cette distance à l'intérieur de la limite de l'eau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island", meta=(ClampMin="0", Units="Centimeters"))
+	float ShoreInset = 200.0f;
+
 	/** Objectif commun : doublons à réunir en revendant des coffres au Brooker (jauge d'objectif du HUD) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="1"))
 	int32 DoubloonGoal = 100;
@@ -167,6 +187,23 @@ public:
 
 	/** NME de la classe posé au sol à Distance devant Pawn, tourné vers lui (debug, pavé numérique) */
 	AYSFoeCharacter* SpawnFoeInFront(UClass* FoeClass, const APawn* Pawn, float Distance);
+
+	/** Ctrl gauche + pavé numérique (map de test) : circle spawn de NumpadCircleCount NME de la touche ; nombre apparus */
+	int32 SpawnNumpadCircle(int32 Key);
+
+	/** Circle spawn : Count NME (tirés dans Classes selon leur Spawn Weight) répartis à intervalles réguliers sur le contour de la plage, tournés vers le centre */
+	int32 SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason);
+
+	/** NME de la classe posé sur le sol Ground (taille de l'élite comprise), tourné vers FacingTarget ; nullptr si la place est prise */
+	AYSFoeCharacter* SpawnFoeOnGround(UClass* FoeClass, const FVector& Ground, const FVector& FacingTarget);
+
+	/** Sol de l'île (Landscape seulement : ponton, bateau, palmiers traversés) à la verticale de Point, hors de l'eau */
+	bool FindIslandGround(const FVector& Point, FVector& OutGround) const;
+
+	/** Point de plage dans la direction Angle (radians) depuis IslandCenter : premier sol hors de l'eau en venant du large, puis ShoreInset vers l'intérieur */
+	bool FindShorePoint(float Angle, FVector& OutGround) const;
+
+	const FVector& GetIslandCenter() const { return IslandCenter; }
 
 	/** Doublons gagnés par l'équipe (vente au Brooker ; serveur) */
 	void AddDoubloons(int32 Amount);

@@ -5,6 +5,9 @@
 #include "YSBombThrowerAbility.generated.h"
 
 class AYSPlayerBomb;
+class UMaterialInterface;
+class UStaticMesh;
+class UStaticMeshComponent;
 
 /**
  *  « BombThrower » : Ability du Sniper (Gun). Lance une bombe (Bomb Class : même Blueprint que la Roll and Bomb, donc même rayon
@@ -44,20 +47,100 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw", meta=(ClampMin="10", Units="Centimeters"))
 	float RetreatStep = 50.0f;
 
+	/** Animation de lancer (la même que le NME bomb throw) ; décoché = la bombe part tout de suite de la bouche de l'arme */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw Anim")
+	bool bPlayThrowAnim = true;
+
+	/** Le lancer est fait par l'AUTRE main (celle posée sur l'Off Hand Socket de l'arme à deux mains) ; sinon par la main qui tient l'arme */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw Anim", meta=(EditCondition="bPlayThrowAnim"))
+	bool bThrowWithOffHand = true;
+
+	/** Phase 1 : la main recule et monte (pose de préparation) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw Anim", meta=(ClampMin="0.01", Units="Seconds", EditCondition="bPlayThrowAnim"))
+	float ThrowWindupDuration = 0.3f;
+
+	/** Phase 2 : la main part vers l'avant ; la bombe quitte la main à la fin de cette phase */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw Anim", meta=(ClampMin="0.01", Units="Seconds", EditCondition="bPlayThrowAnim"))
+	float ThrowDuration = 0.12f;
+
+	/** Phase 3 : retour à la pose normale */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw Anim", meta=(ClampMin="0.01", Units="Seconds", EditCondition="bPlayThrowAnim"))
+	float ThrowRecoverDuration = 0.35f;
+
+	/** Pose de préparation (main droite, relative au corps ; X avant, Y droite, Z haut ; symétrique pour la main gauche) : derrière l'épaule */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw Anim", meta=(EditCondition="bPlayThrowAnim"))
+	FVector WindupHandLocation = FVector(-40.0f, 45.0f, 50.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw Anim", meta=(EditCondition="bPlayThrowAnim"))
+	FRotator WindupHandRotation = FRotator(-30.0f, 0.0f, 0.0f);
+
+	/** Pose au lâcher : bras tendu devant, en hauteur */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw Anim", meta=(EditCondition="bPlayThrowAnim"))
+	FVector ReleaseHandLocation = FVector(70.0f, 30.0f, 40.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw Anim", meta=(EditCondition="bPlayThrowAnim"))
+	FRotator ReleaseHandRotation = FRotator(20.0f, 0.0f, 0.0f);
+
+	/** Courbes : préparation EaseOut, lancer EaseOut marqué (cet exposant), retour EaseInOut */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw Anim", meta=(ClampMin="1", EditCondition="bPlayThrowAnim"))
+	float ThrowEaseExponent = 3.0f;
+
+	/** Bombe affichée dans la main qui lance, pendant la préparation et le lancer (visuel local, rien de répliqué) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Held Bomb", meta=(EditCondition="bPlayThrowAnim"))
+	bool bShowHeldBomb = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Held Bomb", meta=(EditCondition="bShowHeldBomb"))
+	TObjectPtr<UStaticMesh> HeldBombMesh;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Held Bomb", meta=(EditCondition="bShowHeldBomb"))
+	TObjectPtr<UMaterialInterface> HeldBombMaterial;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Held Bomb", meta=(EditCondition="bShowHeldBomb"))
+	FVector HeldBombScale = FVector(0.3f);
+
+	/** Position de la bombe par rapport à la main */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Held Bomb", meta=(EditCondition="bShowHeldBomb"))
+	FVector HeldBombOffset = FVector::ZeroVector;
+
 	UYSBombThrowerAbility();
 
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
 	virtual float GetBaseDamage() const override { return BombDamage; }
+
+	/** Préparation + lancer : les actions moins prioritaires (Auto shot) attendent le lâcher */
+	virtual float GetActionDuration() const override { return bPlayThrowAnim ? ThrowWindupDuration + ThrowDuration : 0.0f; }
+
+	virtual bool EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const override;
+
+	virtual bool AnimatesOffHand() const override;
 
 	/** Point d'impact pour un curseur en TargetLocation (sol valide le plus proche du curseur vers le joueur, sinon sous le joueur) */
 	FVector FindLandingPoint(const FVector& TargetLocation) const;
 
 protected:
 
-	/** Lance la bombe (serveur) */
+	/** Lance la bombe (serveur) : au lâcher de l'animation, vers le point visé au clic */
 	virtual void ExecuteAbility(const FVector& TargetLocation) override;
+
+	virtual void OnActionCancelled() override;
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
 
 	/** Sol de l'île (Landscape, props ignorés) sous Point, hors de l'eau ; faux sinon */
 	bool FindIslandGround(const FVector& Point, float ReferenceZ, FVector& OutGround) const;
+
+	/** Fait partir la bombe vers Landing (serveur) */
+	void ReleaseBomb(FVector Landing);
+
+	/** Main du porteur qui lance (l'autre main si bThrowWithOffHand et arme à deux mains) */
+	USceneComponent* GetThrowingHand() const;
+
+	/** Bombe dans la main (créée à la première animation) */
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> HeldBomb;
+
+	FTimerHandle ReleaseTimer;
 };

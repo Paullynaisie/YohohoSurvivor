@@ -277,6 +277,13 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerNumpadSpawn(int32 Key);
 
+	/** Map de test : Ctrl gauche + touche du pavé numérique -> circle spawn du NME de cette touche sur le contour de la plage.  Ex : YSNumpadCircle 1 */
+	UFUNCTION(Exec)
+	void YSNumpadCircle(int32 Key);
+
+	UFUNCTION(Server, Reliable)
+	void ServerNumpadCircle(int32 Key);
+
 	/** Debug : fixe les BL stacks du Bloodlust (si débloqué) et relance leur délai.  Ex : YSSetBloodlustStacks 5 */
 	UFUNCTION(Exec)
 	void YSSetBloodlustStacks(int32 Stacks);

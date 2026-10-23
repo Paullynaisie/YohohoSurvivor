@@ -203,17 +203,47 @@ void AYSPlayerController::SetupInputComponent()
 	// pavé numérique : apparition manuelle de NME (seulement si le GameMode de la map l'autorise, ex. TestMap)
 	const FKey NumpadKeys[] = { EKeys::NumPadZero, EKeys::NumPadOne, EKeys::NumPadTwo, EKeys::NumPadThree, EKeys::NumPadFour,
 		EKeys::NumPadFive, EKeys::NumPadSix, EKeys::NumPadSeven, EKeys::NumPadEight, EKeys::NumPadNine };
+	// Ctrl gauche + pavé numérique : circle spawn de ce NME sur le contour de la plage
 	for (int32 Key = 0; Key < UE_ARRAY_COUNT(NumpadKeys); ++Key)
 	{
 		FInputKeyBinding Binding(FInputChord(NumpadKeys[Key]), IE_Pressed);
-		Binding.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [this, Key]() { YSNumpadSpawn(Key); });
+		Binding.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [this, Key]()
+		{
+			if (!IsInputKeyDown(EKeys::LeftControl))
+			{
+				YSNumpadSpawn(Key);
+			}
+		});
 		InputComponent->KeyBindings.Add(Binding);
+
+		FInputKeyBinding CtrlBinding(FInputChord(NumpadKeys[Key], false, true, false, false), IE_Pressed);
+		CtrlBinding.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [this, Key]()
+		{
+			if (IsInputKeyDown(EKeys::LeftControl))
+			{
+				YSNumpadCircle(Key);
+			}
+		});
+		InputComponent->KeyBindings.Add(CtrlBinding);
 	}
 }
 
 void AYSPlayerController::YSNumpadSpawn(int32 Key)
 {
 	ServerNumpadSpawn(Key);
+}
+
+void AYSPlayerController::YSNumpadCircle(int32 Key)
+{
+	ServerNumpadCircle(Key);
+}
+
+void AYSPlayerController::ServerNumpadCircle_Implementation(int32 Key)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->SpawnNumpadCircle(Key);
+	}
 }
 
 void AYSPlayerController::ServerNumpadSpawn_Implementation(int32 Key)

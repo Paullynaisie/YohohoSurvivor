@@ -5,6 +5,8 @@
 #include "Enemies/YSFoeCharacter.h"
 #include "Interaction/YSTreasureMap.h"
 #include "Interaction/YSInteractiveObject.h"
+#include "LandscapeProxy.h"
+#include "Map/YSOcean.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -603,4 +605,109 @@ AYSFoeCharacter* AYSGameMode::SpawnFoeInFront(UClass* FoeClass, const APawn* Paw
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 	return GetWorld()->SpawnActor<AYSFoeCharacter>(FoeClass, Ground + FVector(0.0f, 0.0f, HalfHeight + 2.0f), (-Forward).Rotation(), Params);
+}
+
+int32 AYSGameMode::SpawnNumpadCircle(int32 Key)
+{
+	if (!bNumpadFoeSpawn)
+	{
+		return 0;
+	}
+
+	for (const TSubclassOf<AYSFoeCharacter>& FoeClass : NumpadFoeClasses)
+	{
+		if (FoeClass && FoeClass->GetDefaultObject<AYSFoeCharacter>()->GetNumpadSpawnKey() == Key)
+		{
+			return SpawnCircle({ FoeClass }, NumpadCircleCount, FString::Printf(TEXT("Ctrl + pavé numérique %d"), Key));
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Ctrl + pavé numérique %d : aucun NME sur cette touche"), Key);
+	return 0;
+}
+
+int32 AYSGameMode::SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason)
+{
+	TArray<TSubclassOf<AYSFoeCharacter>> ValidClasses = Classes;
+	ValidClasses.RemoveAll([](const TSubclassOf<AYSFoeCharacter>& Class) { return !Class; });
+	if (Count <= 0 || ValidClasses.Num() == 0)
+	{
+		return 0;
+	}
+
+	// emplacements à intervalles réguliers tout autour de l'île (départ au hasard), tournés vers le centre
+	const double StartTime = FPlatformTime::Seconds();
+	const float StartAngle = FMath::FRandRange(0.0f, 2.0f * PI);
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		FVector Ground;
+		if (FindShorePoint(StartAngle + 2.0f * PI * Index / Count, Ground))
+		{
+			Spawned += SpawnFoeOnGround(UYSEnemySpawnRule::PickEnemyClass(ValidClasses), Ground, IslandCenter) ? 1 : 0;
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Circle spawn (%s) : %d / %d NME sur la plage (%.1f ms)"), *Reason, Spawned, Count, (FPlatformTime::Seconds() - StartTime) * 1000.0);
+	return Spawned;
+}
+
+AYSFoeCharacter* AYSGameMode::SpawnFoeOnGround(UClass* FoeClass, const FVector& Ground, const FVector& FacingTarget)
+{
+	if (!FoeClass || !FoeClass->IsChildOf(AYSFoeCharacter::StaticClass()))
+	{
+		return nullptr;
+	}
+
+	// la taille du NME (élite x3) est appliquée à son BeginPlay : on la prévoit pour le poser sur le sol
+	const AYSFoeCharacter* FoeDefaults = FoeClass->GetDefaultObject<AYSFoeCharacter>();
+	const float HalfHeight = FoeDefaults->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * FoeDefaults->GetSizeMultiplier();
+	const FVector Location = Ground + FVector(0.0f, 0.0f, HalfHeight + 2.0f);
+	const FRotator Rotation(0.0f, (FacingTarget - Location).Rotation().Yaw, 0.0f);
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
+	return GetWorld()->SpawnActor<AYSFoeCharacter>(FoeClass, Location, Rotation, Params);
+}
+
+bool AYSGameMode::FindIslandGround(const FVector& Point, FVector& OutGround) const
+{
+	// seul le Landscape (l'île) compte : un prop touché (ponton, bateau, palmier) est traversé
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSIslandGround), false);
+	const FVector Start(Point.X, Point.Y, Point.Z + 5000.0f);
+	const FVector End(Point.X, Point.Y, Point.Z - 5000.0f);
+	for (int32 Attempt = 0; Attempt < 8; ++Attempt)
+	{
+		FHitResult Hit;
+		if (!GetWorld()->LineTraceSingleByObjectType(Hit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+		{
+			return false;
+		}
+		if (Hit.GetActor() && Hit.GetActor()->IsA<ALandscapeProxy>())
+		{
+			OutGround = Hit.ImpactPoint;
+			return !AYSOcean::IsUnderwater(GetWorld(), OutGround);
+		}
+		Params.AddIgnoredActor(Hit.GetActor());
+	}
+	return false;
+}
+
+bool AYSGameMode::FindShorePoint(float Angle, FVector& OutGround) const
+{
+	const FVector Direction(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f);
+	const float Step = FMath::Max(ShoreSearchStep, 10.0f);
+
+	// du large vers le centre : premier sol de l'île hors de l'eau = bord de la plage
+	for (float Distance = ShoreSearchRadius; Distance > 0.0f; Distance -= Step)
+	{
+		FVector Shore;
+		if (FindIslandGround(IslandCenter + Direction * Distance, Shore))
+		{
+			// un peu à l'intérieur pour avoir les pieds au sec (sinon le bord lui-même)
+			FVector Inland;
+			OutGround = FindIslandGround(IslandCenter + Direction * FMath::Max(Distance - ShoreInset, 0.0f), Inland) ? Inland : Shore;
+			return true;
+		}
+	}
+	return false;
 }

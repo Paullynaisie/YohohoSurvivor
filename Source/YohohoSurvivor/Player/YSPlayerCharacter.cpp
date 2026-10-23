@@ -50,6 +50,22 @@ namespace
 	constexpr float HandSnapDistance = 300.0f;
 }
 
+namespace YSPlayerHands
+{
+	/** Poses animées exprimées pour la main droite : symétrie pour la gauche (Y, Yaw et Roll inversés) */
+	void MirrorHandPose(bool bLeft, FVector& Location, FQuat& Rotation)
+	{
+		if (bLeft)
+		{
+			Location.Y = -Location.Y;
+			FRotator Mirrored = Rotation.Rotator();
+			Mirrored.Yaw = -Mirrored.Yaw;
+			Mirrored.Roll = -Mirrored.Roll;
+			Rotation = Mirrored.Quaternion();
+		}
+	}
+}
+
 AYSPlayerCharacter::AYSPlayerCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -778,31 +794,23 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 		FVector FinalLocation = WorldLocation + RecoilOffset;
 		FQuat FinalRotation = Rotation.Quaternion();
 
-		// coupe (Auto swing en attaque auto, Dashing Slash en Ability) : la pose animée remplace la pose normale,
-		// sans retard pour garder la coupe brutale ; l'Ability d'abord (prioritaire)
+		// pose animée (coupe de l'Auto swing / Dashing Slash, lancer du BombThrower) : remplace la pose normale,
+		// sans retard pour garder un geste brutal ; l'Ability d'abord (prioritaire). Les animations de l'autre main
+		// (AnimatesOffHand) sont jouées avec l'Off Hand Socket, plus bas.
 		float IdleWeight = 1.0f;
 		FVector PoseLocation = FVector::ZeroVector;
 		FQuat PoseRotation = FQuat::Identity;
 		bool bSwinging = false;
 		for (const UYSAbilityComponent* Action : { Weapon ? Weapon->GetActiveAction() : nullptr, Weapon ? Weapon->GetAutoAction() : nullptr })
 		{
-			const UYSAutoSwingAbility* Sabre = Cast<UYSAutoSwingAbility>(Action);
-			if (!bSwinging && Sabre && Sabre->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation))
+			if (!bSwinging && Action && !Action->AnimatesOffHand() && Action->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation))
 			{
 				bSwinging = true;
 			}
 		}
 		if (bSwinging)
 		{
-			// poses exprimées pour la main droite : symétrie pour la gauche (Y, Yaw et Roll inversés)
-			if (bLeft)
-			{
-				PoseLocation.Y = -PoseLocation.Y;
-				FRotator Mirrored = PoseRotation.Rotator();
-				Mirrored.Yaw = -Mirrored.Yaw;
-				Mirrored.Roll = -Mirrored.Roll;
-				PoseRotation = Mirrored.Quaternion();
-			}
+			YSPlayerHands::MirrorHandPose(bLeft, PoseLocation, PoseRotation);
 			FinalLocation = FMath::Lerp(PivotTransform.TransformPosition(PoseLocation), FinalLocation, IdleWeight);
 			FinalRotation = FQuat::Slerp(PoseRotation, FinalRotation, IdleWeight);
 		}
@@ -825,8 +833,23 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 			if (Socket)
 			{
 				USceneComponent* OtherHand = bWeaponInLeft ? RightHand : LeftHand;
-				OtherHand->SetWorldLocationAndRotation(Socket->GetComponentLocation(), Socket->GetComponentQuat());
-				(bWeaponInLeft ? RightHandWorldLocation : LeftHandWorldLocation) = Socket->GetComponentLocation();
+				FVector Location = Socket->GetComponentLocation();
+				FQuat Rotation = Socket->GetComponentQuat();
+
+				// action qui anime cette main (ex. lancer de bombe du Sniper) : elle quitte le socket le temps du geste
+				const UYSAbilityComponent* Action = Weapon->GetActiveAction();
+				float IdleWeight = 1.0f;
+				FVector PoseLocation = FVector::ZeroVector;
+				FQuat PoseRotation = FQuat::Identity;
+				if (Action && Action->AnimatesOffHand() && Action->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation))
+				{
+					YSPlayerHands::MirrorHandPose(!bWeaponInLeft, PoseLocation, PoseRotation);
+					Location = FMath::Lerp(PivotTransform.TransformPosition(PoseLocation), Location, IdleWeight);
+					Rotation = FQuat::Slerp(PivotTransform.GetRotation() * PoseRotation, Rotation, IdleWeight);
+				}
+
+				OtherHand->SetWorldLocationAndRotation(Location, Rotation);
+				(bWeaponInLeft ? RightHandWorldLocation : LeftHandWorldLocation) = Location;
 			}
 		}
 	}

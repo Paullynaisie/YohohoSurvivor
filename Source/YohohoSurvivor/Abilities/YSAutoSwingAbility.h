@@ -228,7 +228,7 @@ public:
 	 *  Pose animée de la main (main droite, relative au corps) pendant l'attaque.
 	 *  OutIdleWeight = part de la pose normale de la main à mélanger (1 = pose normale). Retourne false hors attaque.
 	 */
-	bool EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const;
+	virtual bool EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const override;
 
 	/** Déclenche l'attaque (serveur) si elle est disponible ; vrai si elle part */
 	bool StartAttack();

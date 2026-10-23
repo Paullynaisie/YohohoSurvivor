@@ -7,7 +7,6 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerState.h"
-#include "LandscapeProxy.h"
 #include "Map/YSOcean.h"
 #include "Player/YSPlayerCharacter.h"
 
@@ -231,54 +230,6 @@ bool UYSEnemySpawnRule::FindSpawnLocation(const TArray<APawn*>& Players, float C
 	return true;
 }
 
-AYSFoeCharacter* UYSEnemySpawnRule::SpawnEnemyOnGround(TSubclassOf<AYSFoeCharacter> EnemyClass, const FVector& Ground, const FVector& FacingTarget)
-{
-	UWorld* World = GetWorld();
-	if (!World || !EnemyClass)
-	{
-		return nullptr;
-	}
-
-	// la taille du NME (élite x3) est appliquée à son BeginPlay : on la prévoit pour le poser sur le sol
-	const AYSFoeCharacter* Default = EnemyClass->GetDefaultObject<AYSFoeCharacter>();
-	const float HalfHeight = Default->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * Default->GetSizeMultiplier();
-	const FVector Location = Ground + FVector(0.0f, 0.0f, HalfHeight + 2.0f);
-	const FRotator Rotation(0.0f, (FacingTarget - Location).Rotation().Yaw, 0.0f);
-
-	FActorSpawnParameters Params;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
-	return World->SpawnActor<AYSFoeCharacter>(EnemyClass, Location, Rotation, Params);
-}
-
-bool UYSEnemySpawnRule::FindIslandGround(const FVector& Point, FVector& OutGround) const
-{
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return false;
-	}
-
-	// seul le Landscape (l'île) compte : un prop touché (ponton, bateau, palmier) est traversé
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSSpawnIslandGround), false);
-	const FVector Start(Point.X, Point.Y, Point.Z + 5000.0f);
-	const FVector End(Point.X, Point.Y, Point.Z - 5000.0f);
-	for (int32 Attempt = 0; Attempt < 8; ++Attempt)
-	{
-		FHitResult Hit;
-		if (!World->LineTraceSingleByObjectType(Hit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params))
-		{
-			return false;
-		}
-		if (Hit.GetActor() && Hit.GetActor()->IsA<ALandscapeProxy>())
-		{
-			OutGround = Hit.ImpactPoint;
-			return !AYSOcean::IsUnderwater(World, OutGround);
-		}
-		Params.AddIgnoredActor(Hit.GetActor());
-	}
-	return false;
-}
-
 void UYSTimedWaveSpawnRule::StartRule()
 {
 	NextWaveTime = GetMatchElapsedTime() + FirstWaveDelay;
@@ -332,7 +283,7 @@ bool UYSTimedWaveSpawnRule::SpawnElite()
 	const TSubclassOf<AYSFoeCharacter> EliteClass = Classes[FMath::RandHelper(Classes.Num())];
 	AYSFoeCharacter* Elite = nullptr;
 	FVector CenterGround;
-	if (bEliteAtIslandCenter && FindIslandGround(IslandCenter, CenterGround))
+	if (bEliteAtIslandCenter && GameMode->FindIslandGround(GameMode->GetIslandCenter(), CenterGround))
 	{
 		// au centre de l'île, tourné vers le joueur le plus proche
 		const TArray<APawn*> Players = GetActivePlayers();
@@ -344,7 +295,7 @@ bool UYSTimedWaveSpawnRule::SpawnElite()
 				Nearest = Player;
 			}
 		}
-		Elite = SpawnEnemyOnGround(EliteClass, CenterGround, Nearest->GetActorLocation());
+		Elite = GameMode->SpawnFoeOnGround(EliteClass, CenterGround, Nearest->GetActorLocation());
 	}
 	else
 	{
@@ -369,51 +320,13 @@ bool UYSTimedWaveSpawnRule::SpawnElite()
 	return true;
 }
 
-bool UYSTimedWaveSpawnRule::FindShorePoint(float Angle, FVector& OutGround) const
+int32 UYSTimedWaveSpawnRule::SpawnCircle(const FYSCircleSpawn& Circle, const FString& Reason)
 {
-	const FVector Direction(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f);
-	const float Step = FMath::Max(ShoreSearchStep, 10.0f);
-
-	// du large vers le centre : premier sol de l'île hors de l'eau = bord de la plage
-	for (float Distance = ShoreSearchRadius; Distance > 0.0f; Distance -= Step)
-	{
-		FVector Shore;
-		if (FindIslandGround(IslandCenter + Direction * Distance, Shore))
-		{
-			// un peu à l'intérieur pour avoir les pieds au sec (sinon le bord lui-même)
-			FVector Inland;
-			OutGround = FindIslandGround(IslandCenter + Direction * FMath::Max(Distance - ShoreInset, 0.0f), Inland) ? Inland : Shore;
-			return true;
-		}
-	}
-	return false;
-}
-
-int32 UYSTimedWaveSpawnRule::SpawnCircle(const FYSCircleSpawn& Circle, const TCHAR* Reason)
-{
-	TArray<TSubclassOf<AYSFoeCharacter>> Classes = Circle.EnemyClasses;
-	Classes.RemoveAll([](const TSubclassOf<AYSFoeCharacter>& Class) { return !Class; });
-	if (!Circle.bEnabled || Circle.MaxEnemies <= 0 || Classes.Num() == 0)
+	if (!Circle.bEnabled || !GameMode)
 	{
 		return 0;
 	}
-
-	// emplacements à intervalles réguliers tout autour de l'île (départ au hasard), tournés vers le centre
-	const double StartTime = FPlatformTime::Seconds();
-	const float StartAngle = FMath::FRandRange(0.0f, 2.0f * PI);
-	int32 Spawned = 0;
-	for (int32 Index = 0; Index < Circle.MaxEnemies; ++Index)
-	{
-		FVector Ground;
-		if (FindShorePoint(StartAngle + 2.0f * PI * Index / Circle.MaxEnemies, Ground))
-		{
-			Spawned += SpawnEnemyOnGround(PickEnemyClass(Classes), Ground, IslandCenter) ? 1 : 0;
-		}
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("[YSTimedWaveSpawnRule] Nuit %d, circle spawn (%s) : %d / %d NME sur la plage (%.1f ms)"), GetDayNumber(), Reason, Spawned, Circle.MaxEnemies,
-		(FPlatformTime::Seconds() - StartTime) * 1000.0);
-	return Spawned;
+	return GameMode->SpawnCircle(Circle.EnemyClasses, Circle.MaxEnemies, FString::Printf(TEXT("nuit %d, %s"), GetDayNumber(), *Reason));
 }
 
 void UYSTimedWaveSpawnRule::TickRule(float DeltaSeconds)
@@ -429,7 +342,7 @@ void UYSTimedWaveSpawnRule::TickRule(float DeltaSeconds)
 	if (Elite && !bEliteHealthCircleDone && Elite->GetMaxHealth() > 0.0f && Elite->GetHealth() < Elite->GetMaxHealth() * EliteHealthCircleThreshold)
 	{
 		bEliteHealthCircleDone = true;
-		SpawnCircle(EliteHealthCircleSpawn, *FString::Printf(TEXT("élite à %.0f / %.0f PV"), Elite->GetHealth(), Elite->GetMaxHealth()));
+		SpawnCircle(EliteHealthCircleSpawn, FString::Printf(TEXT("élite à %.0f / %.0f PV"), Elite->GetHealth(), Elite->GetMaxHealth()));
 	}
 
 	// la nuit, seuls les events font apparaître des NME (sauf si les vagues de nuit sont cochées)
