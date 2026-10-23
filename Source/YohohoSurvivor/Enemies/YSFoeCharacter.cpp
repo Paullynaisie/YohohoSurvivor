@@ -136,6 +136,65 @@ AYSFoeCharacter::AYSFoeCharacter()
 	AimLine->SetupAttachment(RootComponent);
 	AimLine->SetUsingAbsoluteLocation(true);
 	AimLine->SetVisibility(false);
+
+	// marque de la Captain AMMO : disque au sol, en coordonnées monde (reposé sur le relief quand le NME bouge)
+	MarkZone = CreateDefaultSubobject<UYSGroundZoneComponent>(TEXT("MarkZone"));
+	MarkZone->SetupAttachment(RootComponent);
+	MarkZone->SetUsingAbsoluteLocation(true);
+	MarkZone->SetUsingAbsoluteRotation(true);
+	MarkZone->SetUsingAbsoluteScale(true);
+	MarkZone->SetVisibility(false);
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> DefaultMarkMaterial(TEXT("/Game/Art/Materials/M_BrookerZone.M_BrookerZone"));
+	if (DefaultMarkMaterial.Succeeded())
+	{
+		MarkMaterial = DefaultMarkMaterial.Object;
+	}
+}
+
+void AYSFoeCharacter::SetMarked(bool bMarked)
+{
+	if (bIsMarked == bMarked)
+	{
+		return;
+	}
+	bIsMarked = bMarked;
+	MarkZone->SetVisibility(bMarked);
+	if (!bMarked)
+	{
+		MarkZone->ClearAllMeshSections();
+		return;
+	}
+	LastMarkLocation = FVector(TNumericLimits<float>::Max());
+	UpdateMark();
+}
+
+void AYSFoeCharacter::UpdateMark()
+{
+	const UCapsuleComponent* Capsule = GetCapsuleComponent();
+	const FVector Feet = GetActorLocation() - FVector(0.0f, 0.0f, Capsule->GetScaledCapsuleHalfHeight());
+	if (FVector::DistSquared(Feet, LastMarkLocation) < FMath::Square(MarkRebuildDistance))
+	{
+		return;
+	}
+	LastMarkLocation = Feet;
+
+	const float Radius = Capsule->GetScaledCapsuleRadius() * MarkRadiusScale;
+	MarkZone->SetWorldLocation(Feet);
+	MarkZone->BuildZone(Radius, YSFoe::AimLineHeight);
+	if (MarkMaterial)
+	{
+		UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(MarkZone->GetMaterial(0));
+		if (!Material)
+		{
+			Material = MarkZone->CreateDynamicMaterialInstance(0, MarkMaterial);
+		}
+		Material->SetVectorParameterValue(TEXT("Color"), MarkColor);
+		Material->SetScalarParameterValue(TEXT("Glow"), MarkGlow);
+		Material->SetScalarParameterValue(TEXT("FillOpacity"), MarkFillOpacity);
+		Material->SetScalarParameterValue(TEXT("EdgeOpacity"), MarkEdgeOpacity);
+		Material->SetScalarParameterValue(TEXT("Radius"), Radius);
+		Material->SetScalarParameterValue(TEXT("EdgeWidth"), MarkEdgeWidth);
+	}
 }
 
 void AYSFoeCharacter::OnConstruction(const FTransform& Transform)
@@ -641,6 +700,12 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		{
 			Weapon->SetActorHiddenInGame(bWeaponHidden);
 		}
+	}
+
+	// marque de la Captain AMMO : suit le NME (visuel local)
+	if (bIsMarked)
+	{
+		UpdateMark();
 	}
 
 	// bump (Bumping Slash) : vol en cloche calculé sur chaque machine, aucun comportement pendant le vol

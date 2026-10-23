@@ -3,6 +3,7 @@
 #include "Abilities/YSAutoSwingAbility.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Abilities/YSRollAndBombAbility.h"
+#include "Abilities/YSSummonCrewAbility.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
@@ -385,6 +386,38 @@ void UYSShootSystemUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Vari
 {
 	// le bonus est gardé en points de rareté (1 / 2 / 3) : converti en balles selon le shoot system des armes tenues
 	Character->SetShootSystemBonus(GetSlot(Variant), TotalBonus * GetAmmoPerBonus(Character, Variant));
+}
+
+UYSSummonSystemUpgrade::UYSSummonSystemUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "SummonSystemName", "Summon system");
+	BonusName = NSLOCTEXT("YS", "SummonSystemBonus", "Summon system");
+	StatLabel = NSLOCTEXT("YS", "SummonSystemStat", "Minions max");
+	bAutoAtkVariant = false;
+	BronzeValue = 1.0f;
+	SilverValue = 1.0f;
+	GoldValue = 1.0f;
+}
+
+bool UYSSummonSystemUpgrade::IsActionEligible(const UYSAbilityComponent* Action) const
+{
+	return Cast<UYSSummonCrewAbility>(Action) != nullptr;
+}
+
+float UYSSummonSystemUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	const UYSSummonCrewAbility* Summon = Cast<UYSSummonCrewAbility>(GetSlotAction(Character, Variant));
+	return Summon ? Summon->BaseMaxMinions : 0.0f;
+}
+
+FText UYSSummonSystemUpgrade::MakeName(const FText& WeaponsText, int32 Variant) const
+{
+	return WeaponsText.IsEmpty() ? BonusName : FText::Format(NSLOCTEXT("YS", "SummonSystemFullName", "{0} {1}"), WeaponsText, BonusName);
+}
+
+void UYSSummonSystemUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
+{
+	Character->SetSummonSystemBonus(TotalBonus);
 }
 
 UYSMoveSpeedBonusUpgrade::UYSMoveSpeedBonusUpgrade()

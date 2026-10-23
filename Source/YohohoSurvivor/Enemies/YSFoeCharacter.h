@@ -119,6 +119,10 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UYSGroundZoneComponent> AimLine;
 
+	/** Marque de la Captain AMMO : disque posé sur le relief sous le NME, visible tant qu'il est marqué */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UYSGroundZoneComponent> MarkZone;
+
 protected:
 
 	/** Nom affiché (barre de vie de l'élite dans le HUD) */
@@ -292,6 +296,33 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn", meta=(ClampMin="-1", ClampMax="9"))
 	int32 NumpadSpawnKey = -1;
 
+	/** Marque (Captain AMMO) : rayon = rayon de la capsule x ce multiplicateur (1.25 = 25 % plus large que le NME) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Mark", meta=(ClampMin="0.1"))
+	float MarkRadiusScale = 1.25f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Mark")
+	FLinearColor MarkColor = FLinearColor(1.0f, 0.75f, 0.05f, 1.0f);
+
+	/** Matériau du disque (M_BrookerZone : paramètres Color, Glow, FillOpacity, EdgeOpacity, Radius, EdgeWidth) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Mark")
+	TObjectPtr<UMaterialInterface> MarkMaterial;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Mark", meta=(ClampMin="0"))
+	float MarkGlow = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Mark", meta=(ClampMin="0", ClampMax="1"))
+	float MarkFillOpacity = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Mark", meta=(ClampMin="0", ClampMax="1"))
+	float MarkEdgeOpacity = 0.9f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Mark", meta=(ClampMin="0", Units="Centimeters"))
+	float MarkEdgeWidth = 10.0f;
+
+	/** Le disque est reposé sur le relief quand le NME s'est déplacé de plus que cette distance */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Mark", meta=(ClampMin="1", Units="Centimeters"))
+	float MarkRebuildDistance = 15.0f;
+
 	/** Joueur actuellement ciblé (renseigné sur le serveur uniquement) */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Foe")
 	TObjectPtr<APawn> Target;
@@ -326,6 +357,11 @@ public:
 
 	/** En vol après un bump (comportement coupé) */
 	bool IsBumped() const { return Bump.bActive; }
+
+	/** Affiche ou cache la marque au sol (Captain AMMO ; local, appelé par le personnage qui marque sur chaque machine) */
+	void SetMarked(bool bMarked);
+
+	bool IsMarked() const { return bIsMarked; }
 
 	/** Atk critique : compte une balle d'attaque auto reçue de Shooter ; vrai si c'est la N-ième (critique ; serveur) */
 	bool RegisterCriticalBullet(const AActor* Shooter, int32 Interval);
@@ -452,6 +488,12 @@ protected:
 
 	/** Fin du vol sur cette machine : posé à l'arrivée, mouvement rétabli (serveur : il retombe s'il n'y a pas de sol) */
 	void EndBumpLocal();
+
+	/** Marque affichée : disque reposé sur le relief sous le NME quand il s'est assez déplacé */
+	void UpdateMark();
+
+	bool bIsMarked = false;
+	FVector LastMarkLocation = FVector::ZeroVector;
 
 	/** Compteur du bump déjà commencé sur cette machine */
 	uint8 LocalBumpCounter = 0;

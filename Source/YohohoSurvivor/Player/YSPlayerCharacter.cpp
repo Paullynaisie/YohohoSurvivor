@@ -189,6 +189,8 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, Health);
 	DOREPLIFETIME(AYSPlayerCharacter, UpgradeProgress);
 	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedMultiplier);
+	DOREPLIFETIME(AYSPlayerCharacter, SummonSystemBonus);
+	DOREPLIFETIME(AYSPlayerCharacter, MarkedFoe);
 	DOREPLIFETIME(AYSPlayerCharacter, MaxHealthMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, CooldownMultipliers);
 	DOREPLIFETIME(AYSPlayerCharacter, Luck);
@@ -1187,7 +1189,7 @@ float AYSPlayerCharacter::GetWeaponStat(const AYSWeapon* Weapon, FName Stat, flo
 
 void AYSPlayerCharacter::UpdateDayNight(float DeltaSeconds)
 {
-	if (!IsLocallyControlled())
+	if (!IsLocallyControlled() || !IsPlayerControlled())
 	{
 		return;
 	}
@@ -1461,7 +1463,48 @@ void AYSPlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// serveur : un personnage qui disparaît (déconnexion…) ne garde pas l'objet
 	DropCarriedObject(TEXT("fin de jeu du personnage"));
 
+	// sa marque (Captain AMMO) disparaît avec lui
+	if (DisplayedMarkedFoe.IsValid())
+	{
+		DisplayedMarkedFoe->SetMarked(false);
+	}
+	DisplayedMarkedFoe.Reset();
+
 	Super::EndPlay(EndPlayReason);
+}
+
+void AYSPlayerCharacter::SetMarkedFoe(AYSFoeCharacter* Foe)
+{
+	if (!HasAuthority() || MarkedFoe == Foe)
+	{
+		return;
+	}
+	MarkedFoe = Foe;
+	ForceNetUpdate();
+	UpdateMarkDisplay();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSMark] %s marque %s"), *GetName(), Foe ? *Foe->GetName() : TEXT("(personne)"));
+}
+
+void AYSPlayerCharacter::OnRep_MarkedFoe()
+{
+	UpdateMarkDisplay();
+}
+
+void AYSPlayerCharacter::UpdateMarkDisplay()
+{
+	if (DisplayedMarkedFoe.Get() == MarkedFoe)
+	{
+		return;
+	}
+	if (DisplayedMarkedFoe.IsValid())
+	{
+		DisplayedMarkedFoe->SetMarked(false);
+	}
+	DisplayedMarkedFoe = MarkedFoe;
+	if (MarkedFoe)
+	{
+		MarkedFoe->SetMarked(true);
+	}
 }
 
 void AYSPlayerCharacter::SetBloodlust(int32 MaxStacks, float Duration, float AtkSpeedPerStack, bool bGolden)
@@ -1716,9 +1759,10 @@ void AYSPlayerCharacter::ApplyCarryVisuals()
 
 void AYSPlayerCharacter::UpdateWeaponColoration()
 {
-	// set différent de celui du Blueprint du personnage = obtenu par une upgrade de classe
+	// set différent de celui du Blueprint du personnage = obtenu par une upgrade de classe (joueurs seulement : le set d'un
+	// minion est tiré au hasard)
 	const AYSPlayerCharacter* Defaults = GetClass()->GetDefaultObject<AYSPlayerCharacter>();
-	const bool bClassUpgraded = WeaponSet && Defaults && Defaults->WeaponSet && WeaponSet != Defaults->WeaponSet;
+	const bool bClassUpgraded = GetPlayerState() && WeaponSet && Defaults && Defaults->WeaponSet && WeaponSet != Defaults->WeaponSet;
 
 	if (AYSWeapon* MainWeapon = GetMainHandWeapon())
 	{
@@ -1732,7 +1776,8 @@ void AYSPlayerCharacter::UpdateWeaponColoration()
 
 void AYSPlayerCharacter::UpdateInteractPrompt()
 {
-	if (!IsLocallyControlled())
+	// joueur local seulement (un minion, piloté par l'IA, est « contrôlé localement » sur le serveur)
+	if (!IsLocallyControlled() || !IsPlayerControlled())
 	{
 		return;
 	}

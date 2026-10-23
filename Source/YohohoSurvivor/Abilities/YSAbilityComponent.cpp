@@ -34,7 +34,7 @@ void UYSAbilityComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 
 void UYSAbilityComponent::TryActivate(const FVector& TargetLocation)
 {
-	if (!IsReady() || !CanStartByPriority())
+	if (!IsReady() || !CanStartByPriority() || !CanActivateNow())
 	{
 		return;
 	}
@@ -150,7 +150,7 @@ void UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
 	{
 		return;
 	}
-	if (!CanStartByPriority())
+	if (!CanStartByPriority() || !CanActivateNow())
 	{
 		return;
 	}

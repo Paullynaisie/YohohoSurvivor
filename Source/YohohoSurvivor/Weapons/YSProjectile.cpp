@@ -210,6 +210,14 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 	}
 	const FPointDamageEvent DamageEvent(HitDamage, SweepResult, ShotDirection, bCritical ? UYSCriticalDamageType::StaticClass() : nullptr);
 	OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);
+
+	// Captain AMMO : le dernier NME touché (encore en vie) devient le NME marqué du tireur
+	AYSFoeCharacter* HitFoe = bMarksTarget ? Cast<AYSFoeCharacter>(OtherActor) : nullptr;
+	AYSPlayerCharacter* Marker = Cast<AYSPlayerCharacter>(GetInstigator());
+	if (HitFoe && Marker && HitFoe->GetHealth() > 0.0f && !HitFoe->IsActorBeingDestroyed())
+	{
+		Marker->SetMarkedFoe(HitFoe);
+	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s en (%.0f, %.0f, %.0f), sol %.0f : %.1f dégâts%s (ricochets restants %d)"), *GetName(), *OtherActor->GetName(),
 		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, LastGroundZ, HitDamage, bCritical ? TEXT(" CRITIQUE") : TEXT(""), RemainingRicochets);
 

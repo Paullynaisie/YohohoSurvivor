@@ -22,6 +22,7 @@ class AYSInteractiveObject;
 class UTexture2D;
 class UWidgetComponent;
 class UMaterialInterface;
+class AYSFoeCharacter;
 struct FInputActionValue;
 
 /**
@@ -343,6 +344,23 @@ protected:
 	UPROPERTY(Transient, VisibleInstanceOnly, Category="3C|Upgrades")
 	float ShootSystemBonus[2];
 
+	/** Upgrade Summon system (armes d'invocation, ex. Crochet du capitaine) : minions max en plus (répliqué : le client vérifie s'il peut invoquer) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, Category="3C|Upgrades")
+	float SummonSystemBonus = 0.0f;
+
+	/** NME marqué par les balles de ce joueur (Captain AMMO) : un seul à la fois, marquage au sol sous lui sur toutes les machines */
+	UPROPERTY(ReplicatedUsing=OnRep_MarkedFoe, Transient, VisibleInstanceOnly, Category="3C|Combat")
+	TObjectPtr<AYSFoeCharacter> MarkedFoe;
+
+	UFUNCTION()
+	void OnRep_MarkedFoe();
+
+	/** NME dont cette machine affiche la marque (pour l'enlever quand elle change) */
+	TWeakObjectPtr<AYSFoeCharacter> DisplayedMarkedFoe;
+
+	/** Affiche la marque sur MarkedFoe (et l'enlève de l'ancien) sur cette machine */
+	void UpdateMarkDisplay();
+
 	/** Multiplicateur de la vitesse de déplacement (Move speed bonus ; répliqué : la prédiction de mouvement du client doit le connaître) */
 	UPROPERTY(ReplicatedUsing=OnRep_MoveSpeedMultiplier, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float MoveSpeedMultiplier = 1.0f;
@@ -562,8 +580,8 @@ public:
 	/** Upgrade de classe : même personnage avec un autre set d'arme (serveur ; respawn comme ChangeClass, upgrades et PV gardés) */
 	void ChangeWeaponSet(UYSWeaponSet* NewWeaponSet) { ChangeClass(GetClass(), NewWeaponSet); }
 
-	/** Applique la personnalisation de son joueur (couleur, visage ; AYSPlayerState) */
-	void RefreshCustomization();
+	/** Applique la personnalisation de son joueur (couleur, visage ; AYSPlayerState) ; minion : couleur de son Captain */
+	virtual void RefreshCustomization();
 
 	/** Applique un matériau au composant CustomizationColorComponentName et à ses sous-composants, et un visage (nullptr = inchangé) */
 	void ApplyCustomization(UMaterialInterface* ColorMaterial, UTexture2D* FaceTexture);
@@ -584,6 +602,19 @@ public:
 
 	/** Shoot system d'un type d'action, pour tous les Guns du set (serveur) */
 	void SetShootSystemBonus(EYSActionSlot Slot, float Bonus) { ShootSystemBonus[GetSlotIndex(Slot)] = Bonus; }
+
+	/** Damage bonus du type d'action pour tout le set (1 sans bonus) ; ex. minions du Captain : celui de son Ability */
+	float GetSlotDamageMultiplier(EYSActionSlot Slot) const { return DamageMultipliers[GetSlotIndex(Slot)]; }
+
+	/** Summon system : minions max en plus (serveur, répliqué) */
+	void SetSummonSystemBonus(float Bonus) { SummonSystemBonus = Bonus; ForceNetUpdate(); }
+
+	float GetSummonSystemBonus() const { return SummonSystemBonus; }
+
+	/** Captain AMMO : marque ce NME (la marque quitte l'ancien ; serveur) */
+	void SetMarkedFoe(AYSFoeCharacter* Foe);
+
+	AYSFoeCharacter* GetMarkedFoe() const { return MarkedFoe; }
 
 	/** Bonus Shoot system pour Weapon (0 si elle n'est pas tenue) */
 	float GetWeaponShootSystemBonus(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
@@ -674,7 +705,8 @@ public:
 	/** A déjà au moins un bonus de cette upgrade (n'importe quelle variante) */
 	bool HasUpgrade(const UYSUpgrade* Upgrade) const;
 
-	float GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
+	/** Damage bonus des actions de cette arme (minion : Damage bonus de l'Ability de son Captain) */
+	virtual float GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
 
 	/** Hurtbox : le corps (BodyMesh) */
 	UPrimitiveComponent* GetHurtbox() const;

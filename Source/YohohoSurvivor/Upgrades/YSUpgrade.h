@@ -449,6 +449,36 @@ protected:
 	float GetAmmoPerBonus(const AYSPlayerCharacter* Character, int32 Variant) const;
 };
 
+/**
+ *  Summon system (armes d'invocation : Ability de type Summon, ex. Summon the crew du Crochet du capitaine) : remplace pour ces
+ *  armes le Shoot system / l'Atk speed. Chaque bonus ajoute Bronze / Silver / Gold Value (1 par défaut) minions au maximum
+ *  de minions vivants en même temps.
+ */
+UCLASS(meta=(DisplayName="Upgrade de stat : Summon system (armes d'invocation du set)"))
+class UYSSummonSystemUpgrade : public UYSHandStatUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSSummonSystemUpgrade();
+
+protected:
+
+	/** Ability d'invocation (Summon the crew) */
+	virtual bool IsActionEligible(const UYSAbilityComponent* Action) const override;
+
+	/** Minions max de base de l'invocation */
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
+
+	/** « <armes> Summon system » (sans « Ability ») */
+	virtual FText MakeName(const FText& WeaponsText, int32 Variant) const override;
+
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
+};
+
 /** Move speed bonus : vitesse de déplacement (MoveSpeed du personnage) x (1 + somme des bonus) */
 UCLASS(meta=(DisplayName="Upgrade de stat : Move speed bonus"))
 class UYSMoveSpeedBonusUpgrade : public UYSStatUpgrade

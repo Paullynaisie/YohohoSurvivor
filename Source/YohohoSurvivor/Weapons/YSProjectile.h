@@ -79,6 +79,10 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="AMMO")
 	float Damage = 0.0f;
 
+	/** Captain AMMO : le NME touché (s'il survit) devient le NME marqué du tireur (un seul à la fois ; marque au sol, minions attirés) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Mark")
+	bool bMarksTarget = false;
+
 	/** Ricochets restants : après un dégât, la balle repart vers le NME le plus proche pas encore touché (fixé au tir, upgrade Ricochet) */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="AMMO|Ricochet")
 	int32 RemainingRicochets = 0;

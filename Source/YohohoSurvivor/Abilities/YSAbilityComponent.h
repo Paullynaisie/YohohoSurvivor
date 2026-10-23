@@ -19,6 +19,8 @@ enum class EYSWeaponType : uint8
 {
 	Melee,
 	Gun,
+	/** Arme d'invocation (ex. Crochet du capitaine) : son Ability invoque des alliés (upgrade Summon system) */
+	Summon,
 };
 
 class UTexture2D;
@@ -184,6 +186,9 @@ public:
 
 	/** La pose animée est celle de l'AUTRE main (arme à deux mains : la main posée sur l'Off Hand Socket), pas celle qui tient l'arme */
 	virtual bool AnimatesOffHand() const { return false; }
+
+	/** L'activation aurait un effet (ex. Summon the crew : faux si les minions sont déjà au maximum) ; sinon le clic ne fait rien, sans recharge */
+	virtual bool CanActivateNow() const { return true; }
 
 protected:
 
