@@ -8,6 +8,7 @@
 #include "Map/YSOcean.h"
 #include "Player/YSPlayerCharacter.h"
 #include "TimerManager.h"
+#include "Upgrades/YSUpgrade.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Weapons/YSPlayerBomb.h"
 #include "Weapons/YSWeapon.h"
@@ -226,9 +227,12 @@ void UYSBombThrowerAbility::ExecuteAbility(const FVector& TargetLocation)
 
 void UYSBombThrowerAbility::ReleaseBomb(FVector Landing)
 {
+	// upgrade « Une Mine ! » : une mine à la place de la bombe
+	const bool bMine = MineClass && GetWeaponStat(UYSMineUpgrade::MineStat, 0.0f) > 0.0f;
+	const TSubclassOf<AYSPlayerBomb> SpawnClass = bMine ? MineClass : BombClass;
 	APawn* Holder = GetHolderPawn();
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Holder);
-	if (!BombClass || !IsValid(Holder) || (Character && Character->IsCarrying()))
+	if (!SpawnClass || !IsValid(Holder) || (Character && Character->IsCarrying()))
 	{
 		return;
 	}
@@ -237,16 +241,26 @@ void UYSBombThrowerAbility::ReleaseBomb(FVector Landing)
 	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 	const USceneComponent* Hand = bPlayThrowAnim ? GetThrowingHand() : nullptr;
 	const FVector Start = Hand ? Hand->GetComponentTransform().TransformPosition(HeldBombOffset) : (Weapon ? Weapon->GetMuzzleLocation() : Holder->GetActorLocation());
-	const FVector TargetLocation = Landing;
 
-	const FTransform SpawnTransform(FRotator(0.0f, Holder->GetActorRotation().Yaw, 0.0f), Start);
-	AYSPlayerBomb* Bomb = GetWorld()->SpawnActorDeferred<AYSPlayerBomb>(BombClass, SpawnTransform, Holder, Holder, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-	if (Bomb)
+	// Golden Mine : une seconde mine vise le point entre le joueur et la première (ramené sur un sol valide)
+	TArray<FVector> Landings = { Landing };
+	if (bMine && GetWeaponStat(UYSMineUpgrade::MineDoubleStat, 0.0f) > 0.0f)
 	{
-		Bomb->SetDamage(BombDamage * GetDamageMultiplier());
-		Bomb->SetThrow(Start, Landing, FlightDuration, ApexHeight);
-		Bomb->FinishSpawning(SpawnTransform);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSBombThrower] %s lance %s vers (%.0f, %.0f, %.0f) (curseur (%.0f, %.0f), %.0f cm du joueur) : %.0f dégâts"), *GetOwner()->GetName(),
-			*Bomb->GetName(), Landing.X, Landing.Y, Landing.Z, TargetLocation.X, TargetLocation.Y, FVector::Dist2D(Landing, Holder->GetActorLocation()), BombDamage * GetDamageMultiplier());
+		Landings.Add(FindLandingPoint((Holder->GetActorLocation() + Landing) * 0.5f));
+	}
+
+	for (const FVector& Target : Landings)
+	{
+		const FTransform SpawnTransform(FRotator(0.0f, Holder->GetActorRotation().Yaw, 0.0f), Start);
+		AYSPlayerBomb* Bomb = GetWorld()->SpawnActorDeferred<AYSPlayerBomb>(SpawnClass, SpawnTransform, Holder, Holder, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (Bomb)
+		{
+			Bomb->SetDamage(BombDamage * GetDamageMultiplier());
+			Bomb->SetExtraPushback(bMine ? GetWeaponStat(UYSMineUpgrade::MinePushbackStat, 0.0f) : 0.0f);
+			Bomb->SetThrow(Start, Target, FlightDuration, ApexHeight);
+			Bomb->FinishSpawning(SpawnTransform);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSBombThrower] %s lance %s vers (%.0f, %.0f, %.0f), %.0f cm du joueur : %.0f dégâts"), *GetOwner()->GetName(),
+				*Bomb->GetName(), Target.X, Target.Y, Target.Z, FVector::Dist2D(Target, Holder->GetActorLocation()), BombDamage * GetDamageMultiplier());
+		}
 	}
 }

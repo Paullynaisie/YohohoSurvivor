@@ -31,6 +31,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower", meta=(ClampMin="0"))
 	float BombDamage = 50.0f;
 
+	/** Upgrade « Une Mine ! » : Blueprint lancé à la place de la bombe (/Game/Placeable/AMMO/BP_CannoneerMine) ; mêmes dégâts */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower")
+	TSubclassOf<AYSPlayerBomb> MineClass;
+
 	/** Durée du vol jusqu'au point d'impact */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw", meta=(ClampMin="0.05", Units="Seconds"))
 	float FlightDuration = 1.0f;

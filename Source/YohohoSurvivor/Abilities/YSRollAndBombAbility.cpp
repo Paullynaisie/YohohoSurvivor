@@ -2,6 +2,8 @@
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
+#include "TimerManager.h"
+#include "Upgrades/YSUpgrade.h"
 #include "Weapons/YSPlayerBomb.h"
 
 namespace YSRollAndBomb
@@ -23,6 +25,13 @@ UYSRollAndBombAbility::UYSRollAndBombAbility()
 void UYSRollAndBombAbility::ExecuteAbility(const FVector& TargetLocation)
 {
 	DropBomb();
+
+	// Golden Mine : la seconde mine est posée au point d'arrivée de la roulade
+	if (MineClass && GetWeaponStat(UYSMineUpgrade::MineStat, 0.0f) > 0.0f && GetWeaponStat(UYSMineUpgrade::MineDoubleStat, 0.0f) > 0.0f)
+	{
+		GetWorld()->GetTimerManager().SetTimer(SecondMineTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { DropBomb(); }), FMath::Max(RollDuration, KINDA_SMALL_NUMBER), false);
+	}
+
 	StartRoll();
 	MulticastRollStarted();
 	UE_LOG(LogTemp, Verbose, TEXT("[YSRollAndBomb] %s roulade à %.2f"), *GetOwner()->GetName(), GetWorld()->GetTimeSeconds());
@@ -30,8 +39,11 @@ void UYSRollAndBombAbility::ExecuteAbility(const FVector& TargetLocation)
 
 void UYSRollAndBombAbility::DropBomb()
 {
+	// upgrade « Une Mine ! » : une mine à la place de la bombe
+	const bool bMine = MineClass && GetWeaponStat(UYSMineUpgrade::MineStat, 0.0f) > 0.0f;
+	const TSubclassOf<AYSPlayerBomb> SpawnClass = bMine ? MineClass : BombClass;
 	ACharacter* Character = Cast<ACharacter>(GetHolderPawn());
-	if (!BombClass || !Character)
+	if (!SpawnClass || !IsValid(Character))
 	{
 		return;
 	}
@@ -48,12 +60,22 @@ void UYSRollAndBombAbility::DropBomb()
 	}
 
 	const FTransform SpawnTransform(FRotator(0.0f, Character->GetActorRotation().Yaw, 0.0f), Location);
-	AYSPlayerBomb* Bomb = GetWorld()->SpawnActorDeferred<AYSPlayerBomb>(BombClass, SpawnTransform, Character, Character, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	AYSPlayerBomb* Bomb = GetWorld()->SpawnActorDeferred<AYSPlayerBomb>(SpawnClass, SpawnTransform, Character, Character, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (Bomb)
 	{
 		Bomb->SetDamage(BombDamage * GetDamageMultiplier());
+		Bomb->SetExtraPushback(bMine ? GetWeaponStat(UYSMineUpgrade::MinePushbackStat, 0.0f) : 0.0f);
 		Bomb->FinishSpawning(SpawnTransform);
 		UE_LOG(LogTemp, Verbose, TEXT("[YSRollAndBomb] %s pose %s en (%.0f, %.0f, %.0f) : %.0f dégâts"), *GetOwner()->GetName(), *Bomb->GetName(),
 			Location.X, Location.Y, Location.Z, BombDamage * GetDamageMultiplier());
 	}
+}
+
+void UYSRollAndBombAbility::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(SecondMineTimer);
+	}
+	Super::EndPlay(EndPlayReason);
 }

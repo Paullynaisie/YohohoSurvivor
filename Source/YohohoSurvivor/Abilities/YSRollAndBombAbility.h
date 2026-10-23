@@ -30,6 +30,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Roll and Bomb", meta=(ClampMin="0"))
 	float BombDamage = 50.0f;
 
+	/** Upgrade « Une Mine ! » : Blueprint posé à la place de la bombe (/Game/Placeable/AMMO/BP_CannoneerMine) ; mêmes dégâts */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Roll and Bomb")
+	TSubclassOf<AYSPlayerBomb> MineClass;
+
 	UYSRollAndBombAbility();
 
 	virtual float GetBaseDamage() const override { return BombDamage; }
@@ -45,7 +49,12 @@ protected:
 	/** Serveur : bombe aux pieds puis roulade (pas de tir) */
 	virtual void ExecuteAbility(const FVector& TargetLocation) override;
 
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 private:
+
+	/** Golden Mine : seconde mine au point d'arrivée de la roulade */
+	FTimerHandle SecondMineTimer;
 
 	/** Pose la bombe au sol sous le personnage (serveur) */
 	void DropBomb();

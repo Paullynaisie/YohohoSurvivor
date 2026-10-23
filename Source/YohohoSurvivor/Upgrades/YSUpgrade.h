@@ -764,6 +764,36 @@ protected:
 };
 
 /**
+ *  « Une Mine ! » (Cannoneer) : la bombe de l'Ability est remplacée par une mine (Mine Class de l'action : même bombe, mode
+ *  mine, rayon / 1.5, en cube) qui s'arme au lieu d'exploser puis explose quand un NME entre dans son rayon.
+ *  Deux assets jumeaux (comme Ricochet / Bloodlust) : DA_Upgrade_Mine (Roll and Bomb : Bomb, Shotgun) et
+ *  DA_Upgrade_MineThrower (BombThrower : Sniper), progression convertie au changement de set.
+ *  Bonus « Mine repulsante » : + Silver / Gold Value de pushback (additif) en plus du pushback naturel des NME touchés ;
+ *  Super « Golden Mine » : mines par 2 (roulade : la 2e au point d'arrivée ; lancer : la 2e entre le joueur et la 1re).
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : Une Mine !"))
+class UYSMineUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSMineUpgrade();
+
+	/** Noms des propriétés d'arme posées sur le personnage (lues par la Roll and Bomb et le BombThrower) */
+	static const FName MineStat;
+	static const FName MinePushbackStat;
+	static const FName MineDoubleStat;
+
+protected:
+
+	/** Pushback ajouté par les mines (somme des bonus) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal; }
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+};
+
+/**
  *  Upgrade de classe : proposée (sans hasard, sans rareté) au niveau d'équipe AYSGameMode::ClassUpgradeLevel ;
  *  les choix sont toutes les upgrades de classe proposables du pool.
  *  Normalement : change le SET D'ARME du personnage (SourceWeaponSet -> TargetWeaponSet), qui garde toutes ses upgrades.

@@ -714,6 +714,31 @@ void UYSBloodlustUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, boo
 	Character->SetBloodlust(bUnlocked ? MaxStacks : 0, StackDuration, AtkSpeedPerStack + BonusTotal, bUnlocked && bSuper);
 }
 
+const FName UYSMineUpgrade::MineStat(TEXT("Mine"));
+const FName UYSMineUpgrade::MinePushbackStat(TEXT("MinePushback"));
+const FName UYSMineUpgrade::MineDoubleStat(TEXT("MineDouble"));
+
+UYSMineUpgrade::UYSMineUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "MineName", "Une Mine !");
+	RequiredActionClass = UYSRollAndBombAbility::StaticClass();
+	UnlockName = NSLOCTEXT("YS", "MineUnlockName", "Une Mine !");
+	UnlockDescription = NSLOCTEXT("YS", "MineUnlockDesc", "La bombe devient une mine : elle s'arme au lieu d'exploser,\npuis explose dès qu'un NME entre dans sa zone");
+	BonusName = NSLOCTEXT("YS", "MineBonusName", "Mine repulsante");
+	BonusStatLabel = NSLOCTEXT("YS", "MineBonusStat", "Pushback des mines");
+	BonusSilverValue = 200.0f;
+	BonusGoldValue = 350.0f;
+	SuperName = NSLOCTEXT("YS", "MineSuperName", "Golden Mine");
+	SuperDescription = NSLOCTEXT("YS", "MineSuperDesc", "Les mines sont lancées par 2");
+}
+
+void UYSMineUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	Character->SetWeaponStat(MineStat, bUnlocked ? 1.0f : 0.0f);
+	Character->SetWeaponStat(MinePushbackStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(MineDoubleStat, bUnlocked && bSuper ? 1.0f : 0.0f);
+}
+
 UYSClassUpgrade::UYSClassUpgrade()
 {
 	UpgradeType = EYSUpgradeType::Class;

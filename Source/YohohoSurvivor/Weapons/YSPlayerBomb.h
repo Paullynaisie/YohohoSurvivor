@@ -5,6 +5,7 @@
 #include "GameplayTagContainer.h"
 #include "YSPlayerBomb.generated.h"
 
+class AYSFoeCharacter;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UStaticMeshComponent;
@@ -129,9 +130,39 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Explosion", meta=(ClampMin="0", Units="Seconds"))
 	float ExplosionFadeDuration = 0.2f;
 
+	/**
+	 *  Mine (upgrade « Une Mine ! ») : au lieu d'exploser en fin de mèche (posée) ou en touchant le sol (lancée), elle s'ARME,
+	 *  puis explose dès qu'un NME (HitTags) a sa hurtbox dans son rayon. Tous les autres réglages sont ceux de la bombe.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine")
+	bool bMine = false;
+
+	/** Rayon de la mine = Explosion Radius / ce diviseur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0.1", EditCondition="bMine"))
+	float MineRadiusDivisor = 1.5f;
+
+	/** Mine armée : intervalle de recherche des NME dans son rayon (serveur) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0", Units="Seconds", EditCondition="bMine"))
+	float MineCheckInterval = 0.1f;
+
+	/** Mine armée : la lueur de la mèche pulse à cette fréquence entre Armed Pulse Min et le maximum */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0", Units="Hertz", EditCondition="bMine"))
+	float ArmedPulseFrequency = 1.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0", ClampMax="1", EditCondition="bMine"))
+	float ArmedPulseMin = 0.4f;
+
+	/** Mine armée : disparaît sans exploser après ce temps (0 = jamais) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0", Units="Seconds", EditCondition="bMine"))
+	float MineLifetime = 0.0f;
+
 	/** Dégâts de l'explosion, fixés par l'action qui pose la bombe (serveur, avant FinishSpawning) */
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Bomb")
 	float Damage = 0.0f;
+
+	/** Pushback ajouté au pushback naturel des NME touchés (Mine repulsante ; serveur) */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Bomb")
+	float ExtraPushback = 0.0f;
 
 public:
 
@@ -144,6 +175,13 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	void SetDamage(float NewDamage) { Damage = NewDamage; }
+
+	void SetExtraPushback(float NewExtraPushback) { ExtraPushback = NewExtraPushback; }
+
+	bool IsMine() const { return bMine; }
+
+	/** Rayon effectif (mine : Explosion Radius / Mine Radius Divisor) */
+	float GetExplosionRadius() const { return bMine ? ExplosionRadius / FMath::Max(MineRadiusDivisor, 0.1f) : ExplosionRadius; }
 
 	/** Lancer en cloche de Start vers Target (sol) en Duration : la bombe explose en touchant le sol, sans mèche (serveur, avant FinishSpawning) */
 	void SetThrow(const FVector& Start, const FVector& Target, float Duration, float ApexHeight);
@@ -167,6 +205,9 @@ protected:
 	/** Explosion (serveur : dégâts) puis effet sur toutes les machines */
 	void Explode();
 
+	/** NME (HitTags) dont la hurtbox touche la sphère de l'explosion */
+	TArray<AYSFoeCharacter*> FindFoesInRadius(const FVector& Center) const;
+
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastExploded();
 
@@ -179,6 +220,10 @@ private:
 	double ExplosionStartTime = -1.0;
 
 	bool bExploded = false;
+
+	/** Mine : prochaine recherche de NME (serveur, temps local) et armement déjà signalé dans le log */
+	double NextMineCheckTime = 0.0;
+	bool bArmedLogged = false;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> BombMaterialInstance;

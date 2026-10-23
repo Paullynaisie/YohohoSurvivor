@@ -389,7 +389,9 @@ void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEven
 		return;
 	}
 	const FVector Direction = static_cast<const FPointDamageEvent&>(DamageEvent).ShotDirection.GetSafeNormal2D();
-	const float Force = Attacker->ComputePushbackForce(Damage, MaxHealth);
+	// pushback supplémentaire porté par le coup (ex. Mine repulsante), en plus du pushback naturel
+	const float ExtraForce = DamageEvent.IsOfType(FYSPushbackDamageEvent::ClassID) ? static_cast<const FYSPushbackDamageEvent&>(DamageEvent).ExtraPushback : 0.0f;
+	const float Force = Attacker->ComputePushbackForce(Damage, MaxHealth) + ExtraForce;
 	if (Direction.IsNearlyZero() || Force <= 0.0f)
 	{
 		UE_LOG(LogTemp, Verbose, TEXT("[YSPushback] %s : %.0f dégâts sur %.0f PV max (%.1f %%), pas de pushback"), *GetName(), Damage, MaxHealth, 100.0f * Damage / FMath::Max(MaxHealth, 1.0f));

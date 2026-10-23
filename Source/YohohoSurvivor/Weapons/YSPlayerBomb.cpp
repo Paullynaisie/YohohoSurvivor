@@ -1,5 +1,6 @@
 #include "Weapons/YSPlayerBomb.h"
 #include "Components/StaticMeshComponent.h"
+#include "Core/YSDamageTypes.h"
 #include "Core/YSGameplayTags.h"
 #include "Engine/DamageEvents.h"
 #include "Engine/OverlapResult.h"
@@ -110,7 +111,7 @@ void AYSPlayerBomb::BeginPlay()
 	if (bShowZone)
 	{
 		ExplosionZone->SetWorldLocation(GetExplosionCenter());
-		ExplosionZone->BuildZone(ExplosionRadius, YSPlayerBomb::ZoneHeight);
+		ExplosionZone->BuildZone(GetExplosionRadius(), YSPlayerBomb::ZoneHeight);
 		if (ZoneMaterial)
 		{
 			UMaterialInstanceDynamic* Material = ExplosionZone->CreateDynamicMaterialInstance(0, ZoneMaterial);
@@ -118,7 +119,7 @@ void AYSPlayerBomb::BeginPlay()
 			Material->SetScalarParameterValue(TEXT("Glow"), 0.3f);
 			Material->SetScalarParameterValue(TEXT("FillOpacity"), ZoneFillOpacity);
 			Material->SetScalarParameterValue(TEXT("EdgeOpacity"), ZoneEdgeOpacity);
-			Material->SetScalarParameterValue(TEXT("Radius"), ExplosionRadius);
+			Material->SetScalarParameterValue(TEXT("Radius"), GetExplosionRadius());
 			Material->SetScalarParameterValue(TEXT("EdgeWidth"), YSPlayerBomb::ZoneEdgeWidth);
 		}
 	}
@@ -131,7 +132,7 @@ void AYSPlayerBomb::BeginPlay()
 	}
 
 	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s (%s) %s (%.0f, %.0f, %.0f) : explose dans %.2f s, %.0f dégâts rayon %.0f"), *GetName(),
-		HasAuthority() ? TEXT("serveur") : TEXT("client"), Flight.bThrown ? TEXT("lancée vers") : TEXT("posée en"), GetExplosionCenter().X, GetExplosionCenter().Y, GetExplosionCenter().Z, GetTimeToExplode(), Damage, ExplosionRadius);
+		HasAuthority() ? TEXT("serveur") : TEXT("client"), Flight.bThrown ? TEXT("lancée vers") : TEXT("posée en"), GetExplosionCenter().X, GetExplosionCenter().Y, GetExplosionCenter().Z, GetTimeToExplode(), Damage, GetExplosionRadius());
 }
 
 void AYSPlayerBomb::Tick(float DeltaSeconds)
@@ -147,15 +148,68 @@ void AYSPlayerBomb::Tick(float DeltaSeconds)
 	// mèche (ou vol du lancer) : du noir au rouge lumineux ; à la fin, le serveur fait exploser (les clients attendent l'explosion)
 	const float Elapsed = static_cast<float>(GetWorld()->GetTimeSeconds() - PlacedTime);
 	const float TimeToExplode = GetTimeToExplode();
-	SetFuseAlpha(TimeToExplode > 0.0f ? Elapsed / TimeToExplode : 1.0f);
 	if (Flight.bThrown)
 	{
 		SetActorLocation(GetFlightLocation(Flight, Elapsed));
 	}
+
+	// mine : armée au lieu d'exploser (même instant sur toutes les machines), sa lueur pulse ; le serveur la fait exploser
+	// dès qu'un NME entre dans son rayon
+	if (bMine && Elapsed >= TimeToExplode)
+	{
+		const float Pulse = 0.5f + 0.5f * FMath::Cos(2.0f * PI * ArmedPulseFrequency * (Elapsed - TimeToExplode));
+		SetFuseAlpha(FMath::Lerp(1.0f, ArmedPulseMin, Pulse));
+		if (!bArmedLogged)
+		{
+			bArmedLogged = true;
+			UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s (%s) armée en (%.0f, %.0f)"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"), GetExplosionCenter().X, GetExplosionCenter().Y);
+		}
+		if (HasAuthority() && !bExploded)
+		{
+			if (MineLifetime > 0.0f && Elapsed - TimeToExplode >= MineLifetime)
+			{
+				UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s disparaît sans exploser"), *GetName());
+				bExploded = true;
+				Destroy();
+				return;
+			}
+			const double Now = GetWorld()->GetTimeSeconds();
+			if (Now >= NextMineCheckTime)
+			{
+				NextMineCheckTime = Now + MineCheckInterval;
+				if (FindFoesInRadius(GetExplosionCenter()).Num() > 0)
+				{
+					Explode();
+				}
+			}
+		}
+		return;
+	}
+
+	SetFuseAlpha(TimeToExplode > 0.0f ? Elapsed / TimeToExplode : 1.0f);
 	if (HasAuthority() && !bExploded && Elapsed >= TimeToExplode)
 	{
 		Explode();
 	}
+}
+
+TArray<AYSFoeCharacter*> AYSPlayerBomb::FindFoesInRadius(const FVector& Center) const
+{
+	// NME dont la hurtbox (le corps) touche la sphère ; jamais les joueurs
+	TArray<FOverlapResult> Overlaps;
+	const FCollisionQueryParams Params(SCENE_QUERY_STAT(YSPlayerBombExplosion), false, this);
+	GetWorld()->OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeSphere(GetExplosionRadius()), Params);
+
+	TArray<AYSFoeCharacter*> Foes;
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		AYSFoeCharacter* Foe = Cast<AYSFoeCharacter>(Overlap.GetActor());
+		if (Foe && Foe->GetHealth() > 0.0f && Overlap.GetComponent() == Foe->GetHurtbox() && Foe->HasAnyMatchingGameplayTags(HitTags))
+		{
+			Foes.AddUnique(Foe);
+		}
+	}
+	return Foes;
 }
 
 void AYSPlayerBomb::SetFuseAlpha(float Alpha)
@@ -174,27 +228,19 @@ void AYSPlayerBomb::Explode()
 	bExploded = true;
 
 	// dégâts aux NME dont la hurtbox (le corps) touche la sphère ; jamais aux joueurs
-	TArray<FOverlapResult> Overlaps;
-	const FCollisionQueryParams Params(SCENE_QUERY_STAT(YSPlayerBombExplosion), false, this);
 	const FVector Center = GetExplosionCenter();
 	SetActorLocation(Center);
-	GetWorld()->OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeSphere(ExplosionRadius), Params);
-
-	TSet<AYSFoeCharacter*> Damaged;
-	for (const FOverlapResult& Overlap : Overlaps)
+	const TArray<AYSFoeCharacter*> Foes = FindFoesInRadius(Center);
+	for (AYSFoeCharacter* Foe : Foes)
 	{
-		AYSFoeCharacter* Foe = Cast<AYSFoeCharacter>(Overlap.GetActor());
-		if (!Foe || Damaged.Contains(Foe) || Overlap.GetComponent() != Foe->GetHurtbox() || !Foe->HasAnyMatchingGameplayTags(HitTags))
-		{
-			continue;
-		}
-		Damaged.Add(Foe);
-		// direction du coup = depuis la bombe (pushback vers l'extérieur) ; pas de DamageCauser : le chiffre de dégâts s'affiche sur le NME
+		// direction du coup = depuis la bombe (pushback vers l'extérieur, + Extra Pushback de la Mine repulsante) ;
+		// pas de DamageCauser : le chiffre de dégâts s'affiche sur le NME
 		const FVector ShotDirection = (Foe->GetActorLocation() - Center).GetSafeNormal2D();
-		FHitResult Hit(Foe, Overlap.GetComponent(), Foe->GetActorLocation(), -ShotDirection);
-		Foe->TakeDamage(Damage, FPointDamageEvent(Damage, Hit, ShotDirection, nullptr), GetInstigatorController(), nullptr);
+		FHitResult Hit(Foe, Foe->GetHurtbox(), Foe->GetActorLocation(), -ShotDirection);
+		Foe->TakeDamage(Damage, FYSPushbackDamageEvent(Damage, Hit, ShotDirection, ExtraPushback), GetInstigatorController(), nullptr);
 	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s explose en (%.0f, %.0f) : %d NME touché(s), %.0f dégâts"), *GetName(), Center.X, Center.Y, Damaged.Num(), Damage);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s %s en (%.0f, %.0f) : %d NME touché(s), %.0f dégâts, pushback en plus %.0f"), *GetName(), bMine ? TEXT("(mine) explose") : TEXT("explose"),
+		Center.X, Center.Y, Foes.Num(), Damage, ExtraPushback);
 
 	MulticastExploded();
 	SetLifeSpan(ExplosionGrowDuration + ExplosionFadeDuration + 0.5f);
@@ -222,7 +268,7 @@ void AYSPlayerBomb::UpdateExplosion()
 	const float Grow = ExplosionGrowDuration > 0.0f ? FMath::Clamp(Elapsed / ExplosionGrowDuration, 0.0f, 1.0f) : 1.0f;
 	const float Fade = ExplosionFadeDuration > 0.0f ? FMath::Clamp((Elapsed - ExplosionGrowDuration) / ExplosionFadeDuration, 0.0f, 1.0f) : (Grow >= 1.0f ? 1.0f : 0.0f);
 
-	ExplosionSphere->SetWorldScale3D(FVector(FMath::Max(ExplosionRadius * Grow / YSPlayerBomb::ShapeRadius, KINDA_SMALL_NUMBER)));
+	ExplosionSphere->SetWorldScale3D(FVector(FMath::Max(GetExplosionRadius() * Grow / YSPlayerBomb::ShapeRadius, KINDA_SMALL_NUMBER)));
 	if (ExplosionMaterialInstance)
 	{
 		ExplosionMaterialInstance->SetScalarParameterValue(TEXT("Opacity"), ExplosionColor.A * (1.0f - Fade));
