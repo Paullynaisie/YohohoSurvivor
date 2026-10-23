@@ -63,6 +63,33 @@ void AYSPlayerBomb::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME_CONDITION(AYSPlayerBomb, Damage, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSPlayerBomb, Flight, COND_InitialOnly);
+}
+
+void AYSPlayerBomb::SetThrow(const FVector& Start, const FVector& Target, float Duration, float ApexHeight)
+{
+	Flight.bThrown = true;
+	Flight.Start = Start;
+	Flight.Target = Target;
+	Flight.Duration = Duration;
+	Flight.ApexHeight = ApexHeight;
+}
+
+FVector AYSPlayerBomb::GetFlightLocation(const FYSPlayerBombFlight& InFlight, float Time)
+{
+	const float Duration = FMath::Max(InFlight.Duration, 0.05f);
+	const float Clamped = FMath::Clamp(Time, 0.0f, Duration);
+
+	// cloche : sommet ApexHeight au-dessus du plus haut des deux points, atteint en Duration au total.
+	// Montée sqrt(2 Up / g) + descente sqrt(2 Down / g) = Duration  =>  g = ((sqrt(2 Up) + sqrt(2 Down)) / Duration)²
+	const float ApexZ = FMath::Max(InFlight.Start.Z, InFlight.Target.Z) + FMath::Max(InFlight.ApexHeight, 1.0f);
+	const float Rise = FMath::Sqrt(2.0f * (ApexZ - InFlight.Start.Z)) + FMath::Sqrt(2.0f * (ApexZ - InFlight.Target.Z));
+	const float Gravity = FMath::Square(Rise / Duration);
+	const float VerticalSpeed = FMath::Sqrt(2.0f * Gravity * (ApexZ - InFlight.Start.Z));
+
+	FVector Location = FMath::Lerp(InFlight.Start, InFlight.Target, Clamped / Duration);
+	Location.Z = InFlight.Start.Z + VerticalSpeed * Clamped - 0.5f * Gravity * Clamped * Clamped;
+	return Location;
 }
 
 void AYSPlayerBomb::BeginPlay()
@@ -70,6 +97,10 @@ void AYSPlayerBomb::BeginPlay()
 	Super::BeginPlay();
 
 	PlacedTime = GetWorld()->GetTimeSeconds();
+	if (Flight.bThrown)
+	{
+		SetActorLocation(GetFlightLocation(Flight, 0.0f));
+	}
 
 	BombMaterialInstance = BombMaterial ? Mesh->CreateDynamicMaterialInstance(0, BombMaterial) : nullptr;
 	SetFuseAlpha(0.0f);
@@ -78,7 +109,7 @@ void AYSPlayerBomb::BeginPlay()
 	ExplosionZone->SetVisibility(bShowZone);
 	if (bShowZone)
 	{
-		ExplosionZone->SetWorldLocation(GetActorLocation());
+		ExplosionZone->SetWorldLocation(GetExplosionCenter());
 		ExplosionZone->BuildZone(ExplosionRadius, YSPlayerBomb::ZoneHeight);
 		if (ZoneMaterial)
 		{
@@ -99,8 +130,8 @@ void AYSPlayerBomb::BeginPlay()
 		ExplosionMaterialInstance->SetScalarParameterValue(TEXT("Opacity"), ExplosionColor.A);
 	}
 
-	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s (%s) posée en (%.0f, %.0f, %.0f) : mèche %.2f s, %.0f dégâts rayon %.0f"), *GetName(),
-		HasAuthority() ? TEXT("serveur") : TEXT("client"), GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, FuseDuration, Damage, ExplosionRadius);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s (%s) %s (%.0f, %.0f, %.0f) : explose dans %.2f s, %.0f dégâts rayon %.0f"), *GetName(),
+		HasAuthority() ? TEXT("serveur") : TEXT("client"), Flight.bThrown ? TEXT("lancée vers") : TEXT("posée en"), GetExplosionCenter().X, GetExplosionCenter().Y, GetExplosionCenter().Z, GetTimeToExplode(), Damage, ExplosionRadius);
 }
 
 void AYSPlayerBomb::Tick(float DeltaSeconds)
@@ -113,10 +144,15 @@ void AYSPlayerBomb::Tick(float DeltaSeconds)
 		return;
 	}
 
-	// mèche : du noir au rouge lumineux ; à la fin, le serveur fait exploser (les clients attendent l'explosion)
+	// mèche (ou vol du lancer) : du noir au rouge lumineux ; à la fin, le serveur fait exploser (les clients attendent l'explosion)
 	const float Elapsed = static_cast<float>(GetWorld()->GetTimeSeconds() - PlacedTime);
-	SetFuseAlpha(FuseDuration > 0.0f ? Elapsed / FuseDuration : 1.0f);
-	if (HasAuthority() && !bExploded && Elapsed >= FuseDuration)
+	const float TimeToExplode = GetTimeToExplode();
+	SetFuseAlpha(TimeToExplode > 0.0f ? Elapsed / TimeToExplode : 1.0f);
+	if (Flight.bThrown)
+	{
+		SetActorLocation(GetFlightLocation(Flight, Elapsed));
+	}
+	if (HasAuthority() && !bExploded && Elapsed >= TimeToExplode)
 	{
 		Explode();
 	}
@@ -140,7 +176,8 @@ void AYSPlayerBomb::Explode()
 	// dégâts aux NME dont la hurtbox (le corps) touche la sphère ; jamais aux joueurs
 	TArray<FOverlapResult> Overlaps;
 	const FCollisionQueryParams Params(SCENE_QUERY_STAT(YSPlayerBombExplosion), false, this);
-	const FVector Center = GetActorLocation();
+	const FVector Center = GetExplosionCenter();
+	SetActorLocation(Center);
 	GetWorld()->OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeSphere(ExplosionRadius), Params);
 
 	TSet<AYSFoeCharacter*> Damaged;
@@ -166,6 +203,7 @@ void AYSPlayerBomb::Explode()
 void AYSPlayerBomb::MulticastExploded_Implementation()
 {
 	ExplosionStartTime = GetWorld()->GetTimeSeconds();
+	SetActorLocation(GetExplosionCenter());
 
 	// la bombe disparaît (tous ses composants visuels, ceux du Blueprint compris), la sphère d'explosion apparaît
 	TInlineComponentArray<UPrimitiveComponent*> Primitives(this);

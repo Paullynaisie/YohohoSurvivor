@@ -115,8 +115,8 @@ void AYSProjectile::BeginPlay()
 		}
 	}
 	SetActorTickEnabled(HeightAboveGround >= 0.0f);
-	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s tirée en (%.0f, %.0f, %.0f) : %.0f cm au-dessus du sol (suivi du relief %d)"), *GetName(),
-		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, HeightAboveGround, HeightAboveGround >= 0.0f);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s tirée en (%.0f, %.0f, %.0f) : %.0f cm au-dessus du sol (suivi du relief %d), %d NME max"), *GetName(),
+		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, HeightAboveGround, HeightAboveGround >= 0.0f, MaxHits);
 }
 
 bool AYSProjectile::FindGroundZ(const FVector2D& Point, float ReferenceZ, float MaxStepUp, float MaxStepDown, float& OutGroundZ) const
@@ -212,6 +212,12 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 	OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s en (%.0f, %.0f, %.0f), sol %.0f : %.1f dégâts%s (ricochets restants %d)"), *GetName(), *OtherActor->GetName(),
 		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, LastGroundZ, HitDamage, bCritical ? TEXT(" CRITIQUE") : TEXT(""), RemainingRicochets);
+
+	// Sniper : la balle continue tout droit tant qu'elle peut encore toucher un NME (jamais deux fois le même)
+	if (++HitCount < MaxHits)
+	{
+		return;
+	}
 
 	// ricochet vers une autre cible, sinon la balle disparaît
 	if (RemainingRicochets > 0 && Ricochet())

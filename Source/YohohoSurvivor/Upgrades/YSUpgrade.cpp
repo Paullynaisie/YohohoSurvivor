@@ -318,6 +318,7 @@ UYSShootSystemUpgrade::UYSShootSystemUpgrade()
 	BonusName = NSLOCTEXT("YS", "ShootSystemBonus", "Shoot system");
 	StatLabel = NSLOCTEXT("YS", "ShootSystemStat", "Balles par rafale");
 	ShotgunStatLabel = NSLOCTEXT("YS", "ShootSystemShotgunStat", "Shotgun AMMO par tir");
+	SniperStatLabel = NSLOCTEXT("YS", "ShootSystemSniperStat", "NME touchés par balle");
 	BronzeValue = 1.0f;
 	SilverValue = 2.0f;
 	GoldValue = 3.0f;
@@ -327,13 +328,22 @@ bool UYSShootSystemUpgrade::IsActionEligible(const UYSAbilityComponent* Action) 
 {
 	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(Action);
 	return Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->IsAutomatic()
-		&& (Gun->ShootSystem == EYSShootSystem::PewPew || Gun->ShootSystem == EYSShootSystem::Shotgun);
+		&& (Gun->ShootSystem == EYSShootSystem::PewPew || Gun->ShootSystem == EYSShootSystem::Shotgun || Gun->ShootSystem == EYSShootSystem::Sniper);
 }
 
 float UYSShootSystemUpgrade::GetAmmoPerBonus(const AYSPlayerCharacter* Character, int32 Variant) const
 {
 	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(GetSlotAction(Character, Variant));
-	return Gun && Gun->ShootSystem == EYSShootSystem::Shotgun ? ShotgunAmmoPerLevel : 1.0f;
+	if (!Gun)
+	{
+		return 1.0f;
+	}
+	switch (Gun->ShootSystem)
+	{
+	case EYSShootSystem::Shotgun:	return ShotgunAmmoPerLevel;
+	case EYSShootSystem::Sniper:	return SniperHitsPerLevel;
+	default:						return 1.0f;
+	}
 }
 
 float UYSShootSystemUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
@@ -343,13 +353,27 @@ float UYSShootSystemUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Characte
 	{
 		return 0.0f;
 	}
-	return Gun->ShootSystem == EYSShootSystem::Shotgun ? Gun->ShotgunAmmoPerShot : Gun->BulletsPerBurst;
+	switch (Gun->ShootSystem)
+	{
+	case EYSShootSystem::Shotgun:	return Gun->ShotgunAmmoPerShot;
+	case EYSShootSystem::Sniper:	return Gun->SniperMaxHits;
+	default:						return Gun->BulletsPerBurst;
+	}
 }
 
 FText UYSShootSystemUpgrade::GetStatLabel(const AYSPlayerCharacter* Character, int32 Variant) const
 {
 	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(GetSlotAction(Character, Variant));
-	return Gun && Gun->ShootSystem == EYSShootSystem::Shotgun ? ShotgunStatLabel : StatLabel;
+	if (!Gun)
+	{
+		return StatLabel;
+	}
+	switch (Gun->ShootSystem)
+	{
+	case EYSShootSystem::Shotgun:	return ShotgunStatLabel;
+	case EYSShootSystem::Sniper:	return SniperStatLabel;
+	default:						return StatLabel;
+	}
 }
 
 float UYSShootSystemUpgrade::GetDisplayValue(const AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
@@ -793,7 +817,8 @@ bool UYSCriticalAttackUpgrade::HasGunAutoAttack(const AYSPlayerCharacter* Charac
 
 bool UYSCriticalAttackUpgrade::HasPewPewAutoAttack(const AYSPlayerCharacter* Character)
 {
-	return HasGunAutoAttack(Character, EYSShootSystem::PewPew);
+	// le Sniper compte ses balles sur chaque NME comme le PewPew
+	return HasGunAutoAttack(Character, EYSShootSystem::PewPew) || HasGunAutoAttack(Character, EYSShootSystem::Sniper);
 }
 
 bool UYSCriticalAttackUpgrade::HasShotgunAutoAttack(const AYSPlayerCharacter* Character)

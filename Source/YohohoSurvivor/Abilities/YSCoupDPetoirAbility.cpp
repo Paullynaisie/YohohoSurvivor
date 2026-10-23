@@ -56,7 +56,7 @@ void UYSCoupDPetoirAbility::OnActivationPredicted(const FVector& TargetLocation)
 
 void UYSCoupDPetoirAbility::StartBurst(const FVector& TargetLocation)
 {
-	// PewPew : rafale de BulletsPerBurst balles réparties sur BurstDuration ; Shotgun : toutes les AMMO d'un coup (Piercing : à venir)
+	// PewPew / Sniper : rafale de BulletsPerBurst balles réparties sur BurstDuration ; Shotgun : toutes les AMMO d'un coup
 	GetWorld()->GetTimerManager().ClearTimer(BurstTimer);
 	BurstTargetLocation = TargetLocation;
 	BulletsFired = 0;
@@ -136,7 +136,7 @@ void UYSCoupDPetoirAbility::PlayReloadAnims()
 
 float UYSCoupDPetoirAbility::GetTimeToNextShot(int32 BulletIndex, int32 BulletCount) const
 {
-	if (BulletCount <= 1 || ShootSystem != EYSShootSystem::PewPew)
+	if (BulletCount <= 1 || ShootSystem == EYSShootSystem::Shotgun)
 	{
 		return 0.0f;
 	}
@@ -225,13 +225,15 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 	}
 
 	Projectile->SetDamage(Damage * GetDamageMultiplier());
-	// Atk critique : les balles d'attaque auto PewPew comptent sur chaque NME, une sur N est critique ; Shotgun : compté sur le tir
+	// Atk critique : les balles d'attaque auto PewPew / Sniper comptent sur chaque NME, une sur N est critique ; Shotgun : compté sur le tir
 	const AYSPlayerCharacter* HolderCharacter = Cast<AYSPlayerCharacter>(Shooter);
-	if (IsAutomatic() && ShootSystem == EYSShootSystem::PewPew && HolderCharacter)
+	if (IsAutomatic() && ShootSystem != EYSShootSystem::Shotgun && HolderCharacter)
 	{
 		Projectile->SetCriticalBulletInterval(HolderCharacter->GetCriticalBulletInterval());
 	}
 	Projectile->SetShotgunVolley(Volley);
+	// Sniper : la balle traverse les NME
+	Projectile->SetMaxHits(GetMaxHitsPerBullet());
 	// upgrades d'arme (Ricochet) : seulement pour l'Ability, pas pour l'Auto shot
 	if (!IsAutomatic())
 	{
@@ -323,6 +325,22 @@ int32 UYSCoupDPetoirAbility::GetBulletsPerBurst() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	const float Bonus = Character ? Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 0.0f;
+	// Sniper : le Shoot system augmente les NME traversés, pas les balles
+	if (ShootSystem == EYSShootSystem::Sniper)
+	{
+		return FMath::Max(1, BulletsPerBurst);
+	}
 	const int32 BaseCount = ShootSystem == EYSShootSystem::Shotgun ? ShotgunAmmoPerShot : BulletsPerBurst;
 	return FMath::Max(1, BaseCount + FMath::RoundToInt(Bonus));
+}
+
+int32 UYSCoupDPetoirAbility::GetMaxHitsPerBullet() const
+{
+	if (ShootSystem != EYSShootSystem::Sniper)
+	{
+		return 1;
+	}
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	const float Bonus = Character ? Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 0.0f;
+	return FMath::Max(1, SniperMaxHits + FMath::RoundToInt(Bonus));
 }

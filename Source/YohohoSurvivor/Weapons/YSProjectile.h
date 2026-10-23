@@ -121,6 +121,12 @@ private:
 	/** Atk critique : une balle sur N reçue par un même NME est critique (0 = non ; fixé au tir) */
 	int32 CriticalBulletInterval = 0;
 
+	/** Sniper : NME que la balle peut toucher avant de disparaître (1 = s'arrête au premier ; fixé au tir) */
+	int32 MaxHits = 1;
+
+	/** NME déjà touchés (traversée du Sniper) */
+	int32 HitCount = 0;
+
 	/** Tir de Shotgun auquel appartient cette AMMO (critiques comptés sur le tir ; nul sinon) */
 	TSharedPtr<FYSShotgunVolley> ShotgunVolley;
 
@@ -152,6 +158,9 @@ public:
 
 	/** Atk critique (balles d'attaque auto PewPew) : une balle sur N reçue par un même NME (de ce tireur) est critique ; 0 = non */
 	void SetCriticalBulletInterval(int32 Interval) { CriticalBulletInterval = Interval; }
+
+	/** Sniper : la balle traverse les NME et en touche Count avant de disparaître (1 = s'arrête au premier) */
+	void SetMaxHits(int32 Count) { MaxHits = FMath::Max(1, Count); }
 
 	/** Shotgun : tir auquel appartient cette AMMO (Atk critique : critique une fois assez d'AMMO du tir touchées) */
 	void SetShotgunVolley(const TSharedPtr<FYSShotgunVolley>& Volley) { ShotgunVolley = Volley; }

@@ -183,6 +183,14 @@ public:
 	UFUNCTION(Exec)
 	void YSFireAtFoe(int32 Hand = 0);
 
+	/** Debug (console) : déclenche l'action de clic de l'arme d'une main (0 droite, 1 gauche) vers un point du monde (X, Y).  Ex : YSFireAt 0 -3000 200 */
+	UFUNCTION(Exec)
+	void YSFireAt(int32 Hand, float X, float Y);
+
+	/** Debug (console, hôte) : point d'impact que choisirait la BombThrower tenue pour un curseur en (X, Y), sans lancer (log [YSBombThrower]) */
+	UFUNCTION(Exec)
+	void YSBombLanding(float X, float Y);
+
 	/** Debug (console) : comme un clic gauche (akimbo compris) */
 	UFUNCTION(Exec)
 	void YSFire();

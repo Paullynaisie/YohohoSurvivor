@@ -401,7 +401,7 @@ protected:
  *  Shoot system (Auto atk des Guns du set seulement ; leur Ability garde la CD reduction) : améliore le shoot system.
  *  PewPew : Bronze / Silver / Gold Value (1 / 2 / 3) balles de plus à chaque rafale (même durée de rafale).
  *  Shotgun : Shotgun Ammo Per Level (2) AMMO de plus par tir et par niveau de rareté (Bronze 2 / Silver 4 / Gold 6).
- *  Piercing : à venir (pas proposée pour ce système).
+ *  Sniper : Sniper Hits Per Level (1) NME de plus traversés par chaque balle et par point de bonus.
  */
 UCLASS(meta=(DisplayName="Upgrade de stat : Shoot system (Guns du set)"))
 class UYSShootSystemUpgrade : public UYSHandStatUpgrade
@@ -420,12 +420,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Shotgun")
 	FText ShotgunStatLabel;
 
+	/** Sniper : NME de plus touchés par chaque balle pour chaque point de bonus */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Sniper", meta=(ClampMin="0"))
+	float SniperHitsPerLevel = 1.0f;
+
+	/** Sniper : nom de la stat sur le bouton */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Sniper")
+	FText SniperStatLabel;
+
 protected:
 
-	/** Auto atk de Gun dont le shoot system a une amélioration (PewPew, Shotgun) */
+	/** Auto atk de Gun dont le shoot system a une amélioration (PewPew, Shotgun, Sniper) */
 	virtual bool IsActionEligible(const UYSAbilityComponent* Action) const override;
 
-	/** PewPew : balles par rafale de base ; Shotgun : AMMO par tir de base */
+	/** PewPew : balles par rafale de base ; Shotgun : AMMO par tir ; Sniper : NME touchés par balle */
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
@@ -437,7 +445,7 @@ protected:
 
 	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
 
-	/** Balles ajoutées par point de bonus pour le shoot system de l'action du type Variant (PewPew 1, Shotgun Ammo Per Level) */
+	/** Ajout par point de bonus pour le shoot system de l'action du type Variant (PewPew 1 balle, Shotgun Ammo Per Level AMMO, Sniper Hits Per Level NME) */
 	float GetAmmoPerBonus(const AYSPlayerCharacter* Character, int32 Variant) const;
 };
 

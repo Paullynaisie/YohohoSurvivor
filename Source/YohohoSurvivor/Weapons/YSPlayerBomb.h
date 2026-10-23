@@ -10,12 +10,40 @@ class UMaterialInterface;
 class UStaticMeshComponent;
 class UYSGroundZoneComponent;
 
+/** Lancer en cloche d'une bombe (BombThrower) : même trajectoire sur toutes les machines */
+USTRUCT()
+struct FYSPlayerBombFlight
+{
+	GENERATED_BODY()
+
+	/** Bombe lancée (sinon posée sur place) */
+	UPROPERTY()
+	bool bThrown = false;
+
+	/** Départ et point d'impact (au sol) */
+	UPROPERTY()
+	FVector Start = FVector::ZeroVector;
+
+	UPROPERTY()
+	FVector Target = FVector::ZeroVector;
+
+	/** Durée du vol (la bombe explose en touchant le sol) */
+	UPROPERTY()
+	float Duration = 1.0f;
+
+	/** Hauteur du sommet de la cloche au-dessus du plus haut des deux points */
+	UPROPERTY()
+	float ApexHeight = 300.0f;
+};
+
 /**
  *  Bombe posée au sol par un joueur (Roll and Bomb du Shotgun). Visuel = composants du Blueprint (bombe en primitives, comme
  *  celle des NME) ; le mesh principal (Mesh) passe du noir au rouge lumineux pendant la mèche (Fuse Duration), un disque posé
  *  sur le relief montre le rayon de l'explosion. Fin de la mèche (serveur) : Damage (fixé par l'action, avec ses upgrades)
  *  aux acteurs portant un des HitTags (NME) dont la hurtbox touche la sphère Explosion Radius ; jamais aux joueurs.
  *  Sphère d'explosion qui grossit puis s'efface (toutes les machines). Origine de l'acteur = le sol.
+ *  Lancée (BombThrower, SetThrow) : vol en cloche calculé (pas de physique) vers un point du sol, explosion en touchant le sol (pas de mèche),
+ *  le disque montre le point d'impact pendant le vol.
  *  Classe de base de /Game/Placeable/AMMO/BP_CannoneerBomb.
  */
 UCLASS(meta=(PrioritizeCategories="Bomb"))
@@ -117,7 +145,24 @@ public:
 
 	void SetDamage(float NewDamage) { Damage = NewDamage; }
 
+	/** Lancer en cloche de Start vers Target (sol) en Duration : la bombe explose en touchant le sol, sans mèche (serveur, avant FinishSpawning) */
+	void SetThrow(const FVector& Start, const FVector& Target, float Duration, float ApexHeight);
+
+	/** Position sur la trajectoire d'un lancer au temps Time */
+	static FVector GetFlightLocation(const FYSPlayerBombFlight& Flight, float Time);
+
 protected:
+
+	/** Lancer (BombThrower) ; bThrown faux = bombe posée sur place (Roll and Bomb) */
+	UPROPERTY(Replicated)
+	FYSPlayerBombFlight Flight;
+
+	/** Point d'explosion : la cible du lancer, sinon la position de la bombe */
+	FVector GetExplosionCenter() const { return Flight.bThrown ? Flight.Target : GetActorLocation(); }
+
+	/** Délai entre la pose (ou le lancer) et l'explosion */
+	float GetTimeToExplode() const { return Flight.bThrown ? FMath::Max(Flight.Duration, 0.05f) : FuseDuration; }
+
 
 	/** Explosion (serveur : dégâts) puis effet sur toutes les machines */
 	void Explode();

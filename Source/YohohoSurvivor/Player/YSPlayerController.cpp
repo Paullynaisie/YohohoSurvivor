@@ -1,5 +1,6 @@
 #include "Player/YSPlayerController.h"
 #include "Abilities/YSAbilityComponent.h"
+#include "Abilities/YSBombThrowerAbility.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSWeapon.h"
 #include "Blueprint/GameViewportSubsystem.h"
@@ -936,6 +937,30 @@ void AYSPlayerController::YSFireAtFoe(int32 Hand)
 	if (Nearest)
 	{
 		Action->TryActivate(Nearest->GetActorLocation());
+	}
+}
+
+void AYSPlayerController::YSFireAt(int32 Hand, float X, float Y)
+{
+	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSWeapon* Weapon = !PlayerCharacter ? nullptr : Hand == 1 ? PlayerCharacter->GetLeftHandWeapon() : PlayerCharacter->GetRightHandWeapon();
+	if (UYSAbilityComponent* Action = Weapon ? Weapon->GetActiveAction() : nullptr)
+	{
+		Action->TryActivate(FVector(X, Y, PlayerCharacter->GetActorLocation().Z));
+	}
+}
+
+void AYSPlayerController::YSBombLanding(float X, float Y)
+{
+	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	for (const AYSWeapon* Weapon : PlayerCharacter ? PlayerCharacter->GetHeldWeapons() : TArray<AYSWeapon*>())
+	{
+		if (const UYSBombThrowerAbility* Thrower = Weapon ? Weapon->FindComponentByClass<UYSBombThrowerAbility>() : nullptr)
+		{
+			const FVector Landing = Thrower->FindLandingPoint(FVector(X, Y, PlayerCharacter->GetActorLocation().Z));
+			UE_LOG(LogTemp, Log, TEXT("[YSBombThrower] curseur (%.0f, %.0f), joueur (%.0f, %.0f) -> impact (%.0f, %.0f, %.0f), %.0f cm du joueur"), X, Y,
+				PlayerCharacter->GetActorLocation().X, PlayerCharacter->GetActorLocation().Y, Landing.X, Landing.Y, Landing.Z, FVector::Dist2D(Landing, PlayerCharacter->GetActorLocation()));
+		}
 	}
 }
 
