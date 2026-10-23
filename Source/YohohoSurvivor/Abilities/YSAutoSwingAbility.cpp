@@ -130,9 +130,10 @@ bool UYSAutoSwingAbility::StartAttack()
 	}
 	CancelLowerPriorityActions();
 
-	// Golden bloodlust : l'attaque est critique si toutes les BL stacks sont là au moment où elle part
+	// Golden bloodlust : l'attaque est critique si toutes les BL stacks sont là au moment où elle part ;
+	// BloodRage : rage au maximum -> attaque critique (stacks consommées)
 	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	bCriticalSwing = Character && Character->IsBloodlustCritical();
+	bCriticalSwing = Character && (Character->IsBloodlustCritical() || Character->ConsumeBloodRageCritical());
 	EYSSwingAnim Anim = EYSSwingAnim::Main;
 	if (IsAutomatic() && MeleeSystem == EYSMeleeSystem::Swing)
 	{

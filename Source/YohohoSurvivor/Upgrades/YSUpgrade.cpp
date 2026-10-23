@@ -581,6 +581,12 @@ TArray<UYSAbilityComponent*> UYSWeaponUpgrade::GetRequiredActions(const AYSPlaye
 
 	for (const AYSWeapon* Weapon : { Character->GetMainHandWeapon(), Character->GetOffHandWeapon() })
 	{
+		// armes concernées / exclues par l'asset (ex. Bloodlust sans la GreatAxe, BloodRage seulement la GreatAxe)
+		const auto IsWeaponOf = [Weapon](const TSubclassOf<AYSWeapon>& Class) { return Weapon && Class && Weapon->IsA(Class); };
+		if (!Weapon || (RequiredWeaponClasses.Num() > 0 && !RequiredWeaponClasses.ContainsByPredicate(IsWeaponOf)) || ExcludedWeaponClasses.ContainsByPredicate(IsWeaponOf))
+		{
+			continue;
+		}
 		TInlineComponentArray<UYSAbilityComponent*> Actions(Weapon);
 		for (UYSAbilityComponent* Action : Actions)
 		{
@@ -747,6 +753,26 @@ void UYSBloodlustUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, boo
 	Character->SetBloodlust(bUnlocked ? MaxStacks : 0, StackDuration, AtkSpeedPerStack + BonusTotal, bUnlocked && bSuper);
 }
 
+UYSBloodRageUpgrade::UYSBloodRageUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "BloodRageName", "BloodRage");
+	RequiredActionClass = UYSAutoSwingAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::AutoAtk;
+	UnlockName = NSLOCTEXT("YS", "BloodRageUnlockName", "BloodRage");
+	UnlockDescription = NSLOCTEXT("YS", "BloodRageUnlockDesc", "Chaque coup reçu donne une stack de rage (max 5) :\nau maximum, la prochaine attaque est critique.\nStacks perdues après 10 s sans subir de coup");
+	BonusName = NSLOCTEXT("YS", "BloodRageBonusName", "BloodRage ++");
+	BonusStatLabel = NSLOCTEXT("YS", "BloodRageBonusStat", "Armure par stack de rage");
+	BonusSilverValue = 5.0f;
+	BonusGoldValue = 10.0f;
+	SuperName = NSLOCTEXT("YS", "BloodRageSuperName", "Golden BloodRage");
+	SuperDescription = NSLOCTEXT("YS", "BloodRageSuperDesc", "Les stacks de rage ne se perdent plus avec le temps");
+}
+
+void UYSBloodRageUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	Character->SetBloodRage(bUnlocked ? MaxStacks : 0, StackDuration, BonusTotal, bUnlocked && bSuper);
+}
+
 const FName UYSMineUpgrade::MineStat(TEXT("Mine"));
 const FName UYSMineUpgrade::MinePushbackStat(TEXT("MinePushback"));
 const FName UYSMineUpgrade::MineDoubleStat(TEXT("MineDouble"));
@@ -759,8 +785,8 @@ UYSMineUpgrade::UYSMineUpgrade()
 	UnlockDescription = NSLOCTEXT("YS", "MineUnlockDesc", "La bombe devient une mine : elle s'arme au lieu d'exploser,\npuis explose dès qu'un NME entre dans sa zone");
 	BonusName = NSLOCTEXT("YS", "MineBonusName", "Mine repulsante");
 	BonusStatLabel = NSLOCTEXT("YS", "MineBonusStat", "Pushback des mines");
-	BonusSilverValue = 200.0f;
-	BonusGoldValue = 350.0f;
+	BonusSilverValue = 100.0f;
+	BonusGoldValue = 175.0f;
 	SuperName = NSLOCTEXT("YS", "MineSuperName", "Golden Mine");
 	SuperDescription = NSLOCTEXT("YS", "MineSuperDesc", "Les mines sont lancées par 2");
 }

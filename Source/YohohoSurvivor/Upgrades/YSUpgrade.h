@@ -643,6 +643,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
 	EYSActionSlot RequiredSlot = EYSActionSlot::Ability;
 
+	/** Armes concernées seulement (classe ou Blueprint enfant ; vide = toutes), ex. BloodRage : la GreatAxe */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	TArray<TSubclassOf<AYSWeapon>> RequiredWeaponClasses;
+
+	/** Armes jamais concernées, ex. Bloodlust : pas la GreatAxe (elle a la BloodRage) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	TArray<TSubclassOf<AYSWeapon>> ExcludedWeaponClasses;
+
 	/** Déblocage : nom et description */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock")
 	FText UnlockName;
@@ -789,6 +797,38 @@ protected:
 
 	/** Vitesse d'atk par stack, en % */
 	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return (AtkSpeedPerStack + BonusTotal) * 100.0f; }
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+};
+
+/**
+ *  BloodRage (Auto swing de la GreatAxe, à la place du Bloodlust) : chaque coup REÇU donne une stack de rage (une par coup),
+ *  jusqu'à MaxStacks ; au maximum, la prochaine attaque du joueur (Auto swing ou Bumping Slash) est critique et consomme les
+ *  stacks ; toutes perdues après StackDuration sans subir de coup (délai relancé à chaque coup reçu).
+ *  Bonus « BloodRage ++ » : + Silver / Gold Value d'armure PAR STACK (additif) ;
+ *  Super « Golden BloodRage » : les stacks ne se perdent plus avec le temps.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : BloodRage"))
+class UYSBloodRageUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSBloodRageUpgrade();
+
+	/** Stacks de rage maximum (au maximum : prochaine attaque critique) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(ClampMin="1"))
+	int32 MaxStacks = 5;
+
+	/** Durée sans subir de coup avant de perdre toutes les stacks */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(ClampMin="0.1", Units="Seconds"))
+	float StackDuration = 10.0f;
+
+protected:
+
+	/** Armure par stack (somme des bonus) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal; }
 
 	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
 };

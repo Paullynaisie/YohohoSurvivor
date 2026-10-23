@@ -308,10 +308,14 @@ protected:
 	float PushbackMaxDamageRatio = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond"))
-	float PushbackMinForce = 200.0f;
+	float PushbackMinForce = 100.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond"))
-	float PushbackMaxForce = 1000.0f;
+	float PushbackMaxForce = 500.0f;
+
+	/** Vitesse verticale donnée en plus à chaque pushback (le NME décolle un peu du sol : moins de friction) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond"))
+	float PushbackVerticalForce = 50.0f;
 
 	/**
 	 *  Bloodlust (upgrade d'arme des épées ; serveur, répliqué pour l'UI et la prédiction de la recharge) :
@@ -339,6 +343,30 @@ protected:
 	/** Temps serveur où les stacks sont perdues */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
 	double BloodlustExpireServerTime = 0.0;
+
+	/**
+	 *  BloodRage (upgrade d'arme de la GreatAxe ; serveur, répliqué pour l'UI) : stacks gagnées à chaque coup reçu, toutes perdues
+	 *  après BloodRageDuration sans subir de coup (jamais avec Golden BloodRage) ; au maximum, la prochaine attaque est critique
+	 *  et consomme les stacks. Armure + BloodRageArmorPerStack par stack. BloodRageMaxStacks 0 = pas débloquée.
+	 */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|BloodRage")
+	int32 BloodRageStacks = 0;
+
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|BloodRage")
+	int32 BloodRageMaxStacks = 0;
+
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|BloodRage")
+	float BloodRageDuration = 10.0f;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|BloodRage")
+	float BloodRageArmorPerStack = 0.0f;
+
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|BloodRage")
+	bool bGoldenBloodRage = false;
+
+	/** Temps serveur où les stacks sont perdues */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|BloodRage")
+	double BloodRageExpireServerTime = 0.0;
 
 	/** Upgrade Shoot system par type d'action (Guns ; serveur) : PewPew = balles ajoutées à chaque rafale */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category="3C|Upgrades")
@@ -649,6 +677,27 @@ public:
 	/** Golden bloodlust et toutes les stacks : les Auto swing sont critiques */
 	bool IsBloodlustCritical() const { return bGoldenBloodlust && BloodlustMaxStacks > 0 && BloodlustStacks >= BloodlustMaxStacks; }
 
+	/** BloodRage réglée par l'upgrade (serveur) : MaxStacks 0 = désactivée (stacks remises à 0) */
+	void SetBloodRage(int32 MaxStacks, float Duration, float ArmorPerStack, bool bGolden);
+
+	/** Coup reçu (serveur) : +1 stack de rage (max BloodRageMaxStacks) et le délai repart */
+	void AddBloodRageStack();
+
+	/** Au maximum de rage : vrai (attaque critique) et les stacks sont consommées (serveur, au début d'une attaque) */
+	bool ConsumeBloodRageCritical();
+
+	int32 GetBloodRageStacks() const { return BloodRageStacks; }
+	int32 GetBloodRageMaxStacks() const { return BloodRageMaxStacks; }
+
+	/** Part du délai restant avant de perdre la rage (1 = vient de prendre un coup ; Golden BloodRage : toujours 1) */
+	float GetBloodRageTimeRatio() const;
+
+	/** Prochaine attaque critique (rage au maximum) */
+	bool IsBloodRageReady() const { return BloodRageMaxStacks > 0 && BloodRageStacks >= BloodRageMaxStacks; }
+
+	/** Debug : fixe les stacks de rage (serveur) */
+	void DebugSetBloodRageStacks(int32 Stacks);
+
 	/** Dégâts des coups critiques : (Critical Damage Multiplier + Dégât critique) x (1 + bonus critiques des upgrades Atk speed / Shoot system) */
 	float GetCriticalDamageMultiplier() const { return (CriticalDamageMultiplier + CriticalDamageAdd) * (1.0f + CriticalDamageBonus); }
 
@@ -657,7 +706,7 @@ public:
 	float GetCriticalDamageAdd() const { return CriticalDamageAdd; }
 
 	/** Le personnage peut faire des coups critiques (Atk critique ou Golden bloodlust) */
-	bool CanCriticalHit() const { return CriticalSwingInterval > 0 || CriticalBulletInterval > 0 || CriticalShotgunMaxDistance > 0.0f || CriticalSniperMinDistance > 0.0f || bGoldenBloodlust; }
+	bool CanCriticalHit() const { return CriticalSwingInterval > 0 || CriticalBulletInterval > 0 || CriticalShotgunMaxDistance > 0.0f || CriticalSniperMinDistance > 0.0f || bGoldenBloodlust || BloodRageMaxStacks > 0; }
 
 	/** Atk critique : une attaque auto Swing de plus pour le personnage (serveur), renvoie le total */
 	int32 RegisterAutoSwing() { return ++AutoSwingCounter; }
@@ -691,6 +740,9 @@ public:
 
 	/** Force du pushback d'un coup de Damage sur une cible de TargetMaxHealth PV max (0 = aucun) */
 	float ComputePushbackForce(float Damage, float TargetMaxHealth) const;
+
+	/** Vitesse verticale ajoutée aux pushbacks de ce personnage (set d'arme s'il fixe le pushback) */
+	float GetPushbackVerticalForce() const;
 
 	/**
 	 *  Pushback reçu d'un NME (serveur), comme celui des NME frappés par le joueur : direction du coup (FPointDamageEvent),

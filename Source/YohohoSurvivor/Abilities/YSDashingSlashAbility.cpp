@@ -76,6 +76,9 @@ void UYSDashingSlashAbility::ExecuteAbility(const FVector& TargetLocation)
 {
 	LockDirection(TargetLocation);
 	HitThisSwing.Reset();
+	// BloodRage : rage au maximum -> coupe critique (stacks consommées)
+	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	bCriticalSwing = Character && Character->ConsumeBloodRageCritical();
 	bDashKickApplied = false;
 	ApplyPhaseKick(0);
 	StartPartner();

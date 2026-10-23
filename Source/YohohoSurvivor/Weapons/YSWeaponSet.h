@@ -55,8 +55,12 @@ public:
 	float PushbackMaxDamageRatio = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond", EditCondition="bOverridePushback"))
-	float PushbackMinForce = 200.0f;
+	float PushbackMinForce = 100.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond", EditCondition="bOverridePushback"))
-	float PushbackMaxForce = 1000.0f;
+	float PushbackMaxForce = 500.0f;
+
+	/** Vitesse verticale donnée en plus à chaque pushback (le NME décolle un peu du sol : moins de friction) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond", EditCondition="bOverridePushback"))
+	float PushbackVerticalForce = 50.0f;
 };

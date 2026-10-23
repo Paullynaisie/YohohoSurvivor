@@ -147,8 +147,10 @@ void AYSPlayerBomb::Tick(float DeltaSeconds)
 	// dès qu'un NME entre dans son rayon
 	if (bMine && Elapsed >= TimeToExplode)
 	{
-		const float Pulse = 0.5f + 0.5f * FMath::Cos(2.0f * PI * ArmedPulseFrequency * (Elapsed - TimeToExplode));
-		SetFuseAlpha(FMath::Lerp(1.0f, ArmedPulseMin, Pulse));
+		// déclenchée : clignotement rapide jusqu'à l'explosion
+		const float Frequency = bMineTriggered ? TriggeredPulseFrequency : ArmedPulseFrequency;
+		const float Pulse = 0.5f + 0.5f * FMath::Cos(2.0f * PI * Frequency * (Elapsed - TimeToExplode));
+		SetFuseAlpha(FMath::Lerp(1.0f, bMineTriggered ? 0.0f : ArmedPulseMin, Pulse));
 		if (!bArmedLogged)
 		{
 			bArmedLogged = true;
@@ -163,13 +165,23 @@ void AYSPlayerBomb::Tick(float DeltaSeconds)
 				Destroy();
 				return;
 			}
+			// NME détecté : explosion après Mine Trigger Delay (les NME dans le rayon à ce moment-là sont touchés)
 			const double Now = GetWorld()->GetTimeSeconds();
-			if (Now >= NextMineCheckTime)
+			if (MineExplodeTime >= 0.0)
+			{
+				if (Now >= MineExplodeTime)
+				{
+					Explode();
+				}
+			}
+			else if (Now >= NextMineCheckTime)
 			{
 				NextMineCheckTime = Now + MineCheckInterval;
 				if (FindFoesInRadius(GetExplosionCenter()).Num() > 0)
 				{
-					Explode();
+					MineExplodeTime = Now + MineTriggerDelay;
+					MulticastMineTriggered();
+					UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s (mine) déclenchée : explose dans %.2f s"), *GetName(), MineTriggerDelay);
 				}
 			}
 		}
@@ -181,6 +193,11 @@ void AYSPlayerBomb::Tick(float DeltaSeconds)
 	{
 		Explode();
 	}
+}
+
+void AYSPlayerBomb::MulticastMineTriggered_Implementation()
+{
+	bMineTriggered = true;
 }
 
 TArray<AYSFoeCharacter*> AYSPlayerBomb::FindFoesInRadius(const FVector& Center) const

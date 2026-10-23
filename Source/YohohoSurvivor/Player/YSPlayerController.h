@@ -291,6 +291,13 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerSetBloodlustStacks(int32 Stacks);
 
+	/** Debug : fixe les stacks de rage de la BloodRage (si débloquée) et relance leur délai.  Ex : YSSetBloodRageStacks 5 */
+	UFUNCTION(Exec)
+	void YSSetBloodRageStacks(int32 Stacks);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetBloodRageStacks(int32 Stacks);
+
 	FVector GetAimLocation() const { return AimLocation; }
 
 	/**

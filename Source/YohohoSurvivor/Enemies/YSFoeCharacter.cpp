@@ -21,6 +21,8 @@
 #include "Interaction/YSInteractiveObject.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Summons/YSCaptainMinion.h"
+#include "EngineUtils.h"
 #include "UI/YSHealthBarWidget.h"
 #include "Components/ChildActorComponent.h"
 #include "Weapons/YSWeapon.h"
@@ -581,8 +583,8 @@ void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEven
 		return;
 	}
 
-	// serveur : le mouvement est répliqué aux clients
-	LaunchCharacter(Direction * Force, true, false);
+	// serveur : le mouvement est répliqué aux clients ; un peu de vertical : décolle du sol (moins de friction)
+	LaunchCharacter(Direction * Force + FVector(0.0f, 0.0f, Attacker->GetPushbackVerticalForce()), true, true);
 
 	// debug : distance réellement parcourue après 0,5 s (log Verbose)
 	const FVector Start = GetActorLocation();
@@ -817,6 +819,22 @@ APawn* AYSFoeCharacter::FindNearestPlayer() const
 		{
 			NearestDistSq = DistSq;
 			Nearest = Pawn;
+		}
+	}
+
+	// minions (Captain) : ciblés aussi, mais comptent Minion Target Distance Multiplier fois plus loin
+	for (TActorIterator<AYSCaptainMinion> It(GetWorld()); It; ++It)
+	{
+		AYSCaptainMinion* Minion = *It;
+		if (!Minion->IsAlive() || Minion->IsActorBeingDestroyed())
+		{
+			continue;
+		}
+		const float DistSq = FVector::DistSquared2D(Minion->GetActorLocation(), GetActorLocation()) * FMath::Square(MinionTargetDistanceMultiplier);
+		if (DistSq < NearestDistSq)
+		{
+			NearestDistSq = DistSq;
+			Nearest = Minion;
 		}
 	}
 

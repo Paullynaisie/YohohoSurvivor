@@ -218,10 +218,21 @@ protected:
 	float PushbackMaxDamageRatio = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond"))
-	float PushbackMinForce = 200.0f;
+	float PushbackMinForce = 100.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond"))
-	float PushbackMaxForce = 1000.0f;
+	float PushbackMaxForce = 500.0f;
+
+	/** Vitesse verticale donnée en plus à chaque pushback d'un joueur (décolle un peu du sol : moins de friction) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond"))
+	float PushbackVerticalForce = 50.0f;
+
+	/**
+	 *  Choix de la cible : un minion (ex. minions du Captain) compte ce nombre de fois plus loin qu'un joueur à la même distance
+	 *  (le NME préfère les joueurs, mais attaque un minion beaucoup plus proche)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Movement", meta=(ClampMin="1"))
+	float MinionTargetDistanceMultiplier = 3.0f;
 
 	/** Tags portés par l'ennemi (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Tags")
@@ -347,6 +358,8 @@ public:
 
 	/** Force du pushback que ce NME inflige à un joueur (réglages Foe|Pushback) */
 	float ComputePushbackForce(float Damage, float TargetMaxHealth) const;
+
+	float GetPushbackVerticalForce() const { return PushbackVerticalForce; }
 
 	/**
 	 *  Bump (serveur ; Bumping Slash) : plus de comportement, lancé en cloche à Distance dans la direction Direction (à plat),

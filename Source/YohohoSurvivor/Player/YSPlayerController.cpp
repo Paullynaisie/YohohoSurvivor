@@ -267,6 +267,19 @@ void AYSPlayerController::ServerSetBloodlustStacks_Implementation(int32 Stacks)
 	}
 }
 
+void AYSPlayerController::YSSetBloodRageStacks(int32 Stacks)
+{
+	ServerSetBloodRageStacks(Stacks);
+}
+
+void AYSPlayerController::ServerSetBloodRageStacks_Implementation(int32 Stacks)
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->DebugSetBloodRageStacks(Stacks);
+	}
+}
+
 void AYSPlayerController::YSCheatLevelUp()
 {
 	ServerCheatLevelUp();
@@ -1091,9 +1104,17 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 
 	if (BloodlustStacks)
 	{
+		// même affichage pour la BloodRage (GreatAxe) quand elle est débloquée : pastilles de rage, délai, couleur critique au maximum
 		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
-		BloodlustStacks->Refresh(PlayerCharacter ? PlayerCharacter->GetBloodlustStacks() : 0, PlayerCharacter ? PlayerCharacter->GetBloodlustMaxStacks() : 0,
-			PlayerCharacter ? PlayerCharacter->GetBloodlustTimeRatio() : 0.0f, PlayerCharacter && PlayerCharacter->IsBloodlustCritical());
+		if (PlayerCharacter && PlayerCharacter->GetBloodRageMaxStacks() > 0)
+		{
+			BloodlustStacks->Refresh(PlayerCharacter->GetBloodRageStacks(), PlayerCharacter->GetBloodRageMaxStacks(), PlayerCharacter->GetBloodRageTimeRatio(), PlayerCharacter->IsBloodRageReady());
+		}
+		else
+		{
+			BloodlustStacks->Refresh(PlayerCharacter ? PlayerCharacter->GetBloodlustStacks() : 0, PlayerCharacter ? PlayerCharacter->GetBloodlustMaxStacks() : 0,
+				PlayerCharacter ? PlayerCharacter->GetBloodlustTimeRatio() : 0.0f, PlayerCharacter && PlayerCharacter->IsBloodlustCritical());
+		}
 	}
 }
 

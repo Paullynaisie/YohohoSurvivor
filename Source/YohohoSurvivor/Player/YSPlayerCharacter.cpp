@@ -205,6 +205,11 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, CriticalDamageBonus);
 	DOREPLIFETIME(AYSPlayerCharacter, CriticalDamageAdd);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustExpireServerTime);
+	DOREPLIFETIME(AYSPlayerCharacter, BloodRageStacks);
+	DOREPLIFETIME(AYSPlayerCharacter, BloodRageMaxStacks);
+	DOREPLIFETIME(AYSPlayerCharacter, BloodRageDuration);
+	DOREPLIFETIME(AYSPlayerCharacter, bGoldenBloodRage);
+	DOREPLIFETIME(AYSPlayerCharacter, BloodRageExpireServerTime);
 }
 
 UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
@@ -227,11 +232,15 @@ float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Dam
 		return 0.0f;
 	}
 
-	// Armor : chaque coup est réduit de l'armure (jusqu'à MinDamageAfterArmor)
-	if (Armor > 0.0f)
+	// Armor : chaque coup est réduit de l'armure (jusqu'à MinDamageAfterArmor) ; BloodRage ++ : armure en plus par stack de rage
+	const float TotalArmor = Armor + BloodRageStacks * BloodRageArmorPerStack;
+	if (TotalArmor > 0.0f)
 	{
-		Damage = FMath::Max(FMath::Min(Damage, MinDamageAfterArmor), Damage - Armor);
+		Damage = FMath::Max(FMath::Min(Damage, MinDamageAfterArmor), Damage - TotalArmor);
 	}
+
+	// BloodRage : chaque coup reçu donne une stack de rage (après l'armure du coup)
+	AddBloodRageStack();
 
 	// dégâts toujours entiers (arrondis à l'entier le plus proche, après l'armure)
 	Damage = FMath::RoundToFloat(Damage);
@@ -278,17 +287,18 @@ void AYSPlayerCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageE
 		return;
 	}
 
-	// serveur + client qui contrôle le personnage (prédiction du mouvement)
-	LaunchCharacter(Direction * Force, true, false);
+	// serveur + client qui contrôle le personnage (prédiction du mouvement) ; un peu de vertical : décolle du sol (moins de friction)
+	const FVector LaunchVelocity = Direction * Force + FVector(0.0f, 0.0f, Attacker->GetPushbackVerticalForce());
+	LaunchCharacter(LaunchVelocity, true, true);
 	if (!IsLocallyControlled())
 	{
-		ClientLaunch(Direction * Force);
+		ClientLaunch(LaunchVelocity);
 	}
 }
 
 void AYSPlayerCharacter::ClientLaunch_Implementation(FVector_NetQuantize10 LaunchVelocity)
 {
-	LaunchCharacter(LaunchVelocity, true, false);
+	LaunchCharacter(LaunchVelocity, true, true);
 }
 
 void AYSPlayerCharacter::Die()
@@ -668,6 +678,14 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 		{
 			UE_LOG(LogTemp, Verbose, TEXT("[YSBloodlust] %s : %d stack(s) perdue(s)"), *GetName(), BloodlustStacks);
 			BloodlustStacks = 0;
+			ForceNetUpdate();
+		}
+
+		// BloodRage : toutes les stacks perdues après BloodRageDuration sans subir de coup (jamais avec Golden BloodRage)
+		if (BloodRageStacks > 0 && !bGoldenBloodRage && GameState && GameState->GetServerWorldTimeSeconds() >= BloodRageExpireServerTime)
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[YSBloodRage] %s : %d stack(s) perdue(s)"), *GetName(), BloodRageStacks);
+			BloodRageStacks = 0;
 			ForceNetUpdate();
 		}
 	}
@@ -1545,6 +1563,69 @@ void AYSPlayerCharacter::DebugSetBloodlustStacks(int32 Stacks)
 	UE_LOG(LogTemp, Log, TEXT("[YSBloodlust] %s : stacks fixées à %d / %d"), *GetName(), BloodlustStacks, BloodlustMaxStacks);
 }
 
+void AYSPlayerCharacter::SetBloodRage(int32 MaxStacks, float Duration, float ArmorPerStack, bool bGolden)
+{
+	BloodRageMaxStacks = FMath::Max(0, MaxStacks);
+	BloodRageDuration = Duration;
+	BloodRageArmorPerStack = ArmorPerStack;
+	bGoldenBloodRage = bGolden;
+	BloodRageStacks = FMath::Min(BloodRageStacks, BloodRageMaxStacks);
+	ForceNetUpdate();
+}
+
+void AYSPlayerCharacter::AddBloodRageStack()
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	if (!HasAuthority() || BloodRageMaxStacks <= 0 || !GameState)
+	{
+		return;
+	}
+	BloodRageStacks = FMath::Min(BloodRageStacks + 1, BloodRageMaxStacks);
+	BloodRageExpireServerTime = GameState->GetServerWorldTimeSeconds() + BloodRageDuration;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBloodRage] %s : %d / %d stack(s), armure %.0f%s"), *GetName(), BloodRageStacks, BloodRageMaxStacks,
+		Armor + BloodRageStacks * BloodRageArmorPerStack, IsBloodRageReady() ? TEXT(", prochaine attaque critique") : TEXT(""));
+}
+
+bool AYSPlayerCharacter::ConsumeBloodRageCritical()
+{
+	if (!HasAuthority() || !IsBloodRageReady())
+	{
+		return false;
+	}
+	BloodRageStacks = 0;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBloodRage] %s : rage au maximum, attaque critique (stacks consommées)"), *GetName());
+	return true;
+}
+
+float AYSPlayerCharacter::GetBloodRageTimeRatio() const
+{
+	const AGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (BloodRageStacks <= 0 || !GameState)
+	{
+		return 0.0f;
+	}
+	if (bGoldenBloodRage || BloodRageDuration <= 0.0f)
+	{
+		return 1.0f;
+	}
+	return FMath::Clamp(static_cast<float>((BloodRageExpireServerTime - GameState->GetServerWorldTimeSeconds()) / BloodRageDuration), 0.0f, 1.0f);
+}
+
+void AYSPlayerCharacter::DebugSetBloodRageStacks(int32 Stacks)
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	if (!HasAuthority() || !GameState)
+	{
+		return;
+	}
+	BloodRageStacks = FMath::Clamp(Stacks, 0, BloodRageMaxStacks);
+	BloodRageExpireServerTime = GameState->GetServerWorldTimeSeconds() + BloodRageDuration;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSBloodRage] %s : stacks fixées à %d / %d"), *GetName(), BloodRageStacks, BloodRageMaxStacks);
+}
+
 float AYSPlayerCharacter::GetBloodlustTimeRatio() const
 {
 	const AGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
@@ -1578,6 +1659,11 @@ float AYSPlayerCharacter::ComputePushbackForce(float Damage, float TargetMaxHeal
 			WeaponSet->PushbackMinForce, WeaponSet->PushbackMaxForce);
 	}
 	return YSCombat::ComputePushbackForce(Damage, TargetMaxHealth, PushbackMinDamageRatio, PushbackMaxDamageRatio, PushbackMinForce, PushbackMaxForce);
+}
+
+float AYSPlayerCharacter::GetPushbackVerticalForce() const
+{
+	return WeaponSet && WeaponSet->bOverridePushback ? WeaponSet->PushbackVerticalForce : PushbackVerticalForce;
 }
 
 float AYSPlayerCharacter::GetBaseMaxHealth() const

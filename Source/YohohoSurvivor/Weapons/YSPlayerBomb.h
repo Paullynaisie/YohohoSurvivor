@@ -152,6 +152,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0", ClampMax="1", EditCondition="bMine"))
 	float ArmedPulseMin = 0.4f;
 
+	/** Mine armée : délai entre la détection d'un NME dans son rayon et l'explosion (les NME dans le rayon À L'EXPLOSION sont touchés) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0", Units="Seconds", EditCondition="bMine"))
+	float MineTriggerDelay = 1.0f;
+
+	/** Pendant ce délai : clignotement rapide (fréquence) pour prévenir */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0", EditCondition="bMine"))
+	float TriggeredPulseFrequency = 8.0f;
+
 	/** Mine armée : disparaît sans exploser après ce temps (0 = jamais) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0", Units="Seconds", EditCondition="bMine"))
 	float MineLifetime = 0.0f;
@@ -210,6 +218,16 @@ protected:
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastExploded();
+
+	/** Mine déclenchée (NME détecté) : clignotement rapide sur toutes les machines jusqu'à l'explosion */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastMineTriggered();
+
+	/** Mine déclenchée : explosion à ce moment (serveur, temps local) ; < 0 = pas déclenchée */
+	double MineExplodeTime = -1.0;
+
+	/** Mine déclenchée sur cette machine (clignotement rapide) */
+	bool bMineTriggered = false;
 
 private:
 
