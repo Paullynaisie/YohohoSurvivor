@@ -26,10 +26,10 @@ void UYSRollAndBombAbility::ExecuteAbility(const FVector& TargetLocation)
 {
 	DropBomb();
 
-	// Golden Mine : la seconde mine est posée au point d'arrivée de la roulade
+	// Golden Mine : la seconde mine est posée en cours de roulade (Second Mine Roll Fraction)
 	if (MineClass && GetWeaponStat(UYSMineUpgrade::MineStat, 0.0f) > 0.0f && GetWeaponStat(UYSMineUpgrade::MineDoubleStat, 0.0f) > 0.0f)
 	{
-		GetWorld()->GetTimerManager().SetTimer(SecondMineTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { DropBomb(); }), FMath::Max(RollDuration, KINDA_SMALL_NUMBER), false);
+		GetWorld()->GetTimerManager().SetTimer(SecondMineTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { DropBomb(); }), FMath::Max(RollDuration * SecondMineRollFraction, KINDA_SMALL_NUMBER), false);
 	}
 
 	StartRoll();

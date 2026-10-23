@@ -34,6 +34,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Roll and Bomb")
 	TSubclassOf<AYSPlayerBomb> MineClass;
 
+	/** Golden Mine : moment où la seconde mine est posée, en part de la roulade (0.5 = à mi-roulade, 1 = à la fin) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Roll and Bomb", meta=(ClampMin="0", ClampMax="1"))
+	float SecondMineRollFraction = 0.5f;
+
 	UYSRollAndBombAbility();
 
 	virtual float GetBaseDamage() const override { return BombDamage; }
@@ -53,7 +57,7 @@ protected:
 
 private:
 
-	/** Golden Mine : seconde mine au point d'arrivée de la roulade */
+	/** Golden Mine : seconde mine posée pendant la roulade */
 	FTimerHandle SecondMineTimer;
 
 	/** Pose la bombe au sol sous le personnage (serveur) */
