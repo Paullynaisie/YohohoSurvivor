@@ -4,8 +4,10 @@
 #include "GameFramework/Character.h"
 #include "GameplayTagAssetInterface.h"
 #include "GameplayTagContainer.h"
+#include "Abilities/YSAutoSwingAbility.h"
 #include "YSFoeCharacter.generated.h"
 
+class APlayerState;
 class UCapsuleComponent;
 class UStaticMeshComponent;
 class UWidgetComponent;
@@ -343,7 +345,14 @@ protected:
 	UFUNCTION()
 	void OnRep_Health();
 
-	/** Rafraîchit la barre de vie avec Health / MaxHealth */
+	/** Atk critique : joueurs dont la prochaine balle d'attaque auto sur ce NME sera critique (serveur, répliqué : point critique de la barre de vie) */
+	UPROPERTY(ReplicatedUsing=OnRep_CriticalReadyShooters)
+	TArray<TObjectPtr<APlayerState>> CriticalReadyShooters;
+
+	UFUNCTION()
+	void OnRep_CriticalReadyShooters();
+
+	/** Rafraîchit la barre de vie avec Health / MaxHealth (élite : pas de barre, seulement le point critique) et le point critique du joueur local */
 	void UpdateHealthBar();
 
 	/** Retourne le pawn joueur le plus proche (sur le plan horizontal), ou nullptr */
@@ -361,9 +370,9 @@ protected:
 	/** Une attaque de mêlée est en cours sur cette machine (animation) */
 	bool IsMeleeAttacking() const;
 
-	/** Animation de l'attaque de mêlée sur toutes les machines (armes de NME locales, non répliquées) */
+	/** Animation de l'attaque de mêlée sur toutes les machines (armes de NME locales, non répliquées ; Anim = swing principal / second swing */
 	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastMeleeAttack();
+	void MulticastMeleeAttack(EYSSwingAnim Anim);
 
 	/** Skull Gun : tire la balle dans la direction de la visée (serveur) */
 	void FireShot();

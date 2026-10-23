@@ -184,6 +184,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustAtkSpeedPerStack);
 	DOREPLIFETIME(AYSPlayerCharacter, bGoldenBloodlust);
 	DOREPLIFETIME(AYSPlayerCharacter, CriticalDamageBonus);
+	DOREPLIFETIME(AYSPlayerCharacter, CriticalDamageAdd);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustExpireServerTime);
 }
 
@@ -1680,6 +1681,13 @@ bool AYSPlayerCharacter::IsInvulnerable() const
 	bool bInvulnerable = false;
 	ForEachHeldAction([&bInvulnerable](const UYSAbilityComponent* Action) { bInvulnerable = bInvulnerable || Action->IsGrantingInvulnerability(); });
 	return bInvulnerable;
+}
+
+void AYSPlayerCharacter::SetCriticalDamageAdd(float Value)
+{
+	CriticalDamageAdd = Value;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSCritical] %s : Dégât critique +%.3f -> dégâts critiques x%.3f"), *GetName(), CriticalDamageAdd, GetCriticalDamageMultiplier());
 }
 
 void AYSPlayerCharacter::RecomputeCriticalDamageBonus()

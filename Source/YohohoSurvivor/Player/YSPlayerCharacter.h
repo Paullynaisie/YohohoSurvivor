@@ -263,6 +263,13 @@ protected:
 	UPROPERTY(Transient, Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Combat")
 	float CriticalDamageBonus = 0.0f;
 
+	/** Somme des bonus de l'upgrade Dégât critique, ajoutée au multiplicateur de base (1.5 + 0.9 = x2.4 ; serveur, répliquée pour l'affichage) */
+	UPROPERTY(Transient, Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Combat")
+	float CriticalDamageAdd = 0.0f;
+
+	/** Atk critique : attaques auto Swing lancées par le personnage, toutes armes confondues (épées akimbo comptées ensemble ; serveur) */
+	int32 AutoSwingCounter = 0;
+
 	/** Atk critique : une attaque auto Swing sur N est critique (0 = pas l'upgrade ; serveur) */
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Combat")
 	int32 CriticalSwingInterval = 0;
@@ -594,8 +601,18 @@ public:
 	/** Golden bloodlust et toutes les stacks : les Auto swing sont critiques */
 	bool IsBloodlustCritical() const { return bGoldenBloodlust && BloodlustMaxStacks > 0 && BloodlustStacks >= BloodlustMaxStacks; }
 
-	/** Dégâts des coups critiques : Critical Damage Multiplier x (1 + bonus critiques des upgrades Atk speed / Shoot system) */
-	float GetCriticalDamageMultiplier() const { return CriticalDamageMultiplier * (1.0f + CriticalDamageBonus); }
+	/** Dégâts des coups critiques : (Critical Damage Multiplier + Dégât critique) x (1 + bonus critiques des upgrades Atk speed / Shoot system) */
+	float GetCriticalDamageMultiplier() const { return (CriticalDamageMultiplier + CriticalDamageAdd) * (1.0f + CriticalDamageBonus); }
+
+	/** Upgrade Dégât critique : somme de ses bonus (serveur) */
+	void SetCriticalDamageAdd(float Value);
+	float GetCriticalDamageAdd() const { return CriticalDamageAdd; }
+
+	/** Le personnage peut faire des coups critiques (Atk critique ou Golden bloodlust) */
+	bool CanCriticalHit() const { return CriticalSwingInterval > 0 || CriticalBulletInterval > 0 || bGoldenBloodlust; }
+
+	/** Atk critique : une attaque auto Swing de plus pour le personnage (serveur), renvoie le total */
+	int32 RegisterAutoSwing() { return ++AutoSwingCounter; }
 
 	float GetBaseCriticalDamageMultiplier() const { return CriticalDamageMultiplier; }
 

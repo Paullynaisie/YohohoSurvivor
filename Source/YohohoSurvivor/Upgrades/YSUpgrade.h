@@ -253,6 +253,9 @@ protected:
 	/** Valeur de la stat pour une somme de bonus : base x (1 + somme) par défaut (additive : base + somme) */
 	virtual float GetStatValue(float BaseValue, float TotalBonus) const { return BaseValue * (1.0f + TotalBonus); }
 
+	/** Valeur concrète affichée sur le bouton pour une somme de bonus (défaut : GetStatValue de la valeur de base) */
+	virtual float GetDisplayValue(const AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const { return GetStatValue(GetBaseStatValue(Character, Variant), TotalBonus); }
+
 	/** Applique la somme des bonus au personnage (serveur) */
 	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const {}
 };
@@ -505,6 +508,33 @@ protected:
 	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
 	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
+
+	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
+};
+
+/**
+ *  Dégât critique : la somme des bonus s'ajoute au multiplicateur de base des coups critiques (1.5 + 0.9 = x2.4),
+ *  avant les bonus critiques d'Atk speed / Shoot system. Proposée seulement si le personnage peut faire des critiques.
+ */
+UCLASS(meta=(DisplayName="Upgrade de stat : Dégât critique"))
+class UYSCriticalDamageUpgrade : public UYSStatUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSCriticalDamageUpgrade();
+
+	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
+protected:
+
+	virtual float GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	virtual float GetStatValue(float BaseValue, float TotalBonus) const override { return BaseValue + TotalBonus; }
+
+	/** Affichage : dégâts critiques concrets (%), bonus d'Atk speed / Shoot system compris */
+	virtual float GetDisplayValue(const AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
 
 	virtual void ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const override;
 };

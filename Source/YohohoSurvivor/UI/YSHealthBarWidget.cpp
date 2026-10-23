@@ -1,17 +1,22 @@
 #include "UI/YSHealthBarWidget.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
+#include "Components/VerticalBox.h"
+#include "Components/VerticalBoxSlot.h"
 
 bool UYSHealthBarWidget::Initialize()
 {
 	const bool bSuperInitialized = Super::Initialize();
 
-	// pas de Widget Blueprint : l'arbre est construit dès la création, pour pouvoir être rempli avant l'affichage
-	if (bSuperInitialized && WidgetTree && !WidgetTree->RootWidget)
+	// arbre construit dès la création (pour être rempli avant l'affichage) ; un Widget Blueprint enfant (WBP_FoeHealthBar)
+	// sert aux réglages : sa racine vide éventuelle (Canvas Panel ajouté par défaut à la création) est remplacée
+	const UPanelWidget* DesignerRoot = WidgetTree ? Cast<UPanelWidget>(WidgetTree->RootWidget) : nullptr;
+	if (bSuperInitialized && WidgetTree && (!WidgetTree->RootWidget || (DesignerRoot && DesignerRoot->GetChildrenCount() == 0)))
 	{
 		BuildWidgetTree();
 	}
@@ -21,13 +26,34 @@ bool UYSHealthBarWidget::Initialize()
 
 void UYSHealthBarWidget::BuildWidgetTree()
 {
-	USizeBox* Root = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("Root"));
-	Root->SetWidthOverride(BarSize.X);
-	Root->SetHeightOverride(BarSize.Y);
+	UVerticalBox* Root = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
 	WidgetTree->RootWidget = Root;
 
+	// point critique : rond (boîte entièrement arrondie) au-dessus de la barre
+	USizeBox* DotBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("CriticalDotSize"));
+	DotBox->SetWidthOverride(CriticalDotSize);
+	DotBox->SetHeightOverride(CriticalDotSize);
+	CriticalDot = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("CriticalDot"));
+	FSlateBrush DotBrush;
+	DotBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+	DotBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::HalfHeightRadius;
+	DotBrush.OutlineSettings.Width = CriticalDotOutlineWidth;
+	DotBrush.OutlineSettings.Color = FSlateColor(CriticalDotOutlineColor);
+	DotBrush.TintColor = FSlateColor(CriticalDotColor);
+	CriticalDot->SetBrush(DotBrush);
+	DotBox->AddChild(CriticalDot);
+	DotBox->SetRenderTranslation(FVector2D(CriticalDotOffsetX, 0.0f));
+	UVerticalBoxSlot* DotSlot = Root->AddChildToVerticalBox(DotBox);
+	DotSlot->SetHorizontalAlignment(HAlign_Center);
+	DotSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, CriticalDotSpacing));
+
+	BarBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("BarSize"));
+	BarBox->SetWidthOverride(BarSize.X);
+	BarBox->SetHeightOverride(BarSize.Y);
+	Root->AddChildToVerticalBox(BarBox);
+
 	UOverlay* Overlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("Overlay"));
-	Root->AddChild(Overlay);
+	BarBox->AddChild(Overlay);
 
 	Bar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("Bar"));
 	FProgressBarStyle BarStyle = Bar->GetWidgetStyle();
@@ -50,7 +76,7 @@ void UYSHealthBarWidget::BuildWidgetTree()
 	LabelSlot->SetHorizontalAlignment(HAlign_Center);
 	LabelSlot->SetVerticalAlignment(VAlign_Center);
 
-	SetVisibility(ESlateVisibility::Collapsed);
+	RefreshVisibility();
 }
 
 void UYSHealthBarWidget::SetHealth(float Current, float Max)
@@ -60,17 +86,33 @@ void UYSHealthBarWidget::SetHealth(float Current, float Max)
 		return;
 	}
 
-	// PV pleins (ou pas encore reçus du serveur) : rien n'est affiché
-	if (Current <= 0.0f || Max <= 0.0f || Current >= Max)
+	// PV pleins (ou pas encore reçus du serveur) : pas de barre
+	bBarVisible = Current > 0.0f && Max > 0.0f && Current < Max;
+	if (bBarVisible)
 	{
-		SetVisibility(ESlateVisibility::Collapsed);
+		FNumberFormattingOptions Format;
+		Format.MaximumFractionalDigits = 1;
+
+		Bar->SetPercent(Current / Max);
+		Label->SetText(FText::Format(NSLOCTEXT("YS", "HealthBarLabel", "{0} / {1}"), FText::AsNumber(Current, &Format), FText::AsNumber(Max, &Format)));
+	}
+	RefreshVisibility();
+}
+
+void UYSHealthBarWidget::SetCriticalReady(bool bReady)
+{
+	bCriticalReady = bReady;
+	RefreshVisibility();
+}
+
+void UYSHealthBarWidget::RefreshVisibility()
+{
+	if (!BarBox || !CriticalDot)
+	{
 		return;
 	}
-
-	FNumberFormattingOptions Format;
-	Format.MaximumFractionalDigits = 1;
-
-	Bar->SetPercent(Current / Max);
-	Label->SetText(FText::Format(NSLOCTEXT("YS", "HealthBarLabel", "{0} / {1}"), FText::AsNumber(Current, &Format), FText::AsNumber(Max, &Format)));
-	SetVisibility(ESlateVisibility::HitTestInvisible);
+	// éléments cachés sans perdre leur place : le point et la barre restent à la même hauteur quand l'autre apparaît
+	BarBox->SetVisibility(bBarVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden);
+	CriticalDot->SetVisibility(bCriticalReady ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden);
+	SetVisibility(bBarVisible || bCriticalReady ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 }

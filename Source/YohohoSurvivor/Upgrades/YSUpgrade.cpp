@@ -127,16 +127,15 @@ void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Va
 	StackLine.FontSize = 13;
 
 	// valeurs concrètes : actuelle rayée, nouvelle en gras
-	const float BaseValue = GetBaseStatValue(Character, Variant);
 
 	FYSChoiceLine& OldValue = OutLines.AddDefaulted_GetRef();
-	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetStatValue(BaseValue, Progress.TotalValue)));
+	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetDisplayValue(Character, Variant, Progress.TotalValue)));
 	OldValue.Color = FLinearColor(0.65f, 0.65f, 0.65f);
 	OldValue.FontSize = 16;
 	OldValue.bStrikethrough = true;
 
 	FYSChoiceLine& NewValue = OutLines.AddDefaulted_GetRef();
-	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetStatValue(BaseValue, Progress.TotalValue + GetBonusValue(Variant, Rarity))));
+	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), StatLabel, YSUpgradeText::FormatStat(GetDisplayValue(Character, Variant, Progress.TotalValue + GetBonusValue(Variant, Rarity))));
 	NewValue.FontSize = 18;
 	NewValue.bBold = true;
 
@@ -152,7 +151,7 @@ void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Va
 
 		FYSChoiceLine& NewCritical = OutLines.AddDefaulted_GetRef();
 		NewCritical.Text = FText::Format(NSLOCTEXT("YS", "CriticalDamageValue", "Dégâts critiques (%) : {0}"),
-			YSUpgradeText::FormatStat(Character->GetBaseCriticalDamageMultiplier() * (1.0f + Character->GetCriticalDamageBonus() + CriticalBonus) * 100.0f));
+			YSUpgradeText::FormatStat((Character->GetBaseCriticalDamageMultiplier() + Character->GetCriticalDamageAdd()) * (1.0f + Character->GetCriticalDamageBonus() + CriticalBonus) * 100.0f));
 		NewCritical.FontSize = 16;
 		NewCritical.bBold = true;
 	}
@@ -428,6 +427,37 @@ float UYSLuckUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int3
 void UYSLuckUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
 {
 	Character->SetLuck(TotalBonus);
+}
+
+UYSCriticalDamageUpgrade::UYSCriticalDamageUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "CriticalDamageName", "Dégât critique");
+	StatLabel = NSLOCTEXT("YS", "CriticalDamageStat", "Dégâts critiques (%)");
+	OfferWeight = 10.0f;
+	BronzeValue = 0.4f;
+	SilverValue = 0.65f;
+	GoldValue = 0.9f;
+}
+
+bool UYSCriticalDamageUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	return Super::CanBeOffered(Character, Variant, Progress) && Character && Character->CanCriticalHit();
+}
+
+float UYSCriticalDamageUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	return Character ? Character->GetBaseCriticalDamageMultiplier() : 1.5f;
+}
+
+float UYSCriticalDamageUpgrade::GetDisplayValue(const AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
+{
+	const float BonusMultiplier = Character ? 1.0f + Character->GetCriticalDamageBonus() : 1.0f;
+	return GetStatValue(GetBaseStatValue(Character, Variant), TotalBonus) * BonusMultiplier * 100.0f;
+}
+
+void UYSCriticalDamageUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
+{
+	Character->SetCriticalDamageAdd(TotalBonus);
 }
 
 UYSWeaponUpgrade::UYSWeaponUpgrade()

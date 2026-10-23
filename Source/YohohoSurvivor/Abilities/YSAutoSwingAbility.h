@@ -15,6 +15,65 @@ enum class EYSMeleeSystem : uint8
 	Bonk	UMETA(Hidden),
 };
 
+/** Animation jouée par une attaque : swing principal, second swing (une attaque sur deux), estoc du coup critique */
+UENUM(BlueprintType)
+enum class EYSSwingAnim : uint8
+{
+	Main,
+	Second,
+	Critical,
+};
+
+/** Poses d'une animation de coupe (main droite, relatives au corps ; symétrisées pour la main gauche) */
+USTRUCT(BlueprintType)
+struct FYSSwingPoses
+{
+	GENERATED_BODY()
+
+	/** Pose de préparation */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing")
+	FVector WindupHandLocation = FVector(-20.0f, 90.0f, 0.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing")
+	FRotator WindupHandRotation = FRotator(180.0f, -115.0f, -90.0f);
+
+	/** Pose de fin de coupe (rotation interpolée valeur par valeur : au-delà de 360° = plus d'un tour) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing")
+	FVector SwingEndHandLocation = FVector(40.0f, -65.0f, 0.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing")
+	FRotator SwingEndHandRotation = FRotator(180.0f, -400.0f, -90.0f);
+
+	/** Pendant la coupe, la main suit un arc de cercle autour du corps (sinon une ligne droite) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing")
+	bool bCircularSwing = true;
+};
+
+/** Animation complète d'une coupe : poses + durées + courbes (second swing) */
+USTRUCT(BlueprintType)
+struct FYSSwingAnim : public FYSSwingPoses
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing", meta=(ClampMin="0.01", Units="Seconds"))
+	float WindupDuration = 0.15f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing", meta=(ClampMin="0.01", Units="Seconds"))
+	float SwingDuration = 0.07f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing", meta=(ClampMin="0.01", Units="Seconds"))
+	float RecoverDuration = 0.3f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing", meta=(ClampMin="1"))
+	float WindupEaseExponent = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing", meta=(ClampMin="1"))
+	float SwingEaseExponent = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Swing", meta=(ClampMin="1"))
+	float RecoverEaseExponent = 2.0f;
+};
+
 /**
  *  « Auto swing » : attaque automatique de l'épée (action de BP_Epee).
  *  Le serveur la déclenche seul dès qu'une cible est dans le cône de détection (même principe que la visée
@@ -107,6 +166,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Animation", meta=(ClampMin="1"))
 	float RecoverEaseExponent = 2.0f;
 
+	/** Une attaque auto sur deux joue le second swing (pour différencier les coups) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Second Swing")
+	bool bAlternateSecondSwing = true;
+
+	/** Second swing : poses, durées et courbes propres (par défaut copiées du swing principal) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Second Swing", meta=(EditCondition="bAlternateSecondSwing"))
+	FYSSwingAnim SecondSwing;
+
+	/** Le coup critique d'Atk critique (la 5e attaque auto) joue l'estoc */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Critical Thrust")
+	bool bCriticalThrust = true;
+
+	/** Estoc du coup critique : poses (durées et courbes = celles du swing principal) ; défaut : main reculée puis piquée droit devant */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Critical Thrust", meta=(EditCondition="bCriticalThrust"))
+	FYSSwingPoses CriticalThrust;
+
 public:
 
 	UYSAutoSwingAbility();
@@ -128,7 +203,7 @@ public:
 	bool IsRecoverReducedByCooldown() const { return IsAutomatic() && MeleeSystem == EYSMeleeSystem::Swing; }
 
 	/** Durée effective du retour (Recover Duration x CD reduction en Swing) */
-	float GetRecoverTime() const { return RecoverDuration * (IsRecoverReducedByCooldown() ? GetCooldownMultiplier() : 1.0f); }
+	float GetRecoverTime() const { return (CurrentAnim == EYSSwingAnim::Second ? SecondSwing.RecoverDuration : RecoverDuration) * (IsRecoverReducedByCooldown() ? GetCooldownMultiplier() : 1.0f); }
 
 	/** Priorités : l'attaque est « en cours » pendant toute son animation */
 	virtual float GetActionDuration() const override { return GetAttackDuration(); }
@@ -142,8 +217,8 @@ public:
 	float GetAttackDuration() const { return GetWindupTime() + GetSwingTime() + GetRecoverTime(); }
 
 	/** Durées effectives de la préparation et de la coupe (Auto swing : Windup / Swing Duration ; Dashing Slash : pas en arrière / dash) */
-	virtual float GetWindupTime() const { return WindupDuration; }
-	virtual float GetSwingTime() const { return SwingDuration; }
+	virtual float GetWindupTime() const { return CurrentAnim == EYSSwingAnim::Second ? SecondSwing.WindupDuration : WindupDuration; }
+	virtual float GetSwingTime() const { return CurrentAnim == EYSSwingAnim::Second ? SecondSwing.SwingDuration : SwingDuration; }
 
 	/** Cible actuelle de la détection (dans la direction du curseur), ou nullptr */
 	UFUNCTION(BlueprintPure, Category="Auto swing")
@@ -159,7 +234,10 @@ public:
 	bool StartAttack();
 
 	/** Arme de NME (non répliquée) : joue l'animation de l'attaque sur cette machine (NetMulticast du NME) */
-	void PlayAttackLocally();
+	void PlayAttackLocally(EYSSwingAnim Anim);
+
+	/** Animation de l'attaque en cours (ou de la dernière) */
+	EYSSwingAnim GetCurrentAnim() const { return CurrentAnim; }
 
 	/** Attaque lancée par son porteur (NME : sa hitbox de contact), pas par la détection en cône du joueur */
 	bool IsTriggeredByHolder() const;
@@ -184,8 +262,19 @@ protected:
 	/** Coupe en cours critique (Golden bloodlust au maximum de stacks au début de l'attaque ; serveur) */
 	bool bCriticalSwing = false;
 
-	/** Atk critique : attaques auto déjà lancées par cette arme (serveur) */
+	/** NME : attaques auto déjà lancées par cette arme (alternance des swings ; serveur). Joueur : compteur du personnage (épées akimbo comptées ensemble) */
 	int32 AutoSwingCount = 0;
+
+	/** Animation de l'attaque en cours (swing principal, second swing, estoc critique), connue de toutes les machines */
+	EYSSwingAnim CurrentAnim = EYSSwingAnim::Main;
+
+	/** Début d'une attaque auto sur toutes les machines, avec son animation */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastSwingStarted(EYSSwingAnim Anim);
+
+	/** Poses de l'animation en cours et courbes */
+	const FYSSwingPoses& GetCurrentPoses(FYSSwingPoses& MainPoses) const;
+	void GetCurrentEases(float& OutWindup, float& OutSwing, float& OutRecover) const;
 
 private:
 

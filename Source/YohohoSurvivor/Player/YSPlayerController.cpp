@@ -34,6 +34,7 @@
 #include "Kismet/KismetRenderingLibrary.h"
 #include "Camera/CameraComponent.h"
 #include "Core/YSGameInstance.h"
+#include "AssetRegistry/IAssetRegistry.h"
 #include "Core/YSGameMode.h"
 #include "Components/InputComponent.h"
 #include "Core/YSGameState.h"
@@ -195,6 +196,7 @@ void AYSPlayerController::SetupInputComponent()
 #if !UE_BUILD_SHIPPING
 	// codes de triche pour les tests (absents des builds Shipping)
 	InputComponent->BindKey(EKeys::Right, IE_Pressed, this, &AYSPlayerController::YSCheatAtkSpeed);
+	InputComponent->BindKey(EKeys::Up, IE_Pressed, this, &AYSPlayerController::YSCheatLevelUp);
 #endif
 
 	// pavé numérique : apparition manuelle de NME (seulement si le GameMode de la map l'autorise, ex. TestMap)
@@ -232,6 +234,25 @@ void AYSPlayerController::ServerSetBloodlustStacks_Implementation(int32 Stacks)
 	{
 		PlayerCharacter->DebugSetBloodlustStacks(Stacks);
 	}
+}
+
+void AYSPlayerController::YSCheatLevelUp()
+{
+	ServerCheatLevelUp();
+}
+
+void AYSPlayerController::ServerCheatLevelUp_Implementation()
+{
+	// juste l'XP qui manque pour le niveau suivant : un choix d'upgrade (ou de classe) comme un vrai passage de niveau
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	const AYSGameState* State = GetWorld()->GetGameState<AYSGameState>();
+	if (!GameMode || !State || !State->IsMatchStarted())
+	{
+		return;
+	}
+	const float Missing = FMath::Max(State->GetExperienceToNextLevel() - State->GetTeamExperience(), 0.01f);
+	UE_LOG(LogTemp, Log, TEXT("[YSCheat] %s : +1 niveau (%.1f XP)"), *GetName(), Missing);
+	GameMode->AddTeamExperience(Missing);
 }
 
 void AYSPlayerController::YSCheatAtkSpeed()
@@ -1191,12 +1212,33 @@ void AYSPlayerController::ServerSetLeftHanded_Implementation(bool bLeftHanded)
 	}
 }
 
+namespace YSPlayerControllerDebug
+{
+	// classe d'un Blueprint nommé Name rangé n'importe où sous Root (sous-dossiers compris), sinon nullptr
+	UClass* FindBlueprintClass(const FString& Root, const FString& Name, UClass* BaseClass)
+	{
+		FARFilter Filter;
+		Filter.PackagePaths.Add(FName(*Root));
+		Filter.bRecursivePaths = true;
+		TArray<FAssetData> Assets;
+		IAssetRegistry::GetChecked().GetAssets(Filter, Assets);
+		for (const FAssetData& Asset : Assets)
+		{
+			if (Asset.AssetName.ToString() == Name)
+			{
+				return StaticLoadClass(BaseClass, nullptr, *FString::Printf(TEXT("%s.%s_C"), *Asset.PackageName.ToString(), *Name));
+			}
+		}
+		return nullptr;
+	}
+}
+
 void AYSPlayerController::YSEquipWeapon(int32 Hand, const FString& WeaponName)
 {
 	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
 	// préfixe BP_ facultatif (YSAfter remplace les _ par des espaces)
 	const FString AssetName = WeaponName.StartsWith(TEXT("BP_")) ? WeaponName : TEXT("BP_") + WeaponName;
-	UClass* WeaponClass = LoadClass<AYSWeapon>(nullptr, *FString::Printf(TEXT("/Game/Placeable/Weapons/%s.%s_C"), *AssetName, *AssetName));
+	UClass* WeaponClass = YSPlayerControllerDebug::FindBlueprintClass(TEXT("/Game/Placeable/Weapons"), AssetName, AYSWeapon::StaticClass());
 	if (!PlayerCharacter || !WeaponClass || !HasAuthority())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[YSEquipWeapon] impossible (perso %d, arme %s trouvée %d, hôte %d)"), PlayerCharacter != nullptr, *WeaponName, WeaponClass != nullptr, HasAuthority());
@@ -1245,8 +1287,8 @@ void AYSPlayerController::YSSpawnTreasureMap(float Distance)
 void AYSPlayerController::YSSpawnFoe(const FString& Name, float Distance)
 {
 	const APawn* MyPawn = GetPawn();
-	const FString Path = FString::Printf(TEXT("/Game/Placeable/Character/%s.%s_C"), *Name, *Name);
-	UClass* FoeClass = LoadClass<AYSFoeCharacter>(nullptr, *Path);
+	const FString Path = TEXT("/Game/Placeable/Character/.../") + Name;
+	UClass* FoeClass = YSPlayerControllerDebug::FindBlueprintClass(TEXT("/Game/Placeable/Character"), Name, AYSFoeCharacter::StaticClass());
 	if (!MyPawn || !FoeClass || !HasAuthority())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[YSSpawnFoe] impossible (perso %d, classe %s trouvée %d, hôte %d)"), MyPawn != nullptr, *Path, FoeClass != nullptr, HasAuthority());

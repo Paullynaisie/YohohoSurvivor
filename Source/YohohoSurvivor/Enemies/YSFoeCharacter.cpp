@@ -4,6 +4,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/DamageEvents.h"
@@ -325,6 +326,7 @@ void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 
 	DOREPLIFETIME(AYSFoeCharacter, MaxHealth);
 	DOREPLIFETIME(AYSFoeCharacter, Health);
+	DOREPLIFETIME(AYSFoeCharacter, CriticalReadyShooters);
 	DOREPLIFETIME(AYSFoeCharacter, Level);
 	DOREPLIFETIME(AYSFoeCharacter, bLeftHanded);
 }
@@ -334,11 +336,20 @@ void AYSFoeCharacter::OnRep_Health()
 	UpdateHealthBar();
 }
 
+void AYSFoeCharacter::OnRep_CriticalReadyShooters()
+{
+	UpdateHealthBar();
+}
+
 void AYSFoeCharacter::UpdateHealthBar()
 {
 	if (UYSHealthBarWidget* Bar = Cast<UYSHealthBarWidget>(HealthBar->GetUserWidgetObject()))
 	{
-		Bar->SetHealth(Health, MaxHealth);
+		// élite : barre de vie dans le HUD (AYSPlayerController), pas au-dessus de sa tête ; le point critique reste
+		Bar->SetHealth(bIsElite ? 0.0f : Health, MaxHealth);
+		const APlayerController* LocalController = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+		const APlayerState* LocalState = LocalController ? LocalController->PlayerState.Get() : nullptr;
+		Bar->SetCriticalReady(LocalState && CriticalReadyShooters.Contains(LocalState));
 	}
 }
 
@@ -485,8 +496,6 @@ void AYSFoeCharacter::BeginPlay()
 	}
 
 	HealthBar->InitWidget();
-	// élite : barre de vie dans le HUD (AYSPlayerController), pas au-dessus de sa tête
-	HealthBar->SetVisibility(!bIsElite);
 	UpdateHealthBar();
 }
 
@@ -695,19 +704,24 @@ void AYSFoeCharacter::TriggerMeleeAttack()
 	TArray<UYSAutoSwingAbility*> MeleeActions;
 	GetMeleeActions(MeleeActions);
 	bool bStarted = false;
+	EYSSwingAnim Anim = EYSSwingAnim::Main;
 	for (UYSAutoSwingAbility* Swing : MeleeActions)
 	{
 		Swing->Damage = ContactDamage;
-		bStarted |= Swing->StartAttack();
+		if (Swing->StartAttack() && !bStarted)
+		{
+			bStarted = true;
+			Anim = Swing->GetCurrentAnim();
+		}
 	}
 	if (bStarted)
 	{
 		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s attaque (%.0f dégâts)"), *GetName(), ContactDamage);
-		MulticastMeleeAttack();
+		MulticastMeleeAttack(Anim);
 	}
 }
 
-void AYSFoeCharacter::MulticastMeleeAttack_Implementation()
+void AYSFoeCharacter::MulticastMeleeAttack_Implementation(EYSSwingAnim Anim)
 {
 	// serveur : déjà lancée par StartAttack ; clients : leur arme locale joue l'animation
 	if (HasAuthority())
@@ -718,7 +732,7 @@ void AYSFoeCharacter::MulticastMeleeAttack_Implementation()
 	GetMeleeActions(MeleeActions);
 	for (UYSAutoSwingAbility* Swing : MeleeActions)
 	{
-		Swing->PlayAttackLocally();
+		Swing->PlayAttackLocally(Anim);
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s attaque (client, %d arme(s))"), *GetName(), MeleeActions.Num());
 }
@@ -852,6 +866,25 @@ bool AYSFoeCharacter::RegisterCriticalBullet(const AActor* Shooter, int32 Interv
 	int32& Count = CriticalBulletCounts.FindOrAdd(Shooter, 0);
 	++Count;
 	const bool bCritical = Count % Interval == 0;
+
+	// point critique : la prochaine balle de ce joueur sur ce NME sera critique
+	if (APlayerState* ShooterState = Cast<APawn>(Shooter) ? Cast<APawn>(Shooter)->GetPlayerState() : nullptr)
+	{
+		const bool bNextCritical = (Count + 1) % Interval == 0;
+		if (bNextCritical != CriticalReadyShooters.Contains(ShooterState))
+		{
+			if (bNextCritical)
+			{
+				CriticalReadyShooters.Add(ShooterState);
+			}
+			else
+			{
+				CriticalReadyShooters.Remove(ShooterState);
+			}
+			ForceNetUpdate();
+			UpdateHealthBar();
+		}
+	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSCritical] %s : balle %d de %s%s"), *GetName(), Count, *Shooter->GetName(), bCritical ? TEXT(", critique") : TEXT(""));
 	return bCritical;
 }

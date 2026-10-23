@@ -22,6 +22,13 @@ UYSAutoSwingAbility::UYSAutoSwingAbility()
 	Cooldown = AutoAtkCooldown;
 	IconTint = FLinearColor(0.75f, 0.75f, 0.8f);
 	HitTags.AddTag(YSTags::Team_Foe);
+
+	// estoc : main reculée contre la hanche, lame pointée devant (axe Z de l'arme vers l'avant), puis piquée droit devant
+	CriticalThrust.WindupHandLocation = FVector(-30.0f, 35.0f, 0.0f);
+	CriticalThrust.WindupHandRotation = FRotator(-90.0f, 0.0f, 90.0f);
+	CriticalThrust.SwingEndHandLocation = FVector(85.0f, 15.0f, 0.0f);
+	CriticalThrust.SwingEndHandRotation = FRotator(-90.0f, 0.0f, 90.0f);
+	CriticalThrust.bCircularSwing = false;
 }
 
 void UYSAutoSwingAbility::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -107,9 +114,10 @@ bool UYSAutoSwingAbility::IsTriggeredByHolder() const
 	return GetHolderPawn() && !Cast<AYSPlayerCharacter>(GetHolderPawn());
 }
 
-void UYSAutoSwingAbility::PlayAttackLocally()
+void UYSAutoSwingAbility::PlayAttackLocally(EYSSwingAnim Anim)
 {
 	// NME (arme locale, non répliquée) : l'animation part sur cette machine à la réception du NetMulticast du NME
+	CurrentAnim = Anim;
 	HitThisSwing.Reset();
 	NotifyActivated();
 }
@@ -122,24 +130,74 @@ bool UYSAutoSwingAbility::StartAttack()
 	}
 	CancelLowerPriorityActions();
 
-	ReadyServerTime = GetServerTime() + GetActivationLockDuration();
 	// Golden bloodlust : l'attaque est critique si toutes les BL stacks sont là au moment où elle part
-	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	bCriticalSwing = Character && Character->IsBloodlustCritical();
-	// Atk critique : chaque arme compte ses attaques auto, une sur N est toujours critique
-	if (Character && IsAutomatic() && MeleeSystem == EYSMeleeSystem::Swing && Character->GetCriticalSwingInterval() > 0)
+	EYSSwingAnim Anim = EYSSwingAnim::Main;
+	if (IsAutomatic() && MeleeSystem == EYSMeleeSystem::Swing)
 	{
+		// une attaque auto sur deux de cette arme joue le second swing
 		++AutoSwingCount;
-		if (AutoSwingCount % Character->GetCriticalSwingInterval() == 0)
+		if (bAlternateSecondSwing && AutoSwingCount % 2 == 0)
 		{
-			bCriticalSwing = true;
-			UE_LOG(LogTemp, Verbose, TEXT("[YSCritical] %s.%s : %de attaque auto, critique"), *GetOwner()->GetName(), *GetName(), AutoSwingCount);
+			Anim = EYSSwingAnim::Second;
+		}
+		// Atk critique : le personnage compte ses attaques auto (épées akimbo comptées ensemble), une sur N est toujours critique (estoc)
+		if (Character && Character->GetCriticalSwingInterval() > 0)
+		{
+			const int32 Count = Character->RegisterAutoSwing();
+			if (Count % Character->GetCriticalSwingInterval() == 0)
+			{
+				bCriticalSwing = true;
+				if (bCriticalThrust)
+				{
+					Anim = EYSSwingAnim::Critical;
+				}
+				UE_LOG(LogTemp, Verbose, TEXT("[YSCritical] %s.%s : %de attaque auto du personnage, critique"), *GetOwner()->GetName(), *GetName(), Count);
+			}
 		}
 	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s attaque à %.2f, prête à %.2f%s"), *GetOwner()->GetName(), *GetName(), GetServerTime(), ReadyServerTime, bCriticalSwing ? TEXT(" (critique)") : TEXT(""));
+	// la durée de l'animation (donc la recharge) dépend de l'animation choisie
+	CurrentAnim = Anim;
+	ReadyServerTime = GetServerTime() + GetActivationLockDuration();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s attaque à %.2f, prête à %.2f, anim %s%s"), *GetOwner()->GetName(), *GetName(), GetServerTime(), ReadyServerTime,
+		*StaticEnum<EYSSwingAnim>()->GetNameStringByValue(static_cast<int64>(Anim)), bCriticalSwing ? TEXT(" (critique)") : TEXT(""));
 	HitThisSwing.Reset();
-	MulticastActivated();
+	MulticastSwingStarted(Anim);
 	return true;
+}
+
+void UYSAutoSwingAbility::MulticastSwingStarted_Implementation(EYSSwingAnim Anim)
+{
+	CurrentAnim = Anim;
+	MulticastActivated_Implementation();
+}
+
+const FYSSwingPoses& UYSAutoSwingAbility::GetCurrentPoses(FYSSwingPoses& MainPoses) const
+{
+	switch (CurrentAnim)
+	{
+	case EYSSwingAnim::Second:
+		return SecondSwing;
+	case EYSSwingAnim::Critical:
+		return CriticalThrust;
+	default:
+		MainPoses.WindupHandLocation = WindupHandLocation;
+		MainPoses.WindupHandRotation = WindupHandRotation;
+		MainPoses.SwingEndHandLocation = SwingEndHandLocation;
+		MainPoses.SwingEndHandRotation = SwingEndHandRotation;
+		MainPoses.bCircularSwing = bCircularSwing;
+		return MainPoses;
+	}
+}
+
+void UYSAutoSwingAbility::GetCurrentEases(float& OutWindup, float& OutSwing, float& OutRecover) const
+{
+	// estoc : mêmes courbes que le swing principal
+	const bool bSecond = CurrentAnim == EYSSwingAnim::Second;
+	OutWindup = bSecond ? SecondSwing.WindupEaseExponent : WindupEaseExponent;
+	OutSwing = bSecond ? SecondSwing.SwingEaseExponent : SwingEaseExponent;
+	OutRecover = bSecond ? SecondSwing.RecoverEaseExponent : RecoverEaseExponent;
 }
 
 float UYSAutoSwingAbility::GetCooldownMultiplier() const
@@ -157,50 +215,57 @@ bool UYSAutoSwingAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLoc
 		return false;
 	}
 
-	const FQuat WindupQuat = WindupHandRotation.Quaternion();
-	const FQuat SwingEndQuat = SwingEndHandRotation.Quaternion();
+	// poses et courbes de l'animation en cours (swing principal, second swing ou estoc)
+	FYSSwingPoses MainPoses;
+	const FYSSwingPoses& Poses = GetCurrentPoses(MainPoses);
+	float WindupEase, SwingEase, RecoverEase;
+	GetCurrentEases(WindupEase, SwingEase, RecoverEase);
+	const FVector& StartLocation = Poses.WindupHandLocation;
+	const FVector& EndLocation = Poses.SwingEndHandLocation;
+	const FRotator& StartRotation = Poses.WindupHandRotation;
+	const FRotator& EndRotation = Poses.SwingEndHandRotation;
 
 	if (Elapsed < GetWindupTime())
 	{
 		// préparation : de la pose normale vers le flanc
-		const float Alpha = FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / GetWindupTime(), WindupEaseExponent);
+		const float Alpha = FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / GetWindupTime(), WindupEase);
 		OutIdleWeight = 1.0f - Alpha;
-		OutLocation = WindupHandLocation;
-		OutRotation = WindupQuat;
+		OutLocation = StartLocation;
+		OutRotation = StartRotation.Quaternion();
 	}
 	else if (Elapsed < GetWindupTime() + GetSwingTime())
 	{
 		// coupe : départ immédiat, très rapide
-		const float Alpha = FMath::InterpEaseOut(0.0f, 1.0f, (Elapsed - GetWindupTime()) / GetSwingTime(), SwingEaseExponent);
+		const float Alpha = FMath::InterpEaseOut(0.0f, 1.0f, (Elapsed - GetWindupTime()) / GetSwingTime(), SwingEase);
 		OutIdleWeight = 0.0f;
 
-		if (bCircularSwing)
+		if (Poses.bCircularSwing)
 		{
 			// arc autour du corps : angle et rayon (plan horizontal) interpolés, hauteur linéaire
-			const float StartAngle = FMath::Atan2(WindupHandLocation.Y, WindupHandLocation.X);
-			const float EndAngle = FMath::Atan2(SwingEndHandLocation.Y, SwingEndHandLocation.X);
+			const float StartAngle = FMath::Atan2(StartLocation.Y, StartLocation.X);
+			const float EndAngle = FMath::Atan2(EndLocation.Y, EndLocation.X);
 			const float Angle = StartAngle + FMath::FindDeltaAngleRadians(StartAngle, EndAngle) * Alpha;
-			const float Radius = FMath::Lerp(FVector2D(WindupHandLocation).Size(), FVector2D(SwingEndHandLocation).Size(), Alpha);
-			OutLocation = FVector(FMath::Cos(Angle) * Radius, FMath::Sin(Angle) * Radius, FMath::Lerp(WindupHandLocation.Z, SwingEndHandLocation.Z, Alpha));
+			const float Radius = FMath::Lerp(FVector2D(StartLocation).Size(), FVector2D(EndLocation).Size(), Alpha);
+			OutLocation = FVector(FMath::Cos(Angle) * Radius, FMath::Sin(Angle) * Radius, FMath::Lerp(StartLocation.Z, EndLocation.Z, Alpha));
 		}
 		else
 		{
-			OutLocation = FMath::Lerp(WindupHandLocation, SwingEndHandLocation, Alpha);
+			OutLocation = FMath::Lerp(StartLocation, EndLocation, Alpha);
 		}
 
 		// valeur par valeur (pas le plus court chemin) pour respecter les tours complets demandés
 		const FRotator Rotation(
-			FMath::Lerp(WindupHandRotation.Pitch, SwingEndHandRotation.Pitch, Alpha),
-			FMath::Lerp(WindupHandRotation.Yaw, SwingEndHandRotation.Yaw, Alpha),
-			FMath::Lerp(WindupHandRotation.Roll, SwingEndHandRotation.Roll, Alpha));
+			FMath::Lerp(StartRotation.Pitch, EndRotation.Pitch, Alpha),
+			FMath::Lerp(StartRotation.Yaw, EndRotation.Yaw, Alpha),
+			FMath::Lerp(StartRotation.Roll, EndRotation.Roll, Alpha));
 		OutRotation = Rotation.Quaternion();
 	}
 	else
 	{
 		// retour : de la fin de coupe vers la pose normale
-		OutIdleWeight = FMath::InterpEaseInOut(0.0f, 1.0f, (Elapsed - GetWindupTime() - GetSwingTime()) / GetRecoverTime(), RecoverEaseExponent);
-		OutLocation = SwingEndHandLocation;
-		OutRotation = SwingEndQuat;
+		OutIdleWeight = FMath::InterpEaseInOut(0.0f, 1.0f, (Elapsed - GetWindupTime() - GetSwingTime()) / GetRecoverTime(), RecoverEase);
+		OutLocation = EndLocation;
+		OutRotation = EndRotation.Quaternion();
 	}
 	return true;
 }

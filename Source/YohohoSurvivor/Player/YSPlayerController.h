@@ -203,7 +203,7 @@ public:
 	UFUNCTION(Exec)
 	void YSSpawnTreasureMap(float Distance = 150.0f);
 
-	/** Debug (hôte) : fait apparaître le NME /Game/Placeable/Character/<Name> devant le personnage. Ex : YSSpawnFoe FoeCharacter_Skull_Bomb 1500 */
+	/** Debug (hôte) : fait apparaître le NME /Game/Placeable/Character/(sous-dossiers compris)/<Name> devant le personnage. Ex : YSSpawnFoe FoeCharacter_Skull_Bomb 1500 */
 	UFUNCTION(Exec)
 	void YSSpawnFoe(const FString& Name, float Distance = 1500.0f);
 
@@ -211,7 +211,7 @@ public:
 	UFUNCTION(Exec)
 	void YSTreasureNextPoint();
 
-	/** Debug (console, hôte) : met l'arme BP de /Game/Placeable/Weapons dans une main (0 droite, 1 gauche).  Ex : YSEquipWeapon 0 BattlePetoir (préfixe BP_ facultatif) */
+	/** Debug (console, hôte) : met l'arme BP de /Game/Placeable/Weapons (sous-dossiers compris) dans une main (0 droite, 1 gauche).  Ex : YSEquipWeapon 0 BattlePetoir (préfixe BP_ facultatif) */
 	UFUNCTION(Exec)
 	void YSEquipWeapon(int32 Hand, const FString& WeaponName);
 
@@ -247,6 +247,13 @@ public:
 	/** Quitte la partie et revient au menu principal (touche Échap). Hôte : les autres joueurs reviennent aussi au menu. */
 	UFUNCTION(Exec)
 	void YSLeaveGame();
+
+	/** Triche (flèche haut, builds non Shipping) : +1 niveau d'équipe, donc un choix d'upgrade */
+	UFUNCTION(Exec)
+	void YSCheatLevelUp();
+
+	UFUNCTION(Server, Reliable)
+	void ServerCheatLevelUp();
 
 	/** Triche (flèche droite, builds non Shipping) : 10 bonus Atk speed Silver (CD reduction de l'Auto atk), sans dépasser le maximum */
 	UFUNCTION(Exec)

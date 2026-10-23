@@ -21,7 +21,7 @@ CRIT = f"{UPGRADES}/DA_Upgrade_AtkCritique"
 ATK_SPEED = f"{UPGRADES}/DA_Upgrade_AtkSpeed"
 CD_REDUCTION = f"{UPGRADES}/DA_Upgrade_CDReduction"
 SHOOT_SYSTEM = f"{UPGRADES}/DA_Upgrade_ShootSystem"
-CHARACTERS = ["/Game/Placeable/Character/PlayerCharacter_mouss", "/Game/Placeable/Character/PlayerCharacter_JohnnyPlaytest"]
+CHARACTERS = ["/Game/Placeable/Character/Player/PlayerCharacter_mouss", "/Game/Placeable/Character/Player/PlayerCharacter_JohnnyPlaytest"]
 CRITICAL_VALUES = (0.1, 0.2, 0.3)
 COPIED = ["offer_weight", "can_be_bronze", "can_be_silver", "can_be_gold", "stat_label", "max_stacks", "bronze_value", "silver_value", "gold_value",
           "ability_label", "auto_atk_label", "bonus_name", "min_cooldown_multiplier", "auto_atk_bonus_name"]
