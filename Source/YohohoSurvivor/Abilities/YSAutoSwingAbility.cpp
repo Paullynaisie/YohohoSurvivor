@@ -310,9 +310,14 @@ void UYSAutoSwingAbility::ApplySwingHits()
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible ; critique : type de dégât qui grossit le chiffre ;
 		// direction du coup (pushback) = du porteur vers la cible : le NME recule, il n'est pas balayé sur le côté par la lame
 		const FVector ShotDirection = Holder ? (Target->GetActorLocation() - Holder->GetActorLocation()).GetSafeNormal2D() : FVector::ZeroVector;
-		const FPointDamageEvent DamageEvent(FinalDamage, FHitResult(), ShotDirection, bCriticalSwing ? UYSCriticalDamageType::StaticClass() : nullptr);
-		Target->TakeDamage(FinalDamage, DamageEvent, Holder ? Holder->GetController() : nullptr, nullptr);
+		DealSwingDamage(Target, FinalDamage, ShotDirection, Holder ? Holder->GetController() : nullptr);
 	}
+}
+
+void UYSAutoSwingAbility::DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController)
+{
+	const FPointDamageEvent DamageEvent(FinalDamage, FHitResult(), ShotDirection, bCriticalSwing ? UYSCriticalDamageType::StaticClass() : nullptr);
+	Target->TakeDamage(FinalDamage, DamageEvent, InstigatorController, nullptr);
 }
 
 bool UYSAutoSwingAbility::IsOffHandOfAkimbo() const

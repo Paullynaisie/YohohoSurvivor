@@ -60,8 +60,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dashing Slash|Dash")
 	bool bDashThroughFoes = true;
 
+	/** Le dash rend invulnérable (Dashing Slash ; pas le Bumping Slash) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dashing Slash|Dash")
+	bool bDashInvulnerable = true;
+
 	/** Invulnérable pendant le dash, plus ce délai */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dashing Slash|Dash", meta=(ClampMin="0", Units="Seconds"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dashing Slash|Dash", meta=(ClampMin="0", Units="Seconds", EditCondition="bDashInvulnerable"))
 	float ExtraInvulnerability = 0.0f;
 
 public:

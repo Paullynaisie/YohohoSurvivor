@@ -23,6 +23,42 @@ class UYSAutoSwingAbility;
 class UYSGroundZoneComponent;
 class AYSProjectile;
 
+/** Bump en cours (Bumping Slash) : vol en cloche répliqué, recalculé à l'identique sur chaque machine */
+USTRUCT()
+struct FYSFoeBump
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	bool bActive = false;
+
+	UPROPERTY()
+	FVector_NetQuantize Start = FVector::ZeroVector;
+
+	UPROPERTY()
+	FVector_NetQuantize Target = FVector::ZeroVector;
+
+	UPROPERTY()
+	float Duration = 1.0f;
+
+	UPROPERTY()
+	float ApexHeight = 300.0f;
+
+	UPROPERTY()
+	float SpinTurns = 1.0f;
+
+	/** Yaw du NME au début du vol (la rotation se fait autour de cet angle) */
+	UPROPERTY()
+	float StartYaw = 0.0f;
+
+	UPROPERTY()
+	double StartServerTime = 0.0;
+
+	/** Incrémenté à chaque bump : un nouveau bump pendant le vol est vu par les clients */
+	UPROPERTY()
+	uint8 Counter = 0;
+};
+
 /**
  *  Ennemi de base : attiré en ligne droite vers le joueur le plus proche, sans pathfinding,
  *  et toujours tourné vers lui. Meurt (détruit) quand ses points de vie tombent à 0 et donne alors de l'XP à l'équipe.
@@ -281,6 +317,16 @@ public:
 	/** Force du pushback que ce NME inflige à un joueur (réglages Foe|Pushback) */
 	float ComputePushbackForce(float Damage, float TargetMaxHealth) const;
 
+	/**
+	 *  Bump (serveur ; Bumping Slash) : plus de comportement, lancé en cloche à Distance dans la direction Direction (à plat),
+	 *  vers le sol à l'arrivée (rien dessous, ex. la mer : il tombe à la fin du vol), en faisant SpinTurns tours sur lui-même
+	 *  (basculé dans le sens du vol). Répliqué : chaque machine calcule le même vol.
+	 */
+	void StartBump(const FVector& Direction, float Distance, float ApexHeight, float Duration, float SpinTurns);
+
+	/** En vol après un bump (comportement coupé) */
+	bool IsBumped() const { return Bump.bActive; }
+
 	/** Atk critique : compte une balle d'attaque auto reçue de Shooter ; vrai si c'est la N-ième (critique ; serveur) */
 	bool RegisterCriticalBullet(const AActor* Shooter, int32 Interval);
 
@@ -391,6 +437,25 @@ protected:
 	/** Affiche (ou cache) la ligne de visée sur cette machine */
 	void ShowAimLine(bool bShow, const FVector& Start, const FVector& Direction);
 
+	/** Bump en cours (serveur, répliqué) */
+	UPROPERTY(ReplicatedUsing=OnRep_Bump)
+	FYSFoeBump Bump;
+
+	UFUNCTION()
+	void OnRep_Bump();
+
+	/** Début du vol sur cette machine : mouvement du personnage coupé (la position est calculée par UpdateBump) */
+	void BeginBumpLocal();
+
+	/** Position et rotation du vol (toutes machines) ; fin du vol à la durée écoulée */
+	void UpdateBump();
+
+	/** Fin du vol sur cette machine : posé à l'arrivée, mouvement rétabli (serveur : il retombe s'il n'y a pas de sol) */
+	void EndBumpLocal();
+
+	/** Compteur du bump déjà commencé sur cette machine */
+	uint8 LocalBumpCounter = 0;
+	bool bLocalBumpActive = false;
 
 	/** Armes des mains selon le set (ou les armes par main) et gaucher / droitier */
 	void ApplyWeaponClasses();

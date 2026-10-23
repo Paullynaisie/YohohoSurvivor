@@ -156,6 +156,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
 	float ButtonSpacing = 16.0f;
 
+	/** Opacité du bouton d'un personnage unique déjà pris par un autre joueur (grisé, non cliquable) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices", meta=(ClampMin="0", ClampMax="1"))
+	float TakenCharacterOpacity = 0.35f;
+
 	/** « Joueurs prêts X / N » */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
 	int32 StatusFontSize = 18;
@@ -289,6 +293,9 @@ public:
 
 	/** Couleurs prises par d'autres joueurs : grisées et non cliquables */
 	void SetTakenColors(const TArray<bool>& Taken);
+
+	/** Personnages uniques pris par d'autres joueurs : grisés et non cliquables */
+	void SetTakenCharacters(const TArray<bool>& Taken);
 
 	/** Image de l'aperçu du personnage (render target) */
 	void SetPreviewTexture(UTexture* Texture);

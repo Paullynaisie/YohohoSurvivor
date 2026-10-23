@@ -329,6 +329,7 @@ void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(AYSFoeCharacter, CriticalReadyShooters);
 	DOREPLIFETIME(AYSFoeCharacter, Level);
 	DOREPLIFETIME(AYSFoeCharacter, bLeftHanded);
+	DOREPLIFETIME(AYSFoeCharacter, Bump);
 }
 
 void AYSFoeCharacter::OnRep_Health()
@@ -376,8 +377,131 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 		return Damage;
 	}
 
+	// coup qui bumpe (Bumping Slash) : NME lancé en cloche ; un élite reçoit le pushback normal
+	if (DamageEvent.IsOfType(FYSBumpDamageEvent::ClassID) && !bIsElite)
+	{
+		const FYSBumpDamageEvent& BumpEvent = static_cast<const FYSBumpDamageEvent&>(DamageEvent);
+		StartBump(BumpEvent.ShotDirection, BumpEvent.Distance, BumpEvent.ApexHeight, BumpEvent.Duration, BumpEvent.SpinTurns);
+		return Damage;
+	}
+
 	ApplyPushback(Damage, DamageEvent, EventInstigator);
 	return Damage;
+}
+
+void AYSFoeCharacter::StartBump(const FVector& Direction, float Distance, float ApexHeight, float Duration, float SpinTurns)
+{
+	const FVector FlatDirection = Direction.GetSafeNormal2D();
+	if (!HasAuthority() || FlatDirection.IsNearlyZero())
+	{
+		return;
+	}
+
+	// arrivée : sol sous le point visé (même hauteur de capsule qu'au départ) ; rien dessous (mer) : même altitude, il tombera
+	const FVector Start = GetActorLocation();
+	FVector Landing = Start + FlatDirection * Distance;
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(FoeBump), false, this);
+	if (GetWorld()->LineTraceSingleByChannel(Hit, Landing + FVector(0.0f, 0.0f, 1000.0f), Landing - FVector(0.0f, 0.0f, 5000.0f), ECC_WorldStatic, Params))
+	{
+		Landing.Z = Hit.ImpactPoint.Z + GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	}
+
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	Bump.bActive = true;
+	Bump.Start = Start;
+	Bump.Target = Landing;
+	Bump.Duration = FMath::Max(Duration, 0.05f);
+	Bump.ApexHeight = ApexHeight;
+	Bump.SpinTurns = SpinTurns;
+	Bump.StartYaw = GetActorRotation().Yaw;
+	Bump.StartServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	++Bump.Counter;
+
+	// arrêt de la visée en cours (Skull Gun) : le comportement reprend à l'atterrissage
+	if (bAiming)
+	{
+		bAiming = false;
+		MulticastAimEnded();
+	}
+
+	BeginBumpLocal();
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBump] %s bumpé de (%.0f, %.0f, %.0f) vers (%.0f, %.0f, %.0f) : %.0f cm en %.2f s, %.1f tour(s)"), *GetName(),
+		Start.X, Start.Y, Start.Z, Landing.X, Landing.Y, Landing.Z, FVector::Dist2D(Start, Landing), Bump.Duration, SpinTurns);
+}
+
+void AYSFoeCharacter::OnRep_Bump()
+{
+	if (Bump.bActive && (!bLocalBumpActive || LocalBumpCounter != Bump.Counter))
+	{
+		BeginBumpLocal();
+	}
+	else if (!Bump.bActive && bLocalBumpActive)
+	{
+		EndBumpLocal();
+	}
+}
+
+void AYSFoeCharacter::BeginBumpLocal()
+{
+	bLocalBumpActive = true;
+	LocalBumpCounter = Bump.Counter;
+
+	// position et rotation calculées par UpdateBump sur chaque machine : plus de mouvement du personnage ni de réplication
+	// du mouvement pendant le vol (le serveur renvoie la position à l'atterrissage)
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->StopMovementImmediately();
+	Movement->SetComponentTickEnabled(false);
+	if (HasAuthority())
+	{
+		SetReplicateMovement(false);
+	}
+	UpdateBump();
+}
+
+void AYSFoeCharacter::UpdateBump()
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const float Elapsed = static_cast<float>(Now - Bump.StartServerTime);
+	if (Elapsed >= Bump.Duration)
+	{
+		EndBumpLocal();
+		return;
+	}
+
+	SetActorLocation(YSCombat::GetBellLocation(Bump.Start, Bump.Target, Bump.Duration, Bump.ApexHeight, Elapsed));
+
+	// rotation complète sur lui-même, basculé dans le sens du vol (le haut part vers l'avant du vol)
+	const FVector Direction = (FVector(Bump.Target) - FVector(Bump.Start)).GetSafeNormal2D();
+	const FVector Axis = FVector::CrossProduct(FVector::UpVector, Direction).GetSafeNormal();
+	const float Angle = 2.0f * PI * Bump.SpinTurns * FMath::Clamp(Elapsed / Bump.Duration, 0.0f, 1.0f);
+	const FQuat BaseRotation = FRotator(0.0f, Bump.StartYaw, 0.0f).Quaternion();
+	SetActorRotation(Axis.IsNearlyZero() ? BaseRotation : FQuat(Axis, Angle) * BaseRotation);
+}
+
+void AYSFoeCharacter::EndBumpLocal()
+{
+	if (!bLocalBumpActive)
+	{
+		return;
+	}
+	bLocalBumpActive = false;
+
+	SetActorLocationAndRotation(Bump.Target, FRotator(0.0f, Bump.StartYaw, 0.0f));
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->SetComponentTickEnabled(true);
+	if (HasAuthority())
+	{
+		// pas de sol à l'arrivée (mer) : il tombe (KillZ) ; sinon il se pose et reprend son comportement
+		Movement->Velocity = FVector::ZeroVector;
+		Movement->SetMovementMode(MOVE_Falling);
+		Bump.bActive = false;
+		SetReplicateMovement(true);
+		ForceNetUpdate();
+		UE_LOG(LogTemp, Verbose, TEXT("[YSBump] %s atterrit en (%.0f, %.0f, %.0f)"), *GetName(), Bump.Target.X, Bump.Target.Y, Bump.Target.Z);
+	}
 }
 
 void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator)
@@ -517,6 +641,13 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		{
 			Weapon->SetActorHiddenInGame(bWeaponHidden);
 		}
+	}
+
+	// bump (Bumping Slash) : vol en cloche calculé sur chaque machine, aucun comportement pendant le vol
+	if (bLocalBumpActive)
+	{
+		UpdateBump();
+		return;
 	}
 
 	// serveur autoritaire : les clients reçoivent position et rotation par réplication

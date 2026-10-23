@@ -546,6 +546,14 @@ void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
+	// taille du personnage : échelle ABSOLUE (classe x CharacterScale), identique sur toutes les machines et dans l'éditeur
+	const USceneComponent* DefaultRoot = GetClass()->GetDefaultObject<AYSPlayerCharacter>()->GetRootComponent();
+	const FVector ScaledSize = (DefaultRoot ? DefaultRoot->GetRelativeScale3D() : FVector::OneVector) * CharacterScale;
+	if (!GetActorScale3D().Equals(ScaledSize))
+	{
+		SetActorScale3D(ScaledSize);
+	}
+
 	// changer le set (ou l'arme d'une main sans set) dans le Blueprint met à jour son visuel immédiatement
 	// gaucher : miroir du personnage (réglé en droitier) = armes des deux mains échangées
 	UClass* SetRightClass = WeaponSet ? WeaponSet->RightHandWeapon.Get() : RightHandWeaponClass.Get();

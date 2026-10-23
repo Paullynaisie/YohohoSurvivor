@@ -283,6 +283,13 @@ void AYSGameMode::PlayerSelectedCharacter(APlayerController* Player, int32 Chara
 		return;
 	}
 
+	// personnage unique déjà choisi par un autre joueur : refusé
+	if (IsCharacterTaken(CharacterIndex, PlayerState))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s : personnage %d refusé (unique, déjà choisi)"), *PlayerState->GetPlayerName(), CharacterIndex);
+		return;
+	}
+
 	// simple choix : la partie démarre (ou le joueur apparaît) quand il clique sur « Prêt »
 	PlayerState->SetSelectedCharacterIndex(CharacterIndex);
 }
@@ -418,6 +425,12 @@ void AYSGameMode::PlayerSetNickname(APlayerController* Player, const FString& Ni
 	{
 		ChangeName(Player, Trimmed, false);
 	}
+}
+
+bool AYSGameMode::IsCharacterTaken(int32 CharacterIndex, const APlayerState* Except) const
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	return YSGameState && YSGameState->IsCharacterTaken(CharacterIndex, Except);
 }
 
 bool AYSGameMode::IsColorTaken(int32 ColorIndex, const APlayerState* Except) const

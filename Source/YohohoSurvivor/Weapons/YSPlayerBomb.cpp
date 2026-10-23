@@ -1,5 +1,6 @@
 #include "Weapons/YSPlayerBomb.h"
 #include "Components/StaticMeshComponent.h"
+#include "Core/YSCombat.h"
 #include "Core/YSDamageTypes.h"
 #include "Core/YSGameplayTags.h"
 #include "Engine/DamageEvents.h"
@@ -78,19 +79,8 @@ void AYSPlayerBomb::SetThrow(const FVector& Start, const FVector& Target, float 
 
 FVector AYSPlayerBomb::GetFlightLocation(const FYSPlayerBombFlight& InFlight, float Time)
 {
-	const float Duration = FMath::Max(InFlight.Duration, 0.05f);
-	const float Clamped = FMath::Clamp(Time, 0.0f, Duration);
-
-	// cloche : sommet ApexHeight au-dessus du plus haut des deux points, atteint en Duration au total.
-	// Montée sqrt(2 Up / g) + descente sqrt(2 Down / g) = Duration  =>  g = ((sqrt(2 Up) + sqrt(2 Down)) / Duration)²
-	const float ApexZ = FMath::Max(InFlight.Start.Z, InFlight.Target.Z) + FMath::Max(InFlight.ApexHeight, 1.0f);
-	const float Rise = FMath::Sqrt(2.0f * (ApexZ - InFlight.Start.Z)) + FMath::Sqrt(2.0f * (ApexZ - InFlight.Target.Z));
-	const float Gravity = FMath::Square(Rise / Duration);
-	const float VerticalSpeed = FMath::Sqrt(2.0f * Gravity * (ApexZ - InFlight.Start.Z));
-
-	FVector Location = FMath::Lerp(InFlight.Start, InFlight.Target, Clamped / Duration);
-	Location.Z = InFlight.Start.Z + VerticalSpeed * Clamped - 0.5f * Gravity * Clamped * Clamped;
-	return Location;
+	// cloche : sommet ApexHeight au-dessus du plus haut des deux points, atteint en Duration au total
+	return YSCombat::GetBellLocation(InFlight.Start, InFlight.Target, InFlight.Duration, InFlight.ApexHeight, Time);
 }
 
 void AYSPlayerBomb::BeginPlay()

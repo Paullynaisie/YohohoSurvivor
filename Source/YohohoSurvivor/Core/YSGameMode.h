@@ -158,6 +158,9 @@ public:
 	/** Couleur déjà prise par un autre joueur (les couleurs sont uniques) */
 	bool IsColorTaken(int32 ColorIndex, const APlayerState* Except) const;
 
+	/** Personnage unique (Unique Character) déjà choisi par un autre joueur */
+	bool IsCharacterTaken(int32 CharacterIndex, const APlayerState* Except) const;
+
 	/** Personnalisation d'un joueur (reçue par RPC ; index invalides ignorés) */
 	void PlayerSetCustomization(APlayerController* Player, int32 ColorIndex, int32 FaceIndex);
 

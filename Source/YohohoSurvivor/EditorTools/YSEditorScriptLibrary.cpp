@@ -159,4 +159,30 @@ bool UYSEditorScriptLibrary::AddCustomizationFaceRow(UDataTable* Table, FName Ro
 	return true;
 }
 
+int32 UYSEditorScriptLibrary::CopyEditableProperties(UObject* Source, UObject* Target)
+{
+	if (!Source || !Target)
+	{
+		return 0;
+	}
+
+	Target->Modify();
+	int32 Copied = 0;
+	for (TFieldIterator<FProperty> It(Source->GetClass()); It; ++It)
+	{
+		const FProperty* Property = *It;
+		const UClass* Owner = Property->GetOwnerClass();
+		// réglages éditables des classes du jeu seulement (pas ceux du moteur : transform, collision, tick...)
+		if (!Property->HasAnyPropertyFlags(CPF_Edit) || Property->HasAnyPropertyFlags(CPF_Transient | CPF_EditConst)
+			|| !Owner || !Target->IsA(Owner) || !Owner->GetOutermost()->GetName().StartsWith(TEXT("/Script/YohohoSurvivor")))
+		{
+			continue;
+		}
+		Property->CopyCompleteValue_InContainer(Target, Source);
+		++Copied;
+	}
+	Target->MarkPackageDirty();
+	return Copied;
+}
+
 #endif

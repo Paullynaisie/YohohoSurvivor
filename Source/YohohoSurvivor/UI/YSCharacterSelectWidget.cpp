@@ -480,6 +480,19 @@ void UYSCharacterSelectWidget::SetSelectedIndex(int32 SelectedIndex)
 	}
 }
 
+void UYSCharacterSelectWidget::SetTakenCharacters(const TArray<bool>& Taken)
+{
+	for (int32 Index = 0; Index < Buttons.Num(); ++Index)
+	{
+		const bool bTaken = Taken.IsValidIndex(Index) && Taken[Index];
+		if (Buttons[Index]->GetIsEnabled() == bTaken)
+		{
+			Buttons[Index]->SetIsEnabled(!bTaken);
+			Buttons[Index]->SetRenderOpacity(bTaken ? TakenCharacterOpacity : 1.0f);
+		}
+	}
+}
+
 void UYSCharacterSelectWidget::SetStatus(const FText& Status)
 {
 	if (StatusText)

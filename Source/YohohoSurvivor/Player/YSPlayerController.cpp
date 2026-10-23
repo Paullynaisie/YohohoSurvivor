@@ -348,6 +348,13 @@ void AYSPlayerController::YSLeaveGame()
 
 void AYSPlayerController::YSSelectCharacter(int32 CharacterIndex)
 {
+	// personnage unique déjà pris par un autre joueur : le serveur refuserait
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (YSGameState && YSGameState->IsCharacterTaken(CharacterIndex, PlayerState))
+	{
+		return;
+	}
+
 	LocalSelectedCharacter = CharacterIndex;
 	if (CharacterSelectMenu)
 	{
@@ -446,6 +453,14 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 		const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
 		CharacterSelectMenu->SetSelectedIndex(MyState && MyState->HasSelectedCharacter() ? MyState->GetSelectedCharacterIndex() : LocalSelectedCharacter);
 	}
+
+	// personnages uniques déjà choisis par un autre joueur : grisés
+	TArray<bool> TakenCharacters;
+	for (int32 Index = 0; Index < YSGameState->GetSelectableCharacters().Num(); ++Index)
+	{
+		TakenCharacters.Add(YSGameState->IsCharacterTaken(Index, MyPlayerState));
+	}
+	CharacterSelectMenu->SetTakenCharacters(TakenCharacters);
 
 	// combien de joueurs ont déjà choisi
 	int32 Ready = 0;

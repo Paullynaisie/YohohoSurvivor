@@ -101,6 +101,9 @@ public:
 
 	const TArray<TSubclassOf<AYSPlayerCharacter>>& GetSelectableCharacters() const { return SelectableCharacters; }
 
+	/** Personnage unique (Unique Character) déjà choisi par un autre joueur qu'Except (serveur et clients : menu grisé) */
+	bool IsCharacterTaken(int32 CharacterIndex, const APlayerState* Except) const;
+
 	bool IsMatchStarted() const { return bMatchStarted; }
 
 	/** Serveur uniquement (AYSGameMode) */

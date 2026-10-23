@@ -168,7 +168,7 @@ void UYSDashingSlashAbility::OnActionCancelled()
 bool UYSDashingSlashAbility::IsGrantingInvulnerability() const
 {
 	const float Elapsed = GetTimeSinceActivation();
-	return IsMovementDriver() && Elapsed >= StepBackDuration && Elapsed < StepBackDuration + DashDuration + ExtraInvulnerability;
+	return bDashInvulnerable && IsMovementDriver() && Elapsed >= StepBackDuration && Elapsed < StepBackDuration + DashDuration + ExtraInvulnerability;
 }
 
 float UYSDashingSlashAbility::GetMoveSpeedMultiplier() const

@@ -22,4 +22,10 @@ namespace YSCombat
 	 *  sous MinRatio rien, à partir de MaxRatio MaxForce, entre les deux de MinForce à MaxForce (linéaire). Joueurs et NME.
 	 */
 	float ComputePushbackForce(float Damage, float TargetMaxHealth, float MinRatio, float MaxRatio, float MinForce, float MaxForce);
+
+	/**
+	 *  Position à l'instant Time d'un vol en cloche de Start à Target en Duration : sommet ApexHeight au-dessus du plus haut des
+	 *  deux points, gravité déduite (bombes lancées, bump des NME). Calcul identique sur toutes les machines.
+	 */
+	FVector GetBellLocation(const FVector& Start, const FVector& Target, float Duration, float ApexHeight, float Time);
 }

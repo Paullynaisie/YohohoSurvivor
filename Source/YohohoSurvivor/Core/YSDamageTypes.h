@@ -46,3 +46,38 @@ struct FYSPushbackDamageEvent : public FPointDamageEvent
 	virtual int32 GetTypeID() const override { return FYSPushbackDamageEvent::ClassID; }
 	virtual bool IsOfType(int32 InID) const override { return FYSPushbackDamageEvent::ClassID == InID || FPointDamageEvent::IsOfType(InID); }
 };
+
+/**
+ *  Coup qui « bumpe » la cible (ex. Bumping Slash du Quartermaster) : un NME non élite qui survit est lancé en cloche à
+ *  Distance dans la direction du coup (ShotDirection, comme le pushback), sans comportement pendant le vol, en tournant sur
+ *  lui-même (AYSFoeCharacter::StartBump). Un élite reçoit le pushback normal.
+ */
+USTRUCT()
+struct FYSBumpDamageEvent : public FPointDamageEvent
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	float Distance = 800.0f;
+
+	UPROPERTY()
+	float ApexHeight = 300.0f;
+
+	UPROPERTY()
+	float Duration = 1.0f;
+
+	UPROPERTY()
+	float SpinTurns = 1.0f;
+
+	FYSBumpDamageEvent() = default;
+
+	FYSBumpDamageEvent(float InDamage, const FVector& InShotDirection, TSubclassOf<UDamageType> InDamageType)
+		: FPointDamageEvent(InDamage, FHitResult(), InShotDirection, InDamageType)
+	{
+	}
+
+	static const int32 ClassID = 102;
+
+	virtual int32 GetTypeID() const override { return FYSBumpDamageEvent::ClassID; }
+	virtual bool IsOfType(int32 InID) const override { return FYSBumpDamageEvent::ClassID == InID || FPointDamageEvent::IsOfType(InID); }
+};

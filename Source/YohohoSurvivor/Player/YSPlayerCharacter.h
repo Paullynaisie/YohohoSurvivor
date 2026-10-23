@@ -112,6 +112,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C")
 	FText CharacterName;
 
+	/** Personnage unique : un seul joueur de la partie peut le choisir (ex. Quartermaster, Captain) ; grisé pour les autres */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C")
+	bool bUniqueCharacter = false;
+
+	/** Taille du personnage : échelle de tout l'acteur (capsule, corps, mains, armes) ; 1.2 = 20 % plus grand */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C", meta=(ClampMin="0.1"))
+	float CharacterScale = 1.0f;
+
 	/** Vitesse de déplacement maximale */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Movement", meta=(ClampMin="0", Units="CentimetersPerSecond"))
 	float MoveSpeed = 600.0f;
@@ -743,6 +751,8 @@ public:
 
 	/** Nom affiché (repli sur le nom de la classe si CharacterName est vide) */
 	FText GetCharacterName() const { return CharacterName.IsEmpty() ? FText::FromString(GetClass()->GetName().Replace(TEXT("_C"), TEXT(""))) : CharacterName; }
+
+	bool IsUniqueCharacter() const { return bUniqueCharacter; }
 
 protected:
 

@@ -256,6 +256,9 @@ protected:
 	/** Pendant la coupe : applique les dégâts aux cibles dans la hitbox de l'arme (serveur) */
 	void ApplySwingHits();
 
+	/** Dégâts d'un coup sur une cible (serveur) ; ShotDirection = du porteur vers la cible (pushback). Ex. Bumping Slash : coup qui bumpe */
+	virtual void DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController);
+
 	/** Cibles déjà touchées par la coupe en cours */
 	TSet<TWeakObjectPtr<AActor>> HitThisSwing;
 

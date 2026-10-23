@@ -6,11 +6,32 @@
 #include "GameFramework/PlayerState.h"
 #include "UI/YSDamageNumber.h"
 #include "Net/UnrealNetwork.h"
+#include "Core/YSPlayerState.h"
 #include "Player/YSPlayerCharacter.h"
 
 AYSGameState::AYSGameState()
 {
 	DamageNumberClass = AYSDamageNumber::StaticClass();
+}
+
+bool AYSGameState::IsCharacterTaken(int32 CharacterIndex, const APlayerState* Except) const
+{
+	const UClass* CharacterClass = SelectableCharacters.IsValidIndex(CharacterIndex) ? SelectableCharacters[CharacterIndex].Get() : nullptr;
+	const AYSPlayerCharacter* Default = CharacterClass ? CharacterClass->GetDefaultObject<AYSPlayerCharacter>() : nullptr;
+	if (!Default || !Default->IsUniqueCharacter())
+	{
+		return false;
+	}
+
+	for (const APlayerState* Player : PlayerArray)
+	{
+		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player);
+		if (YSPlayer && YSPlayer != Except && YSPlayer->GetSelectedCharacterIndex() == CharacterIndex)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

@@ -51,5 +51,13 @@ public:
 	/** Ajoute une ligne de visage de personnalisation (DT_CustomizationFaces) ; remplace la ligne du même nom */
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static bool AddCustomizationFaceRow(class UDataTable* Table, FName RowName, class UTexture2D* Face);
+
+	/**
+	 *  Copie toutes les propriétés éditables (EditAnywhere / EditDefaultsOnly) de Source vers Target, pour celles que Target
+	 *  possède aussi (même classe ou classe parente commune) ; retourne le nombre de propriétés copiées.
+	 *  Ex. réglages de l'Auto swing de BP_Epee vers celui d'une nouvelle arme.
+	 */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static int32 CopyEditableProperties(UObject* Source, UObject* Target);
 #endif
 };
