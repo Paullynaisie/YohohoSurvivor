@@ -578,6 +578,12 @@ public:
 
 	float GetBaseHealthRegen() const { return BaseHealthRegen; }
 
+	/** Hps regen de base ramenée à la seconde (fiche du personnage) */
+	float GetBaseHealthRegenPerSecond() const { return HealthRegenInterval > 0.0f ? BaseHealthRegen / HealthRegenInterval : BaseHealthRegen; }
+
+	/** Taille du personnage : Character Scale x Character Scale Multiplier du set d'arme (1 = normale) */
+	float GetCharacterSize() const;
+
 	/** Armor (serveur) */
 	void SetArmor(float Amount) { Armor = Amount; }
 

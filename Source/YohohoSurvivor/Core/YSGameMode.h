@@ -69,6 +69,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))
 	int32 UpgradeChoiceCount = 3;
 
+	/** Bouton « Relance » du menu d'upgrade : chaque joueur peut retirer ses propositions autant qu'il veut (jamais les upgrades de classe) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level")
+	bool bAllowUpgradeReroll = true;
+
 	/** Niveau d'équipe où chaque joueur choisit sa classe (upgrades de classe de son personnage, sans hasard) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))
 	int32 ClassUpgradeLevel = 5;
@@ -176,8 +180,13 @@ public:
 	/** XP gagnée par l'équipe (NME tué, debug) : gère les montées de niveau et la sélection d'upgrade */
 	void AddTeamExperience(float Amount);
 
+	bool IsUpgradeRerollAllowed() const { return bAllowUpgradeReroll; }
+
 	/** Choix d'upgrade d'un joueur (reçu par RPC du PlayerController ; index dans ses propositions) */
 	void PlayerChoseUpgrade(APlayerController* Player, int32 OfferIndex);
+
+	/** « Relance » d'un joueur : nouvelles propositions pour lui seul (pas pour un choix de classe), sans attendre les autres */
+	void PlayerRerolledUpgrades(APlayerController* Player);
 
 	/** Fin du jour : la nuit commence (élite et vagues de nuit via les règles de spawn) */
 	void StartNight();

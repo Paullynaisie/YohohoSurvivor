@@ -19,26 +19,47 @@ class UYSCharacterSelectWidget;
 DECLARE_DELEGATE_OneParam(FYSOnCharacterChosen, int32 /*CharacterIndex*/);
 DECLARE_DELEGATE_OneParam(FYSOnNicknameCommitted, const FString& /*Nickname*/);
 
-/** Une ligne de texte d'un bouton de choix (upgrades : nom, valeur rayée, nouvelle valeur en gras…) */
+/** Fiche du personnage affichée à côté des choix (colonne « infos ») */
 USTRUCT(BlueprintType)
-struct FYSChoiceLine
+struct FYSCharacterInfo
 {
 	GENERATED_BODY()
 
-	UPROPERTY(BlueprintReadWrite, Category="Choice")
-	FText Text;
+	// section 1 : le personnage
 
-	UPROPERTY(BlueprintReadWrite, Category="Choice")
-	FLinearColor Color = FLinearColor::White;
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	FText Name;
 
-	UPROPERTY(BlueprintReadWrite, Category="Choice")
-	int32 FontSize = 16;
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	float MaxHealth = 0.0f;
 
-	UPROPERTY(BlueprintReadWrite, Category="Choice")
-	bool bBold = false;
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	float HealthRegenPerSecond = 0.0f;
 
-	UPROPERTY(BlueprintReadWrite, Category="Choice")
-	bool bStrikethrough = false;
+	/** Taille (1 = normale : pas affichée) */
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	float Size = 1.0f;
+
+	// section 2 : ses armes (noms seulement)
+
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	FText WeaponSetName;
+
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	FText AutoAtkName;
+
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	FText AbilityName;
+
+	/** Passif (à venir ; vide = pas affiché) */
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	FText PassiveName;
+
+	bool operator==(const FYSCharacterInfo& Other) const
+	{
+		return Name.EqualTo(Other.Name) && MaxHealth == Other.MaxHealth && HealthRegenPerSecond == Other.HealthRegenPerSecond && Size == Other.Size
+			&& WeaponSetName.EqualTo(Other.WeaponSetName) && AutoAtkName.EqualTo(Other.AutoAtkName) && AbilityName.EqualTo(Other.AbilityName) && PassiveName.EqualTo(Other.PassiveName);
+	}
 };
 
 /** Relie le clic d'un bouton (sans paramètre) à son groupe et à son index */
@@ -49,7 +70,7 @@ class UYSCharacterSelectButtonProxy : public UObject
 
 public:
 
-	/** 0 = choix principal (personnage / upgrade), 1 = couleur, 2 = visage, 3 = « Prêt », 4 = main (0 droitier, 1 gaucher) */
+	/** 0 = choix du personnage, 1 = couleur, 2 = visage, 3 = « Prêt », 4 = main (0 droitier, 1 gaucher) */
 	int32 Group = 0;
 
 	int32 Index = INDEX_NONE;
@@ -61,11 +82,11 @@ public:
 };
 
 /**
- *  Menu plein écran de sélection du personnage, en 3 colonnes de même largeur, avec le pseudo en haut au centre :
- *  - gauche : un bouton par personnage (le choisi est illuminé) et l'état (combien de joueurs ont choisi) ;
- *  - centre : personnalisation (4 couleurs, 4 visages) ;
- *  - droite : aperçu du personnage (image d'une capture, fournie par AYSPlayerController).
- *  Réutilisé pour le choix d'upgrade : SetCustomizationVisible(false) ne garde que la colonne des choix, centrée.
+ *  Menu plein écran de sélection du personnage, en 4 colonnes, avec le pseudo en haut au centre :
+ *  - choix : un bouton par personnage (le choisi est illuminé) et l'état (combien de joueurs sont prêts) ;
+ *  - infos : fiche du personnage choisi (nom, PV, regen, taille ; set d'arme, attaque auto, Ability, passif) ;
+ *  - personnalisation : couleur, visage, main ;
+ *  - aperçu du personnage (image d'une capture, fournie par AYSPlayerController).
  *  Arbre construit en C++ ; placements réglables (catégorie Layout) dans un Widget Blueprint enfant
  *  (WBP_CharacterSelect, Class Defaults) choisi par AYSPlayerController::CharacterSelectMenuClass.
  */
@@ -112,9 +133,12 @@ public:
 
 	// ---- 3 colonnes ----
 
-	/** Largeur relative des colonnes gauche (choix) / centre (personnalisation) / droite (aperçu) */
+	/** Largeur relative des colonnes : choix (gauche) / infos / personnalisation (centre) / aperçu (droite) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns", meta=(ClampMin="0.1"))
 	float LeftColumnWeight = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns", meta=(ClampMin="0.1"))
+	float InfoColumnWeight = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns", meta=(ClampMin="0.1"))
 	float CenterColumnWeight = 1.0f;
@@ -125,6 +149,9 @@ public:
 	/** Marges de chaque colonne (décalage du contenu dans sa colonne) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns")
 	FMargin LeftColumnPadding;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns")
+	FMargin InfoColumnPadding;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Columns")
 	FMargin CenterColumnPadding;
@@ -167,6 +194,31 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
 	float StatusSpacing = 24.0f;
 
+	// ---- colonne infos : fiche du personnage ----
+
+	/** Nom du personnage */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Info")
+	int32 InfoNameFontSize = 32;
+
+	/** Lignes de la fiche (« PV max : 200 ») */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Info")
+	int32 InfoLineFontSize = 20;
+
+	/** Espace entre deux lignes */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Info")
+	float InfoLineSpacing = 6.0f;
+
+	/** Espace entre les deux sections (personnage / armes) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Info")
+	float InfoSectionSpacing = 36.0f;
+
+	/** Couleur des noms des lignes (« PV max : ») et des valeurs */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Info")
+	FLinearColor InfoLabelColor = FLinearColor(0.7f, 0.7f, 0.7f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Info")
+	FLinearColor InfoValueColor = FLinearColor::White;
+
 	// ---- colonne centre : couleur et visage ----
 
 	/** « Choisis ta couleur » / « Choisis ton visage » */
@@ -195,7 +247,7 @@ public:
 
 	/** Nombre max de boutons carrés par ligne (couleurs, visages) : au-delà, retour à la ligne sous les premiers */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization", meta=(ClampMin="1"))
-	int32 SwatchesPerRow = 8;
+	int32 SwatchesPerRow = 5;
 
 	/** Espace vertical entre deux lignes de boutons carrés */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
@@ -230,7 +282,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ready")
 	FMargin ReadyPadding = FMargin(0.0f, 0.0f, 0.0f, 40.0f);
 
-	/** Appelé quand le joueur clique sur un personnage (ou une upgrade) */
+	/** Appelé quand le joueur clique sur un personnage */
 	FYSOnCharacterChosen OnCharacterChosen;
 
 	/** Appelés quand le joueur choisit une couleur / un visage (index) */
@@ -254,13 +306,7 @@ public:
 	/** Crée un bouton par nom (une seule fois) */
 	void SetCharacters(const TArray<FText>& Names);
 
-	/** Crée un bouton par choix, chacun avec plusieurs lignes de texte (une seule fois, voir ClearChoices) */
-	void SetChoices(const TArray<TArray<FYSChoiceLine>>& Choices);
-
 	bool HasCharacters() const { return Buttons.Num() > 0; }
-
-	/** Supprime les boutons (pour proposer de nouveaux choix) */
-	void ClearChoices();
 
 	/** Titre affiché au-dessus des boutons */
 	void SetTitle(const FText& Title);
@@ -270,8 +316,8 @@ public:
 
 	void SetStatus(const FText& Status);
 
-	/** Affiche le pseudo, la personnalisation et l'aperçu (faux pour le menu d'upgrade) */
-	void SetCustomizationVisible(bool bVisible);
+	/** Fiche du personnage choisi (colonne infos ; reconstruite seulement si elle change) */
+	void SetCharacterInfo(const FYSCharacterInfo& Info);
 
 	/** Crée les boutons de couleur et de visage (une seule fois) */
 	void SetCustomizationOptions(const TArray<FLinearColor>& Colors, const TArray<UTexture2D*>& Faces);
@@ -334,9 +380,6 @@ private:
 
 	/** Pseudo (en haut au centre) */
 	UPROPERTY(Transient)
-	TObjectPtr<UWidget> NicknameRow;
-
-	UPROPERTY(Transient)
 	TObjectPtr<UEditableTextBox> NicknameBox;
 
 	/** Le champ du pseudo avait le focus à la dernière frame (clic dessus = pseudo effacé) */
@@ -345,12 +388,13 @@ private:
 	/** Pseudo avant le clic : remis si on valide le champ vide */
 	FText NicknameBeforeEdit;
 
-	/** Colonnes centre (personnalisation) et droite (aperçu) */
+	/** Colonne infos (fiche du personnage) et fiche affichée */
 	UPROPERTY(Transient)
-	TObjectPtr<UWidget> CustomizationColumn;
+	TObjectPtr<UVerticalBox> InfoColumn;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UWidget> PreviewColumn;
+	FYSCharacterInfo DisplayedInfo;
+
+	bool bHasDisplayedInfo = false;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UImage> PreviewImage;
@@ -375,9 +419,6 @@ private:
 	TArray<FLinearColor> ColorValues;
 
 	/** Bouton « Prêt » (en bas au centre) */
-	UPROPERTY(Transient)
-	TObjectPtr<UWidget> ReadyRow;
-
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> ReadyButton;
 

@@ -3,6 +3,7 @@
 #include "Abilities/YSBombThrowerAbility.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSWeapon.h"
+#include "Weapons/YSWeaponSet.h"
 #include "Blueprint/GameViewportSubsystem.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Components/CapsuleComponent.h"
@@ -14,6 +15,7 @@
 #include "UI/YSAbilityIconWidget.h"
 #include "UI/YSBloodlustStacksWidget.h"
 #include "UI/YSCharacterSelectWidget.h"
+#include "UI/YSUpgradeMenuWidget.h"
 #include "UI/YSPlayerHUDWidget.h"
 #include "UI/YSOffscreenIndicatorsWidget.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
@@ -151,12 +153,10 @@ void AYSPlayerController::BeginPlay()
 			BannerSlot.ZOrder = 5;
 			ViewportSubsystem->AddWidgetForPlayer(DayBanner, GetLocalPlayer(), BannerSlot);
 
-			// choix d'upgrade : plein écran comme la sélection de personnage, boutons plus hauts (nom + description)
-			UpgradeMenu = CreateWidget<UYSCharacterSelectWidget>(this, UYSCharacterSelectWidget::StaticClass());
-			UpgradeMenu->ButtonSize = FVector2D(440.0f, 130.0f);
-			UpgradeMenu->ButtonFontSize = 18;
-			UpgradeMenu->OnCharacterChosen.BindUObject(this, &AYSPlayerController::ChooseUpgrade);
-			UpgradeMenu->SetCustomizationVisible(false);
+			// choix d'upgrade : plein écran, une grande carte par proposition, « Relance » en bas (placements dans le Widget Blueprint)
+			UpgradeMenu = CreateWidget<UYSUpgradeMenuWidget>(this, UpgradeMenuClass ? UpgradeMenuClass.Get() : UYSUpgradeMenuWidget::StaticClass());
+			UpgradeMenu->OnOfferChosen.BindUObject(this, &AYSPlayerController::ChooseUpgrade);
+			UpgradeMenu->OnRerollClicked.BindUObject(this, &AYSPlayerController::RerollUpgrades);
 			UpgradeMenu->SetVisibility(ESlateVisibility::Collapsed);
 			FGameViewportWidgetSlot UpgradeSlot;
 			UpgradeSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
@@ -406,6 +406,36 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	if (bHasCharacter || bDead)
 	{
 		return;
+	}
+
+	// fiche du personnage choisi, lue sur l'aperçu (même classe, mêmes armes)
+	if (PreviewCharacter)
+	{
+		FYSCharacterInfo Info;
+		Info.Name = PreviewCharacter->GetCharacterName();
+		Info.MaxHealth = PreviewCharacter->GetMaxHealth();
+		Info.HealthRegenPerSecond = PreviewCharacter->GetBaseHealthRegenPerSecond();
+		Info.Size = PreviewCharacter->GetCharacterSize();
+		Info.WeaponSetName = PreviewCharacter->GetWeaponSet() ? PreviewCharacter->GetWeaponSet()->DisplayName : FText::GetEmpty();
+		// noms des actions des deux armes, sans doublon (akimbo) : « Auto swing », « Auto shot & Auto swing »
+		TArray<FString> AutoAtkNames;
+		TArray<FString> AbilityNames;
+		for (const AYSWeapon* Weapon : { PreviewCharacter->GetMainHandWeapon(), PreviewCharacter->GetOffHandWeapon() })
+		{
+			const UYSAbilityComponent* AutoAtk = Weapon ? Weapon->GetAutoAction() : nullptr;
+			const UYSAbilityComponent* Ability = Weapon ? Weapon->GetActiveAction() : nullptr;
+			if (AutoAtk && !AutoAtk->DisplayName.IsEmpty())
+			{
+				AutoAtkNames.AddUnique(AutoAtk->DisplayName.ToString());
+			}
+			if (Ability && !Ability->DisplayName.IsEmpty())
+			{
+				AbilityNames.AddUnique(Ability->DisplayName.ToString());
+			}
+		}
+		Info.AutoAtkName = FText::FromString(FString::Join(AutoAtkNames, TEXT(" & ")));
+		Info.AbilityName = FText::FromString(FString::Join(AbilityNames, TEXT(" & ")));
+		CharacterSelectMenu->SetCharacterInfo(Info);
 	}
 
 	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
@@ -854,37 +884,39 @@ void AYSPlayerController::UpdateUpgradeMenu()
 		return;
 	}
 
-	// nouvelles propositions (ou progression changée, pour des propositions identiques enchaînées) : reconstruire les boutons
+	// nouvelles propositions (ou progression changée, pour des propositions identiques enchaînées) : reconstruire les cartes
 	const int32 TotalStacks = PlayerCharacter->GetTotalUpgradeStacks();
+	const UYSUpgrade* FirstUpgrade = MyState->GetUpgradeOffers().Num() > 0 && PlayerCharacter->GetUpgradePool().IsValidIndex(MyState->GetUpgradeOffers()[0].PoolIndex) ? PlayerCharacter->GetUpgradePool()[MyState->GetUpgradeOffers()[0].PoolIndex].Get() : nullptr;
+	const bool bClassChoice = FirstUpgrade && FirstUpgrade->GetUpgradeType() == EYSUpgradeType::Class;
 
 	if (DisplayedUpgradeOffers != MyState->GetUpgradeOffers() || (DisplayedUpgradeStacks != TotalStacks && MyState->IsChoosingUpgrade()))
 	{
 		DisplayedUpgradeOffers = MyState->GetUpgradeOffers();
 		DisplayedUpgradeStacks = TotalStacks;
-		UpgradeMenu->ClearChoices();
 		// choix de classe (upgrades de classe) ou d'amélioration
-		const UYSUpgrade* FirstUpgrade = DisplayedUpgradeOffers.Num() > 0 && PlayerCharacter->GetUpgradePool().IsValidIndex(DisplayedUpgradeOffers[0].PoolIndex) ? PlayerCharacter->GetUpgradePool()[DisplayedUpgradeOffers[0].PoolIndex].Get() : nullptr;
-		const bool bClassChoice = FirstUpgrade && FirstUpgrade->GetUpgradeType() == EYSUpgradeType::Class;
 		UpgradeMenu->SetTitle(FText::Format(bClassChoice ? NSLOCTEXT("YS", "ClassUpgradeTitle", "Niveau {0} ! Choisis ta classe") : NSLOCTEXT("YS", "UpgradeTitle", "Niveau {0} ! Choisis une amélioration"), YSGameState->GetUpgradeSelectionLevel()));
 
-		TArray<TArray<FYSChoiceLine>> Choices;
+		TArray<FYSUpgradeCard> Cards;
 		for (const FYSUpgradeOffer& Offer : DisplayedUpgradeOffers)
 		{
-			TArray<FYSChoiceLine>& Lines = Choices.AddDefaulted_GetRef();
+			FYSUpgradeCard& Card = Cards.AddDefaulted_GetRef();
 			const UYSUpgrade* Upgrade = PlayerCharacter->GetUpgradePool().IsValidIndex(Offer.PoolIndex) ? PlayerCharacter->GetUpgradePool()[Offer.PoolIndex].Get() : nullptr;
 			if (Upgrade)
 			{
-				Upgrade->GetOfferLines(PlayerCharacter, Offer.Variant, PlayerCharacter->GetUpgradeProgress(Offer.PoolIndex, Offer.Variant), Offer.Rarity, Lines);
+				Upgrade->GetOfferCard(PlayerCharacter, Offer.Variant, PlayerCharacter->GetUpgradeProgress(Offer.PoolIndex, Offer.Variant), Offer.Rarity, Card);
 			}
 			else
 			{
-				Lines.AddDefaulted_GetRef().Text = FText::FromString(TEXT("?"));
+				Card.Name = FText::FromString(TEXT("?"));
 			}
 		}
-		UpgradeMenu->SetChoices(Choices);
+		UpgradeMenu->SetCards(Cards);
 	}
 
 	UpgradeMenu->SetSelectedIndex(MyState->GetChosenUpgradeOffer());
+	// relance : seulement tant que le joueur n'a pas choisi, jamais pour un choix de classe
+	const AYSGameMode* AuthGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	UpgradeMenu->SetRerollVisible(MyState->IsChoosingUpgrade() && !bClassChoice && (!AuthGameMode || AuthGameMode->IsUpgradeRerollAllowed()));
 
 	// debug / tests automatisés en réseau : -YSAutoUpgrade choisit la première proposition
 	if (MyState->IsChoosingUpgrade() && FParse::Param(FCommandLine::Get(), TEXT("YSAutoUpgrade")))
@@ -922,6 +954,28 @@ void AYSPlayerController::ServerChooseUpgrade_Implementation(int32 OfferIndex)
 	{
 		GameMode->PlayerChoseUpgrade(this, OfferIndex);
 	}
+}
+
+void AYSPlayerController::RerollUpgrades()
+{
+	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
+	if (MyState && MyState->IsChoosingUpgrade())
+	{
+		ServerRerollUpgrades();
+	}
+}
+
+void AYSPlayerController::ServerRerollUpgrades_Implementation()
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->PlayerRerolledUpgrades(this);
+	}
+}
+
+void AYSPlayerController::YSRerollUpgrades()
+{
+	RerollUpgrades();
 }
 
 void AYSPlayerController::YSAddXP(float Amount)

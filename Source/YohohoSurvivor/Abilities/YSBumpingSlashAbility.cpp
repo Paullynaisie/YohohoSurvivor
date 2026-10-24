@@ -3,6 +3,7 @@
 
 UYSBumpingSlashAbility::UYSBumpingSlashAbility()
 {
+	DisplayName = NSLOCTEXT("YS", "BumpingSlash", "Bumping Slash");
 	bDashInvulnerable = false;
 }
 

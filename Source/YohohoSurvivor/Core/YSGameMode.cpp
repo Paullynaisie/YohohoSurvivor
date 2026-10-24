@@ -184,6 +184,33 @@ void AYSGameMode::PlayerChoseUpgrade(APlayerController* Player, int32 OfferIndex
 	TryFinishUpgradeSelection();
 }
 
+void AYSGameMode::PlayerRerolledUpgrades(APlayerController* Player)
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
+	const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
+	if (!bAllowUpgradeReroll || !YSGameState || !YSGameState->IsUpgradeSelectionActive() || !PlayerState || !Character || !Character->IsAlive()
+		|| !PlayerState->IsChoosingUpgrade())
+	{
+		return;
+	}
+
+	// jamais pour un choix de classe
+	const FYSUpgradeOffer& FirstOffer = PlayerState->GetUpgradeOffers()[0];
+	const UYSUpgrade* FirstUpgrade = Character->GetUpgradePool().IsValidIndex(FirstOffer.PoolIndex) ? Character->GetUpgradePool()[FirstOffer.PoolIndex].Get() : nullptr;
+	if (!FirstUpgrade || FirstUpgrade->GetUpgradeType() == EYSUpgradeType::Class)
+	{
+		return;
+	}
+
+	const TArray<FYSUpgradeOffer> Offers = Character->PickUpgradeOffers(UpgradeChoiceCount);
+	if (Offers.Num() > 0)
+	{
+		PlayerState->SetUpgradeOffers(Offers);
+		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s relance ses upgrades : %d proposition(s)"), *PlayerState->GetPlayerName(), Offers.Num());
+	}
+}
+
 void AYSGameMode::TryFinishUpgradeSelection()
 {
 	AYSGameState* YSGameState = GetGameState<AYSGameState>();

@@ -76,7 +76,6 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	// pseudo : en haut au centre
 	USizeBox* NicknameSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("NicknameRow"));
 	NicknameSize->SetWidthOverride(NicknameWidth);
-	NicknameRow = NicknameSize;
 	NicknameBox = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("Nickname"));
 	NicknameBox->SetHintText(NSLOCTEXT("YS", "NicknameHint", "Ton pseudo"));
 	NicknameBox->SetJustification(ETextJustify::Center);
@@ -90,7 +89,7 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	NicknameSlot->SetHorizontalAlignment(HAlign_Center);
 	NicknameSlot->SetPadding(NicknamePadding);
 
-	// 3 colonnes de même largeur
+	// 4 colonnes : choix, infos, personnalisation, aperçu
 	UHorizontalBox* Columns = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Columns"));
 	UVerticalBoxSlot* ColumnsSlot = Page->AddChildToVerticalBox(Columns);
 	ColumnsSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
@@ -105,7 +104,7 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 		ColumnSlot->SetVerticalAlignment(ColumnVerticalAlignment);
 	};
 
-	// gauche : choix principal (personnage / upgrade)
+	// gauche : choix du personnage
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
 	AddColumn(Column, LeftColumnWeight, LeftColumnPadding);
 
@@ -129,9 +128,12 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	StatusSlot->SetHorizontalAlignment(HAlign_Center);
 	StatusSlot->SetPadding(FMargin(0.0f, StatusSpacing, 0.0f, 0.0f));
 
+	// infos : fiche du personnage choisi (remplie par SetCharacterInfo)
+	InfoColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Info"));
+	AddColumn(InfoColumn, InfoColumnWeight, InfoColumnPadding);
+
 	// centre : couleur et visage
 	UVerticalBox* Customization = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Customization"));
-	CustomizationColumn = Customization;
 	AddColumn(Customization, CenterColumnWeight, CenterColumnPadding);
 
 	UVerticalBoxSlot* ColorTitleSlot = Customization->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "ColorTitle", "Choisis ta couleur"), SectionTitleFontSize));
@@ -179,7 +181,6 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	USizeBox* Preview = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("Preview"));
 	Preview->SetWidthOverride(PreviewSize.X);
 	Preview->SetHeightOverride(PreviewSize.Y);
-	PreviewColumn = Preview;
 	PreviewImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("PreviewImage"));
 	PreviewImage->SetColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, 0.0f));
 	Preview->AddChild(PreviewImage);
@@ -189,7 +190,6 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	USizeBox* ReadySize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ReadyRow"));
 	ReadySize->SetWidthOverride(ReadyButtonSize.X);
 	ReadySize->SetHeightOverride(ReadyButtonSize.Y);
-	ReadyRow = ReadySize;
 	ReadyButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Ready"));
 	ReadyButton->SetBackgroundColor(NormalColor);
 	ReadyButton->AddChild(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "ReadyButton", "Prêt"), ReadyFontSize));
@@ -306,16 +306,62 @@ void UYSCharacterSelectWidget::SetSelectedFace(int32 SelectedIndex)
 	}
 }
 
-void UYSCharacterSelectWidget::SetCustomizationVisible(bool bVisible)
+void UYSCharacterSelectWidget::SetCharacterInfo(const FYSCharacterInfo& Info)
 {
-	const ESlateVisibility NewVisibility = bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
-	for (UWidget* Widget : { NicknameRow.Get(), CustomizationColumn.Get(), PreviewColumn.Get(), ReadyRow.Get() })
+	if (!InfoColumn || (bHasDisplayedInfo && DisplayedInfo == Info))
 	{
-		if (Widget)
-		{
-			Widget->SetVisibility(NewVisibility);
-		}
+		return;
 	}
+	DisplayedInfo = Info;
+	bHasDisplayedInfo = true;
+	InfoColumn->ClearChildren();
+
+	auto AddWidget = [this](UWidget* Widget, float TopSpacing)
+	{
+		UVerticalBoxSlot* LineSlot = InfoColumn->AddChildToVerticalBox(Widget);
+		LineSlot->SetHorizontalAlignment(HAlign_Left);
+		LineSlot->SetPadding(FMargin(0.0f, InfoColumn->GetChildrenCount() > 1 ? TopSpacing : 0.0f, 0.0f, 0.0f));
+	};
+	// « Nom : valeur » (valeur en gras) ; rien si la valeur est vide
+	auto AddLine = [this, &AddWidget](const FText& Label, const FText& Value, float TopSpacing)
+	{
+		if (Value.IsEmpty())
+		{
+			return;
+		}
+		UHorizontalBox* Line = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+		UTextBlock* LabelText = YSCharacterSelect::MakeLabel(WidgetTree, FText::Format(NSLOCTEXT("YS", "InfoLabel", "{0} : "), Label), InfoLineFontSize);
+		LabelText->SetColorAndOpacity(FSlateColor(InfoLabelColor));
+		Line->AddChildToHorizontalBox(LabelText);
+		UTextBlock* ValueText = YSCharacterSelect::MakeLabel(WidgetTree, Value, InfoLineFontSize);
+		FSlateFontInfo Font = ValueText->GetFont();
+		Font.TypefaceFontName = FName(TEXT("Bold"));
+		ValueText->SetFont(Font);
+		ValueText->SetColorAndOpacity(FSlateColor(InfoValueColor));
+		Line->AddChildToHorizontalBox(ValueText);
+		AddWidget(Line, TopSpacing);
+	};
+
+	FNumberFormattingOptions Format;
+	Format.MinimumFractionalDigits = 0;
+	Format.MaximumFractionalDigits = 2;
+
+	// section 1 : le personnage (taille seulement si elle n'est pas normale)
+	AddWidget(YSCharacterSelect::MakeLabel(WidgetTree, Info.Name, InfoNameFontSize), 0.0f);
+	AddLine(NSLOCTEXT("YS", "InfoMaxHealth", "PV max"), FText::AsNumber(Info.MaxHealth, &Format), InfoLineSpacing);
+	AddLine(NSLOCTEXT("YS", "InfoRegen", "Regen PV/s"), FText::AsNumber(Info.HealthRegenPerSecond, &Format), InfoLineSpacing);
+	if (!FMath::IsNearlyEqual(Info.Size, 1.0f))
+	{
+		AddLine(NSLOCTEXT("YS", "InfoSize", "Taille"), FText::Format(NSLOCTEXT("YS", "InfoSizeValue", "x{0}"), FText::AsNumber(Info.Size, &Format)), InfoLineSpacing);
+	}
+
+	// section 2 : les armes (noms seulement)
+	const int32 FirstWeaponLine = InfoColumn->GetChildrenCount();
+	auto WeaponLineSpacing = [this, FirstWeaponLine]() { return InfoColumn->GetChildrenCount() == FirstWeaponLine ? InfoSectionSpacing : InfoLineSpacing; };
+	AddLine(NSLOCTEXT("YS", "InfoWeaponSet", "Set d'arme"), Info.WeaponSetName, WeaponLineSpacing());
+	AddLine(NSLOCTEXT("YS", "InfoAutoAtk", "Auto atk"), Info.AutoAtkName, WeaponLineSpacing());
+	AddLine(NSLOCTEXT("YS", "InfoAbility", "Ability"), Info.AbilityName, WeaponLineSpacing());
+	AddLine(NSLOCTEXT("YS", "InfoPassive", "Passif"), Info.PassiveName, WeaponLineSpacing());
 }
 
 void UYSCharacterSelectWidget::SetNickname(const FText& Nickname)
@@ -384,53 +430,6 @@ void UYSCharacterSelectWidget::SetCharacters(const TArray<FText>& Names)
 	}
 }
 
-void UYSCharacterSelectWidget::SetChoices(const TArray<TArray<FYSChoiceLine>>& Choices)
-{
-	if (!ButtonList || Buttons.Num() > 0)
-	{
-		return;
-	}
-
-	for (const TArray<FYSChoiceLine>& Lines : Choices)
-	{
-		UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-		for (const FYSChoiceLine& Line : Lines)
-		{
-			UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-			Label->SetText(Line.Text);
-			FSlateFontInfo Font = Label->GetFont();
-			Font.Size = Line.FontSize;
-			Font.TypefaceFontName = Line.bBold ? FName(TEXT("Bold")) : FName(TEXT("Regular"));
-			Label->SetFont(Font);
-			Label->SetColorAndOpacity(FSlateColor(Line.Color));
-			Label->SetJustification(ETextJustify::Center);
-
-			UWidget* LineWidget = Label;
-			if (Line.bStrikethrough)
-			{
-				// texte rayé : fine barre de la couleur du texte posée par-dessus, sur toute sa largeur
-				UOverlay* Struck = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
-				Struck->AddChildToOverlay(Label);
-
-				USizeBox* LineBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-				LineBox->SetHeightOverride(FMath::Max(1.0f, Line.FontSize / 8.0f));
-				UImage* Strike = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-				Strike->SetColorAndOpacity(Line.Color);
-				LineBox->AddChild(Strike);
-
-				UOverlaySlot* StrikeSlot = Struck->AddChildToOverlay(LineBox);
-				StrikeSlot->SetHorizontalAlignment(HAlign_Fill);
-				StrikeSlot->SetVerticalAlignment(VAlign_Center);
-				LineWidget = Struck;
-			}
-
-			UVerticalBoxSlot* LineSlot = Column->AddChildToVerticalBox(LineWidget);
-			LineSlot->SetHorizontalAlignment(HAlign_Center);
-		}
-		AddChoiceButton(Column);
-	}
-}
-
 void UYSCharacterSelectWidget::AddChoiceButton(UWidget* Content)
 {
 	USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -452,16 +451,6 @@ void UYSCharacterSelectWidget::AddChoiceButton(UWidget* Content)
 
 	Buttons.Add(Button);
 	ButtonProxies.Add(Proxy);
-}
-
-void UYSCharacterSelectWidget::ClearChoices()
-{
-	if (ButtonList)
-	{
-		ButtonList->ClearChildren();
-	}
-	Buttons.Reset();
-	ButtonProxies.Reset();
 }
 
 void UYSCharacterSelectWidget::SetTitle(const FText& Title)

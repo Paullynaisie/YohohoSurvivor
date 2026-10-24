@@ -8,6 +8,7 @@
 class UYSAbilityIconWidget;
 class UYSBloodlustStacksWidget;
 class UYSCharacterSelectWidget;
+class UYSUpgradeMenuWidget;
 class UYSPlayerHUDWidget;
 class UYSEliteHealthWidget;
 class UYSDayBannerWidget;
@@ -54,6 +55,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSCharacterSelectWidget> CharacterSelectMenuClass;
 
+	/** Menu de montée de niveau : Widget Blueprint enfant de YSUpgradeMenuWidget (placements dans ses Class Defaults, catégorie Layout) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<UYSUpgradeMenuWidget> UpgradeMenuClass;
+
 	/** Jauge d'objectif (doublons, haut droite) : Widget Blueprint enfant de YSObjectiveWidget (placement et réglages dans ses Class Defaults, catégorie Layout) */
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSObjectiveWidget> ObjectiveWidgetClass;
@@ -92,9 +97,9 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UYSPlayerHUDWidget> PlayerHUD;
 
-	/** Menu de choix d'upgrade (même widget que la sélection de personnage), affiché pendant une montée de niveau */
+	/** Menu de choix d'upgrade (cartes + relance), affiché pendant une montée de niveau */
 	UPROPERTY(Transient)
-	TObjectPtr<UYSCharacterSelectWidget> UpgradeMenu;
+	TObjectPtr<UYSUpgradeMenuWidget> UpgradeMenu;
 
 	/** Barre de vie de l'élite dans le HUD (haut droite), quand il est hors écran */
 	UPROPERTY(Transient)
@@ -174,6 +179,10 @@ public:
 	/** Debug (console) : choisit une upgrade comme un clic dans le menu (index dans les propositions).  Ex : YSChooseUpgrade 0 */
 	UFUNCTION(Exec)
 	void YSChooseUpgrade(int32 OfferIndex);
+
+	/** Debug (console) : relance le tirage d'upgrades comme le bouton « Relance » */
+	UFUNCTION(Exec)
+	void YSRerollUpgrades();
 
 	/** Debug (console) : donne directement une upgrade (index dans l'Upgrade Pool, variante, rareté 1 Bronze / 2 Silver / 3 Gold).  Ex : YSGiveUpgrade 4 0 3 */
 	UFUNCTION(Exec)
@@ -378,6 +387,12 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerChooseUpgrade(int32 OfferIndex);
+
+	/** Bouton « Relance » : nouveau tirage de propositions pour ce joueur */
+	void RerollUpgrades();
+
+	UFUNCTION(Server, Reliable)
+	void ServerRerollUpgrades();
 
 	UFUNCTION(Server, Reliable)
 	void ServerAddXP(float Amount);

@@ -607,6 +607,11 @@ void AYSPlayerCharacter::ApplyCharacterScale()
 	}
 }
 
+float AYSPlayerCharacter::GetCharacterSize() const
+{
+	return CharacterScale * (WeaponSet ? WeaponSet->CharacterScaleMultiplier : 1.0f);
+}
+
 void AYSPlayerCharacter::OnRep_WeaponSet()
 {
 	ApplyCharacterScale();

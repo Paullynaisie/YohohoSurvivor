@@ -45,12 +45,13 @@ namespace YSUpgradeText
 	}
 }
 
-void UYSUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+void UYSUpgrade::GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const
 {
-	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
-	Title.Text = GetVariantName(Variant);
-	Title.FontSize = 20;
-	Title.bBold = true;
+	OutCard.Name = GetVariantNameFor(Character, Variant);
+	OutCard.RarityText = YSUpgradeText::RarityName(Rarity);
+	OutCard.Color = GetRarityColor(Rarity);
+	OutCard.Icon = Icon;
+	OutCard.Description = GetDescription(Character, Variant);
 }
 
 UYSStatUpgrade::UYSStatUpgrade()
@@ -122,48 +123,25 @@ FLinearColor UYSUpgrade::GetRarityColor(EYSUpgradeRarity Rarity) const
 	}
 }
 
-void UYSStatUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+void UYSStatUpgrade::GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const
 {
-	// nom (couleur de la rareté) + rareté et nombre de bonus après ce choix
-	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
-	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), GetVariantNameFor(Character, Variant), YSUpgradeText::RarityName(Rarity));
-	Title.Color = GetRarityColor(Rarity);
-	Title.FontSize = 20;
-	Title.bBold = true;
+	Super::GetOfferCard(Character, Variant, Progress, Rarity, OutCard);
+	OutCard.StackText = FText::Format(NSLOCTEXT("YS", "StatUpgradeStacks", "Bonus {0} / {1}"), Progress.Stacks + 1, MaxStacks);
 
-	FYSChoiceLine& StackLine = OutLines.AddDefaulted_GetRef();
-	StackLine.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeStacks", "Bonus {0} / {1}"), Progress.Stacks + 1, MaxStacks);
-	StackLine.Color = FLinearColor(0.7f, 0.7f, 0.7f);
-	StackLine.FontSize = 13;
-
-	// valeurs concrètes : actuelle rayée, nouvelle en gras
-
-	FYSChoiceLine& OldValue = OutLines.AddDefaulted_GetRef();
-	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), GetStatLabel(Character, Variant), YSUpgradeText::FormatStat(GetDisplayValue(Character, Variant, Progress.TotalValue)));
-	OldValue.Color = FLinearColor(0.65f, 0.65f, 0.65f);
-	OldValue.FontSize = 16;
-	OldValue.bStrikethrough = true;
-
-	FYSChoiceLine& NewValue = OutLines.AddDefaulted_GetRef();
-	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), GetStatLabel(Character, Variant), YSUpgradeText::FormatStat(GetDisplayValue(Character, Variant, Progress.TotalValue + GetBonusValue(Variant, Rarity))));
-	NewValue.FontSize = 18;
-	NewValue.bBold = true;
+	// valeur concrète : actuelle (rayée) et nouvelle
+	FYSUpgradeStatChange& Change = OutCard.StatChanges.AddDefaulted_GetRef();
+	Change.Label = GetStatLabel(Character, Variant);
+	Change.OldValue = YSUpgradeText::FormatStat(GetDisplayValue(Character, Variant, Progress.TotalValue));
+	Change.NewValue = YSUpgradeText::FormatStat(GetDisplayValue(Character, Variant, Progress.TotalValue + GetBonusValue(Variant, Rarity)));
 
 	// effet en plus : dégâts des coups critiques (Atk speed, Shoot system)
 	const float CriticalBonus = GetCriticalDamageBonus(Rarity);
 	if (CriticalBonus > 0.0f && Character)
 	{
-		FYSChoiceLine& OldCritical = OutLines.AddDefaulted_GetRef();
-		OldCritical.Text = FText::Format(NSLOCTEXT("YS", "CriticalDamageValue", "Dégâts critiques (%) : {0}"), YSUpgradeText::FormatStat(Character->GetCriticalDamageMultiplier() * 100.0f));
-		OldCritical.Color = FLinearColor(0.65f, 0.65f, 0.65f);
-		OldCritical.FontSize = 14;
-		OldCritical.bStrikethrough = true;
-
-		FYSChoiceLine& NewCritical = OutLines.AddDefaulted_GetRef();
-		NewCritical.Text = FText::Format(NSLOCTEXT("YS", "CriticalDamageValue", "Dégâts critiques (%) : {0}"),
-			YSUpgradeText::FormatStat((Character->GetBaseCriticalDamageMultiplier() + Character->GetCriticalDamageAdd()) * (1.0f + Character->GetCriticalDamageBonus() + CriticalBonus) * 100.0f));
-		NewCritical.FontSize = 16;
-		NewCritical.bBold = true;
+		FYSUpgradeStatChange& Critical = OutCard.StatChanges.AddDefaulted_GetRef();
+		Critical.Label = NSLOCTEXT("YS", "CriticalDamageLabel", "Dégâts critiques (%)");
+		Critical.OldValue = YSUpgradeText::FormatStat(Character->GetCriticalDamageMultiplier() * 100.0f);
+		Critical.NewValue = YSUpgradeText::FormatStat((Character->GetBaseCriticalDamageMultiplier() + Character->GetCriticalDamageAdd()) * (1.0f + Character->GetCriticalDamageBonus() + CriticalBonus) * 100.0f);
 	}
 }
 
@@ -241,6 +219,7 @@ UYSAbilityComponent* UYSHandStatUpgrade::GetSlotAction(const AYSPlayerCharacter*
 UYSHandAtkBonusUpgrade::UYSHandAtkBonusUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "HandAtkBonusName", "Damage bonus");
+	Description = NSLOCTEXT("YS", "HandAtkBonusDesc", "Augmente les dégâts de l'action");
 	BonusName = NSLOCTEXT("YS", "HandAtkBonusBonus", "Damage bonus");
 	StatLabel = NSLOCTEXT("YS", "HandAtkBonusStat", "Dégât");
 }
@@ -262,6 +241,8 @@ UYSHandCooldownReductionUpgrade::UYSHandCooldownReductionUpgrade()
 	BonusName = NSLOCTEXT("YS", "HandCooldownReductionBonus", "CD reduction");
 	StatLabel = NSLOCTEXT("YS", "HandCooldownReductionStat", "Recharge (s)");
 	AutoAtkBonusName = NSLOCTEXT("YS", "HandCooldownReductionAutoAtk", "Atk speed");
+	Description = NSLOCTEXT("YS", "HandCooldownReductionDesc", "Réduit la recharge de l'Ability");
+	AutoAtkDescription = NSLOCTEXT("YS", "AtkSpeedDesc", "Les attaques auto sont plus rapides");
 	BronzeValue = 0.03f;
 	SilverValue = 0.045f;
 	GoldValue = 0.06f;
@@ -283,24 +264,28 @@ float UYSHandCooldownReductionUpgrade::GetBaseStatValue(const AYSPlayerCharacter
 	return Action ? Action->GetBaseCooldown() : 0.0f;
 }
 
-void UYSHandCooldownReductionUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+FText UYSHandCooldownReductionUpgrade::GetDescription(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	const int32 FirstLine = OutLines.Num();
-	Super::GetOfferLines(Character, Variant, Progress, Rarity, OutLines);
+	return GetSlot(Variant) == EYSActionSlot::AutoAtk && !AutoAtkDescription.IsEmpty() ? AutoAtkDescription : Description;
+}
 
-	// valeurs concrètes (actuelle rayée, nouvelle en gras = les deux dernières lignes) : réduction totale appliquée à côté
-	if (OutLines.Num() - FirstLine < 2)
+void UYSHandCooldownReductionUpgrade::GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const
+{
+	Super::GetOfferCard(Character, Variant, Progress, Rarity, OutCard);
+
+	// la recharge (première valeur ; la deuxième = dégâts critiques de l'Atk speed) : réduction totale appliquée à côté
+	if (OutCard.StatChanges.Num() == 0)
 	{
 		return;
 	}
 	FNumberFormattingOptions Format;
 	Format.MaximumFractionalDigits = 1;
-	auto AppendReduction = [&Format](FYSChoiceLine& Line, float Multiplier)
+	auto AppendReduction = [&Format](FText& Value, float Multiplier)
 	{
-		Line.Text = FText::Format(NSLOCTEXT("YS", "CooldownReductionValue", "{0} (-{1} %)"), Line.Text, FText::AsNumber((1.0f - Multiplier) * 100.0f, &Format));
+		Value = FText::Format(NSLOCTEXT("YS", "CooldownReductionValue", "{0} (-{1} %)"), Value, FText::AsNumber((1.0f - Multiplier) * 100.0f, &Format));
 	};
-	AppendReduction(OutLines[OutLines.Num() - 2], GetMultiplier(Progress.TotalValue));
-	AppendReduction(OutLines.Last(), GetMultiplier(Progress.TotalValue + GetBonusValue(Variant, Rarity)));
+	AppendReduction(OutCard.StatChanges[0].OldValue, GetMultiplier(Progress.TotalValue));
+	AppendReduction(OutCard.StatChanges[0].NewValue, GetMultiplier(Progress.TotalValue + GetBonusValue(Variant, Rarity)));
 }
 
 void UYSHandCooldownReductionUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
@@ -317,6 +302,7 @@ bool UYSHandCooldownReductionUpgrade::IsActionEligible(const UYSAbilityComponent
 UYSShootSystemUpgrade::UYSShootSystemUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "ShootSystemName", "Shoot system");
+	Description = NSLOCTEXT("YS", "ShootSystemDesc", "Améliore le tir de l'attaque auto");
 	BonusName = NSLOCTEXT("YS", "ShootSystemBonus", "Shoot system");
 	StatLabel = NSLOCTEXT("YS", "ShootSystemStat", "Balles par rafale");
 	ShotgunStatLabel = NSLOCTEXT("YS", "ShootSystemShotgunStat", "Shotgun AMMO par tir");
@@ -392,6 +378,7 @@ void UYSShootSystemUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Vari
 UYSSummonSystemUpgrade::UYSSummonSystemUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "SummonSystemName", "Summon system");
+	Description = NSLOCTEXT("YS", "SummonSystemDesc", "Plus de minions en même temps");
 	BonusName = NSLOCTEXT("YS", "SummonSystemBonus", "Summon system");
 	StatLabel = NSLOCTEXT("YS", "SummonSystemStat", "Minions max");
 	bAutoAtkVariant = false;
@@ -424,6 +411,7 @@ void UYSSummonSystemUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Var
 UYSMoveSpeedBonusUpgrade::UYSMoveSpeedBonusUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "MoveSpeedBonusName", "Move speed bonus");
+	Description = NSLOCTEXT("YS", "MoveSpeedBonusDesc", "Augmente la vitesse de déplacement");
 	OfferWeight = 5.0f;
 	StatLabel = NSLOCTEXT("YS", "MoveSpeedBonusStat", "Vitesse");
 	BronzeValue = 0.025f;
@@ -444,6 +432,7 @@ void UYSMoveSpeedBonusUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 V
 UYSHealthBonusUpgrade::UYSHealthBonusUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "HealthBonusName", "Hps bonus");
+	Description = NSLOCTEXT("YS", "HealthBonusDesc", "Augmente les PV max");
 	OfferWeight = 5.0f;
 	StatLabel = NSLOCTEXT("YS", "HealthBonusStat", "PV max");
 	BronzeValue = 0.05f;
@@ -464,6 +453,7 @@ void UYSHealthBonusUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Vari
 UYSHealthRegenUpgrade::UYSHealthRegenUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "HealthRegenName", "Hps regen");
+	Description = NSLOCTEXT("YS", "HealthRegenDesc", "Rend plus de PV par seconde\nquand on ne subit pas de dégât");
 	StatLabel = NSLOCTEXT("YS", "HealthRegenStat", "Regen PV/s");
 	OfferWeight = 5.0f;
 	BronzeValue = 1.0f;
@@ -485,6 +475,7 @@ void UYSHealthRegenUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Vari
 UYSArmorUpgrade::UYSArmorUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "ArmorName", "Armor");
+	Description = NSLOCTEXT("YS", "ArmorDesc", "Réduit les dégâts de chaque coup reçu");
 	StatLabel = NSLOCTEXT("YS", "ArmorStat", "Armure");
 	OfferWeight = 5.0f;
 	BronzeValue = 1.0f;
@@ -500,6 +491,7 @@ void UYSArmorUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, f
 UYSLuckUpgrade::UYSLuckUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "LuckName", "Luck");
+	Description = NSLOCTEXT("YS", "LuckDesc", "Plus de chances d'obtenir des upgrades Gold");
 	StatLabel = NSLOCTEXT("YS", "LuckStat", "Chance Gold (%)");
 	OfferWeight = 10.0f;
 	bCanBeBronze = false;
@@ -522,6 +514,7 @@ void UYSLuckUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, fl
 UYSCriticalDamageUpgrade::UYSCriticalDamageUpgrade()
 {
 	DisplayName = NSLOCTEXT("YS", "CriticalDamageName", "Dégât critique");
+	Description = NSLOCTEXT("YS", "CriticalDamageDesc", "Augmente les dégâts des coups critiques");
 	StatLabel = NSLOCTEXT("YS", "CriticalDamageStat", "Dégâts critiques (%)");
 	OfferWeight = 10.0f;
 	BronzeValue = 0.4f;
@@ -653,40 +646,30 @@ float UYSWeaponUpgrade::GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) co
 	return Rarity == EYSUpgradeRarity::Gold ? BonusGoldValue : Rarity == EYSUpgradeRarity::Silver ? BonusSilverValue : 0.0f;
 }
 
-void UYSWeaponUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+FText UYSWeaponUpgrade::GetDescription(const AYSPlayerCharacter* Character, int32 Variant) const
 {
-	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
-	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), GetVariantNameFor(Character, Variant), YSUpgradeText::RarityName(Rarity));
-	Title.Color = GetRarityColor(Rarity);
-	Title.FontSize = 20;
-	Title.bBold = true;
+	switch (GetTier(Variant))
+	{
+	case EYSWeaponUpgradeTier::Unlock:	return UnlockDescription;
+	case EYSWeaponUpgradeTier::Bonus:	return BonusDescription.IsEmpty() ? Description : BonusDescription;
+	default:							return SuperDescription;
+	}
+}
 
+void UYSWeaponUpgrade::GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const
+{
+	Super::GetOfferCard(Character, Variant, Progress, Rarity, OutCard);
 	if (GetTier(Variant) != EYSWeaponUpgradeTier::Bonus)
 	{
-		// déblocage / super : description de la propriété
-		FYSChoiceLine& Description = OutLines.AddDefaulted_GetRef();
-		Description.Text = GetTier(Variant) == EYSWeaponUpgradeTier::Unlock ? UnlockDescription : SuperDescription;
-		Description.FontSize = 15;
-		Description.bBold = true;
 		return;
 	}
 
-	// bonus : comme une upgrade de stat (valeur concrète actuelle rayée, nouvelle en gras)
-	FYSChoiceLine& StackLine = OutLines.AddDefaulted_GetRef();
-	StackLine.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeStacks", "Bonus {0} / {1}"), Progress.Stacks + 1, MaxBonusStacks);
-	StackLine.Color = FLinearColor(0.7f, 0.7f, 0.7f);
-	StackLine.FontSize = 13;
-
-	FYSChoiceLine& OldValue = OutLines.AddDefaulted_GetRef();
-	OldValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), BonusStatLabel, YSUpgradeText::FormatStat(GetBonusDisplayValue(Character, Progress.TotalValue)));
-	OldValue.Color = FLinearColor(0.65f, 0.65f, 0.65f);
-	OldValue.FontSize = 16;
-	OldValue.bStrikethrough = true;
-
-	FYSChoiceLine& NewValue = OutLines.AddDefaulted_GetRef();
-	NewValue.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeValue", "{0} : {1}"), BonusStatLabel, YSUpgradeText::FormatStat(GetBonusDisplayValue(Character, Progress.TotalValue + GetBonusValue(Variant, Rarity))));
-	NewValue.FontSize = 18;
-	NewValue.bBold = true;
+	// bonus : comme une upgrade de stat (valeur concrète actuelle et nouvelle)
+	OutCard.StackText = FText::Format(NSLOCTEXT("YS", "StatUpgradeStacks", "Bonus {0} / {1}"), Progress.Stacks + 1, MaxBonusStacks);
+	FYSUpgradeStatChange& Change = OutCard.StatChanges.AddDefaulted_GetRef();
+	Change.Label = BonusStatLabel;
+	Change.OldValue = YSUpgradeText::FormatStat(GetBonusDisplayValue(Character, Progress.TotalValue));
+	Change.NewValue = YSUpgradeText::FormatStat(GetBonusDisplayValue(Character, Progress.TotalValue + GetBonusValue(Variant, Rarity)));
 }
 
 void UYSWeaponUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
@@ -713,6 +696,7 @@ UYSRicochetUpgrade::UYSRicochetUpgrade()
 	ExcludedActionClasses.Add(UYSRollAndBombAbility::StaticClass());
 	UnlockName = NSLOCTEXT("YS", "RicochetUnlockName", "Ricochet");
 	UnlockDescription = NSLOCTEXT("YS", "RicochetUnlockDesc", "Après avoir touché, la balle ricoche\nvers le NME le plus proche");
+	BonusDescription = NSLOCTEXT("YS", "RicochetBonusDesc", "Chaque ricochet fait plus de dégâts");
 	BonusName = NSLOCTEXT("YS", "RicochetBonusName", "Ricochet bonus");
 	BonusStatLabel = NSLOCTEXT("YS", "RicochetBonusStat", "Dégât après ricochet");
 	BonusSilverValue = 0.15f;
@@ -741,6 +725,7 @@ UYSBloodlustUpgrade::UYSBloodlustUpgrade()
 	RequiredSlot = EYSActionSlot::AutoAtk;
 	UnlockName = NSLOCTEXT("YS", "BloodlustUnlockName", "Bloodlust");
 	UnlockDescription = NSLOCTEXT("YS", "BloodlustUnlockDesc", "Chaque Auto swing qui touche donne une BL stack (max 5) :\n+5 % de vitesse d'atk par stack, perdues après 3 s sans toucher");
+	BonusDescription = NSLOCTEXT("YS", "BloodlustBonusDesc", "Plus de vitesse d'atk par BL stack");
 	BonusName = NSLOCTEXT("YS", "BloodlustBonusName", "Bloodlust Atk speed");
 	BonusStatLabel = NSLOCTEXT("YS", "BloodlustBonusStat", "Atk speed par BL stack (%)");
 	BonusSilverValue = 0.01f;
@@ -761,6 +746,7 @@ UYSBloodRageUpgrade::UYSBloodRageUpgrade()
 	RequiredSlot = EYSActionSlot::AutoAtk;
 	UnlockName = NSLOCTEXT("YS", "BloodRageUnlockName", "BloodRage");
 	UnlockDescription = NSLOCTEXT("YS", "BloodRageUnlockDesc", "Chaque coup reçu donne une stack de rage (max 5) :\nau maximum, la prochaine attaque est critique.\nStacks perdues après 10 s sans subir de coup");
+	BonusDescription = NSLOCTEXT("YS", "BloodRageBonusDesc", "Armure en plus par stack de rage");
 	BonusName = NSLOCTEXT("YS", "BloodRageBonusName", "BloodRage ++");
 	BonusStatLabel = NSLOCTEXT("YS", "BloodRageBonusStat", "Armure par stack de rage");
 	BonusSilverValue = 5.0f;
@@ -784,6 +770,7 @@ UYSMineUpgrade::UYSMineUpgrade()
 	RequiredActionClass = UYSRollAndBombAbility::StaticClass();
 	UnlockName = NSLOCTEXT("YS", "MineUnlockName", "Une Mine !");
 	UnlockDescription = NSLOCTEXT("YS", "MineUnlockDesc", "La bombe devient une mine : elle s'arme au lieu d'exploser,\npuis explose dès qu'un NME entre dans sa zone");
+	BonusDescription = NSLOCTEXT("YS", "MineBonusDesc", "Les mines repoussent les NME");
 	BonusName = NSLOCTEXT("YS", "MineBonusName", "Mine repulsante");
 	BonusStatLabel = NSLOCTEXT("YS", "MineBonusStat", "Pushback des mines");
 	BonusSilverValue = 100.0f;
@@ -810,6 +797,7 @@ UYSYoloUpgrade::UYSYoloUpgrade()
 	RequiredSlot = EYSActionSlot::AutoAtk;
 	UnlockName = NSLOCTEXT("YS", "YoloUnlockName", "Yoloooooo");
 	UnlockDescription = NSLOCTEXT("YS", "YoloUnlockDesc", "L'attaque auto part en continu,\nmême sans cible");
+	BonusDescription = NSLOCTEXT("YS", "YoloBonusDesc", "Chaîne, boulet et hitbox plus grands");
 	BonusName = NSLOCTEXT("YS", "YoloBonusName", "Yoloooooo++");
 	BonusStatLabel = NSLOCTEXT("YS", "YoloBonusStat", "Taille du boulet et de la chaîne (+%)");
 	BonusSilverValue = 0.2f;
@@ -835,6 +823,7 @@ UYSAllMyMinionsUpgrade::UYSAllMyMinionsUpgrade()
 	RequiredActionClass = UYSGoMinionsAbility::StaticClass();
 	UnlockName = NSLOCTEXT("YS", "AllMyMinionsUnlockName", "You're all my minions");
 	UnlockDescription = NSLOCTEXT("YS", "AllMyMinionsUnlockDesc", "Allez-y mes minions ! force aussi l'Ability\ndes joueurs proches du Captain (sans leur recharge)");
+	BonusDescription = NSLOCTEXT("YS", "AllMyMinionsBonusDesc", "Les abilities forcées font plus de dégâts");
 	BonusName = NSLOCTEXT("YS", "AllMyMinionsBonusName", "You're all my minions ++");
 	BonusStatLabel = NSLOCTEXT("YS", "AllMyMinionsBonusStat", "Dégâts des abilities forcées (+%)");
 	BonusSilverValue = 0.2f;
@@ -880,25 +869,13 @@ bool UYSClassUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Va
 	return bSetMatches && bClassMatches;
 }
 
-void UYSClassUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+void UYSClassUpgrade::GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const
 {
-	FYSChoiceLine& Kind = OutLines.AddDefaulted_GetRef();
-	Kind.Text = NSLOCTEXT("YS", "ClassUpgradeKind", "Classe");
-	Kind.Color = FLinearColor(0.7f, 0.7f, 0.7f);
-	Kind.FontSize = 13;
-
-	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
-	Title.Text = GetVariantName(Variant);
-	Title.Color = GoldColor;
-	Title.FontSize = 22;
-	Title.bBold = true;
-
-	if (!Description.IsEmpty())
-	{
-		FYSChoiceLine& Line = OutLines.AddDefaulted_GetRef();
-		Line.Text = Description;
-		Line.FontSize = 14;
-	}
+	OutCard.Name = GetVariantName(Variant);
+	OutCard.RarityText = NSLOCTEXT("YS", "ClassUpgradeKind", "Classe");
+	OutCard.Color = GoldColor;
+	OutCard.Icon = Icon;
+	OutCard.Description = Description;
 }
 
 void UYSClassUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
@@ -978,37 +955,31 @@ bool UYSCriticalAttackUpgrade::CanBeOffered(const AYSPlayerCharacter* Character,
 	return Progress.Stacks == 0 && PassesRequirements(Character) && IsCompatibleWith(Character, Variant);
 }
 
-void UYSCriticalAttackUpgrade::GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const
+void UYSCriticalAttackUpgrade::GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const
 {
-	FYSChoiceLine& Title = OutLines.AddDefaulted_GetRef();
-	Title.Text = FText::Format(NSLOCTEXT("YS", "StatUpgradeTitle", "{0} ({1})"), DisplayName, YSUpgradeText::RarityName(Rarity));
-	Title.Color = GetRarityColor(Rarity);
-	Title.FontSize = 20;
-	Title.bBold = true;
+	Super::GetOfferCard(Character, Variant, Progress, Rarity, OutCard);
 
 	// description selon l'attaque auto du joueur (toutes celles qu'il a)
-	auto AddDescription = [&OutLines](const FText& Text, int32 Value)
-	{
-		FYSChoiceLine& Line = OutLines.AddDefaulted_GetRef();
-		Line.Text = FText::Format(Text, Value);
-		Line.FontSize = 15;
-		Line.bBold = true;
-	};
+	TArray<FString> Lines;
 	if (HasSwingAutoAttack(Character))
 	{
-		AddDescription(SwingDescription, SwingCriticalInterval);
+		Lines.Add(FText::Format(SwingDescription, SwingCriticalInterval).ToString());
 	}
 	if (HasPewPewAutoAttack(Character))
 	{
-		AddDescription(BulletDescription, BulletCriticalInterval);
+		Lines.Add(FText::Format(BulletDescription, BulletCriticalInterval).ToString());
 	}
 	if (HasShotgunAutoAttack(Character))
 	{
-		AddDescription(ShotgunDescription, FMath::RoundToInt(ShotgunCriticalMaxDistance));
+		Lines.Add(FText::Format(ShotgunDescription, FMath::RoundToInt(ShotgunCriticalMaxDistance)).ToString());
 	}
 	if (HasSniperAutoAttack(Character))
 	{
-		AddDescription(SniperDescription, FMath::RoundToInt(SniperCriticalMinDistance));
+		Lines.Add(FText::Format(SniperDescription, FMath::RoundToInt(SniperCriticalMinDistance)).ToString());
+	}
+	if (Lines.Num() > 0)
+	{
+		OutCard.Description = FText::FromString(FString::Join(Lines, TEXT("\n")));
 	}
 }
 

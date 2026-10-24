@@ -3,13 +3,13 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Abilities/YSAbilityComponent.h"
-#include "UI/YSCharacterSelectWidget.h"
 #include "YSUpgrade.generated.h"
 
 class AYSPlayerCharacter;
 class AYSWeapon;
 class UYSAbilityComponent;
 class UYSWeaponSet;
+class UTexture2D;
 enum class EYSShootSystem : uint8;
 
 /** Catégorie d'upgrade : définit son comportement */
@@ -60,6 +60,54 @@ struct FYSUpgradeOffer
 	bool operator==(const FYSUpgradeOffer& Other) const { return PoolIndex == Other.PoolIndex && Variant == Other.Variant && Rarity == Other.Rarity; }
 };
 
+/** Une valeur modifiée par une proposition (carte d'upgrade : actuelle rayée à gauche, nouvelle plus grosse à droite) */
+USTRUCT(BlueprintType)
+struct FYSUpgradeStatChange
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	FText Label;
+
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	FText OldValue;
+
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	FText NewValue;
+};
+
+/** Contenu de la carte d'une proposition du menu d'upgrade (de haut en bas) */
+USTRUCT(BlueprintType)
+struct FYSUpgradeCard
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	FText Name;
+
+	/** Rareté (« Bronze », « Classe »…) */
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	FText RarityText;
+
+	/** Couleur de la rareté : nom, rareté et carré de l'icône */
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	FLinearColor Color = FLinearColor::White;
+
+	/** Image posée sur le carré de couleur (vide = carré seul) */
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	TObjectPtr<UTexture2D> Icon;
+
+	/** Nombre de bonus après ce choix (« Bonus 2 / 10 » ; vide = rien) */
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	FText StackText;
+
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	FText Description;
+
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	TArray<FYSUpgradeStatChange> StatChanges;
+};
+
 /** Progression d'une variante d'upgrade du pool sur un personnage (répliquée) */
 USTRUCT(BlueprintType)
 struct FYSUpgradeProgress
@@ -105,6 +153,14 @@ public:
 	/** Nom affiché sur le bouton */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
 	FText DisplayName;
+
+	/** Description affichée sur la carte du menu d'upgrade (sous le nombre de bonus) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(MultiLine="true"))
+	FText Description;
+
+	/** Icône de la carte du menu d'upgrade (texture 256 x 256), posée sur un carré de la couleur de la rareté ; vide = carré seul */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	TObjectPtr<UTexture2D> Icon;
 
 	/** Catégorie (fixée par la classe) */
 	UFUNCTION(BlueprintPure, Category="Upgrade")
@@ -180,8 +236,11 @@ public:
 	/** Valeur ajoutée à Progress.TotalValue par un bonus de cette rareté */
 	virtual float GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const { return 0.0f; }
 
-	/** Lignes du bouton pour une proposition */
-	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const;
+	/** Description d'une variante pour ce personnage (par défaut Description) */
+	virtual FText GetDescription(const AYSPlayerCharacter* Character, int32 Variant) const { return Description; }
+
+	/** Carte du menu d'upgrade pour une proposition (nom, rareté, icône, bonus, description, valeurs modifiées) */
+	virtual void GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const;
 
 	/** Applique l'état de la variante au personnage après un nouveau bonus (serveur ; Progress déjà mis à jour) */
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const {}
@@ -248,7 +307,7 @@ public:
 
 	virtual float GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const override;
 
-	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
+	virtual void GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const override;
 
 	/** Applique la somme des bonus au personnage (ApplyBonus) */
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
@@ -376,8 +435,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names")
 	FText AutoAtkBonusName;
 
-	/** Lignes du bouton : en plus des valeurs concrètes, la réduction appliquée (« Recharge (s) : 1.41 (-6 %) ») */
-	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
+	/** Description de la variante Auto atk (Atk speed) ; la variante Ability garde Description */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Names", meta=(MultiLine="true"))
+	FText AutoAtkDescription;
+
+	virtual FText GetDescription(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	/** Carte : en plus des valeurs concrètes, la réduction appliquée (« Recharge (s) : 1.41 (-6 %) ») */
+	virtual void GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const override;
 
 protected:
 
@@ -668,6 +733,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus")
 	FText BonusStatLabel;
 
+	/** Description du palier Bonus (vide = Description) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus", meta=(MultiLine="true"))
+	FText BonusDescription;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus", meta=(ClampMin="1"))
 	int32 MaxBonusStacks = 10;
 
@@ -711,7 +780,10 @@ public:
 
 	virtual float GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) const override;
 
-	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
+	/** Description du palier : Unlock / Bonus / Super Description */
+	virtual FText GetDescription(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	virtual void GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const override;
 
 	/** Recalcule la propriété des armes à partir des 3 paliers obtenus (ApplyWeaponProperty) */
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
@@ -983,7 +1055,7 @@ public:
 
 	virtual bool IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const override;
 
-	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
+	virtual void GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const override;
 
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
@@ -1026,16 +1098,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Class")
 	TSubclassOf<AYSPlayerCharacter> TargetClass;
 
-	/** Description sous le nom */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Class", meta=(MultiLine="true"))
-	FText Description;
-
 	/** Nom : DisplayName, sinon le nom du set d'arme (ou du personnage) obtenu */
 	virtual FText GetVariantName(int32 Variant) const override;
 
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
 
-	virtual void GetOfferLines(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, TArray<FYSChoiceLine>& OutLines) const override;
+	virtual void GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const override;
 
 	/** Change le set d'arme (ou remplace le personnage par TargetClass) (serveur) */
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
