@@ -133,7 +133,7 @@ AYSCaptainMinion* UYSSummonCrewAbility::SpawnMinionAt(const FVector& Location, f
 		return nullptr;
 	}
 
-	// posé sur le sol (pas dans la mer : il tomberait dans la deadzone)
+	// posé sur le sol (pas dans la mer : il tomberait dans la deadzone) ; toujours à cet endroit : il traverse les personnages à son apparition
 	const AYSCaptainMinion* DefaultMinion = MinionClass->GetDefaultObject<AYSCaptainMinion>();
 	const float HalfHeight = DefaultMinion && DefaultMinion->GetCapsuleComponent() ? DefaultMinion->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 96.0f;
 	FVector SpawnLocation = Location;
@@ -150,7 +150,7 @@ AYSCaptainMinion* UYSSummonCrewAbility::SpawnMinionAt(const FVector& Location, f
 	}
 
 	const FTransform SpawnTransform(FRotator(0.0f, Yaw, 0.0f), SpawnLocation);
-	AYSCaptainMinion* Minion = World->SpawnActorDeferred<AYSCaptainMinion>(MinionClass, SpawnTransform, Captain, Captain, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
+	AYSCaptainMinion* Minion = World->SpawnActorDeferred<AYSCaptainMinion>(MinionClass, SpawnTransform, Captain, Captain, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (!Minion)
 	{
 		return nullptr;

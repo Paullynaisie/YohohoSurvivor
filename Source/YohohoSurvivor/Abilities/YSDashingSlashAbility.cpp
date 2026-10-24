@@ -128,7 +128,7 @@ void UYSDashingSlashAbility::TickComponent(float DeltaTime, ELevelTick TickType,
 		bDashKickApplied = true;
 		ApplyPhaseKick(1);
 	}
-	SetPassThroughPawns(Phase >= 0 && PassesThroughPawns(Phase));
+	SetPassThroughPawns(PassesThroughPawns(Phase));
 }
 
 void UYSDashingSlashAbility::ApplyPhaseKick(int32 Phase)

@@ -65,14 +65,40 @@ void UYSMeteorJumpAbility::GetCurrentEases(float& OutWindup, float& OutSwing, fl
 
 void UYSMeteorJumpAbility::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	// en l'air (saut, ou chute qui le prolonge) : la traversée des NME dure jusqu'à Pass Through After Landing après l'atterrissage
+	float Alpha;
+	const int32 Phase = GetPhase(Alpha);
+	const ACharacter* Character = Cast<ACharacter>(GetHolderPawn());
+	if (Phase == 1)
+	{
+		bAwaitingLanding = true;
+	}
+	if (bAwaitingLanding)
+	{
+		if (Phase == 1 || (Character && Character->GetCharacterMovement()->IsFalling()))
+		{
+			PassThroughUntil = GetWorld()->GetTimeSeconds() + PassThroughAfterLanding;
+		}
+		else
+		{
+			bAwaitingLanding = false;
+			UE_LOG(LogTemp, Verbose, TEXT("[YSMeteorJump] %s (%s) atterrit à %.2f, traverse les NME jusqu'à %.2f"), *GetOwner()->GetName(),
+				GetOwner()->HasAuthority() ? TEXT("serveur") : TEXT("client"), GetWorld()->GetTimeSeconds(), PassThroughUntil);
+		}
+	}
+
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	// fin du saut : gravité normale (atterrissage géré par le CharacterMovement)
-	float Alpha;
-	if (bJumping && GetPhase(Alpha) != 1)
+	if (bJumping && Phase != 1)
 	{
 		EndJump();
 	}
+}
+
+bool UYSMeteorJumpAbility::PassesThroughPawns(int32 Phase) const
+{
+	return bJumpThroughFoes && (Phase >= 0 || GetWorld()->GetTimeSeconds() < PassThroughUntil);
 }
 
 void UYSMeteorJumpAbility::EndJump()

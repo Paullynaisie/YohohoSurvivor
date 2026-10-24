@@ -53,7 +53,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion", meta=(ClampMin="0", Units="Centimeters"))
 	float RangedStopDistance = 600.0f;
 
+	/** À l'apparition, le minion traverse les autres personnages (joueurs, minions, NME) pendant ce délai : il n'est pas poussé n'importe où */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion", meta=(ClampMin="0", Units="Seconds"))
+	float SpawnPassThroughDuration = 1.0f;
+
 	AYSCaptainMinion();
+
+	virtual void BeginPlay() override;
 
 	/** Avant FinishSpawning (serveur) : son Captain, son set d'arme et son visage */
 	void InitMinion(AYSPlayerCharacter* InCaptain, UYSWeaponSet* InWeaponSet, int32 InFaceIndex);

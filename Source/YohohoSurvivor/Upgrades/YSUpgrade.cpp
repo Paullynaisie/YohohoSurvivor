@@ -799,6 +799,32 @@ void UYSMineUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUn
 	Character->SetWeaponStat(MineDoubleStat, bUnlocked && bSuper ? 1.0f : 0.0f);
 }
 
+const FName UYSYoloUpgrade::YoloStat(TEXT("Yolo"));
+const FName UYSYoloUpgrade::YoloSizeStat(TEXT("YoloSize"));
+const FName UYSYoloUpgrade::YoloAtkSpeedStat(TEXT("YoloAtkSpeed"));
+
+UYSYoloUpgrade::UYSYoloUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "YoloName", "Yoloooooo");
+	RequiredActionClass = UYSAutoSwingAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::AutoAtk;
+	UnlockName = NSLOCTEXT("YS", "YoloUnlockName", "Yoloooooo");
+	UnlockDescription = NSLOCTEXT("YS", "YoloUnlockDesc", "L'attaque auto part en continu,\nmême sans cible");
+	BonusName = NSLOCTEXT("YS", "YoloBonusName", "Yoloooooo++");
+	BonusStatLabel = NSLOCTEXT("YS", "YoloBonusStat", "Taille du boulet et de la chaîne (+%)");
+	BonusSilverValue = 0.2f;
+	BonusGoldValue = 0.35f;
+	SuperName = NSLOCTEXT("YS", "YoloSuperName", "Golden Yoloooooo");
+	SuperDescription = NSLOCTEXT("YS", "YoloSuperDesc", "Atk speed du swing +50 %");
+}
+
+void UYSYoloUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	Character->SetWeaponStat(YoloStat, bUnlocked ? 1.0f : 0.0f);
+	Character->SetWeaponStat(YoloSizeStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(YoloAtkSpeedStat, bUnlocked && bSuper ? SuperAtkSpeed : 0.0f);
+}
+
 const FName UYSAllMyMinionsUpgrade::AllMyMinionsStat(TEXT("AllMyMinions"));
 const FName UYSAllMyMinionsUpgrade::ForcedDamageStat(TEXT("ForcedDamage"));
 const FName UYSAllMyMinionsUpgrade::ForcedCooldownResetStat(TEXT("ForcedCooldownReset"));

@@ -864,6 +864,38 @@ protected:
 };
 
 /**
+ *  « Yoloooooo » (MorningStar du Quartermaster, Auto swing en Auto atk ; armes : Required Weapon Classes) :
+ *  Déblocage : l'attaque auto part en continu, même sans cible ; Bonus « Yoloooooo++ » : chaîne du boulet (longueur), boulet et
+ *  hitbox x (1 + somme) (Silver / Gold Value, additif) ; Super « Golden Yoloooooo » : Atk speed du swing + Super Atk Speed (recharge
+ *  et retour x (1 - Super Atk Speed)).
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : Yoloooooo"))
+class UYSYoloUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSYoloUpgrade();
+
+	/** Golden Yoloooooo : vitesse d'attaque en plus (0.5 = recharge et retour du swing x 0.5) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0", ClampMax="0.9"))
+	float SuperAtkSpeed = 0.5f;
+
+	/** Noms des propriétés d'arme posées sur le personnage (lues par l'Auto swing) */
+	static const FName YoloStat;
+	static const FName YoloSizeStat;
+	static const FName YoloAtkSpeedStat;
+
+protected:
+
+	/** Taille du boulet en plus (%) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal * 100.0f; }
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+};
+
+/**
  *  « You're all my minions » (Cursed Captain, Ability « Allez-y mes minions ! » du Cursed Hook) :
  *  Déblocage : l'Ability des joueurs à moins de All My Minions Range (2500) du Captain est forcée aussi (priorité sur toutes
  *  leurs actions, recharge ignorée et pas déclenchée) ; Bonus « You're all my minions ++ » : dégâts des actions forcées

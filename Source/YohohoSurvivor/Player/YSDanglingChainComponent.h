@@ -100,6 +100,12 @@ public:
 	/** Change le matériau de tous les segments (personnalisation du joueur) */
 	void SetSegmentMaterial(UMaterialInterface* Material);
 
+	/**
+	 *  Chaîne avec des composants au bout (MorningStar : BallChain) : longueur des segments, taille des composants du bout et extent
+	 *  de leurs box x Multiplier (depuis leurs valeurs du Blueprint ; upgrade Yoloooooo++). Sans effet sur une chaîne sans bout attaché.
+	 */
+	void SetEndSizeMultiplier(float Multiplier);
+
 protected:
 
 	virtual void OnRegister() override;
@@ -135,6 +141,14 @@ private:
 
 	/** Composants placés au bout de la chaîne (en jeu) */
 	TArray<TWeakObjectPtr<USceneComponent>> EndAttached;
+
+	/** Taille du bout (SetEndSizeMultiplier) : multiplicateur voulu, et valeurs de départ (longueur, échelle monde / extent de chaque composant du bout) */
+	float EndSizeMultiplier = 1.0f;
+	float BaseSegmentLength = 0.0f;
+	TArray<FVector> EndAttachedBaseSizes;
+
+	/** Applique EndSizeMultiplier depuis les valeurs de départ (en jeu, une fois les composants du bout trouvés) */
+	void ApplyEndSize();
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> Segments;

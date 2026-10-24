@@ -1,4 +1,5 @@
 #include "Player/YSDanglingChainComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Actor.h"
@@ -63,14 +64,48 @@ void UYSDanglingChainComponent::BeginPlay()
 			Component->SetUsingAbsoluteLocation(true);
 			Component->SetUsingAbsoluteRotation(true);
 			EndAttached.Add(Component);
+			const UBoxComponent* Box = Cast<UBoxComponent>(Component);
+			EndAttachedBaseSizes.Add(Box ? Box->GetUnscaledBoxExtent() : Component->GetComponentScale());
 		}
 	}
+	BaseSegmentLength = SegmentLength;
+	ApplyEndSize();
 
 	// l'acteur est maintenant à sa position de départ : on repart d'une chaîne au repos
 	if (Segments.Num() > 0)
 	{
 		ResetPoints();
 		UpdateSegmentTransforms();
+	}
+}
+
+void UYSDanglingChainComponent::SetEndSizeMultiplier(float Multiplier)
+{
+	EndSizeMultiplier = FMath::Max(Multiplier, 0.1f);
+	// avant BeginPlay (réplication) : appliqué une fois les composants du bout trouvés
+	if (BaseSegmentLength > 0.0f)
+	{
+		ApplyEndSize();
+	}
+}
+
+void UYSDanglingChainComponent::ApplyEndSize()
+{
+	if (EndAttached.Num() == 0)
+	{
+		return;
+	}
+	SegmentLength = BaseSegmentLength * EndSizeMultiplier;
+	for (int32 Index = 0; Index < EndAttached.Num(); ++Index)
+	{
+		if (UBoxComponent* Box = Cast<UBoxComponent>(EndAttached[Index].Get()))
+		{
+			Box->SetBoxExtent(EndAttachedBaseSizes[Index] * EndSizeMultiplier);
+		}
+		else if (USceneComponent* Component = EndAttached[Index].Get())
+		{
+			Component->SetWorldScale3D(EndAttachedBaseSizes[Index] * EndSizeMultiplier);
+		}
 	}
 }
 
@@ -263,16 +298,17 @@ void UYSDanglingChainComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 	}
 
 	// bout libre posé sur le sol au lieu de passer dessous (boulet), avec un peu de frottement
-	if (EndGroundRadius > 0.0f && !EndAnchor.IsValid())
+	const float GroundRadius = EndGroundRadius * EndSizeMultiplier;
+	if (GroundRadius > 0.0f && !EndAnchor.IsValid())
 	{
 		FVector& End = Points.Last();
 		FHitResult Hit;
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(YSChainGround), false, GetOwner());
 		Params.AddIgnoredActor(GetOwner()->GetOwner());
-		if (GetWorld()->LineTraceSingleByObjectType(Hit, End + FVector(0.0f, 0.0f, 200.0f), End - FVector(0.0f, 0.0f, EndGroundRadius), FCollisionObjectQueryParams(ECC_WorldStatic), Params)
-			&& End.Z < Hit.ImpactPoint.Z + EndGroundRadius)
+		if (GetWorld()->LineTraceSingleByObjectType(Hit, End + FVector(0.0f, 0.0f, 200.0f), End - FVector(0.0f, 0.0f, GroundRadius), FCollisionObjectQueryParams(ECC_WorldStatic), Params)
+			&& End.Z < Hit.ImpactPoint.Z + GroundRadius)
 		{
-			End.Z = Hit.ImpactPoint.Z + EndGroundRadius;
+			End.Z = Hit.ImpactPoint.Z + GroundRadius;
 			FVector& Previous = PreviousPoints.Last();
 			Previous.Z = End.Z;
 			const float Keep = FMath::Pow(1.0f - EndGroundFriction, Step * 60.0f);

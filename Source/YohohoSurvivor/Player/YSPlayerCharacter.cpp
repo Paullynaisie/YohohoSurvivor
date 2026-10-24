@@ -1525,18 +1525,26 @@ void AYSPlayerCharacter::SetMarkedFoe(AYSFoeCharacter* Foe, bool bMinionsCritica
 
 void AYSPlayerCharacter::OnMarkedFoeKilled(const AYSFoeCharacter* Foe)
 {
-	if (!HasAuthority() || !Foe || !bMarkSpawnsMinion)
+	if (bMarkSpawnsMinion)
+	{
+		SpawnMinionAtFoe(Foe, TEXT("NME marqué mort"));
+	}
+}
+
+void AYSPlayerCharacter::SpawnMinionAtFoe(const AYSFoeCharacter* Foe, const TCHAR* Reason)
+{
+	if (!HasAuthority() || !Foe)
 	{
 		return;
 	}
-	// Cursed Captain Gun : un minion apparaît là où meurt le NME marqué (invocation de l'arme d'invocation tenue, sans dépasser le maximum)
+	// un minion apparaît là où est le NME (invocation de l'arme d'invocation tenue, sans dépasser le maximum)
 	for (const AYSWeapon* Weapon : GetHeldWeapons())
 	{
 		TInlineComponentArray<UYSSummonCrewAbility*> Summons(Weapon);
 		if (Summons.Num() > 0)
 		{
 			const AYSCaptainMinion* Minion = Summons[0]->SpawnMinionAt(Foe->GetActorLocation(), Foe->GetActorRotation().Yaw);
-			UE_LOG(LogTemp, Verbose, TEXT("[YSMark] %s : NME marqué %s mort, minion %s"), *GetName(), *Foe->GetName(), Minion ? *Minion->GetName() : TEXT("non invoqué (maximum ou pas de sol)"));
+			UE_LOG(LogTemp, Verbose, TEXT("[YSMark] %s : %s (%s), minion %s"), *GetName(), Reason, *Foe->GetName(), Minion ? *Minion->GetName() : TEXT("non invoqué (maximum ou pas de sol)"));
 			return;
 		}
 	}

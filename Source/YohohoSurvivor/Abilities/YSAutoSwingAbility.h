@@ -114,6 +114,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Detection")
 	FGameplayTagContainer HitTags;
 
+	/**
+	 *  La hitbox de l'arme frappe en permanence, pas seulement pendant la coupe (MorningStar : le boulet) ; chaque cible au plus une
+	 *  fois par attaque (remis à zéro au début de chaque attaque)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Detection")
+	bool bHitboxAlwaysActive = false;
+
 	/** Captain Sword : le NME touché (s'il survit) devient le NME marqué du porteur (un seul à la fois, comme le Captain AMMO) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Mark")
 	bool bMarksTarget = false;

@@ -326,7 +326,9 @@ int32 UYSTimedWaveSpawnRule::SpawnCircle(const FYSCircleSpawn& Circle, const FSt
 	{
 		return 0;
 	}
-	return GameMode->SpawnCircle(Circle.EnemyClasses, Circle.MaxEnemies, FString::Printf(TEXT("nuit %d, %s"), GetDayNumber(), *Reason));
+	// 25 NME par joueur en jeu (Enemies Per Player), sinon le nombre fixe
+	const int32 Count = Circle.EnemiesPerPlayer > 0 ? Circle.EnemiesPerPlayer * FMath::Max(1, GetPlayersInMatchCount()) : Circle.MaxEnemies;
+	return GameMode->SpawnCircle(Circle.EnemyClasses, Count, FString::Printf(TEXT("nuit %d, %s, %d joueur(s)"), GetDayNumber(), *Reason, GetPlayersInMatchCount()));
 }
 
 void UYSTimedWaveSpawnRule::TickRule(float DeltaSeconds)

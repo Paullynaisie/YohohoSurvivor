@@ -21,8 +21,12 @@ struct FYSCircleSpawn
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn")
 	TArray<TSubclassOf<AYSFoeCharacter>> EnemyClasses;
 
-	/** Nombre max de NME du cercle (répartis à intervalles réguliers sur le contour ; moins si une direction n'a pas de plage) */
+	/** NME du cercle par joueur en jeu (morts compris, comme les vagues) ; 0 = Max Enemies fixe */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn", meta=(ClampMin="0"))
+	int32 EnemiesPerPlayer = 25;
+
+	/** Nombre max de NME du cercle (répartis à intervalles réguliers sur le contour ; moins si une direction n'a pas de plage) ; utilisé si Enemies Per Player = 0 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn", meta=(ClampMin="0", EditCondition="EnemiesPerPlayer == 0"))
 	int32 MaxEnemies = 50;
 };
 

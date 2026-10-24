@@ -41,6 +41,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Meteor Jump|Jump")
 	bool bJumpThroughFoes = true;
 
+	/** Le personnage traverse encore les NME pendant ce délai après l'atterrissage (pas propulsé s'il atterrit sur un NME) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Meteor Jump|Jump", meta=(ClampMin="0", Units="Seconds", EditCondition="bJumpThroughFoes"))
+	float PassThroughAfterLanding = 0.2f;
+
 	/** Courbe de la coupe pendant le saut (EaseOut ; 1 = la lame balaye régulièrement tout le saut, jusqu'à l'atterrissage) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Meteor Jump|Jump", meta=(ClampMin="1"))
 	float JumpSwingEaseExponent = 1.0f;
@@ -71,8 +75,8 @@ protected:
 	/** Phase 1 : départ du saut */
 	virtual void ApplyPhaseKick(int32 Phase) override;
 
-	/** Pas en arrière et saut */
-	virtual bool PassesThroughPawns(int32 Phase) const override { return Phase >= 0 && bJumpThroughFoes; }
+	/** Pas en arrière, saut, et Pass Through After Landing après l'atterrissage */
+	virtual bool PassesThroughPawns(int32 Phase) const override;
 
 	virtual void OnActionCancelled() override;
 
@@ -89,4 +93,8 @@ private:
 	/** Saut en cours (gravité modifiée) et gravité d'origine du personnage */
 	bool bJumping = false;
 	float SavedGravityScale = 1.0f;
+
+	/** Saut lancé, atterrissage pas encore vu ; traversée des NME jusqu'à cet instant (temps local) */
+	bool bAwaitingLanding = false;
+	double PassThroughUntil = -1.0;
 };

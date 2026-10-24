@@ -665,6 +665,9 @@ public:
 	/** Le NME marqué meurt (serveur, AYSFoeCharacter::Die) : Cursed Captain Gun = un minion apparaît à sa place */
 	void OnMarkedFoeKilled(const AYSFoeCharacter* Foe);
 
+	/** Un minion apparaît là où est ce NME, s'il reste de la place (serveur ; Cursed Captain AMMO : NME marqué mort, NME tué par la balle) */
+	void SpawnMinionAtFoe(const AYSFoeCharacter* Foe, const TCHAR* Reason);
+
 	/** Coups toujours critiques sur cette cible (ex. minion du Captain sur le NME marqué par la Captain Sword ; serveur) */
 	virtual bool HasForcedCriticalAgainst(const AActor* Target) const { return false; }
 

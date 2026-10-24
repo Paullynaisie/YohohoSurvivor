@@ -129,7 +129,7 @@ protected:
 	/** Élan immédiat dans la direction de la phase (vitesse de base x multiplicateur de départ ; MeteorJump : le saut) */
 	virtual void ApplyPhaseKick(int32 Phase);
 
-	/** Le personnage traverse les pawns pendant cette phase (Dashing Slash : le dash, si Dash Through Foes) */
+	/** Le personnage traverse les pawns pendant cette phase (-1 = hors enchaînement ; Dashing Slash : le dash, si Dash Through Foes) */
 	virtual bool PassesThroughPawns(int32 Phase) const { return Phase == 1 && bDashThroughFoes; }
 
 	/** Collisions avec les pawns ignorées pendant le dash, puis rétablies */

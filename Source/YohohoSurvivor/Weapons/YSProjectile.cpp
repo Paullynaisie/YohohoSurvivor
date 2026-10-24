@@ -224,6 +224,11 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 	{
 		Marker->SetMarkedFoe(HitFoe, bMarkCritsMinions, bMarkSpawnsMinion);
 	}
+	// Cursed Captain AMMO : un NME tué par la balle donne toujours un minion (en plus de celui de la marque s'il était marqué)
+	else if (HitFoe && Marker && bMarkSpawnsMinion)
+	{
+		Marker->SpawnMinionAtFoe(HitFoe, TEXT("NME tué par la balle"));
+	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s en (%.0f, %.0f, %.0f), sol %.0f : %.1f dégâts%s (ricochets restants %d)"), *GetName(), *OtherActor->GetName(),
 		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, LastGroundZ, HitDamage, bCritical ? TEXT(" CRITIQUE") : TEXT(""), RemainingRicochets);
 

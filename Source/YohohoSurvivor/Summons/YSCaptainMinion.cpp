@@ -1,5 +1,7 @@
 #include "Summons/YSCaptainMinion.h"
 #include "AIController.h"
+#include "Components/CapsuleComponent.h"
+#include "TimerManager.h"
 #include "Abilities/YSAbilityComponent.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
@@ -16,6 +18,24 @@ AYSCaptainMinion::AYSCaptainMinion()
 
 	// le corps entier (et les mains) prend la couleur du Captain
 	CustomizationColorComponentName = TEXT("BodyPivot");
+}
+
+void AYSCaptainMinion::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// apparition : la capsule ignore les autres personnages un court instant (toutes les machines)
+	if (SpawnPassThroughDuration > 0.0f)
+	{
+		UCapsuleComponent* Capsule = GetCapsuleComponent();
+		Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+		FTimerHandle Timer;
+		GetWorldTimerManager().SetTimer(Timer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSMinion] %s : collisions avec les personnages rétablies"), *GetName());
+		}), SpawnPassThroughDuration, false);
+	}
 }
 
 void AYSCaptainMinion::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

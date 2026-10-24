@@ -158,7 +158,21 @@ public:
 
 	UStaticMeshComponent* GetMesh() const { return Mesh.Get(); }
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/**
+	 *  Taille du bout des chaînes de l'arme (serveur, répliqué ; upgrade Yoloooooo++ de la MorningStar) : longueur des segments des
+	 *  chaînes à composants au bout (BallChain), taille de ces composants (Ball) et de leurs box (Hitbox) x (1 + Bonus)
+	 */
+	void SetChainSizeBonus(float Bonus);
+
 private:
 
 	EYSWeaponColoration AppliedColoration = EYSWeaponColoration::None;
+
+	UPROPERTY(ReplicatedUsing=OnRep_ChainSizeBonus)
+	float ChainSizeBonus = 0.0f;
+
+	UFUNCTION()
+	void OnRep_ChainSizeBonus();
 };

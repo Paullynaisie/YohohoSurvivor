@@ -4,6 +4,35 @@
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInterface.h"
 #include "GameFramework/Pawn.h"
+#include "Net/UnrealNetwork.h"
+#include "Player/YSDanglingChainComponent.h"
+
+void AYSWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AYSWeapon, ChainSizeBonus);
+}
+
+void AYSWeapon::SetChainSizeBonus(float Bonus)
+{
+	if (!HasAuthority() || FMath::IsNearlyEqual(ChainSizeBonus, Bonus))
+	{
+		return;
+	}
+	ChainSizeBonus = Bonus;
+	ForceNetUpdate();
+	OnRep_ChainSizeBonus();
+}
+
+void AYSWeapon::OnRep_ChainSizeBonus()
+{
+	TInlineComponentArray<UYSDanglingChainComponent*> Chains(this);
+	for (UYSDanglingChainComponent* Chain : Chains)
+	{
+		Chain->SetEndSizeMultiplier(1.0f + ChainSizeBonus);
+	}
+}
 
 AYSWeapon::AYSWeapon()
 {

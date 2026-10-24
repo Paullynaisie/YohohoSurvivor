@@ -13,6 +13,7 @@
 #include "Enemies/YSFoeCharacter.h"
 #include "Player/YSPlayerCharacter.h"
 #include "TimerManager.h"
+#include "Upgrades/YSUpgrade.h"
 #include "Weapons/YSWeapon.h"
 
 UYSAutoSwingAbility::UYSAutoSwingAbility()
@@ -47,7 +48,7 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 #if ENABLE_DRAW_DEBUG
 	// TEMPORAIRE : hitbox visible (rouge transparent) pendant la fenêtre de coupe, sur toutes les machines
 	const float SwingElapsed = GetSwingElapsed();
-	if (bShowHitbox && IsInSwingWindow(SwingElapsed))
+	if (bShowHitbox && (IsInSwingWindow(SwingElapsed) || bHitboxAlwaysActive))
 	{
 		const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 		if (const UBoxComponent* Hitbox = Weapon ? Weapon->FindComponentByClass<UBoxComponent>() : nullptr)
@@ -65,14 +66,30 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	}
 
 	const float Elapsed = GetSwingElapsed();
-	if (IsInSwingWindow(Elapsed))
+	// hitbox permanente (MorningStar) : hors attaque, les coups ne sont plus critiques
+	if (bHitboxAlwaysActive && bCriticalSwing && (Elapsed < 0.0f || Elapsed >= GetAttackDuration()))
+	{
+		bCriticalSwing = false;
+	}
+	if (IsInSwingWindow(Elapsed) || bHitboxAlwaysActive)
 	{
 		ApplySwingHits();
 	}
 
+	// Yoloooooo++ : taille du boulet de l'arme (répliquée par l'arme)
+	if (IsAutomatic())
+	{
+		if (AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner()))
+		{
+			Weapon->SetChainSizeBonus(GetWeaponStat(UYSYoloUpgrade::YoloSizeStat, 0.0f));
+		}
+	}
+
 	// déclenchement automatique : seulement pour l'attaque auto (une sous-classe en Ability est lancée par le clic)
 	// ; en akimbo, la main gauche est déclenchée par la droite ; NME : déclenchée par sa hitbox (AYSFoeCharacter)
-	if (!IsAutomatic() || IsTriggeredByHolder() || IsOffHandOfAkimbo() || !IsReady() || !CanStartByPriority() || !FindAutoTarget())
+	// ; Yoloooooo : en continu, même sans cible
+	const bool bYolo = GetWeaponStat(UYSYoloUpgrade::YoloStat, 0.0f) > 0.0f;
+	if (!IsAutomatic() || IsTriggeredByHolder() || IsOffHandOfAkimbo() || !IsReady() || !CanStartByPriority() || (!bYolo && !FindAutoTarget()))
 	{
 		return;
 	}
@@ -205,8 +222,10 @@ void UYSAutoSwingAbility::GetCurrentEases(float& OutWindup, float& OutSwing, flo
 float UYSAutoSwingAbility::GetCooldownMultiplier() const
 {
 	// BL stacks : vitesse d'atk en plus, appliquée après l'Atk speed (attaque auto seulement, pas le Dashing Slash)
+	// Golden Yoloooooo : vitesse d'attaque en plus
 	const AYSPlayerCharacter* Character = IsAutomatic() ? Cast<AYSPlayerCharacter>(GetHolderPawn()) : nullptr;
-	return Super::GetCooldownMultiplier() * (Character ? Character->GetBloodlustCooldownFactor() : 1.0f);
+	const float YoloFactor = Character ? FMath::Max(0.1f, 1.0f - GetWeaponStat(UYSYoloUpgrade::YoloAtkSpeedStat, 0.0f)) : 1.0f;
+	return Super::GetCooldownMultiplier() * (Character ? Character->GetBloodlustCooldownFactor() : 1.0f) * YoloFactor;
 }
 
 bool UYSAutoSwingAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const
