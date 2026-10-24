@@ -161,10 +161,10 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	/**
-	 *  Taille du bout des chaînes de l'arme (serveur, répliqué ; upgrade Yoloooooo++ de la MorningStar) : longueur des segments des
-	 *  chaînes à composants au bout (BallChain), taille de ces composants (Ball) et de leurs box (Hitbox) x (1 + Bonus)
+	 *  Bout des chaînes de l'arme (serveur, répliqué ; upgrade Yoloooooo++ de la MorningStar), pour les chaînes à composants au bout
+	 *  (BallChain) : taille de ces composants (Ball) et de leurs box (Hitbox) x (1 + SizeBonus), longueur des segments x (1 + LengthBonus)
 	 */
-	void SetChainSizeBonus(float Bonus);
+	void SetChainSizeBonus(float SizeBonus, float LengthBonus);
 
 private:
 
@@ -172,6 +172,9 @@ private:
 
 	UPROPERTY(ReplicatedUsing=OnRep_ChainSizeBonus)
 	float ChainSizeBonus = 0.0f;
+
+	UPROPERTY(ReplicatedUsing=OnRep_ChainSizeBonus)
+	float ChainLengthBonus = 0.0f;
 
 	UFUNCTION()
 	void OnRep_ChainSizeBonus();

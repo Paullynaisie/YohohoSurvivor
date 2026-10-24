@@ -937,9 +937,10 @@ protected:
 
 /**
  *  « Yoloooooo » (MorningStar du Quartermaster, Auto swing en Auto atk ; armes : Required Weapon Classes) :
- *  Déblocage : l'attaque auto part en continu, même sans cible ; Bonus « Yoloooooo++ » : chaîne du boulet (longueur), boulet et
- *  hitbox x (1 + somme) (Silver / Gold Value, additif) ; Super « Golden Yoloooooo » : Atk speed du swing + Super Atk Speed (recharge
- *  et retour x (1 - Super Atk Speed)).
+ *  Déblocage : la hitbox de l'arme frappe en permanence, même sans attaquer (dégâts secondaires hors coupe) ;
+ *  Bonus « Yoloooooo++ » : boulet et hitbox x (1 + somme des Silver / Gold Value), longueur de la chaîne du boulet
+ *  x (1 + somme des Length Silver / Gold Value) (additifs) ; Super « Golden Yoloooooo » : Atk speed du swing + Super Atk Speed
+ *  (recharge et retour x (1 - Super Atk Speed)) et l'attaque auto part en continu, même sans cible.
  */
 UCLASS(meta=(DisplayName="Upgrade d'arme : Yoloooooo"))
 class UYSYoloUpgrade : public UYSWeaponUpgrade
@@ -954,12 +955,32 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0", ClampMax="0.9"))
 	float SuperAtkSpeed = 0.5f;
 
+	/** Yoloooooo++ : longueur de la chaîne du boulet en plus par bonus selon sa rareté (additif ; 0.5 = +50 %) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus", meta=(ClampMin="0"))
+	float BonusLengthSilverValue = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus", meta=(ClampMin="0"))
+	float BonusLengthGoldValue = 1.0f;
+
 	/** Noms des propriétés d'arme posées sur le personnage (lues par l'Auto swing) */
 	static const FName YoloStat;
 	static const FName YoloSizeStat;
+	static const FName YoloLengthStat;
 	static const FName YoloAtkSpeedStat;
+	static const FName YoloContinuousStat;
+
+	/** En plus : longueur de la chaîne (somme recalculée depuis la rareté de chaque bonus) */
+	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
+	/** Bonus : en plus de la taille, la longueur de la chaîne actuelle et après ce bonus */
+	virtual void GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const override;
 
 protected:
+
+	/** Longueur de la chaîne en plus (somme) pour les bonus déjà obtenus */
+	float GetLengthTotal(const FYSUpgradeProgress& BonusProgress) const;
+
+	float GetLengthValue(EYSUpgradeRarity Rarity) const { return Rarity == EYSUpgradeRarity::Gold ? BonusLengthGoldValue : Rarity == EYSUpgradeRarity::Silver ? BonusLengthSilverValue : 0.0f; }
 
 	/** Taille du boulet en plus (%) */
 	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal * 100.0f; }

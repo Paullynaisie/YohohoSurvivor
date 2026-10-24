@@ -115,11 +115,19 @@ public:
 	FGameplayTagContainer HitTags;
 
 	/**
-	 *  La hitbox de l'arme frappe en permanence, pas seulement pendant la coupe (MorningStar : le boulet) ; chaque cible au plus une
-	 *  fois par attaque (remis à zéro au début de chaque attaque)
+	 *  La hitbox de l'arme frappe pendant TOUTE l'animation (préparation et retour compris), pas seulement pendant la coupe
+	 *  (MorningStar : le boulet) ; chaque cible au plus une fois par attaque. Hors de la coupe : dégâts secondaires
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Detection")
-	bool bHitboxAlwaysActive = false;
+	bool bHitboxDuringWholeAnimation = false;
+
+	/** Dégâts secondaires = coups de la hitbox hors de la coupe (préparation, retour, hitbox permanente du Yoloooooo) : Damage x ce multiplicateur */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Detection", meta=(ClampMin="0"))
+	float SecondaryDamageMultiplier = 0.5f;
+
+	/** Hitbox permanente (Yoloooooo) hors attaque : une même cible est touchée au plus une fois par cet intervalle */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Detection", meta=(ClampMin="0.05", Units="Seconds"))
+	float IdleRehitInterval = 0.5f;
 
 	/** Captain Sword : le NME touché (s'il survit) devient le NME marqué du porteur (un seul à la fois, comme le Captain AMMO) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Mark")
@@ -272,14 +280,23 @@ protected:
 	/** Hitbox active : uniquement pendant la phase de coupe (ni la préparation, ni le retour) */
 	bool IsInSwingWindow(float SwingElapsed) const { return SwingElapsed >= GetWindupTime() && SwingElapsed < GetWindupTime() + GetSwingTime(); }
 
-	/** Pendant la coupe : applique les dégâts aux cibles dans la hitbox de l'arme (serveur) */
-	void ApplySwingHits();
+	/** Pendant l'animation (0 <= SwingElapsed < durée de l'attaque) */
+	bool IsInAttack(float SwingElapsed) const { return SwingElapsed >= 0.0f && SwingElapsed < GetAttackDuration(); }
+
+	/** La hitbox frappe : coupe, toute l'animation (Hitbox During Whole Animation) ou en permanence (Yoloooooo) */
+	bool IsHitboxActive(float SwingElapsed) const;
+
+	/** Applique les dégâts aux cibles dans la hitbox de l'arme (serveur) ; hors coupe = dégâts secondaires */
+	void ApplySwingHits(float SwingElapsed);
 
 	/** Dégâts d'un coup sur une cible (serveur) ; ShotDirection = du porteur vers la cible (pushback). Ex. Bumping Slash : coup qui bumpe */
 	virtual void DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController, bool bCritical);
 
 	/** Cibles déjà touchées par la coupe en cours */
 	TSet<TWeakObjectPtr<AActor>> HitThisSwing;
+
+	/** Heure du dernier coup sur chaque cible (hitbox permanente hors attaque : Idle Rehit Interval) */
+	TMap<TWeakObjectPtr<AActor>, float> LastHitTimes;
 
 	/** Coupe en cours critique (Golden bloodlust au maximum de stacks au début de l'attaque ; serveur) */
 	bool bCriticalSwing = false;

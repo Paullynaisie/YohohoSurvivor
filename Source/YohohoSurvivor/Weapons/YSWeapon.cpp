@@ -12,15 +12,17 @@ void AYSWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AYSWeapon, ChainSizeBonus);
+	DOREPLIFETIME(AYSWeapon, ChainLengthBonus);
 }
 
-void AYSWeapon::SetChainSizeBonus(float Bonus)
+void AYSWeapon::SetChainSizeBonus(float SizeBonus, float LengthBonus)
 {
-	if (!HasAuthority() || FMath::IsNearlyEqual(ChainSizeBonus, Bonus))
+	if (!HasAuthority() || (FMath::IsNearlyEqual(ChainSizeBonus, SizeBonus) && FMath::IsNearlyEqual(ChainLengthBonus, LengthBonus)))
 	{
 		return;
 	}
-	ChainSizeBonus = Bonus;
+	ChainSizeBonus = SizeBonus;
+	ChainLengthBonus = LengthBonus;
 	ForceNetUpdate();
 	OnRep_ChainSizeBonus();
 }
@@ -30,7 +32,7 @@ void AYSWeapon::OnRep_ChainSizeBonus()
 	TInlineComponentArray<UYSDanglingChainComponent*> Chains(this);
 	for (UYSDanglingChainComponent* Chain : Chains)
 	{
-		Chain->SetEndSizeMultiplier(1.0f + ChainSizeBonus);
+		Chain->SetEndSizeMultiplier(1.0f + ChainSizeBonus, 1.0f + ChainLengthBonus);
 	}
 }
 

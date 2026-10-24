@@ -76,11 +76,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Ends", meta=(ClampMin="0.1"))
 	float EndMass = 1.0f;
 
-	/** Le bout libre ne passe pas sous le sol (WorldStatic) : rayon du boulet (0 = pas de collision avec le sol) */
+	/**
+	 *  Le bout libre collisionne avec le décor (WorldStatic : île, props, bateau) : sphère de ce rayon balayée à chaque image, posée
+	 *  sur le sol, arrêtée par les murs (rayon du boulet ; 0 = pas de collision)
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Ends", meta=(ClampMin="0", Units="Centimeters"))
 	float EndGroundRadius = 0.0f;
 
-	/** Frottement du bout sur le sol (part de sa vitesse horizontale perdue par image à 60 fps) */
+	/** Frottement du bout sur le décor (part de sa vitesse le long de la surface perdue par image à 60 fps) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Ends", meta=(ClampMin="0", ClampMax="1"))
 	float EndGroundFriction = 0.15f;
 
@@ -101,10 +104,10 @@ public:
 	void SetSegmentMaterial(UMaterialInterface* Material);
 
 	/**
-	 *  Chaîne avec des composants au bout (MorningStar : BallChain) : longueur des segments, taille des composants du bout et extent
-	 *  de leurs box x Multiplier (depuis leurs valeurs du Blueprint ; upgrade Yoloooooo++). Sans effet sur une chaîne sans bout attaché.
+	 *  Chaîne avec des composants au bout (MorningStar : BallChain) : taille des composants du bout et extent de leurs box x SizeMultiplier,
+	 *  longueur des segments x LengthMultiplier (depuis leurs valeurs du Blueprint ; upgrade Yoloooooo++). Sans effet sur une chaîne sans bout attaché.
 	 */
-	void SetEndSizeMultiplier(float Multiplier);
+	void SetEndSizeMultiplier(float SizeMultiplier, float LengthMultiplier);
 
 protected:
 
@@ -121,6 +124,9 @@ private:
 
 	void BuildSegments();
 	void DestroySegments();
+
+	/** Bout libre contre le décor (WorldStatic) : balayage d'une sphère depuis sa position précédente */
+	void CollideEnd(float Step);
 
 	/** Place la chaîne au repos : vers l'arrière et vers le bas */
 	void ResetPoints();
@@ -144,6 +150,7 @@ private:
 
 	/** Taille du bout (SetEndSizeMultiplier) : multiplicateur voulu, et valeurs de départ (longueur, échelle monde / extent de chaque composant du bout) */
 	float EndSizeMultiplier = 1.0f;
+	float LengthMultiplier = 1.0f;
 	float BaseSegmentLength = 0.0f;
 	TArray<FVector> EndAttachedBaseSizes;
 

@@ -79,9 +79,10 @@ void UYSDanglingChainComponent::BeginPlay()
 	}
 }
 
-void UYSDanglingChainComponent::SetEndSizeMultiplier(float Multiplier)
+void UYSDanglingChainComponent::SetEndSizeMultiplier(float SizeMultiplier, float InLengthMultiplier)
 {
-	EndSizeMultiplier = FMath::Max(Multiplier, 0.1f);
+	EndSizeMultiplier = FMath::Max(SizeMultiplier, 0.1f);
+	LengthMultiplier = FMath::Max(InLengthMultiplier, 0.1f);
 	// avant BeginPlay (réplication) : appliqué une fois les composants du bout trouvés
 	if (BaseSegmentLength > 0.0f)
 	{
@@ -95,7 +96,7 @@ void UYSDanglingChainComponent::ApplyEndSize()
 	{
 		return;
 	}
-	SegmentLength = BaseSegmentLength * EndSizeMultiplier;
+	SegmentLength = BaseSegmentLength * LengthMultiplier;
 	for (int32 Index = 0; Index < EndAttached.Num(); ++Index)
 	{
 		if (UBoxComponent* Box = Cast<UBoxComponent>(EndAttached[Index].Get()))
@@ -106,6 +107,53 @@ void UYSDanglingChainComponent::ApplyEndSize()
 		{
 			Component->SetWorldScale3D(EndAttachedBaseSizes[Index] * EndSizeMultiplier);
 		}
+	}
+}
+
+void UYSDanglingChainComponent::CollideEnd(float Step)
+{
+	// bout libre (boulet) contre le décor : île, props, bateau ; glisse le long des surfaces avec un peu de frottement
+	const float Radius = EndGroundRadius * EndSizeMultiplier;
+	if (Radius <= 0.0f || EndAnchor.IsValid() || Points.Num() < 2)
+	{
+		return;
+	}
+
+	FVector& End = Points.Last();
+	FVector& Previous = PreviousPoints.Last();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSChainEnd), false, GetOwner());
+	Params.AddIgnoredActor(GetOwner()->GetOwner());
+	const FCollisionObjectQueryParams Objects(ECC_WorldStatic);
+	const FCollisionShape Sphere = FCollisionShape::MakeSphere(Radius);
+	const float Keep = FMath::Pow(1.0f - EndGroundFriction, Step * 60.0f);
+
+	// balayage depuis la position de l'image précédente : arrêté au contact, puis glisse le long de la surface
+	FHitResult Hit;
+	if (GetWorld()->SweepSingleByObjectType(Hit, Previous, End, FQuat::Identity, Objects, Sphere, Params) && Hit.bBlockingHit)
+	{
+		const FVector Normal = Hit.bStartPenetrating ? Hit.Normal : Hit.ImpactNormal;
+		const FVector Contact = Hit.bStartPenetrating ? Previous + Normal * (Hit.PenetrationDepth + 0.1f) : Hit.Location + Normal * 0.1f;
+		const FVector Remaining = End - Contact;
+		const FVector Slide = Remaining - Normal * FMath::Min(0.0f, FVector::DotProduct(Remaining, Normal));
+		FHitResult SlideHit;
+		const bool bSlideBlocked = GetWorld()->SweepSingleByObjectType(SlideHit, Contact, Contact + Slide, FQuat::Identity, Objects, Sphere, Params)
+			&& SlideHit.bBlockingHit && !SlideHit.bStartPenetrating;
+		const FVector NewEnd = bSlideBlocked ? SlideHit.Location + SlideHit.ImpactNormal * 0.1f : Contact + Slide;
+
+		// vitesse : plus de composante vers la surface, frottement sur le reste
+		FVector Velocity = End - Previous;
+		Velocity -= Normal * FMath::Min(0.0f, FVector::DotProduct(Velocity, Normal));
+		End = NewEnd;
+		Previous = End - Velocity * Keep;
+	}
+
+	// filet de sécurité : jamais sous le sol (traversé par une grande vitesse) ; départ juste au-dessus du boulet (pas sur un feuillage)
+	if (GetWorld()->LineTraceSingleByObjectType(Hit, End + FVector(0.0f, 0.0f, Radius + 60.0f), End - FVector(0.0f, 0.0f, Radius), Objects, Params)
+		&& End.Z < Hit.ImpactPoint.Z + Radius)
+	{
+		End.Z = Hit.ImpactPoint.Z + Radius;
+		Previous.Z = End.Z;
+		Previous = End - (End - Previous) * Keep;
 	}
 }
 
@@ -297,24 +345,7 @@ void UYSDanglingChainComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 		}
 	}
 
-	// bout libre posé sur le sol au lieu de passer dessous (boulet), avec un peu de frottement
-	const float GroundRadius = EndGroundRadius * EndSizeMultiplier;
-	if (GroundRadius > 0.0f && !EndAnchor.IsValid())
-	{
-		FVector& End = Points.Last();
-		FHitResult Hit;
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(YSChainGround), false, GetOwner());
-		Params.AddIgnoredActor(GetOwner()->GetOwner());
-		if (GetWorld()->LineTraceSingleByObjectType(Hit, End + FVector(0.0f, 0.0f, 200.0f), End - FVector(0.0f, 0.0f, GroundRadius), FCollisionObjectQueryParams(ECC_WorldStatic), Params)
-			&& End.Z < Hit.ImpactPoint.Z + GroundRadius)
-		{
-			End.Z = Hit.ImpactPoint.Z + GroundRadius;
-			FVector& Previous = PreviousPoints.Last();
-			Previous.Z = End.Z;
-			const float Keep = FMath::Pow(1.0f - EndGroundFriction, Step * 60.0f);
-			Previous = End - (End - Previous) * Keep;
-		}
-	}
+	CollideEnd(Step);
 
 	UpdateSegmentTransforms();
 

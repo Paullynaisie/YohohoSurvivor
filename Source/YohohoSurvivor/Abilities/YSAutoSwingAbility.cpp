@@ -46,9 +46,8 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 #if ENABLE_DRAW_DEBUG
-	// TEMPORAIRE : hitbox visible (rouge transparent) pendant la fenêtre de coupe, sur toutes les machines
-	const float SwingElapsed = GetSwingElapsed();
-	if (bShowHitbox && (IsInSwingWindow(SwingElapsed) || bHitboxAlwaysActive))
+	// TEMPORAIRE : hitbox visible (rouge transparent) quand elle frappe, sur toutes les machines
+	if (bShowHitbox && IsHitboxActive(GetSwingElapsed()))
 	{
 		const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 		if (const UBoxComponent* Hitbox = Weapon ? Weapon->FindComponentByClass<UBoxComponent>() : nullptr)
@@ -66,30 +65,30 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	}
 
 	const float Elapsed = GetSwingElapsed();
-	// hitbox permanente (MorningStar) : hors attaque, les coups ne sont plus critiques
-	if (bHitboxAlwaysActive && bCriticalSwing && (Elapsed < 0.0f || Elapsed >= GetAttackDuration()))
+	// hitbox permanente (Yoloooooo) : hors attaque, les coups ne sont plus critiques
+	if (bCriticalSwing && !IsInAttack(Elapsed))
 	{
 		bCriticalSwing = false;
 	}
-	if (IsInSwingWindow(Elapsed) || bHitboxAlwaysActive)
+	if (IsHitboxActive(Elapsed))
 	{
-		ApplySwingHits();
+		ApplySwingHits(Elapsed);
 	}
 
-	// Yoloooooo++ : taille du boulet de l'arme (répliquée par l'arme)
+	// Yoloooooo++ : taille du boulet et longueur de sa chaîne (répliquées par l'arme)
 	if (IsAutomatic())
 	{
 		if (AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner()))
 		{
-			Weapon->SetChainSizeBonus(GetWeaponStat(UYSYoloUpgrade::YoloSizeStat, 0.0f));
+			Weapon->SetChainSizeBonus(GetWeaponStat(UYSYoloUpgrade::YoloSizeStat, 0.0f), GetWeaponStat(UYSYoloUpgrade::YoloLengthStat, 0.0f));
 		}
 	}
 
 	// déclenchement automatique : seulement pour l'attaque auto (une sous-classe en Ability est lancée par le clic)
 	// ; en akimbo, la main gauche est déclenchée par la droite ; NME : déclenchée par sa hitbox (AYSFoeCharacter)
-	// ; Yoloooooo : en continu, même sans cible
-	const bool bYolo = GetWeaponStat(UYSYoloUpgrade::YoloStat, 0.0f) > 0.0f;
-	if (!IsAutomatic() || IsTriggeredByHolder() || IsOffHandOfAkimbo() || !IsReady() || !CanStartByPriority() || (!bYolo && !FindAutoTarget()))
+	// ; Golden Yoloooooo : en continu, même sans cible
+	const bool bContinuous = GetWeaponStat(UYSYoloUpgrade::YoloContinuousStat, 0.0f) > 0.0f;
+	if (!IsAutomatic() || IsTriggeredByHolder() || IsOffHandOfAkimbo() || !IsReady() || !CanStartByPriority() || (!bContinuous && !FindAutoTarget()))
 	{
 		return;
 	}
@@ -291,7 +290,14 @@ bool UYSAutoSwingAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLoc
 	return true;
 }
 
-void UYSAutoSwingAbility::ApplySwingHits()
+bool UYSAutoSwingAbility::IsHitboxActive(float SwingElapsed) const
+{
+	// Yoloooooo : en permanence (attaque auto du joueur seulement)
+	const bool bAlwaysActive = IsAutomatic() && GetWeaponStat(UYSYoloUpgrade::YoloStat, 0.0f) > 0.0f;
+	return IsInSwingWindow(SwingElapsed) || (bHitboxDuringWholeAnimation && IsInAttack(SwingElapsed)) || bAlwaysActive;
+}
+
+void UYSAutoSwingAbility::ApplySwingHits(float SwingElapsed)
 {
 	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 	const UBoxComponent* Hitbox = Weapon ? Weapon->FindComponentByClass<UBoxComponent>() : nullptr;
@@ -307,28 +313,52 @@ void UYSAutoSwingAbility::ApplySwingHits()
 		FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeBox(Hitbox->GetScaledBoxExtent()), Params);
 
 	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Holder);
+	// pendant l'attaque : chaque cible une fois ; hors attaque (hitbox permanente) : une fois par Idle Rehit Interval
+	const bool bInAttack = IsInAttack(SwingElapsed);
+	// hors de la coupe (préparation, retour, hors attaque) : dégâts secondaires
+	const float DamageFactor = IsInSwingWindow(SwingElapsed) ? 1.0f : SecondaryDamageMultiplier;
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (LastHitTimes.Num() > 64)
+	{
+		for (auto It = LastHitTimes.CreateIterator(); It; ++It)
+		{
+			if (!It->Key.IsValid() || Now - It->Value >= IdleRehitInterval)
+			{
+				It.RemoveCurrent();
+			}
+		}
+	}
 
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		AActor* Target = Overlap.GetActor();
 		const IGameplayTagAssetInterface* TagInterface = Cast<IGameplayTagAssetInterface>(Target);
-		if (!Target || HitThisSwing.Contains(Target) || !TagInterface || !TagInterface->HasAnyMatchingGameplayTags(HitTags))
+		if (!Target || !TagInterface || !TagInterface->HasAnyMatchingGameplayTags(HitTags))
+		{
+			continue;
+		}
+		const float* LastHit = LastHitTimes.Find(Target);
+		if (bInAttack ? HitThisSwing.Contains(Target) : (LastHit && Now - *LastHit < IdleRehitInterval))
 		{
 			continue;
 		}
 
 		// Bloodlust : une seule BL stack par attaque auto, même si elle touche plusieurs NME
-		if (HitThisSwing.Num() == 0 && IsAutomatic() && Character)
+		if (bInAttack && HitThisSwing.Num() == 0 && IsAutomatic() && Character)
 		{
 			Character->AddBloodlustStack();
 		}
 
-		HitThisSwing.Add(Target);
+		if (bInAttack)
+		{
+			HitThisSwing.Add(Target);
+		}
+		LastHitTimes.Add(Target, Now);
 		// coupe critique, ou minion du Captain sur le NME marqué par la Captain Sword
 		const bool bCritical = Character && (bCriticalSwing || Character->HasForcedCriticalAgainst(Target));
-		const float FinalDamage = Damage * GetDamageMultiplier() * (bCritical ? Character->GetCriticalDamageMultiplier() : 1.0f);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.3f%s)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
-			FinalDamage, Damage, GetDamageMultiplier(), bCritical ? TEXT(", critique") : TEXT(""));
+		const float FinalDamage = Damage * DamageFactor * GetDamageMultiplier() * (bCritical ? Character->GetCriticalDamageMultiplier() : 1.0f);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.2f x %.3f%s%s)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
+			FinalDamage, Damage, DamageFactor, GetDamageMultiplier(), !bInAttack ? TEXT(", secondaires hors attaque") : DamageFactor < 1.0f ? TEXT(", secondaires") : TEXT(""), bCritical ? TEXT(", critique") : TEXT(""));
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible ; critique : type de dégât qui grossit le chiffre ;
 		// direction du coup (pushback) = du porteur vers la cible : le NME recule, il n'est pas balayé sur le côté par la lame
 		const FVector ShotDirection = Holder ? (Target->GetActorLocation() - Holder->GetActorLocation()).GetSafeNormal2D() : FVector::ZeroVector;

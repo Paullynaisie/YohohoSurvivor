@@ -788,7 +788,9 @@ void UYSMineUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUn
 
 const FName UYSYoloUpgrade::YoloStat(TEXT("Yolo"));
 const FName UYSYoloUpgrade::YoloSizeStat(TEXT("YoloSize"));
+const FName UYSYoloUpgrade::YoloLengthStat(TEXT("YoloLength"));
 const FName UYSYoloUpgrade::YoloAtkSpeedStat(TEXT("YoloAtkSpeed"));
+const FName UYSYoloUpgrade::YoloContinuousStat(TEXT("YoloContinuous"));
 
 UYSYoloUpgrade::UYSYoloUpgrade()
 {
@@ -796,14 +798,14 @@ UYSYoloUpgrade::UYSYoloUpgrade()
 	RequiredActionClass = UYSAutoSwingAbility::StaticClass();
 	RequiredSlot = EYSActionSlot::AutoAtk;
 	UnlockName = NSLOCTEXT("YS", "YoloUnlockName", "Yoloooooo");
-	UnlockDescription = NSLOCTEXT("YS", "YoloUnlockDesc", "L'attaque auto part en continu,\nmême sans cible");
-	BonusDescription = NSLOCTEXT("YS", "YoloBonusDesc", "Chaîne, boulet et hitbox plus grands");
+	UnlockDescription = NSLOCTEXT("YS", "YoloUnlockDesc", "La hitbox du boulet frappe en permanence,\nmême sans attaquer (dégâts secondaires)");
+	BonusDescription = NSLOCTEXT("YS", "YoloBonusDesc", "Chaîne beaucoup plus longue,\nboulet et hitbox plus grands");
 	BonusName = NSLOCTEXT("YS", "YoloBonusName", "Yoloooooo++");
-	BonusStatLabel = NSLOCTEXT("YS", "YoloBonusStat", "Taille du boulet et de la chaîne (+%)");
+	BonusStatLabel = NSLOCTEXT("YS", "YoloBonusStat", "Taille du boulet et de la hitbox (+%)");
 	BonusSilverValue = 0.2f;
 	BonusGoldValue = 0.35f;
 	SuperName = NSLOCTEXT("YS", "YoloSuperName", "Golden Yoloooooo");
-	SuperDescription = NSLOCTEXT("YS", "YoloSuperDesc", "Atk speed du swing +50 %");
+	SuperDescription = NSLOCTEXT("YS", "YoloSuperDesc", "Atk speed du swing x2 et l'attaque auto\npart en continu, même sans cible");
 }
 
 void UYSYoloUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
@@ -811,6 +813,47 @@ void UYSYoloUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUn
 	Character->SetWeaponStat(YoloStat, bUnlocked ? 1.0f : 0.0f);
 	Character->SetWeaponStat(YoloSizeStat, bUnlocked ? BonusTotal : 0.0f);
 	Character->SetWeaponStat(YoloAtkSpeedStat, bUnlocked && bSuper ? SuperAtkSpeed : 0.0f);
+	Character->SetWeaponStat(YoloContinuousStat, bUnlocked && bSuper ? 1.0f : 0.0f);
+}
+
+float UYSYoloUpgrade::GetLengthTotal(const FYSUpgradeProgress& BonusProgress) const
+{
+	// rareté de chaque bonus (sinon déduite de sa valeur de taille)
+	float Total = 0.0f;
+	for (int32 Index = 0; Index < BonusProgress.Stacks; ++Index)
+	{
+		EYSUpgradeRarity Rarity = BonusProgress.BonusRarities.IsValidIndex(Index) ? BonusProgress.BonusRarities[Index] : EYSUpgradeRarity::None;
+		if (Rarity == EYSUpgradeRarity::None && BonusProgress.BonusValues.IsValidIndex(Index))
+		{
+			Rarity = FMath::IsNearlyEqual(BonusProgress.BonusValues[Index], BonusGoldValue) ? EYSUpgradeRarity::Gold : EYSUpgradeRarity::Silver;
+		}
+		Total += GetLengthValue(Rarity);
+	}
+	return Total;
+}
+
+void UYSYoloUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	Super::Apply(Character, Variant, Progress);
+	if (Character)
+	{
+		const bool bUnlocked = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Unlock)).Stacks > 0;
+		const float LengthTotal = GetLengthTotal(Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Bonus)));
+		Character->SetWeaponStat(YoloLengthStat, bUnlocked ? LengthTotal : 0.0f);
+	}
+}
+
+void UYSYoloUpgrade::GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const
+{
+	Super::GetOfferCard(Character, Variant, Progress, Rarity, OutCard);
+	if (GetTier(Variant) == EYSWeaponUpgradeTier::Bonus)
+	{
+		const float LengthTotal = GetLengthTotal(Progress);
+		FYSUpgradeStatChange& Change = OutCard.StatChanges.AddDefaulted_GetRef();
+		Change.Label = NSLOCTEXT("YS", "YoloLengthStat", "Longueur de la chaîne (+%)");
+		Change.OldValue = FText::AsNumber(FMath::RoundToInt(LengthTotal * 100.0f));
+		Change.NewValue = FText::AsNumber(FMath::RoundToInt((LengthTotal + GetLengthValue(Rarity)) * 100.0f));
+	}
 }
 
 const FName UYSAllMyMinionsUpgrade::AllMyMinionsStat(TEXT("AllMyMinions"));

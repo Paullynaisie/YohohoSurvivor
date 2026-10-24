@@ -88,12 +88,12 @@ try:
         assets.save_asset(QM, only_if_is_dirty=False)
     log(f"Quartermaster unique : {cdo(QM).get_editor_property('unique_character')}")
 
-    # 3) MorningStar : hitbox permanente
+    # 3) MorningStar : hitbox pendant toute l animation (ex-hitbox permanente)
     star = assets.load_asset(STAR)
     for name, action in ability_components(star):
         if type(action) == unreal.YSAutoSwingAbility:
-            action.set_editor_property("hitbox_always_active", True)
-            log(f"BP_MorningStar.{name} : Hitbox Always Active")
+            action.set_editor_property("hitbox_during_whole_animation", True)
+            log(f"BP_MorningStar.{name} : Hitbox During Whole Animation")
     unreal.BlueprintEditorLibrary.compile_blueprint(star)
     assets.save_asset(STAR, only_if_is_dirty=False)
 
