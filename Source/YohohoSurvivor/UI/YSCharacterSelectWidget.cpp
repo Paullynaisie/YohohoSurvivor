@@ -362,6 +362,16 @@ void UYSCharacterSelectWidget::SetCharacterInfo(const FYSCharacterInfo& Info)
 	AddLine(NSLOCTEXT("YS", "InfoAutoAtk", "Auto atk"), Info.AutoAtkName, WeaponLineSpacing());
 	AddLine(NSLOCTEXT("YS", "InfoAbility", "Ability"), Info.AbilityName, WeaponLineSpacing());
 	AddLine(NSLOCTEXT("YS", "InfoPassive", "Passif"), Info.PassiveName, WeaponLineSpacing());
+	if (!Info.PassiveName.IsEmpty() && !Info.PassiveDescription.IsEmpty())
+	{
+		USizeBox* DescriptionBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		DescriptionBox->SetWidthOverride(InfoDescriptionWidth);
+		UTextBlock* Description = YSCharacterSelect::MakeLabel(WidgetTree, Info.PassiveDescription, InfoDescriptionFontSize);
+		Description->SetColorAndOpacity(FSlateColor(InfoDescriptionColor));
+		Description->SetAutoWrapText(true);
+		DescriptionBox->AddChild(Description);
+		AddWidget(DescriptionBox, InfoLineSpacing);
+	}
 }
 
 void UYSCharacterSelectWidget::SetNickname(const FText& Nickname)

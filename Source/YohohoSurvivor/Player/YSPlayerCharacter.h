@@ -18,6 +18,7 @@ class UInputMappingContext;
 class UChildActorComponent;
 class AYSWeapon;
 class UYSWeaponSet;
+class UYSPassive;
 class AYSInteractiveObject;
 class UTexture2D;
 class UWidgetComponent;
@@ -271,7 +272,11 @@ protected:
 	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TMap<FName, float> WeaponStats;
 
-	/** Coup critique : dégâts x ce multiplicateur (Golden bloodlust, Atk critique), augmenté par les bonus critiques d'Atk speed / Shoot system */
+	/** Passif du personnage (Data Asset de /Game/Core/Passives) : jamais amélioré, seulement remplacé (SetPassive) */
+	UPROPERTY(EditAnywhere, Replicated, BlueprintReadOnly, Category="3C|Passive")
+	TObjectPtr<UYSPassive> Passive;
+
+	/** Coup critique : dégâts x ce multiplicateur (Golden bloodlust, Atk critique), augmenté par les bonus critiques d'Atk speed / Shoot system ; un passif peut le remplacer (Marksman) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Combat", meta=(ClampMin="1"))
 	float CriticalDamageMultiplier = 1.5f;
 
@@ -738,7 +743,7 @@ public:
 	void DebugSetBloodRageStacks(int32 Stacks);
 
 	/** Dégâts des coups critiques : (Critical Damage Multiplier + Dégât critique) x (1 + bonus critiques des upgrades Atk speed / Shoot system) */
-	virtual float GetCriticalDamageMultiplier() const { return (CriticalDamageMultiplier + CriticalDamageAdd) * (1.0f + CriticalDamageBonus); }
+	virtual float GetCriticalDamageMultiplier() const { return (GetBaseCriticalDamageMultiplier() + CriticalDamageAdd) * (1.0f + CriticalDamageBonus); }
 
 	/** Upgrade Dégât critique : somme de ses bonus (serveur) */
 	void SetCriticalDamageAdd(float Value);
@@ -750,7 +755,16 @@ public:
 	/** Atk critique : une attaque auto Swing de plus pour le personnage (serveur), renvoie le total */
 	int32 RegisterAutoSwing() { return ++AutoSwingCounter; }
 
-	float GetBaseCriticalDamageMultiplier() const { return CriticalDamageMultiplier; }
+	/** Multiplicateur de base des critiques : celui du passif s'il en fixe un (Marksman), sinon Critical Damage Multiplier */
+	float GetBaseCriticalDamageMultiplier() const;
+
+	UYSPassive* GetPassive() const { return Passive; }
+
+	/** Remplace le passif (serveur ; futures upgrades) */
+	void SetPassive(UYSPassive* NewPassive);
+
+	/** %Armor : part des dégâts subis ignorée avant l'armure (passif Tough Guy) */
+	float GetArmorPercent() const;
 
 	float GetCriticalDamageBonus() const { return CriticalDamageBonus; }
 

@@ -51,14 +51,17 @@ struct FYSCharacterInfo
 	UPROPERTY(BlueprintReadWrite, Category="Character Info")
 	FText AbilityName;
 
-	/** Passif (à venir ; vide = pas affiché) */
+	/** Passif : nom et description (vide = pas affiché) */
 	UPROPERTY(BlueprintReadWrite, Category="Character Info")
 	FText PassiveName;
+
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	FText PassiveDescription;
 
 	bool operator==(const FYSCharacterInfo& Other) const
 	{
 		return Name.EqualTo(Other.Name) && MaxHealth == Other.MaxHealth && HealthRegenPerSecond == Other.HealthRegenPerSecond && Size == Other.Size
-			&& WeaponSetName.EqualTo(Other.WeaponSetName) && AutoAtkName.EqualTo(Other.AutoAtkName) && AbilityName.EqualTo(Other.AbilityName) && PassiveName.EqualTo(Other.PassiveName);
+			&& WeaponSetName.EqualTo(Other.WeaponSetName) && AutoAtkName.EqualTo(Other.AutoAtkName) && AbilityName.EqualTo(Other.AbilityName) && PassiveName.EqualTo(Other.PassiveName) && PassiveDescription.EqualTo(Other.PassiveDescription);
 	}
 };
 
@@ -218,6 +221,17 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Info")
 	FLinearColor InfoValueColor = FLinearColor::White;
+
+	/** Description du passif (sous son nom, retour à la ligne automatique) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Info")
+	int32 InfoDescriptionFontSize = 17;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Info")
+	FLinearColor InfoDescriptionColor = FLinearColor(0.85f, 0.85f, 0.85f);
+
+	/** Largeur max de la description du passif */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Info")
+	float InfoDescriptionWidth = 360.0f;
 
 	// ---- colonne centre : couleur et visage ----
 

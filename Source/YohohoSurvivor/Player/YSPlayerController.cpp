@@ -4,6 +4,7 @@
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
+#include "Upgrades/YSPassive.h"
 #include "Blueprint/GameViewportSubsystem.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Components/CapsuleComponent.h"
@@ -435,6 +436,11 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 		}
 		Info.AutoAtkName = FText::FromString(FString::Join(AutoAtkNames, TEXT(" & ")));
 		Info.AbilityName = FText::FromString(FString::Join(AbilityNames, TEXT(" & ")));
+		if (const UYSPassive* Passive = PreviewCharacter->GetPassive())
+		{
+			Info.PassiveName = Passive->DisplayName;
+			Info.PassiveDescription = Passive->Description;
+		}
 		CharacterSelectMenu->SetCharacterInfo(Info);
 	}
 

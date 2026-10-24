@@ -22,6 +22,7 @@
 #include "Components/ChildActorComponent.h"
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
+#include "Upgrades/YSPassive.h"
 #include "Weapons/YSProjectile.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSDanglingChainComponent.h"
@@ -198,6 +199,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, Luck);
 	DOREPLIFETIME(AYSPlayerCharacter, bLeftHanded);
 	DOREPLIFETIME(AYSPlayerCharacter, WeaponSet);
+	DOREPLIFETIME(AYSPlayerCharacter, Passive);
 	DOREPLIFETIME(AYSPlayerCharacter, CarriedObject);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustStacks);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustMaxStacks);
@@ -234,12 +236,22 @@ float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Dam
 		return 0.0f;
 	}
 
+	// %Armor (passif Tough Guy) : part du coup ignorée, AVANT l'armure (100 avec 20 % et 10 d'armure -> 80 - 10 = 70)
+	const float IncomingDamage = Damage;
+	const float ArmorPercent = GetArmorPercent();
+	if (ArmorPercent > 0.0f)
+	{
+		Damage *= FMath::Max(0.0f, 1.0f - ArmorPercent);
+	}
+
 	// Armor : chaque coup est réduit de l'armure (jusqu'à MinDamageAfterArmor) ; BloodRage ++ : armure en plus par stack de rage
 	const float TotalArmor = Armor + BloodRageStacks * BloodRageArmorPerStack;
 	if (TotalArmor > 0.0f)
 	{
 		Damage = FMath::Max(FMath::Min(Damage, MinDamageAfterArmor), Damage - TotalArmor);
 	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s subit %.1f -> %.1f (%%Armor %.0f %%, armure %.1f)"), *GetName(), IncomingDamage, Damage, ArmorPercent * 100.0f, TotalArmor);
 
 	// BloodRage : chaque coup reçu donne une stack de rage (après l'armure du coup)
 	AddBloodRageStack();
@@ -1293,6 +1305,11 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, U
 		{
 			NewCharacter->WeaponSet = NewWeaponSet;
 		}
+		// même personnage (changement de set) : le passif suit, même s'il a été remplacé
+		if (NewClass == GetClass())
+		{
+			NewCharacter->Passive = Passive;
+		}
 		NewCharacter->FinishSpawning(SpawnTransform);
 	}
 	if (!NewCharacter)
@@ -1799,9 +1816,32 @@ float AYSPlayerCharacter::GetBaseMaxHealth() const
 	return WeaponSet && WeaponSet->bOverrideMaxHealth ? WeaponSet->MaxHealth : MaxHealth;
 }
 
+float AYSPlayerCharacter::GetBaseCriticalDamageMultiplier() const
+{
+	const float Override = Passive ? Passive->GetCriticalDamageMultiplierOverride() : 0.0f;
+	return Override > 0.0f ? Override : CriticalDamageMultiplier;
+}
+
+float AYSPlayerCharacter::GetArmorPercent() const
+{
+	return Passive ? Passive->GetArmorPercent() : 0.0f;
+}
+
+void AYSPlayerCharacter::SetPassive(UYSPassive* NewPassive)
+{
+	if (HasAuthority())
+	{
+		Passive = NewPassive;
+		UpdateMaxWalkSpeed();
+		ForceNetUpdate();
+	}
+}
+
 float AYSPlayerCharacter::GetUnmodifiedWalkSpeed() const
 {
-	const float CarryMultiplier = IsValid(CarriedObject) ? CarriedObject->GetCarrierSpeedMultiplier() : 1.0f;
+	// passif Larbin : pas de ralentissement en portant un objet
+	const bool bCarrySlowdown = IsValid(CarriedObject) && !(Passive && Passive->IgnoresCarrySlowdown());
+	const float CarryMultiplier = bCarrySlowdown ? CarriedObject->GetCarrierSpeedMultiplier() : 1.0f;
 	return MoveSpeed * MoveSpeedMultiplier * CarryMultiplier;
 }
 
@@ -1929,7 +1969,8 @@ void AYSPlayerCharacter::StartCarrying(AYSInteractiveObject* Object)
 	ApplyCarryVisuals();
 	UpdateMaxWalkSpeed();
 	ForceNetUpdate();
-	UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s prend %s"), *GetName(), *Object->GetName());
+	UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s prend %s (vitesse %.0f%s)"), *GetName(), *Object->GetName(), GetCharacterMovement()->MaxWalkSpeed,
+		Passive && Passive->IgnoresCarrySlowdown() ? TEXT(", passif : pas de ralentissement") : TEXT(""));
 }
 
 void AYSPlayerCharacter::DropCarriedObject(const TCHAR* Reason)
