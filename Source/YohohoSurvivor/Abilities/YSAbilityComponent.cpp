@@ -15,8 +15,19 @@ namespace
 	/** Marge acceptée côté serveur : l'horloge du client n'est synchronisée qu'approximativement */
 	constexpr double CooldownTolerance = 0.2;
 
+	/** Rangs de priorité des actions : action forcée (« Allez-y mes minions ! »), puis type d'action */
+	enum class EYSActionPriority : uint8
+	{
+		Forced,
+		Ability,
+		AutoAtk,
+	};
+
 	/** Priorités des actions d'une arme, de la plus prioritaire à la moins prioritaire (liste donnée par Paul) */
-	constexpr EYSActionSlot ActionPriority[] = { EYSActionSlot::Ability, EYSActionSlot::AutoAtk };
+	constexpr EYSActionPriority ActionPriority[] = { EYSActionPriority::Forced, EYSActionPriority::Ability, EYSActionPriority::AutoAtk };
+
+	/** Délai pour utiliser une activation forcée accordée (aller-retour réseau compris) */
+	constexpr double ForcedGrantLifetime = 2.0;
 }
 
 UYSAbilityComponent::UYSAbilityComponent()
@@ -34,7 +45,7 @@ void UYSAbilityComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 
 void UYSAbilityComponent::TryActivate(const FVector& TargetLocation)
 {
-	if (!IsReady() || !CanStartByPriority() || !CanActivateNow())
+	if (!IsReady() || IsForcedActionInProgress() || !CanStartByPriority() || !CanActivateNow())
 	{
 		return;
 	}
@@ -50,6 +61,7 @@ void UYSAbilityComponent::TryActivate(const FVector& TargetLocation)
 
 	// prédiction locale de la recharge et des effets pour un retour immédiat, le serveur fait foi
 	ReadyServerTime = GetServerTime() + GetActivationLockDuration();
+	bLastActivationForced = false;
 	NotifyActivated();
 	OnActivationPredicted(TargetLocation);
 	ServerActivate(TargetLocation);
@@ -63,6 +75,7 @@ float UYSAbilityComponent::GetTimeSinceActivation() const
 
 void UYSAbilityComponent::MulticastActivated_Implementation()
 {
+	bLastActivationForced = false;
 	// une attaque automatique n'est jamais prédite : tout le monde la joue à réception
 	if (IsAutomatic() || !IsLocallyPredicted())
 	{
@@ -150,16 +163,102 @@ void UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
 	{
 		return;
 	}
-	if (!CanStartByPriority() || !CanActivateNow())
+	if (IsForcedActionInProgress() || !CanStartByPriority() || !CanActivateNow())
 	{
 		return;
 	}
 	CancelLowerPriorityActions();
 
 	ReadyServerTime = Now + GetActivationLockDuration();
+	bLastActivationForced = false;
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s activée à %.2f, prête à %.2f"), *GetOwner()->GetName(), *GetName(), Now, ReadyServerTime);
 	ExecuteAbility(TargetLocation);
 	MulticastActivated();
+}
+
+void UYSAbilityComponent::GrantForcedActivation(const FYSForcedActivation& Forced)
+{
+	bForcedGranted = true;
+	PendingForced = Forced;
+	ForcedGrantTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+}
+
+void UYSAbilityComponent::TryForcedActivate(const FVector& TargetLocation)
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	if (!bForcedGranted || !CanActivateNow() || (Character && Character->IsCarrying()))
+	{
+		bForcedGranted = false;
+		return;
+	}
+
+	PrepareActivation(TargetLocation);
+
+	if (GetOwner()->HasAuthority())
+	{
+		ActivateForcedOnServer(TargetLocation);
+		return;
+	}
+
+	// prédiction : effets immédiats ; la recharge ne change pas (rendue en Golden), le serveur fait foi
+	bForcedGranted = false;
+	if (PendingForced.bResetCooldown)
+	{
+		ReadyServerTime = FMath::Min(ReadyServerTime, GetServerTime());
+	}
+	bLastActivationForced = true;
+	NotifyActivated();
+	OnActivationPredicted(TargetLocation);
+	ServerForcedActivate(TargetLocation);
+}
+
+void UYSAbilityComponent::ServerForcedActivate_Implementation(FVector_NetQuantize TargetLocation)
+{
+	ActivateForcedOnServer(TargetLocation);
+}
+
+void UYSAbilityComponent::ActivateForcedOnServer(const FVector& TargetLocation)
+{
+	// accord du serveur obligatoire (une seule fois, pendant un court délai)
+	const bool bGranted = bForcedGranted && GetWorld() && GetWorld()->GetTimeSeconds() - ForcedGrantTime <= ForcedGrantLifetime;
+	bForcedGranted = false;
+	if (!bGranted || !CanActivateNow())
+	{
+		return;
+	}
+
+	// priorité Forced : l'action en cours de cette capacité s'arrête (sans effacer son animation chez le client qui a prédit),
+	// toutes les autres actions du groupe sont interrompues
+	OnActionCancelled();
+	TArray<UYSAbilityComponent*> Group;
+	GetPriorityGroup(Group);
+	for (UYSAbilityComponent* Other : Group)
+	{
+		if (Other != this)
+		{
+			Other->CancelAction();
+		}
+	}
+
+	// la recharge n'est pas déclenchée ; Golden : elle est rendue
+	const double Now = GetServerTime();
+	const double ReadyTime = PendingForced.bResetCooldown ? FMath::Min(ReadyServerTime, Now) : ReadyServerTime;
+	bLastActivationForced = true;
+	ForcedDamageMultiplier = PendingForced.DamageMultiplier;
+	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s FORCÉE à %.2f (dégâts x %.2f%s), prête à %.2f"), *GetOwner()->GetName(), *GetName(), Now,
+		ForcedDamageMultiplier, PendingForced.bResetCooldown ? TEXT(", recharge rendue") : TEXT(""), ReadyTime);
+	ExecuteAbility(TargetLocation);
+	ReadyServerTime = ReadyTime;
+	MulticastForcedActivated();
+}
+
+void UYSAbilityComponent::MulticastForcedActivated_Implementation()
+{
+	bLastActivationForced = true;
+	if (!IsLocallyPredicted())
+	{
+		NotifyActivated();
+	}
 }
 
 double UYSAbilityComponent::GetServerTime() const
@@ -177,7 +276,9 @@ double UYSAbilityComponent::GetServerTime() const
 float UYSAbilityComponent::GetDamageMultiplier() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	return Character ? Character->GetWeaponDamageMultiplier(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 1.0f;
+	// action forcée : You're all my minions ++
+	const float ForcedMultiplier = bLastActivationForced ? ForcedDamageMultiplier : 1.0f;
+	return (Character ? Character->GetWeaponDamageMultiplier(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 1.0f) * ForcedMultiplier;
 }
 
 float UYSAbilityComponent::GetCooldownMultiplier() const
@@ -217,10 +318,12 @@ bool UYSAbilityComponent::IsActionInProgress() const
 
 int32 UYSAbilityComponent::GetPriorityRank() const
 {
+	const EYSActionPriority Priority = IsForcedActionInProgress() ? EYSActionPriority::Forced
+		: GetActionSlot() == EYSActionSlot::Ability ? EYSActionPriority::Ability : EYSActionPriority::AutoAtk;
 	const int32 Rank = UE_ARRAY_COUNT(ActionPriority);
 	for (int32 Index = 0; Index < Rank; ++Index)
 	{
-		if (ActionPriority[Index] == GetActionSlot())
+		if (ActionPriority[Index] == Priority)
 		{
 			return Index;
 		}

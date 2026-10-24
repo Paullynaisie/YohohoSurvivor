@@ -864,6 +864,34 @@ protected:
 };
 
 /**
+ *  « You're all my minions » (Cursed Captain, Ability « Allez-y mes minions ! » du Cursed Hook) :
+ *  Déblocage : l'Ability des joueurs à moins de All My Minions Range (2500) du Captain est forcée aussi (priorité sur toutes
+ *  leurs actions, recharge ignorée et pas déclenchée) ; Bonus « You're all my minions ++ » : dégâts des actions forcées
+ *  x (1 + somme) (Silver / Gold Value) ; Super « Golden minions » : les actions forcées rendent en plus leur recharge.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : You're all my minions"))
+class UYSAllMyMinionsUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSAllMyMinionsUpgrade();
+
+	/** Noms des propriétés d'arme posées sur le personnage (lues par Allez-y mes minions !) */
+	static const FName AllMyMinionsStat;
+	static const FName ForcedDamageStat;
+	static const FName ForcedCooldownResetStat;
+
+protected:
+
+	/** Bonus de dégâts des actions forcées (%) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal * 100.0f; }
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+};
+
+/**
  *  Upgrade de classe : proposée (sans hasard, sans rareté) au niveau d'équipe AYSGameMode::ClassUpgradeLevel ;
  *  les choix sont toutes les upgrades de classe proposables du pool.
  *  Normalement : change le SET D'ARME du personnage (SourceWeaponSet -> TargetWeaponSet), qui garde toutes ses upgrades.

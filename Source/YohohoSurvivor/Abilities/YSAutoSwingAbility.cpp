@@ -10,6 +10,7 @@
 #include "GameFramework/Pawn.h"
 #include "GameplayTagAssetInterface.h"
 #include "Net/UnrealNetwork.h"
+#include "Enemies/YSFoeCharacter.h"
 #include "Player/YSPlayerCharacter.h"
 #include "TimerManager.h"
 #include "Weapons/YSWeapon.h"
@@ -287,7 +288,6 @@ void UYSAutoSwingAbility::ApplySwingHits()
 		FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeBox(Hitbox->GetScaledBoxExtent()), Params);
 
 	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Holder);
-	const float CriticalMultiplier = bCriticalSwing && Character ? Character->GetCriticalDamageMultiplier() : 1.0f;
 
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
@@ -305,19 +305,28 @@ void UYSAutoSwingAbility::ApplySwingHits()
 		}
 
 		HitThisSwing.Add(Target);
-		const float FinalDamage = Damage * GetDamageMultiplier() * CriticalMultiplier;
+		// coupe critique, ou minion du Captain sur le NME marqué par la Captain Sword
+		const bool bCritical = Character && (bCriticalSwing || Character->HasForcedCriticalAgainst(Target));
+		const float FinalDamage = Damage * GetDamageMultiplier() * (bCritical ? Character->GetCriticalDamageMultiplier() : 1.0f);
 		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.3f%s)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
-			FinalDamage, Damage, GetDamageMultiplier(), bCriticalSwing ? TEXT(", critique") : TEXT(""));
+			FinalDamage, Damage, GetDamageMultiplier(), bCritical ? TEXT(", critique") : TEXT(""));
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible ; critique : type de dégât qui grossit le chiffre ;
 		// direction du coup (pushback) = du porteur vers la cible : le NME recule, il n'est pas balayé sur le côté par la lame
 		const FVector ShotDirection = Holder ? (Target->GetActorLocation() - Holder->GetActorLocation()).GetSafeNormal2D() : FVector::ZeroVector;
-		DealSwingDamage(Target, FinalDamage, ShotDirection, Holder ? Holder->GetController() : nullptr);
+		DealSwingDamage(Target, FinalDamage, ShotDirection, Holder ? Holder->GetController() : nullptr, bCritical);
+
+		// Captain Sword : le NME touché (encore en vie) devient le NME marqué du porteur
+		AYSFoeCharacter* HitFoe = bMarksTarget && Character ? Cast<AYSFoeCharacter>(Target) : nullptr;
+		if (HitFoe && HitFoe->GetHealth() > 0.0f && !HitFoe->IsActorBeingDestroyed())
+		{
+			Character->SetMarkedFoe(HitFoe, bMarkCritsMinions, bMarkSpawnsMinion);
+		}
 	}
 }
 
-void UYSAutoSwingAbility::DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController)
+void UYSAutoSwingAbility::DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController, bool bCritical)
 {
-	const FPointDamageEvent DamageEvent(FinalDamage, FHitResult(), ShotDirection, bCriticalSwing ? UYSCriticalDamageType::StaticClass() : nullptr);
+	const FPointDamageEvent DamageEvent(FinalDamage, FHitResult(), ShotDirection, bCritical ? UYSCriticalDamageType::StaticClass() : nullptr);
 	Target->TakeDamage(FinalDamage, DamageEvent, InstigatorController, nullptr);
 }
 

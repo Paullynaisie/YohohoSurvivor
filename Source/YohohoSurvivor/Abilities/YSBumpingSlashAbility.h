@@ -39,5 +39,5 @@ public:
 protected:
 
 	/** Coup qui bumpe (FYSBumpDamageEvent) */
-	virtual void DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController) override;
+	virtual void DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController, bool bCritical) override;
 };

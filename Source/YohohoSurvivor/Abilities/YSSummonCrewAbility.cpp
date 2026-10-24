@@ -3,6 +3,7 @@
 #include "Core/YSGameState.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Map/YSOcean.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Summons/YSCaptainMinion.h"
 #include "TimerManager.h"
@@ -77,7 +78,12 @@ bool UYSSummonCrewAbility::CanActivateNow() const
 
 void UYSSummonCrewAbility::ExecuteAbility(const FVector& TargetLocation)
 {
-	GetWorld()->GetTimerManager().SetTimer(SummonTimer, FTimerDelegate::CreateUObject(this, &UYSSummonCrewAbility::SpawnMinions), FMath::Max(WindupDuration + StrikeDuration, KINDA_SMALL_NUMBER), false);
+	GetWorld()->GetTimerManager().SetTimer(SummonTimer, FTimerDelegate::CreateUObject(this, &UYSSummonCrewAbility::OnHookStrike), FMath::Max(WindupDuration + StrikeDuration, KINDA_SMALL_NUMBER), false);
+}
+
+void UYSSummonCrewAbility::OnHookStrike()
+{
+	SpawnMinions();
 }
 
 void UYSSummonCrewAbility::OnActionCancelled()
@@ -103,36 +109,58 @@ void UYSSummonCrewAbility::SpawnMinions()
 		return;
 	}
 
-	const int32 Alive = CountMinions(World, Captain);
-	const int32 ToSpawn = FMath::Clamp(GetMaxMinions() - Alive, 0, MinionsPerSummon);
-	const AYSGameState* YSGameState = World->GetGameState<AYSGameState>();
-	const int32 FaceCount = YSGameState ? YSGameState->GetCustomizationFaces().Num() : 0;
-	const AYSCaptainMinion* DefaultMinion = MinionClass->GetDefaultObject<AYSCaptainMinion>();
-	const float HalfHeight = DefaultMinion && DefaultMinion->GetCapsuleComponent() ? DefaultMinion->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 96.0f;
-
+	const int32 ToSpawn = FMath::Clamp(GetMaxMinions() - CountMinions(World, Captain), 0, MinionsPerSummon);
 	for (int32 Index = 0; Index < ToSpawn; ++Index)
 	{
 		// sur les côtés du Captain, un peu derrière (alternés droite / gauche, puis de plus en plus derrière)
 		const float Side = Index % 2 == 0 ? 1.0f : -1.0f;
 		const float Yaw = Captain->GetActorRotation().Yaw + Side * (110.0f + 25.0f * (Index / 2));
-		FVector Location = Captain->GetActorLocation() + FRotator(0.0f, Yaw, 0.0f).Vector() * SpawnDistance;
-		FHitResult Hit;
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(SummonCrew), false, Captain);
-		if (World->LineTraceSingleByChannel(Hit, Location + FVector(0.0f, 0.0f, 300.0f), Location - FVector(0.0f, 0.0f, 1000.0f), ECC_WorldStatic, Params))
-		{
-			Location.Z = Hit.ImpactPoint.Z + HalfHeight;
-		}
-
-		const FTransform SpawnTransform(FRotator(0.0f, Captain->GetActorRotation().Yaw, 0.0f), Location);
-		AYSCaptainMinion* Minion = World->SpawnActorDeferred<AYSCaptainMinion>(MinionClass, SpawnTransform, Captain, Captain, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
-		if (!Minion)
-		{
-			continue;
-		}
-		UYSWeaponSet* Set = MinionWeaponSets.Num() > 0 ? MinionWeaponSets[FMath::RandRange(0, MinionWeaponSets.Num() - 1)].Get() : nullptr;
-		Minion->InitMinion(Captain, Set, FaceCount > 0 ? FMath::RandRange(0, FaceCount - 1) : 0);
-		Minion->FinishSpawning(SpawnTransform);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSSummon] %s invoque %s (set %s) en (%.0f, %.0f, %.0f) : %d / %d minions"), *Captain->GetName(), *Minion->GetName(),
-			Set ? *Set->GetName() : TEXT("par défaut"), Location.X, Location.Y, Location.Z, Alive + Index + 1, GetMaxMinions());
+		SpawnMinionAt(Captain->GetActorLocation() + FRotator(0.0f, Yaw, 0.0f).Vector() * SpawnDistance, Captain->GetActorRotation().Yaw);
 	}
+}
+
+AYSCaptainMinion* UYSSummonCrewAbility::SpawnMinionAt(const FVector& Location, float Yaw)
+{
+	AYSPlayerCharacter* Captain = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	UWorld* World = GetWorld();
+	if (!Captain || !World || !MinionClass || !Captain->IsAlive() || !Captain->HasAuthority())
+	{
+		return nullptr;
+	}
+	const int32 Alive = CountMinions(World, Captain);
+	if (Alive >= GetMaxMinions())
+	{
+		return nullptr;
+	}
+
+	// posé sur le sol (pas dans la mer : il tomberait dans la deadzone)
+	const AYSCaptainMinion* DefaultMinion = MinionClass->GetDefaultObject<AYSCaptainMinion>();
+	const float HalfHeight = DefaultMinion && DefaultMinion->GetCapsuleComponent() ? DefaultMinion->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 96.0f;
+	FVector SpawnLocation = Location;
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(SummonCrew), false, Captain);
+	if (World->LineTraceSingleByChannel(Hit, Location + FVector(0.0f, 0.0f, 300.0f), Location - FVector(0.0f, 0.0f, 1000.0f), ECC_WorldStatic, Params))
+	{
+		if (AYSOcean::IsUnderwater(World, Hit.ImpactPoint))
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[YSSummon] %s : pas de minion en (%.0f, %.0f), sous l'eau"), *Captain->GetName(), Location.X, Location.Y);
+			return nullptr;
+		}
+		SpawnLocation.Z = Hit.ImpactPoint.Z + HalfHeight;
+	}
+
+	const FTransform SpawnTransform(FRotator(0.0f, Yaw, 0.0f), SpawnLocation);
+	AYSCaptainMinion* Minion = World->SpawnActorDeferred<AYSCaptainMinion>(MinionClass, SpawnTransform, Captain, Captain, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
+	if (!Minion)
+	{
+		return nullptr;
+	}
+	const AYSGameState* YSGameState = World->GetGameState<AYSGameState>();
+	const int32 FaceCount = YSGameState ? YSGameState->GetCustomizationFaces().Num() : 0;
+	UYSWeaponSet* Set = MinionWeaponSets.Num() > 0 ? MinionWeaponSets[FMath::RandRange(0, MinionWeaponSets.Num() - 1)].Get() : nullptr;
+	Minion->InitMinion(Captain, Set, FaceCount > 0 ? FMath::RandRange(0, FaceCount - 1) : 0);
+	Minion->FinishSpawning(SpawnTransform);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSSummon] %s invoque %s (set %s) en (%.0f, %.0f, %.0f) : %d / %d minions"), *Captain->GetName(), *Minion->GetName(),
+		Set ? *Set->GetName() : TEXT("par défaut"), SpawnLocation.X, SpawnLocation.Y, SpawnLocation.Z, Alive + 1, GetMaxMinions());
+	return Minion;
 }

@@ -83,6 +83,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Mark")
 	bool bMarksTarget = false;
 
+	/** Marque : les minions du tireur font des critiques sur le NME marqué */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Mark", meta=(EditCondition="bMarksTarget"))
+	bool bMarkCritsMinions = false;
+
+	/** Marque (Cursed Captain AMMO) : à la mort du NME marqué, un minion du tireur apparaît à sa place s'il reste de la place */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Mark", meta=(EditCondition="bMarksTarget"))
+	bool bMarkSpawnsMinion = false;
+
 	/** Ricochets restants : après un dégât, la balle repart vers le NME le plus proche pas encore touché (fixé au tir, upgrade Ricochet) */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="AMMO|Ricochet")
 	int32 RemainingRicochets = 0;

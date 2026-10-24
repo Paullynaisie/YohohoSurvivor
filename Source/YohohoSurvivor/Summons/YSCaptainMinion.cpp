@@ -54,6 +54,34 @@ float AYSCaptainMinion::GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSAc
 	return Captain ? Captain->GetSlotDamageMultiplier(EYSActionSlot::Ability) : 1.0f;
 }
 
+bool AYSCaptainMinion::HasForcedCriticalAgainst(const AActor* Target) const
+{
+	return Captain && Target && Captain->GetMarkedFoe() == Target && Captain->IsMarkCriticalForMinions();
+}
+
+float AYSCaptainMinion::GetCriticalDamageMultiplier() const
+{
+	return Captain ? Captain->GetCriticalDamageMultiplier() : Super::GetCriticalDamageMultiplier();
+}
+
+FVector AYSCaptainMinion::GetAimLocation() const
+{
+	return CurrentTarget.IsValid() ? CurrentTarget->GetActorLocation() : GetActorLocation() + GetActorForwardVector() * 1000.0f;
+}
+
+bool AYSCaptainMinion::IsAbilityInProgress() const
+{
+	for (const AYSWeapon* Weapon : GetHeldWeapons())
+	{
+		const UYSAbilityComponent* Ability = Weapon ? Weapon->GetActiveAction() : nullptr;
+		if (Ability && Ability->IsActionInProgress())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 void AYSCaptainMinion::Die()
 {
 	UE_LOG(LogTemp, Verbose, TEXT("[YSMinion] %s meurt"), *GetName());
@@ -81,7 +109,24 @@ void AYSCaptainMinion::Tick(float DeltaSeconds)
 
 	AAIController* AIController = Cast<AAIController>(GetController());
 	const FVector Location = GetActorLocation();
-	const AYSFoeCharacter* Target = FindTarget();
+	AYSFoeCharacter* Target = FindTarget();
+	CurrentTarget = Target;
+
+	// Ability forcée en cours (dash, roulade) : le mouvement est celui de l'action ; regard figé s'il l'est (dash)
+	if (IsAbilityInProgress())
+	{
+		FVector LockedDirection;
+		bool bLocked = false;
+		ForEachHeldAction([&LockedDirection, &bLocked](const UYSAbilityComponent* Action)
+		{
+			bLocked = bLocked || Action->GetLockedAimDirection(LockedDirection);
+		});
+		if (AIController && bLocked)
+		{
+			AIController->SetFocalPoint(Location + LockedDirection * 500.0f);
+		}
+		return;
+	}
 
 	// cible : s'approche jusqu'à la portée de son arme, tourné vers elle (l'attaque auto part toute seule)
 	FVector Goal = FVector::ZeroVector;

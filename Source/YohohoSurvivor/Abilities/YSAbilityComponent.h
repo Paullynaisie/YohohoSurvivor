@@ -25,6 +25,21 @@ enum class EYSWeaponType : uint8
 
 class UTexture2D;
 
+/** Activation forcée d'une Ability par un autre personnage (« Allez-y mes minions ! » du Cursed Hook) */
+USTRUCT(BlueprintType)
+struct FYSForcedActivation
+{
+	GENERATED_BODY()
+
+	/** Dégâts de l'action forcée x ce multiplicateur (You're all my minions ++) */
+	UPROPERTY()
+	float DamageMultiplier = 1.0f;
+
+	/** Golden : la recharge de l'Ability est rendue en plus (sinon elle reste telle quelle : l'action forcée ne la déclenche pas) */
+	UPROPERTY()
+	bool bResetCooldown = false;
+};
+
 /**
  *  Base des capacités du joueur : temps de recharge, activation réseau et données d'UI.
  *  Attaque active (ex. Coup d'Petoir) : le client local appelle TryActivate -> RPC serveur -> le serveur
@@ -134,7 +149,7 @@ public:
 	virtual float GetActivationLockDuration() const;
 
 	/**
-	 *  Priorités des actions d'une arme (des deux armes en akimbo) : voir ActionPriority dans le .cpp (Ability, puis Auto atk).
+	 *  Priorités des actions d'une arme (des deux armes en akimbo) : voir ActionPriority dans le .cpp (action forcée, Ability, puis Auto atk).
 	 *  Une action ne démarre pas tant qu'une action plus prioritaire est en cours ; quand elle démarre, elle interrompt
 	 *  les actions moins prioritaires en cours (CancelAction).
 	 */
@@ -190,6 +205,19 @@ public:
 	/** L'activation aurait un effet (ex. Summon the crew : faux si les minions sont déjà au maximum) ; sinon le clic ne fait rien, sans recharge */
 	virtual bool CanActivateNow() const { return true; }
 
+	/**
+	 *  Activation forcée (« Allez-y mes minions ! ») : le serveur l'accorde (et le client qui contrôle le personnage, par RPC du
+	 *  personnage), puis la machine qui contrôle l'active vers son curseur avec TryForcedActivate. Elle passe avant toutes les autres
+	 *  actions (priorité Forced : celles en cours sont interrompues), ignore la recharge et ne la déclenche pas (Reset Cooldown : la rend).
+	 */
+	void GrantForcedActivation(const FYSForcedActivation& Forced);
+
+	/** Active l'activation forcée accordée (machine qui contrôle le personnage) ; rien sans accord */
+	void TryForcedActivate(const FVector& TargetLocation);
+
+	/** La dernière activation était forcée et l'action est encore en cours : le clic ne la relance pas */
+	bool IsForcedActionInProgress() const { return bLastActivationForced && IsActionInProgress(); }
+
 protected:
 
 	/** Effets visuels de l'activation sur toutes les machines (le client qui tire les a déjà joués par prédiction) */
@@ -214,10 +242,29 @@ protected:
 	/** Vrai sur le client qui contrôle le tireur (hors serveur) : il joue les effets sans attendre le serveur */
 	bool IsLocallyPredicted() const;
 
+	/** Activation forcée exécutée par le serveur (accord vérifié) */
+	void ActivateForcedOnServer(const FVector& TargetLocation);
+
+	UFUNCTION(Server, Reliable)
+	void ServerForcedActivate(FVector_NetQuantize TargetLocation);
+
+	/** Effets visuels d'une activation forcée sur toutes les machines */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastForcedActivated();
+
 private:
 
 	/** Instant (temps local) de la dernière activation vue par cette machine */
 	double LastActivationTime = -1.0e6;
+
+	/** Activation forcée accordée et pas encore utilisée, avec ses réglages et l'instant de l'accord (temps local) */
+	bool bForcedGranted = false;
+	FYSForcedActivation PendingForced;
+	double ForcedGrantTime = -1.0e6;
+
+	/** La dernière activation était forcée ; ses dégâts x ForcedDamageMultiplier (serveur) */
+	bool bLastActivationForced = false;
+	float ForcedDamageMultiplier = 1.0f;
 
 protected:
 

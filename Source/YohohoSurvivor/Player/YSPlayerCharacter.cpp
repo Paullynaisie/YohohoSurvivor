@@ -16,6 +16,8 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Abilities/YSAutoSwingAbility.h"
+#include "Abilities/YSSummonCrewAbility.h"
+#include "Summons/YSCaptainMinion.h"
 #include "TimerManager.h"
 #include "Components/ChildActorComponent.h"
 #include "Weapons/YSWeapon.h"
@@ -1491,9 +1493,16 @@ void AYSPlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void AYSPlayerCharacter::SetMarkedFoe(AYSFoeCharacter* Foe)
+void AYSPlayerCharacter::SetMarkedFoe(AYSFoeCharacter* Foe, bool bMinionsCritical, bool bSpawnsMinion)
 {
-	if (!HasAuthority() || MarkedFoe == Foe)
+	if (!HasAuthority())
+	{
+		return;
+	}
+	// effets de la dernière arme qui a marqué
+	bMarkMinionsCritical = Foe && bMinionsCritical;
+	bMarkSpawnsMinion = Foe && bSpawnsMinion;
+	if (MarkedFoe == Foe)
 	{
 		return;
 	}
@@ -1501,6 +1510,101 @@ void AYSPlayerCharacter::SetMarkedFoe(AYSFoeCharacter* Foe)
 	ForceNetUpdate();
 	UpdateMarkDisplay();
 	UE_LOG(LogTemp, Verbose, TEXT("[YSMark] %s marque %s"), *GetName(), Foe ? *Foe->GetName() : TEXT("(personne)"));
+}
+
+void AYSPlayerCharacter::OnMarkedFoeKilled(const AYSFoeCharacter* Foe)
+{
+	if (!HasAuthority() || !Foe || !bMarkSpawnsMinion)
+	{
+		return;
+	}
+	// Cursed Captain Gun : un minion apparaît là où meurt le NME marqué (invocation de l'arme d'invocation tenue, sans dépasser le maximum)
+	for (const AYSWeapon* Weapon : GetHeldWeapons())
+	{
+		TInlineComponentArray<UYSSummonCrewAbility*> Summons(Weapon);
+		if (Summons.Num() > 0)
+		{
+			const AYSCaptainMinion* Minion = Summons[0]->SpawnMinionAt(Foe->GetActorLocation(), Foe->GetActorRotation().Yaw);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSMark] %s : NME marqué %s mort, minion %s"), *GetName(), *Foe->GetName(), Minion ? *Minion->GetName() : TEXT("non invoqué (maximum ou pas de sol)"));
+			return;
+		}
+	}
+}
+
+void AYSPlayerCharacter::ForceAbility(const FYSForcedActivation& Forced)
+{
+	if (!HasAuthority() || !IsAlive() || IsCarrying())
+	{
+		return;
+	}
+	// accord du serveur sur les actions de clic des deux mains
+	for (const AYSWeapon* Weapon : { GetMainHandWeapon(), GetOffHandWeapon() })
+	{
+		if (UYSAbilityComponent* Action = Weapon ? Weapon->GetActiveAction() : nullptr)
+		{
+			Action->GrantForcedActivation(Forced);
+		}
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSGoMinions] Ability de %s forcée"), *GetName());
+
+	// lancée par la machine qui contrôle le personnage, vers son curseur (hôte, minion : tout de suite)
+	if (IsLocallyControlled())
+	{
+		ForceFire();
+	}
+	else
+	{
+		ClientForceAbility(Forced);
+	}
+}
+
+void AYSPlayerCharacter::ClientForceAbility_Implementation(FYSForcedActivation Forced)
+{
+	for (const AYSWeapon* Weapon : { GetMainHandWeapon(), GetOffHandWeapon() })
+	{
+		if (UYSAbilityComponent* Action = Weapon ? Weapon->GetActiveAction() : nullptr)
+		{
+			Action->GrantForcedActivation(Forced);
+		}
+	}
+	ForceFire();
+}
+
+void AYSPlayerCharacter::ForceFire()
+{
+	const AYSWeapon* MainWeapon = GetMainHandWeapon();
+	const AYSWeapon* OffWeapon = GetOffHandWeapon();
+	UYSAbilityComponent* MainAction = MainWeapon ? MainWeapon->GetActiveAction() : nullptr;
+	UYSAbilityComponent* OffAction = OffWeapon ? OffWeapon->GetActiveAction() : nullptr;
+	const bool bAkimbo = MainAction && OffAction && IsAkimbo();
+
+	// comme Fire : une action qui occupe tout le personnage (Rolling shot) n'est lancée que par la main principale
+	if (bAkimbo && MainAction->BlocksAllWeapons())
+	{
+		MainAction->TryForcedActivate(GetAimLocation());
+		return;
+	}
+	// akimbo : la main principale, puis l'autre après le délai de l'arme
+	if (bAkimbo)
+	{
+		MainAction->TryForcedActivate(GetAimLocation());
+		TWeakObjectPtr<UYSAbilityComponent> WeakOffAction = OffAction;
+		GetWorldTimerManager().SetTimer(AkimboTimer, FTimerDelegate::CreateWeakLambda(this, [this, WeakOffAction]()
+		{
+			if (WeakOffAction.IsValid())
+			{
+				WeakOffAction->TryForcedActivate(GetAimLocation());
+			}
+		}), FMath::Max(MainAction->AkimboFireDelay, KINDA_SMALL_NUMBER), false);
+		return;
+	}
+	for (UYSAbilityComponent* Action : { MainAction, OffAction })
+	{
+		if (Action)
+		{
+			Action->TryForcedActivate(GetAimLocation());
+		}
+	}
 }
 
 void AYSPlayerCharacter::OnRep_MarkedFoe()

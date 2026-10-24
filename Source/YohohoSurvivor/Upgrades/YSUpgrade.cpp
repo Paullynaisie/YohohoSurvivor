@@ -2,6 +2,7 @@
 #include "Abilities/YSAbilityComponent.h"
 #include "Abilities/YSAutoSwingAbility.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
+#include "Abilities/YSGoMinionsAbility.h"
 #include "Abilities/YSRollAndBombAbility.h"
 #include "Abilities/YSSummonCrewAbility.h"
 #include "Player/YSPlayerCharacter.h"
@@ -796,6 +797,31 @@ void UYSMineUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUn
 	Character->SetWeaponStat(MineStat, bUnlocked ? 1.0f : 0.0f);
 	Character->SetWeaponStat(MinePushbackStat, bUnlocked ? BonusTotal : 0.0f);
 	Character->SetWeaponStat(MineDoubleStat, bUnlocked && bSuper ? 1.0f : 0.0f);
+}
+
+const FName UYSAllMyMinionsUpgrade::AllMyMinionsStat(TEXT("AllMyMinions"));
+const FName UYSAllMyMinionsUpgrade::ForcedDamageStat(TEXT("ForcedDamage"));
+const FName UYSAllMyMinionsUpgrade::ForcedCooldownResetStat(TEXT("ForcedCooldownReset"));
+
+UYSAllMyMinionsUpgrade::UYSAllMyMinionsUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "AllMyMinionsName", "You're all my minions");
+	RequiredActionClass = UYSGoMinionsAbility::StaticClass();
+	UnlockName = NSLOCTEXT("YS", "AllMyMinionsUnlockName", "You're all my minions");
+	UnlockDescription = NSLOCTEXT("YS", "AllMyMinionsUnlockDesc", "Allez-y mes minions ! force aussi l'Ability\ndes joueurs proches du Captain (sans leur recharge)");
+	BonusName = NSLOCTEXT("YS", "AllMyMinionsBonusName", "You're all my minions ++");
+	BonusStatLabel = NSLOCTEXT("YS", "AllMyMinionsBonusStat", "Dégâts des abilities forcées (+%)");
+	BonusSilverValue = 0.2f;
+	BonusGoldValue = 0.35f;
+	SuperName = NSLOCTEXT("YS", "AllMyMinionsSuperName", "Golden minions");
+	SuperDescription = NSLOCTEXT("YS", "AllMyMinionsSuperDesc", "Les abilities forcées rendent aussi leur recharge");
+}
+
+void UYSAllMyMinionsUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	Character->SetWeaponStat(AllMyMinionsStat, bUnlocked ? 1.0f : 0.0f);
+	Character->SetWeaponStat(ForcedDamageStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(ForcedCooldownResetStat, bUnlocked && bSuper ? 1.0f : 0.0f);
 }
 
 UYSClassUpgrade::UYSClassUpgrade()

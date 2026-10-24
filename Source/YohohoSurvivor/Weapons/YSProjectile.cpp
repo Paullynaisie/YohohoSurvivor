@@ -208,6 +208,12 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 			HitDamage *= DistanceShooter->GetCriticalDamageMultiplier();
 		}
 	}
+	// minion du Captain sur le NME marqué par la Captain Sword : toujours critique
+	if (!bCritical && DistanceShooter && DistanceShooter->HasForcedCriticalAgainst(OtherActor))
+	{
+		bCritical = true;
+		HitDamage *= DistanceShooter->GetCriticalDamageMultiplier();
+	}
 	const FPointDamageEvent DamageEvent(HitDamage, SweepResult, ShotDirection, bCritical ? UYSCriticalDamageType::StaticClass() : nullptr);
 	OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);
 
@@ -216,7 +222,7 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 	AYSPlayerCharacter* Marker = Cast<AYSPlayerCharacter>(GetInstigator());
 	if (HitFoe && Marker && HitFoe->GetHealth() > 0.0f && !HitFoe->IsActorBeingDestroyed())
 	{
-		Marker->SetMarkedFoe(HitFoe);
+		Marker->SetMarkedFoe(HitFoe, bMarkCritsMinions, bMarkSpawnsMinion);
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s en (%.0f, %.0f, %.0f), sol %.0f : %.1f dégâts%s (ricochets restants %d)"), *GetName(), *OtherActor->GetName(),
 		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, LastGroundZ, HitDamage, bCritical ? TEXT(" CRITIQUE") : TEXT(""), RemainingRicochets);

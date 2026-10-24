@@ -389,6 +389,10 @@ protected:
 	/** Affiche la marque sur MarkedFoe (et l'enlève de l'ancien) sur cette machine */
 	void UpdateMarkDisplay();
 
+	/** Effets de la marque actuelle (serveur) : voir SetMarkedFoe */
+	bool bMarkMinionsCritical = false;
+	bool bMarkSpawnsMinion = false;
+
 	/** Multiplicateur de la vitesse de déplacement (Move speed bonus ; répliqué : la prédiction de mouvement du client doit le connaître) */
 	UPROPERTY(ReplicatedUsing=OnRep_MoveSpeedMultiplier, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float MoveSpeedMultiplier = 1.0f;
@@ -639,10 +643,29 @@ public:
 
 	float GetSummonSystemBonus() const { return SummonSystemBonus; }
 
-	/** Captain AMMO : marque ce NME (la marque quitte l'ancien ; serveur) */
-	void SetMarkedFoe(AYSFoeCharacter* Foe);
+	/**
+	 *  Captain AMMO / Captain Sword : marque ce NME (la marque quitte l'ancien ; serveur). Effets de la marque (ceux de la dernière arme
+	 *  qui a marqué) : bMinionsCritical = les minions font des critiques sur lui (Captain Sword) ; bSpawnsMinion = à sa mort, un minion
+	 *  apparaît là où il meurt s'il reste de la place (Cursed Captain Gun).
+	 */
+	void SetMarkedFoe(AYSFoeCharacter* Foe, bool bMinionsCritical = false, bool bSpawnsMinion = false);
 
 	AYSFoeCharacter* GetMarkedFoe() const { return MarkedFoe; }
+
+	/** Les minions de ce Captain font des critiques sur son NME marqué (serveur) */
+	bool IsMarkCriticalForMinions() const { return bMarkMinionsCritical; }
+
+	/** Le NME marqué meurt (serveur, AYSFoeCharacter::Die) : Cursed Captain Gun = un minion apparaît à sa place */
+	void OnMarkedFoeKilled(const AYSFoeCharacter* Foe);
+
+	/** Coups toujours critiques sur cette cible (ex. minion du Captain sur le NME marqué par la Captain Sword ; serveur) */
+	virtual bool HasForcedCriticalAgainst(const AActor* Target) const { return false; }
+
+	/**
+	 *  « Allez-y mes minions ! » (serveur) : force l'Ability du clic (actions de clic des deux mains, comme le clic gauche), vers le
+	 *  curseur de la machine qui contrôle le personnage (RPC au client) ; priorité sur tout, recharge ignorée (Forced).
+	 */
+	void ForceAbility(const FYSForcedActivation& Forced);
 
 	/** Bonus Shoot system pour Weapon (0 si elle n'est pas tenue) */
 	float GetWeaponShootSystemBonus(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
@@ -699,7 +722,7 @@ public:
 	void DebugSetBloodRageStacks(int32 Stacks);
 
 	/** Dégâts des coups critiques : (Critical Damage Multiplier + Dégât critique) x (1 + bonus critiques des upgrades Atk speed / Shoot system) */
-	float GetCriticalDamageMultiplier() const { return (CriticalDamageMultiplier + CriticalDamageAdd) * (1.0f + CriticalDamageBonus); }
+	virtual float GetCriticalDamageMultiplier() const { return (CriticalDamageMultiplier + CriticalDamageAdd) * (1.0f + CriticalDamageBonus); }
 
 	/** Upgrade Dégât critique : somme de ses bonus (serveur) */
 	void SetCriticalDamageAdd(float Value);
@@ -849,6 +872,13 @@ protected:
 	 */
 	void Fire();
 
+	/** Comme Fire, mais en activation forcée accordée par ForceAbility (machine qui contrôle le personnage) */
+	void ForceFire();
+
+	/** Activation forcée accordée par le serveur : le client la lance vers son curseur */
+	UFUNCTION(Client, Reliable)
+	void ClientForceAbility(FYSForcedActivation Forced);
+
 	/** Touche E : repose l'objet porté, sinon interagit avec l'objet devant le personnage */
 	void Interact();
 
@@ -870,8 +900,8 @@ protected:
 	/** Invite « E » sur l'objet devant le joueur local */
 	void UpdateInteractPrompt();
 
-	/** Point visé par le joueur local (souris) */
-	FVector GetAimLocation() const;
+	/** Point visé par le joueur local (souris) ; minion : sa cible */
+	virtual FVector GetAimLocation() const;
 
 	/** Met à jour la position du BlendSpace de strafe (sur toutes les machines) */
 	void UpdateStrafeAnimation(float DeltaSeconds);

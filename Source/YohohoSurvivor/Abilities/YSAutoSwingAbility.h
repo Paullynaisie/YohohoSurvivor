@@ -114,6 +114,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Detection")
 	FGameplayTagContainer HitTags;
 
+	/** Captain Sword : le NME touché (s'il survit) devient le NME marqué du porteur (un seul à la fois, comme le Captain AMMO) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Mark")
+	bool bMarksTarget = false;
+
+	/** Marque : les minions du porteur font des critiques sur le NME marqué */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Mark", meta=(EditCondition="bMarksTarget"))
+	bool bMarkCritsMinions = false;
+
+	/** Marque : à la mort du NME marqué, un minion du porteur apparaît à sa place s'il reste de la place */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Mark", meta=(EditCondition="bMarksTarget"))
+	bool bMarkSpawnsMinion = false;
+
 	/** TEMPORAIRE (en attendant le visuel) : affiche la hitbox en rouge transparent pendant la coupe (builds non Shipping) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Debug")
 	bool bShowHitbox = true;
@@ -257,7 +269,7 @@ protected:
 	void ApplySwingHits();
 
 	/** Dégâts d'un coup sur une cible (serveur) ; ShotDirection = du porteur vers la cible (pushback). Ex. Bumping Slash : coup qui bumpe */
-	virtual void DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController);
+	virtual void DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController, bool bCritical);
 
 	/** Cibles déjà touchées par la coupe en cours */
 	TSet<TWeakObjectPtr<AActor>> HitThisSwing;

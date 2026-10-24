@@ -95,10 +95,19 @@ public:
 	/** Minions vivants de ce Captain (serveur et clients) */
 	static int32 CountMinions(const UWorld* World, const AYSPlayerCharacter* Captain);
 
+	/**
+	 *  Invoque un minion à cet endroit (posé sur le sol, jamais dans la mer), tourné vers Yaw, s'il reste de la place sous le maximum
+	 *  (serveur ; ex. Cursed Captain Gun : là où meurt le NME marqué). nullptr si rien n'est invoqué.
+	 */
+	AYSCaptainMinion* SpawnMinionAt(const FVector& Location, float Yaw);
+
 protected:
 
-	/** Serveur : les minions apparaissent au sommet du crochet */
+	/** Serveur : le geste se joue, OnHookStrike au sommet du crochet */
 	virtual void ExecuteAbility(const FVector& TargetLocation) override;
+
+	/** Sommet du crochet (serveur) : Summon the crew = les minions apparaissent */
+	virtual void OnHookStrike();
 
 	virtual void OnActionCancelled() override;
 

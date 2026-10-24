@@ -6,9 +6,9 @@ UYSBumpingSlashAbility::UYSBumpingSlashAbility()
 	bDashInvulnerable = false;
 }
 
-void UYSBumpingSlashAbility::DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController)
+void UYSBumpingSlashAbility::DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController, bool bCritical)
 {
-	FYSBumpDamageEvent DamageEvent(FinalDamage, ShotDirection, bCriticalSwing ? UYSCriticalDamageType::StaticClass() : nullptr);
+	FYSBumpDamageEvent DamageEvent(FinalDamage, ShotDirection, bCritical ? UYSCriticalDamageType::StaticClass() : nullptr);
 	DamageEvent.Distance = BumpDistance;
 	DamageEvent.ApexHeight = BumpApexHeight;
 	DamageEvent.Duration = BumpDuration;

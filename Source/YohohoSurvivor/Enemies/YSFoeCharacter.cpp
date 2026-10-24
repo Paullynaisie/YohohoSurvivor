@@ -618,6 +618,15 @@ void AYSFoeCharacter::Die()
 		}
 	}
 
+	// NME marqué (Cursed Captain Gun : un minion apparaît à sa place)
+	for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
+	{
+		if (It->GetMarkedFoe() == this)
+		{
+			It->OnMarkedFoeKilled(this);
+		}
+	}
+
 	Destroy();
 }
 
