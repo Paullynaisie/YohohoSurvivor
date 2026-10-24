@@ -1,4 +1,5 @@
 #include "Core/YSGameMode.h"
+#include "GameFramework/GameSession.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
 #include "Enemies/YSEnemySpawnRule.h"
@@ -367,6 +368,14 @@ void AYSGameMode::TryFinishUpgradeSelection()
 	}
 }
 
+void AYSGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
+{
+	// le moteur refuse un identifiant d'un autre sous-système (incompatible_unique_net_id) : en partie par IP, un hôte
+	// avec Steam doit accepter un client sans Steam (sous-système NULL) et inversement
+	ErrorMessage = GameSession->ApproveLogin(Options);
+	FGameModeEvents::GameModePreLoginEvent.Broadcast(this, UniqueId, ErrorMessage);
+}
+
 void AYSGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
 	// premier passage : numéro d'arrivée (hôte = 1), nom « Player N » et première couleur libre
@@ -376,7 +385,10 @@ void AYSGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewP
 		{
 			const int32 Number = NextPlayerNumber++;
 			NewPlayerState->SetPlayerNumber(Number);
-			ChangeName(NewPlayer, FString::Printf(TEXT("Player %d"), Number), false);
+			// joueur Steam : son pseudo Steam (reçu dans l'URL de connexion) ; sinon « Player N »
+			const FString SteamName = NewPlayerState->GetPlayerName().TrimStartAndEnd().Left(MaxNicknameLength);
+			const bool bSteamPlayer = NewPlayerState->GetUniqueId().IsValid() && NewPlayerState->GetUniqueId().GetType() == FName(TEXT("STEAM"));
+			ChangeName(NewPlayer, bSteamPlayer && !SteamName.IsEmpty() ? SteamName : FString::Printf(TEXT("Player %d"), Number), false);
 			// couleur par défaut : la première libre (les couleurs sont uniques)
 			int32 FreeColor = 0;
 			while (FreeColor < CustomizationColors.Num() - 1 && IsColorTaken(FreeColor, NewPlayerState))

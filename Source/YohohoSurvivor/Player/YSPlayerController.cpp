@@ -98,6 +98,7 @@ void AYSPlayerController::BeginPlay()
 			CharacterSelectMenu->OnHandednessChosen.BindUObject(this, &AYSPlayerController::ChooseHandedness);
 			CharacterSelectMenu->OnNicknameCommitted.BindUObject(this, &AYSPlayerController::CommitNickname);
 			CharacterSelectMenu->OnReadyClicked.BindUObject(this, &AYSPlayerController::ToggleReady);
+			CharacterSelectMenu->OnInviteClicked.BindUObject(this, &AYSPlayerController::YSInviteFriends);
 
 			FGameViewportWidgetSlot MenuSlot;
 			MenuSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
@@ -369,6 +370,13 @@ void AYSPlayerController::YSLeaveGame()
 	}
 }
 
+void AYSPlayerController::YSInviteFriends()
+{
+	UYSGameInstance* GameInstance = GetGameInstance<UYSGameInstance>();
+	const bool bShown = GameInstance && GameInstance->ShowInviteFriendsUI();
+	UE_LOG(LogTemp, Log, TEXT("[YSSteam] Fenêtre d'invitation : %s"), bShown ? TEXT("ouverte") : TEXT("indisponible (pas de partie Steam)"));
+}
+
 void AYSPlayerController::YSSelectCharacter(int32 CharacterIndex)
 {
 	// personnage unique déjà pris par un autre joueur : le serveur refuserait
@@ -481,6 +489,9 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 		CharacterSelectMenu->SetSelectedHandedness(MyPlayerState->IsLeftHanded());
 		CharacterSelectMenu->SetNickname(FText::FromString(MyPlayerState->GetPlayerName()));
 		CharacterSelectMenu->SetReady(MyPlayerState->IsReady());
+		// partie Steam : bouton d'invitation d'amis (overlay Steam)
+		const UYSGameInstance* GameInstance = GetGameInstance<UYSGameInstance>();
+		CharacterSelectMenu->SetInviteAvailable(GameInstance && GameInstance->HasOnlineSession());
 
 		// couleurs uniques : celles des autres joueurs sont grisées
 		TArray<bool> TakenColors;

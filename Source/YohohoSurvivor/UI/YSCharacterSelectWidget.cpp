@@ -186,6 +186,25 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	Preview->AddChild(PreviewImage);
 	AddColumn(Preview, RightColumnWeight, RightColumnPadding);
 
+	// « Inviter des amis » : au-dessus de Prêt, seulement dans une partie Steam (SetInviteAvailable)
+	USizeBox* InviteSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("InviteRow"));
+	InviteSize->SetWidthOverride(InviteButtonSize.X);
+	InviteSize->SetHeightOverride(InviteButtonSize.Y);
+	UButton* InviteButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Invite"));
+	InviteButton->SetBackgroundColor(InviteButtonColor);
+	InviteButton->AddChild(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "InviteButton", "Inviter des amis (Steam)"), InviteFontSize));
+	InviteSize->AddChild(InviteButton);
+	UYSCharacterSelectButtonProxy* InviteProxy = NewObject<UYSCharacterSelectButtonProxy>(this);
+	InviteProxy->Group = 5;
+	InviteProxy->Menu = this;
+	InviteButton->OnClicked.AddDynamic(InviteProxy, &UYSCharacterSelectButtonProxy::HandleClicked);
+	ButtonProxies.Add(InviteProxy);
+	UVerticalBoxSlot* InviteSlot = Page->AddChildToVerticalBox(InviteSize);
+	InviteSlot->SetHorizontalAlignment(HAlign_Center);
+	InviteSlot->SetPadding(InvitePadding);
+	InviteSize->SetVisibility(ESlateVisibility::Collapsed);
+	InviteRow = InviteSize;
+
 	// « Prêt » : en bas au centre, lance la partie quand tout le monde est prêt
 	USizeBox* ReadySize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ReadyRow"));
 	ReadySize->SetWidthOverride(ReadyButtonSize.X);
@@ -202,6 +221,14 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	UVerticalBoxSlot* ReadySlot = Page->AddChildToVerticalBox(ReadySize);
 	ReadySlot->SetHorizontalAlignment(HAlign_Center);
 	ReadySlot->SetPadding(ReadyPadding);
+}
+
+void UYSCharacterSelectWidget::SetInviteAvailable(bool bAvailable)
+{
+	if (InviteRow)
+	{
+		InviteRow->SetVisibility(bAvailable ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
 }
 
 void UYSCharacterSelectWidget::SetReady(bool bIsReady)
@@ -518,6 +545,9 @@ void UYSCharacterSelectWidget::NotifyButtonClicked(int32 Group, int32 Index)
 	case 4:
 		SetSelectedHandedness(Index == 1);
 		OnHandednessChosen.ExecuteIfBound(Index);
+		break;
+	case 5:
+		OnInviteClicked.ExecuteIfBound();
 		break;
 	default:
 		SetSelectedIndex(Index);

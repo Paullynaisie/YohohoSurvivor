@@ -292,6 +292,10 @@ public:
 	UFUNCTION(Exec)
 	void YSLeaveGame();
 
+	/** Partie Steam : ouvre la fenêtre d'invitation d'amis de l'overlay Steam (aussi le bouton du menu de sélection) */
+	UFUNCTION(Exec)
+	void YSInviteFriends();
+
 	/** Triche (flèche haut, builds non Shipping) : +1 niveau d'équipe, donc un choix d'upgrade */
 	UFUNCTION(Exec)
 	void YSCheatLevelUp();

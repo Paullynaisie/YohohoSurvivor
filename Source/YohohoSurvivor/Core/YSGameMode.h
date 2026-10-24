@@ -208,6 +208,9 @@ public:
 
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 
+	/** Accepte aussi un joueur dont l'identifiant en ligne n'est pas du type de l'hôte (partie par IP : Steam chez l'un, pas chez l'autre) */
+	virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
+
 	virtual UClass* GetDefaultPawnClassForController_Implementation(AController* InController) override;
 
 	virtual void Logout(AController* Exiting) override;

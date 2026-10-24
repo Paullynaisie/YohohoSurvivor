@@ -296,6 +296,26 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ready")
 	FMargin ReadyPadding = FMargin(0.0f, 0.0f, 0.0f, 40.0f);
 
+	// ---- bouton « Inviter des amis (Steam) » (au-dessus de Prêt, seulement dans une partie Steam) ----
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Invite")
+	FVector2D InviteButtonSize = FVector2D(320.0f, 44.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Invite")
+	int32 InviteFontSize = 20;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Invite")
+	FLinearColor InviteButtonColor = FLinearColor(0.1f, 0.25f, 0.45f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Invite")
+	FMargin InvitePadding = FMargin(0.0f, 0.0f, 0.0f, 12.0f);
+
+	/** Appelé quand le joueur clique sur « Inviter des amis » */
+	FSimpleDelegate OnInviteClicked;
+
+	/** Affiche le bouton d'invitation (partie Steam) ou le cache */
+	void SetInviteAvailable(bool bAvailable);
+
 	/** Appelé quand le joueur clique sur un personnage */
 	FYSOnCharacterChosen OnCharacterChosen;
 
@@ -435,6 +455,10 @@ private:
 	/** Bouton « Prêt » (en bas au centre) */
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> ReadyButton;
+
+	/** Bouton « Inviter des amis (Steam) » (sa boîte de taille, cachée hors partie Steam) */
+	UPROPERTY(Transient)
+	TObjectPtr<UWidget> InviteRow;
 
 	/** Boutons Droitier / Gaucher */
 	UPROPERTY(Transient)

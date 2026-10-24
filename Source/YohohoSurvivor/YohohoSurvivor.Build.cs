@@ -29,6 +29,9 @@ public class YohohoSurvivor : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "ApplicationCore" });
 
+		// sessions Steam (lobbies, invitations d'amis) : réglages dans [OnlineSubsystemSteam] de DefaultEngine.ini
+		PrivateDependencyModuleNames.AddRange(new string[] { "OnlineSubsystem", "OnlineSubsystemUtils" });
+
 		// YSEditorScriptLibrary (création du landscape de l'île) : les fonctions sont réservées à l'éditeur, mais le code généré
 		// par UHT référence ALandscape dans toutes les cibles (sinon le packaging échoue : LANDSCAPE_API inconnu)
 		PrivateDependencyModuleNames.Add("Landscape");
