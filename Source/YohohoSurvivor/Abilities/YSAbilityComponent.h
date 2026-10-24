@@ -169,6 +169,9 @@ public:
 	/** Interrompt l'action (serveur) : animation arrêtée sur toutes les machines, recharge rendue, main suivante de l'akimbo annulée */
 	void CancelAction();
 
+	/** Recharge terminée tout de suite (serveur, ex. level up) */
+	void ResetCooldown();
+
 	/** Appelé par CancelAction (serveur) : arrêter ce que l'action a en cours (ex. rafale) */
 	virtual void OnActionCancelled() {}
 

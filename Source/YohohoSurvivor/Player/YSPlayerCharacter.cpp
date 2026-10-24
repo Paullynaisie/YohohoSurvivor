@@ -90,7 +90,7 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->SetUsingAbsoluteRotation(true);
 	CameraBoom->SetRelativeRotation(FRotator(-60.0f, 0.0f, 0.0f));
-	CameraBoom->TargetArmLength = 1400.0f;
+	CameraBoom->TargetArmLength = 1680.0f;
 	CameraBoom->bDoCollisionTest = false;
 
 	TopDownCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));
@@ -663,6 +663,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	// les armes répliquées arrivent après le perso chez les clients : réappliqué tant qu'elles changent (sinon rien)
 	UpdateWeaponColoration();
 	UpdateDayNight(DeltaSeconds);
+	UpdateCursorCamera(DeltaSeconds);
 	UpdateNameplate();
 	UpdateInteractPrompt();
 	// vitesse : peut dépendre d'une action en cours (visée du Rolling shot) ; serveur et client propriétaire
@@ -1250,6 +1251,37 @@ void AYSPlayerCharacter::UpdateDayNight(float DeltaSeconds)
 	TopDownCamera->PostProcessBlendWeight = NightBlend;
 }
 
+void AYSPlayerCharacter::UpdateCursorCamera(float DeltaSeconds)
+{
+	if (!IsLocallyControlled() || !IsPlayerControlled())
+	{
+		return;
+	}
+
+	// position du curseur par rapport au centre de l'écran : 0 au centre, 1 au bord (chaque axe), plafonnée à 1 dans les coins
+	FVector Target = FVector::ZeroVector;
+	const APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	float MouseX = 0.0f, MouseY = 0.0f;
+	int32 ViewportX = 0, ViewportY = 0;
+	if (bCursorCameraOffset && PlayerController && PlayerController->GetMousePosition(MouseX, MouseY))
+	{
+		PlayerController->GetViewportSize(ViewportX, ViewportY);
+		if (ViewportX > 0 && ViewportY > 0)
+		{
+			const FVector2D Ratio((MouseX - 0.5f * ViewportX) / (0.5f * ViewportX), (MouseY - 0.5f * ViewportY) / (0.5f * ViewportY));
+			const FVector2D Clamped = Ratio.GetSafeNormal() * FMath::Min(Ratio.Size(), 1.0f);
+
+			// haut de l'écran = devant la caméra (à plat), droite de l'écran = sa droite
+			const FRotationMatrix CameraYaw(FRotator(0.0f, CameraBoom->GetComponentRotation().Yaw, 0.0f));
+			Target = (CameraYaw.GetUnitAxis(EAxis::X) * -Clamped.Y + CameraYaw.GetUnitAxis(EAxis::Y) * Clamped.X) * CursorCameraMaxOffset;
+		}
+	}
+
+	// lissé : les tours de curseur ne secouent pas la caméra
+	CursorCameraOffset = CursorCameraInterpSpeed > 0.0f ? FMath::VInterpTo(CursorCameraOffset, Target, DeltaSeconds, CursorCameraInterpSpeed) : Target;
+	CameraBoom->TargetOffset = CursorCameraOffset;
+}
+
 TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickClassOffers() const
 {
 	TArray<FYSUpgradeOffer> Offers;
@@ -1570,6 +1602,26 @@ void AYSPlayerCharacter::SpawnMinionAtFoe(const AYSFoeCharacter* Foe, const TCHA
 			return;
 		}
 	}
+}
+
+void AYSPlayerCharacter::RestoreOnLevelUp()
+{
+	if (!HasAuthority() || !IsAlive())
+	{
+		return;
+	}
+	Health = GetMaxHealth();
+	for (const AYSWeapon* Weapon : { GetMainHandWeapon(), GetOffHandWeapon() })
+	{
+		UYSAbilityComponent* Action = Weapon ? Weapon->GetActiveAction() : nullptr;
+		if (Action && Action->GetActionSlot() == EYSActionSlot::Ability)
+		{
+			Action->ResetCooldown();
+		}
+	}
+	// pendant la pause du level up : réplication forcée
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Level up : %s soigné (%.0f PV), recharge de l'Ability rendue"), *GetName(), Health);
 }
 
 void AYSPlayerCharacter::ForceAbility(const FYSForcedActivation& Forced)

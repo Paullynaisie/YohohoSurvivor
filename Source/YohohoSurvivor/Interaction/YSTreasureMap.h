@@ -69,7 +69,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Wave", meta=(ClampMin="1"))
 	int32 WaveAtPoint = 2;
 
-	/** Grosse vague : NME par joueur de la partie */
+	/** Grosse vague : NME pour 1 joueur (x Spawn Multiplier du nombre de joueurs, AYSGameMode::PlayerCountScaling) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Wave", meta=(ClampMin="0"))
 	int32 WaveEnemiesPerPlayer = 10;
 

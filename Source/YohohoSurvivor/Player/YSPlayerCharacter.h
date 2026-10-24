@@ -258,6 +258,25 @@ protected:
 	/** Poids actuel du post-process de nuit (0 jour, 1 nuit) */
 	float NightBlend = 0.0f;
 
+	/** Caméra décalée vers le curseur (joueur local) : curseur au centre de l'écran = caméra sur le perso,
+	 *  au bord de l'écran = CursorCameraMaxOffset devant le perso, proportionnel entre les deux */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camera")
+	bool bCursorCameraOffset = true;
+
+	/** Décalage maximal de la caméra (curseur au bord de l'écran) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camera", meta=(ClampMin="0", Units="cm", EditCondition="bCursorCameraOffset"))
+	float CursorCameraMaxOffset = 500.0f;
+
+	/** Vitesse de lissage du décalage (plus petit = plus doux ; 0 = pas de lissage) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camera", meta=(ClampMin="0", EditCondition="bCursorCameraOffset"))
+	float CursorCameraInterpSpeed = 3.0f;
+
+	/** Décalage actuel de la caméra (monde, lissé) */
+	FVector CursorCameraOffset = FVector::ZeroVector;
+
+	/** Déplace la caméra vers le curseur (joueur local, Tick) */
+	void UpdateCursorCamera(float DeltaSeconds);
+
 	/** Progression de chaque variante d'upgrade obtenue (répliquée pour l'affichage du menu) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TArray<FYSUpgradeProgress> UpgradeProgress;
@@ -695,6 +714,9 @@ public:
 	 *  curseur de la machine qui contrôle le personnage (RPC au client) ; priorité sur tout, recharge ignorée (Forced).
 	 */
 	void ForceAbility(const FYSForcedActivation& Forced);
+
+	/** Level up (serveur) : tous les PV rendus et recharge de l'Ability (actions de clic des deux mains) terminée */
+	void RestoreOnLevelUp();
 
 	/** Bonus Shoot system pour Weapon (0 si elle n'est pas tenue) */
 	float GetWeaponShootSystemBonus(const AYSWeapon* Weapon, EYSActionSlot Slot) const;

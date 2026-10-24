@@ -25,13 +25,32 @@ struct FYSOvertimeWave
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Overtime")
 	TArray<TSubclassOf<AYSFoeCharacter>> EnemyClasses;
 
-	/** NME par joueur en jeu (morts compris) */
+	/** NME pour 1 joueur (x Spawn Multiplier du nombre de joueurs, AYSGameMode::PlayerCountScaling) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Overtime", meta=(ClampMin="1"))
 	int32 EnemiesPerPlayer = 25;
 
 	/** Niveau des NME = numéro du jour + ce décalage (jour 3, +3 = niveau 6) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Overtime")
 	int32 LevelOffset = 3;
+};
+
+/** Scaling des NME pour un nombre de joueurs (ligne de AYSGameMode::PlayerCountScaling) */
+USTRUCT(BlueprintType)
+struct FYSPlayerCountScaling
+{
+	GENERATED_BODY()
+
+	/** Nombre de NME qui apparaissent (vagues, circle spawns, vagues bonus) = valeur pour 1 joueur x ce multiplicateur */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Player Count", meta=(ClampMin="0"))
+	float SpawnMultiplier = 1.0f;
+
+	/** PV des NME (hors élites) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Player Count", meta=(ClampMin="0"))
+	float HealthMultiplier = 1.0f;
+
+	/** PV des élites (boss), à la place de Health Multiplier */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Player Count", meta=(ClampMin="0"))
+	float EliteHealthMultiplier = 1.0f;
 };
 
 /**
@@ -99,6 +118,18 @@ protected:
 	/** Niveau d'équipe où chaque joueur choisit sa classe (upgrades de classe de son personnage, sans hasard) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))
 	int32 ClassUpgradeLevel = 5;
+
+	/** À chaque level up, chaque joueur vivant récupère tous ses PV et la recharge de son Ability */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level")
+	bool bRestoreOnLevelUp = true;
+
+	/**
+	 *  Scaling selon le nombre de joueurs de la partie (morts compris) : ligne 1 = 1 joueur, ligne 2 = 2 joueurs...
+	 *  (au-delà de la dernière ligne : la dernière). Les « NME par joueur » des vagues / circle spawns / vagues bonus
+	 *  sont les valeurs pour 1 joueur, multipliées par Spawn Multiplier ; PV des NME x Health Multiplier, élites x Elite Health Multiplier.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Player Count")
+	TArray<FYSPlayerCountScaling> PlayerCountScaling;
 
 	/** Cycle jour / nuit (désactivé : toujours le jour 1, pas de nuit ; la mort d'un élite ne change pas de jour) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DayNight")
@@ -313,8 +344,17 @@ public:
 	/** Doublons gagnés par l'équipe (vente au Brooker ; serveur) */
 	void AddDoubloons(int32 Amount);
 
-	/** Vague supplémentaire hors écran : EnemiesPerPlayer × joueurs de la partie (NME de la première règle de spawn active) */
+	/** Vague supplémentaire hors écran : EnemiesPerPlayer (1 joueur) × Spawn Multiplier du nombre de joueurs (NME de la première règle de spawn active) */
 	int32 SpawnBonusWave(int32 EnemiesPerPlayer, const TCHAR* Reason);
+
+	/** Joueurs de la partie : ceux qui ont leur personnage + les morts */
+	int32 GetPlayersInMatchCount() const;
+
+	/** Ligne de PlayerCountScaling pour le nombre de joueurs de la partie */
+	FYSPlayerCountScaling GetPlayerCountScaling() const;
+
+	/** Nombre de NME pour 1 joueur -> pour les joueurs de la partie (arrondi, au moins 1 si BaseCount > 0) */
+	int32 ScaleEnemyCount(int32 BaseCount) const;
 
 	/** Carte au trésor au hasard dans la zone (début de jour) ; nullptr si aucun emplacement n'a de chemin complet */
 	AYSTreasureMap* SpawnTreasureMap();

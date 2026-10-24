@@ -28,6 +28,15 @@ AYSGameMode::AYSGameMode()
 
 	SpawnRules.Add(CreateDefaultSubobject<UYSTimedWaveSpawnRule>(TEXT("TimedWaveSpawnRule")));
 
+	// 1 à 4 joueurs : NME x1 / x1.5 / x1.8 / x2, PV x1 / x1.35 / x1.65 / x2, élites PV x nombre de joueurs
+	for (const FVector& Row : { FVector(1.0f, 1.0f, 1.0f), FVector(1.5f, 1.35f, 2.0f), FVector(1.8f, 1.65f, 3.0f), FVector(2.0f, 2.0f, 4.0f) })
+	{
+		FYSPlayerCountScaling& Scaling = PlayerCountScaling.AddDefaulted_GetRef();
+		Scaling.SpawnMultiplier = Row.X;
+		Scaling.HealthMultiplier = Row.Y;
+		Scaling.EliteHealthMultiplier = Row.Z;
+	}
+
 	// overtime de l'île de départ : Skull niveau jour + 3, puis jour + 5 30 s plus tard (NME réglés dans le Blueprint)
 	FYSOvertimeWave& FirstWave = OvertimeWaves.AddDefaulted_GetRef();
 	FirstWave.LevelOffset = 3;
@@ -98,15 +107,9 @@ void AYSGameMode::TickOvertime()
 		return;
 	}
 
-	// circle spawn sur la plage, niveau = jour en cours + décalage (morts compris dans le nombre de joueurs, comme les vagues)
-	int32 Players = 0;
-	for (const APlayerState* Player : YSGameState->PlayerArray)
-	{
-		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player);
-		Players += YSPlayer && YSPlayer->IsReady() ? 1 : 0;
-	}
+	// circle spawn sur la plage, niveau = jour en cours + décalage (nombre selon les joueurs de la partie, comme les vagues)
 	const int32 Level = YSGameState->GetDayNumber() + Wave.LevelOffset;
-	SpawnCircle(Wave.EnemyClasses, Wave.EnemiesPerPlayer * FMath::Max(1, Players), FString::Printf(TEXT("overtime %d, niveau %d"), NextOvertimeWave + 1, Level), Level);
+	SpawnCircle(Wave.EnemyClasses, ScaleEnemyCount(Wave.EnemiesPerPlayer), FString::Printf(TEXT("overtime %d, niveau %d"), NextOvertimeWave + 1, Level), Level);
 	++NextOvertimeWave;
 }
 
@@ -261,7 +264,11 @@ void AYSGameMode::StartUpgradeSelection()
 	{
 		APlayerController* Player = It->Get();
 		AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
-		const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
+		AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
+		if (Character && bRestoreOnLevelUp)
+		{
+			Character->RestoreOnLevelUp();
+		}
 		if (PlayerState)
 		{
 			// niveau de classe : choix de classe (si le personnage en a), sinon upgrades au hasard
@@ -681,6 +688,37 @@ void AYSGameMode::AddDoubloons(int32 Amount)
 	}
 }
 
+int32 AYSGameMode::GetPlayersInMatchCount() const
+{
+	const AGameStateBase* CurrentGameState = GetGameState<AGameStateBase>();
+	if (!CurrentGameState)
+	{
+		return 0;
+	}
+
+	int32 Count = 0;
+	for (const APlayerState* Player : CurrentGameState->PlayerArray)
+	{
+		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player);
+		Count += (Player && Cast<AYSPlayerCharacter>(Player->GetPawn())) || (YSPlayer && YSPlayer->IsDead()) ? 1 : 0;
+	}
+	return Count;
+}
+
+FYSPlayerCountScaling AYSGameMode::GetPlayerCountScaling() const
+{
+	if (PlayerCountScaling.Num() == 0)
+	{
+		return FYSPlayerCountScaling();
+	}
+	return PlayerCountScaling[FMath::Clamp(GetPlayersInMatchCount() - 1, 0, PlayerCountScaling.Num() - 1)];
+}
+
+int32 AYSGameMode::ScaleEnemyCount(int32 BaseCount) const
+{
+	return BaseCount > 0 ? FMath::Max(1, FMath::RoundToInt(BaseCount * GetPlayerCountScaling().SpawnMultiplier)) : 0;
+}
+
 int32 AYSGameMode::SpawnBonusWave(int32 EnemiesPerPlayer, const TCHAR* Reason)
 {
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
@@ -694,7 +732,7 @@ int32 AYSGameMode::SpawnBonusWave(int32 EnemiesPerPlayer, const TCHAR* Reason)
 	{
 		if (Rule && Rule->bEnabled && Rule->EnemyClasses.Num() > 0)
 		{
-			const int32 Count = EnemiesPerPlayer * Rule->GetPlayersInMatchCount();
+			const int32 Count = ScaleEnemyCount(EnemiesPerPlayer);
 			const int32 Spawned = Rule->SpawnEnemies(Count);
 			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Vague bonus (%s) : %d / %d NME"), Reason, Spawned, Count);
 			return Spawned;

@@ -686,8 +686,13 @@ void AYSFoeCharacter::BeginPlay()
 			Level = FMath::Max(0, YSGameState->GetDayNumber() + LevelFromDayOffset);
 		}
 
-		// statistiques du niveau (MaxHealth est répliqué pour les barres de vie)
-		MaxHealth = (BaseHealth + HealthPerLevel * Level) * HealthMultiplier;
+		// statistiques du niveau (MaxHealth est répliqué pour les barres de vie) ; PV selon le nombre de joueurs de la partie
+		const AYSGameMode* YSGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+		const FYSPlayerCountScaling PlayerScaling = YSGameMode ? YSGameMode->GetPlayerCountScaling() : FYSPlayerCountScaling();
+		const float PlayerHealthMultiplier = bIsElite ? PlayerScaling.EliteHealthMultiplier : PlayerScaling.HealthMultiplier;
+		MaxHealth = FMath::RoundToFloat((BaseHealth + HealthPerLevel * Level) * HealthMultiplier * PlayerHealthMultiplier);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau %d, %.0f PV (x%.2f pour %d joueur(s))"), *GetName(), Level, MaxHealth, PlayerHealthMultiplier,
+			YSGameMode ? YSGameMode->GetPlayersInMatchCount() : 0);
 		ContactDamage = (BaseContactDamage + ContactDamagePerLevel * Level) * DamageMultiplier;
 		Health = MaxHealth;
 

@@ -21,7 +21,7 @@ struct FYSCircleSpawn
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn")
 	TArray<TSubclassOf<AYSFoeCharacter>> EnemyClasses;
 
-	/** NME du cercle par joueur en jeu (morts compris, comme les vagues) ; 0 = Max Enemies fixe */
+	/** NME du cercle pour 1 joueur (x Spawn Multiplier du nombre de joueurs, AYSGameMode::PlayerCountScaling) ; 0 = Max Enemies fixe */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn", meta=(ClampMin="0"))
 	int32 EnemiesPerPlayer = 25;
 
@@ -121,7 +121,7 @@ protected:
 
 /**
  *  Vagues jour / nuit : toutes les WaveInterval secondes (NightWaveInterval la nuit), X NME apparaissent,
- *  X = nb de joueurs de la partie (morts compris) × EnemiesPerPlayer (NightEnemiesPerPlayer la nuit) × jour en cours.
+ *  X = EnemiesPerPlayer (NightEnemiesPerPlayer la nuit, valeurs pour 1 joueur) × jour en cours × Spawn Multiplier du nombre de joueurs (AYSGameMode::PlayerCountScaling).
  *  Au début de chaque nuit, un élite (EliteClasses) apparaît au centre de l'île ; sa mort fait passer au jour suivant (AYSGameMode).
  *  La nuit, pas de vagues par timer (bNightTimedWaves) : seuls les events font apparaître des NME (circle spawn sur la plage
  *  avec l'élite, second circle spawn quand l'élite passe sous EliteHealthCircleThreshold de ses PV).
@@ -138,7 +138,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Waves", meta=(ClampMin="0.1", Units="s"))
 	float WaveInterval = 5.0f;
 
-	/** Jour : NME par joueur et par jour */
+	/** Jour : NME par jour pour 1 joueur (x Spawn Multiplier du nombre de joueurs) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Waves", meta=(ClampMin="0"))
 	int32 EnemiesPerPlayer = 1;
 
@@ -150,7 +150,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night", meta=(ClampMin="0.1", Units="s"))
 	float NightWaveInterval = 30.0f;
 
-	/** Nuit : NME par joueur et par jour */
+	/** Nuit : NME par jour pour 1 joueur (x Spawn Multiplier du nombre de joueurs) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night", meta=(ClampMin="0"))
 	int32 NightEnemiesPerPlayer = 5;
 

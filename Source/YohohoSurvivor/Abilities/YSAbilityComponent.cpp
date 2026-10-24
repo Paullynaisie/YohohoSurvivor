@@ -421,6 +421,14 @@ void UYSAbilityComponent::CancelAction()
 	MulticastCancelled();
 }
 
+void UYSAbilityComponent::ResetCooldown()
+{
+	ReadyServerTime = FMath::Min(ReadyServerTime, GetServerTime());
+	// souvent pendant la pause du level up : réplication forcée
+	GetOwner()->ForceNetUpdate();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s recharge rendue à %.2f"), *GetOwner()->GetName(), *GetName(), GetServerTime());
+}
+
 void UYSAbilityComponent::MulticastCancelled_Implementation()
 {
 	LastActivationTime = -1.0e6;

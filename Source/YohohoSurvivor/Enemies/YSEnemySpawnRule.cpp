@@ -53,19 +53,7 @@ TArray<APawn*> UYSEnemySpawnRule::GetActivePlayers() const
 
 int32 UYSEnemySpawnRule::GetPlayersInMatchCount() const
 {
-	const AGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
-	if (!GameState)
-	{
-		return 0;
-	}
-
-	int32 Count = 0;
-	for (const APlayerState* Player : GameState->PlayerArray)
-	{
-		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player);
-		Count += (Player && Cast<AYSPlayerCharacter>(Player->GetPawn())) || (YSPlayer && YSPlayer->IsDead()) ? 1 : 0;
-	}
-	return Count;
+	return GameMode ? GameMode->GetPlayersInMatchCount() : 0;
 }
 
 float UYSEnemySpawnRule::GetMatchElapsedTime() const
@@ -261,7 +249,7 @@ int32 UYSTimedWaveSpawnRule::GetDayNumber() const
 
 int32 UYSTimedWaveSpawnRule::GetWaveSize() const
 {
-	return GetPlayersInMatchCount() * (IsNight() ? NightEnemiesPerPlayer : EnemiesPerPlayer) * GetDayNumber();
+	return GameMode ? GameMode->ScaleEnemyCount((IsNight() ? NightEnemiesPerPlayer : EnemiesPerPlayer) * GetDayNumber()) : 0;
 }
 
 bool UYSTimedWaveSpawnRule::SpawnElite()
@@ -326,8 +314,8 @@ int32 UYSTimedWaveSpawnRule::SpawnCircle(const FYSCircleSpawn& Circle, const FSt
 	{
 		return 0;
 	}
-	// 25 NME par joueur en jeu (Enemies Per Player), sinon le nombre fixe
-	const int32 Count = Circle.EnemiesPerPlayer > 0 ? Circle.EnemiesPerPlayer * FMath::Max(1, GetPlayersInMatchCount()) : Circle.MaxEnemies;
+	// 25 NME pour 1 joueur (Enemies Per Player), selon le nombre de joueurs ; sinon le nombre fixe
+	const int32 Count = Circle.EnemiesPerPlayer > 0 ? GameMode->ScaleEnemyCount(Circle.EnemiesPerPlayer) : Circle.MaxEnemies;
 	return GameMode->SpawnCircle(Circle.EnemyClasses, Count, FString::Printf(TEXT("nuit %d, %s, %d joueur(s)"), GetDayNumber(), *Reason, GetPlayersInMatchCount()));
 }
 
