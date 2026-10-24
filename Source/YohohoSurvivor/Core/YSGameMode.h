@@ -11,6 +11,29 @@ class AYSFoeCharacter;
 class AYSTreasureMap;
 class UTexture2D;
 
+/** Overtime : circle spawn lancé Delay secondes après le début de l'overtime, NME au niveau jour en cours + Level Offset */
+USTRUCT(BlueprintType)
+struct FYSOvertimeWave
+{
+	GENERATED_BODY()
+
+	/** Secondes après le début de l'overtime (début du jour d'overtime) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Overtime", meta=(ClampMin="0", Units="s"))
+	float Delay = 0.0f;
+
+	/** NME tirés selon leur Spawn Weight */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Overtime")
+	TArray<TSubclassOf<AYSFoeCharacter>> EnemyClasses;
+
+	/** NME par joueur en jeu (morts compris) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Overtime", meta=(ClampMin="1"))
+	int32 EnemiesPerPlayer = 25;
+
+	/** Niveau des NME = numéro du jour + ce décalage (jour 3, +3 = niveau 6) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Overtime")
+	int32 LevelOffset = 3;
+};
+
 /**
  *  GameMode du jeu (serveur uniquement), avec sélection du personnage :
  *  les joueurs arrivent sans pawn et choisissent un personnage dans le menu (AYSPlayerController).
@@ -119,6 +142,42 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island", meta=(ClampMin="0", Units="Centimeters"))
 	float ShoreInset = 200.0f;
 
+	/** Le bateau n'existe pas au début de la partie : il apparaît quand l'objectif de doublons est atteint (GameMap ; décoché = toujours là) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship")
+	bool bShipArrivesAtDoubloonGoal = true;
+
+	/** Fin de jeu temporaire : « X/Y sur le bateau » en bas de l'écran, et quand tous les joueurs vivants sont à bord, écran « BRAVO » puis retour au menu */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship")
+	bool bShipBoardingVictory = true;
+
+	/** Secondes entre l'écran « BRAVO » et le retour au menu principal */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship", meta=(ClampMin="0", Units="s", EditCondition="bShipBoardingVictory"))
+	float VictoryReturnDelay = 5.0f;
+
+	/** Overtime de l'île (GameMap) : à partir du jour Overtime Day, circle spawns plus forts puis l'île coule à la tombée de la nuit */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime")
+	bool bOvertime = true;
+
+	/** Jour où l'île passe en overtime (au début de ce jour) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(ClampMin="1", EditCondition="bOvertime"))
+	int32 OvertimeDay = 3;
+
+	/** Circle spawns de l'overtime (île de départ : Skull niveau jour + 3 tout de suite, puis niveau jour + 5 30 s plus tard) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(EditCondition="bOvertime"))
+	TArray<FYSOvertimeWave> OvertimeWaves;
+
+	/** Nuit de l'overtime : au lieu de l'élite et des NME, l'île (Landscape et ce qui y est accroché) descend sous l'eau, jusque sous la deadzone */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(ClampMin="1", Units="s", EditCondition="bOvertime"))
+	float IslandSinkDuration = 30.0f;
+
+	/** Profondeur de la descente (île jusqu'à +421 et deadzone à -300 : au-delà de 750 tout passe sous la deadzone) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(ClampMin="0", Units="Centimeters", EditCondition="bOvertime"))
+	float IslandSinkDepth = 1200.0f;
+
+	/** Courbe de la descente (1 = vitesse constante, 2 = lente au début puis de plus en plus vite) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(ClampMin="0.1", EditCondition="bOvertime"))
+	float IslandSinkEaseExponent = 1.5f;
+
 	/** Objectif commun : doublons à réunir en revendant des coffres au Brooker (jauge d'objectif du HUD) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="1"))
 	int32 DoubloonGoal = 100;
@@ -204,10 +263,19 @@ public:
 	int32 SpawnNumpadCircle(int32 Key);
 
 	/** Circle spawn : Count NME (tirés dans Classes selon leur Spawn Weight) répartis à intervalles réguliers sur le contour de la plage, tournés vers le centre */
-	int32 SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason);
+	int32 SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason, int32 ForcedLevel = INDEX_NONE);
 
-	/** NME de la classe posé sur le sol Ground (taille de l'élite comprise), tourné vers FacingTarget ; nullptr si la place est prise */
-	AYSFoeCharacter* SpawnFoeOnGround(UClass* FoeClass, const FVector& Ground, const FVector& FacingTarget);
+	/** NME de la classe posé sur le sol Ground (taille de l'élite comprise), tourné vers FacingTarget ; nullptr si la place est prise ; ForcedLevel = niveau imposé */
+	AYSFoeCharacter* SpawnFoeOnGround(UClass* FoeClass, const FVector& Ground, const FVector& FacingTarget, int32 ForcedLevel = INDEX_NONE);
+
+	/** Le bateau apparaît (objectif de doublons atteint, debug) */
+	void ShipArrives(const TCHAR* Reason);
+
+	/** L'île passe en overtime maintenant (début du jour d'overtime, debug) */
+	void StartOvertime();
+
+	/** L'île commence à couler (nuit de l'overtime, debug) */
+	void StartIslandSink();
 
 	/** Sol de l'île (Landscape seulement : ponton, bateau, palmiers traversés) à la verticale de Point, hors de l'eau */
 	bool FindIslandGround(const FVector& Point, FVector& OutGround) const;
@@ -242,6 +310,19 @@ protected:
 
 	/** Montées de niveau pas encore traitées par une sélection d'upgrade */
 	int32 PendingLevelUps = 0;
+
+	/** Début d'un jour (partie, mort de l'élite) : overtime à partir de Overtime Day */
+	void OnDayStarted(int32 Day);
+
+	/** Overtime : circle spawns dus (Overtime Waves) */
+	void TickOvertime();
+
+	/** Joueurs à bord du bateau (« X/Y ») et victoire quand ils y sont tous */
+	void TickShipBoarding();
+
+	/** Temps de partie du début de l'overtime (< 0 = pas d'overtime) et prochaine vague d'overtime */
+	float OvertimeStartTime = -1.0f;
+	int32 NextOvertimeWave = 0;
 
 	/** Prochain numéro de joueur (nom par défaut « Player N », couleur par défaut) */
 	int32 NextPlayerNumber = 1;

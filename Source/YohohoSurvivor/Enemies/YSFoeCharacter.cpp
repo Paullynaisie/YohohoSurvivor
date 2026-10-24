@@ -675,7 +675,12 @@ void AYSFoeCharacter::BeginPlay()
 		ApplyWeaponClasses();
 
 		AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
-		if (bLevelFromDay && YSGameState)
+		if (ForcedLevel != INDEX_NONE)
+		{
+			Level = FMath::Max(0, ForcedLevel);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau imposé %d (%.0f PV)"), *GetName(), Level, (BaseHealth + HealthPerLevel * Level) * HealthMultiplier);
+		}
+		else if (bLevelFromDay && YSGameState)
 		{
 			Level = FMath::Max(0, YSGameState->GetDayNumber() + LevelFromDayOffset);
 		}

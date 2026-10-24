@@ -14,6 +14,7 @@ class UYSEliteHealthWidget;
 class UYSDayBannerWidget;
 class UYSOffscreenIndicatorsWidget;
 class UYSObjectiveWidget;
+class UYSShipBoardingWidget;
 class ASceneCapture2D;
 class AYSPlayerCharacter;
 class UTextureRenderTarget2D;
@@ -62,6 +63,10 @@ protected:
 	/** Jauge d'objectif (doublons, haut droite) : Widget Blueprint enfant de YSObjectiveWidget (placement et réglages dans ses Class Defaults, catégorie Layout) */
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSObjectiveWidget> ObjectiveWidgetClass;
+
+	/** Fin de jeu temporaire (« X/Y sur le bateau », « BRAVO ») : Widget Blueprint enfant de YSShipBoardingWidget (réglages dans ses Class Defaults, catégorie Layout) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<UYSShipBoardingWidget> ShipBoardingWidgetClass;
 
 	/** BL stacks du Bloodlust (à droite de l'icône d'Ability ; Widget Blueprint réglable WBP_BloodlustStacks) */
 	UPROPERTY(EditAnywhere, Category="UI")
@@ -112,6 +117,12 @@ private:
 	/** Jauge d'objectif commune (doublons) */
 	UPROPERTY(Transient)
 	TObjectPtr<UYSObjectiveWidget> Objective;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UYSShipBoardingWidget> ShipBoarding;
+
+	/** Victoire vue par cette machine : secondes avant le retour au menu (-1 = pas de victoire, -2 = déjà parti) */
+	float VictoryReturnTimer = -1.0f;
 
 	/** Annonce « Jour X » */
 	UPROPERTY(Transient)
@@ -250,6 +261,22 @@ public:
 	UFUNCTION(Exec)
 	void YSStartNight();
 
+	/** Debug (console, hôte) : le bateau apparaît comme si l'objectif de doublons était atteint */
+	UFUNCTION(Exec)
+	void YSShipArrive();
+
+	/** Debug (console, hôte) : l'île passe en overtime maintenant (circle spawns d'overtime, l'île coulera à la tombée de la nuit) */
+	UFUNCTION(Exec)
+	void YSStartOvertime();
+
+	/** Debug (console, hôte) : l'île coule maintenant */
+	UFUNCTION(Exec)
+	void YSSinkIsland();
+
+	/** Debug (console) : téléporte son personnage (ex. sur le pont du bateau de GameMap : YSTeleport -6050 550 300) */
+	UFUNCTION(Exec)
+	void YSTeleport(float X, float Y, float Z);
+
 	/** Debug (console) : tire Draws fois 3 propositions et logue la fréquence de chaque proposition par position (vérifie les poids) */
 	UFUNCTION(Exec)
 	void YSUpgradeOdds(int32 Draws = 10000);
@@ -381,6 +408,16 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerStartNight();
+
+	/** Debug : 0 = bateau, 1 = overtime, 2 = l'île coule */
+	UFUNCTION(Server, Reliable)
+	void ServerLoopDebug(int32 Action);
+
+	UFUNCTION(Server, Reliable)
+	void ServerTeleport(FVector Location);
+
+	/** « X/Y sur le bateau », « BRAVO » puis retour au menu */
+	void UpdateShipBoardingUI(float DeltaSeconds);
 
 	/** Clic sur une upgrade (index dans les propositions) */
 	void ChooseUpgrade(int32 OfferIndex);

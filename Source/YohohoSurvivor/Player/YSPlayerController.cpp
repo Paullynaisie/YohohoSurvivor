@@ -22,6 +22,7 @@
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "UI/YSEliteHealthWidget.h"
 #include "UI/YSObjectiveWidget.h"
+#include "UI/YSShipBoardingWidget.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "Interaction/YSTreasureMap.h"
 #include "NPC/YSBrookerNPC.h"
@@ -145,6 +146,14 @@ void AYSPlayerController::BeginPlay()
 			ObjectiveSlot.Offsets = FMargin(-Objective->ScreenOffset.X, Objective->ScreenOffset.Y, 0.0f, 0.0f);
 			ObjectiveSlot.ZOrder = 1;
 			ViewportSubsystem->AddWidgetForPlayer(Objective, GetLocalPlayer(), ObjectiveSlot);
+
+			// fin de jeu temporaire : plein écran (texte en bas, « BRAVO » au centre ; placements dans le Widget Blueprint)
+			ShipBoarding = CreateWidget<UYSShipBoardingWidget>(this, ShipBoardingWidgetClass ? ShipBoardingWidgetClass.Get() : UYSShipBoardingWidget::StaticClass());
+			ShipBoarding->SetVisibility(ESlateVisibility::HitTestInvisible);
+			FGameViewportWidgetSlot BoardingSlot;
+			BoardingSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
+			BoardingSlot.ZOrder = 20;
+			ViewportSubsystem->AddWidgetForPlayer(ShipBoarding, GetLocalPlayer(), BoardingSlot);
 
 			// annonce « Jour X » : plein écran, texte centré
 			DayBanner = CreateWidget<UYSDayBannerWidget>(this, UYSDayBannerWidget::StaticClass());
@@ -690,6 +699,79 @@ void AYSPlayerController::Tick(float DeltaSeconds)
 		UpdatePlayerHUD();
 		UpdateUpgradeMenu();
 		UpdateDayNightUI(DeltaSeconds);
+		UpdateShipBoardingUI(DeltaSeconds);
+	}
+}
+
+void AYSPlayerController::UpdateShipBoardingUI(float DeltaSeconds)
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (!YSGameState || !ShipBoarding)
+	{
+		return;
+	}
+	const bool bVictory = YSGameState->IsVictory();
+	ShipBoarding->SetBoarding(YSGameState->IsShipPresent() && !bVictory ? YSGameState->GetShipAboardPlayers() : 0, YSGameState->GetShipTotalPlayers());
+	ShipBoarding->SetVictory(bVictory);
+
+	// « BRAVO » puis retour au menu ; l'hôte part un peu après ses clients (sinon ils voient une erreur réseau)
+	if (bVictory && VictoryReturnTimer == -1.0f)
+	{
+		VictoryReturnTimer = YSGameState->GetVictoryReturnDelay() + (HasAuthority() && GetNetMode() != NM_Standalone ? 0.5f : 0.0f);
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : BRAVO, retour au menu dans %.1f s"), *GetName(), VictoryReturnTimer);
+	}
+	if (VictoryReturnTimer >= 0.0f)
+	{
+		VictoryReturnTimer -= DeltaSeconds;
+		if (VictoryReturnTimer < 0.0f)
+		{
+			VictoryReturnTimer = -2.0f;
+			YSLeaveGame();
+		}
+	}
+}
+
+void AYSPlayerController::YSShipArrive()
+{
+	ServerLoopDebug(0);
+}
+
+void AYSPlayerController::YSStartOvertime()
+{
+	ServerLoopDebug(1);
+}
+
+void AYSPlayerController::YSSinkIsland()
+{
+	ServerLoopDebug(2);
+}
+
+void AYSPlayerController::YSTeleport(float X, float Y, float Z)
+{
+	ServerTeleport(FVector(X, Y, Z));
+}
+
+void AYSPlayerController::ServerTeleport_Implementation(FVector Location)
+{
+	if (APawn* ControlledPawn = GetPawn())
+	{
+		ControlledPawn->TeleportTo(Location, ControlledPawn->GetActorRotation());
+		UE_LOG(LogTemp, Log, TEXT("[YSDebug] %s téléporté en %s"), *ControlledPawn->GetName(), *Location.ToCompactString());
+	}
+}
+
+void AYSPlayerController::ServerLoopDebug_Implementation(int32 Action)
+{
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	if (!GameMode)
+	{
+		return;
+	}
+	switch (Action)
+	{
+	case 0:		GameMode->ShipArrives(TEXT("debug"));	break;
+	case 1:		GameMode->StartOvertime();				break;
+	default:	GameMode->StartIslandSink();			break;
 	}
 }
 

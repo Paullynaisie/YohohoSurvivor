@@ -93,9 +93,53 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Objective")
 	int32 DoubloonGoal = 100;
 
+	/** Le bateau est là (GameMap : seulement une fois l'objectif de doublons atteint) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Ship")
+	bool bShipPresent = true;
+
+	/** Joueurs vivants à bord du bateau / joueurs vivants (« X/Y sur le bateau ») */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Ship")
+	int32 ShipAboardPlayers = 0;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Ship")
+	int32 ShipTotalPlayers = 0;
+
+	/** Fin de jeu temporaire : tous les joueurs sont à bord (« BRAVO » puis retour au menu après VictoryReturnDelay) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Ship")
+	bool bVictory = false;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Ship")
+	float VictoryReturnDelay = 5.0f;
+
+	/** L'île est en overtime */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Overtime")
+	bool bOvertime = false;
+
+	/** L'île coule : temps serveur du début (0 = non), durée, profondeur, courbe ; chaque machine déplace localement l'île et ce qui y est accroché */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Overtime")
+	double IslandSinkStartServerTime = 0.0;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Overtime")
+	float IslandSinkDuration = 30.0f;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Overtime")
+	float IslandSinkDepth = 1200.0f;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Overtime")
+	float IslandSinkEaseExponent = 1.5f;
+
+	/** Acteurs qui coulent (Landscape et acteurs accrochés, récursivement) et leur position de départ (local) */
+	TArray<TPair<TWeakObjectPtr<AActor>, FVector>> SinkingActors;
+	bool bSinkingActorsGathered = false;
+
+	/** Descente de l'île appliquée sur cette machine */
+	void UpdateIslandSink();
+
 public:
 
 	AYSGameState();
+
+	virtual void Tick(float DeltaSeconds) override;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -146,6 +190,21 @@ public:
 
 	/** Serveur uniquement (AYSGameMode) */
 	void SetDoubloons(int32 Amount, int32 Goal) { Doubloons = Amount; DoubloonGoal = Goal; ForceNetUpdate(); }
+
+	bool IsShipPresent() const { return bShipPresent; }
+	int32 GetShipAboardPlayers() const { return ShipAboardPlayers; }
+	int32 GetShipTotalPlayers() const { return ShipTotalPlayers; }
+	bool IsVictory() const { return bVictory; }
+	float GetVictoryReturnDelay() const { return VictoryReturnDelay; }
+	bool IsOvertime() const { return bOvertime; }
+	bool IsIslandSinking() const { return IslandSinkStartServerTime > 0.0; }
+
+	/** Serveur uniquement (AYSGameMode) */
+	void SetShipPresent(bool bPresent) { bShipPresent = bPresent; ForceNetUpdate(); }
+	void SetShipBoarding(int32 Aboard, int32 Total) { ShipAboardPlayers = Aboard; ShipTotalPlayers = Total; ForceNetUpdate(); }
+	void SetVictory(float ReturnDelay) { bVictory = true; VictoryReturnDelay = ReturnDelay; ForceNetUpdate(); }
+	void SetOvertime() { bOvertime = true; ForceNetUpdate(); }
+	void StartIslandSink(float Duration, float Depth, float EaseExponent);
 
 	/** Secondes écoulées depuis le démarrage de la partie (0 avant ; valable sur serveur et clients) */
 	UFUNCTION(BlueprintPure, Category="Match")

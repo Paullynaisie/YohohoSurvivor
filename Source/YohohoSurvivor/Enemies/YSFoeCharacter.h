@@ -136,6 +136,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(EditCondition="bLevelFromDay"))
 	int32 LevelFromDayOffset = -1;
 
+	/** Niveau imposé par l'apparition (SetForcedLevel ; INDEX_NONE = niveau normal) */
+	int32 ForcedLevel = INDEX_NONE;
+
 	/** Élite : apparaît la nuit, sa mort fait passer au jour suivant ; barre de vie dans le HUD (haut droite) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite")
 	bool bIsElite = false;
@@ -386,6 +389,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="Foe|Level")
 	int32 GetFoeLevel() const { return Level; }
+
+	/** Niveau imposé à l'apparition, à la place de celui du jour (serveur, avant FinishSpawning ; overtime) */
+	void SetForcedLevel(int32 NewLevel) { ForcedLevel = NewLevel; }
 
 	bool IsElite() const { return bIsElite; }
 

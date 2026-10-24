@@ -7,6 +7,8 @@
 #include "Interaction/YSInteractiveObject.h"
 #include "LandscapeProxy.h"
 #include "Map/YSOcean.h"
+#include "Ship/YSPirateShip.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -23,6 +25,13 @@ AYSGameMode::AYSGameMode()
 	PrimaryActorTick.bCanEverTick = true;
 
 	SpawnRules.Add(CreateDefaultSubobject<UYSTimedWaveSpawnRule>(TEXT("TimedWaveSpawnRule")));
+
+	// overtime de l'île de départ : Skull niveau jour + 3, puis jour + 5 30 s plus tard (NME réglés dans le Blueprint)
+	FYSOvertimeWave& FirstWave = OvertimeWaves.AddDefaulted_GetRef();
+	FirstWave.LevelOffset = 3;
+	FYSOvertimeWave& SecondWave = OvertimeWaves.AddDefaulted_GetRef();
+	SecondWave.Delay = 30.0f;
+	SecondWave.LevelOffset = 5;
 }
 
 void AYSGameMode::Tick(float DeltaSeconds)
@@ -47,6 +56,112 @@ void AYSGameMode::Tick(float DeltaSeconds)
 		{
 			Rule->Tick(DeltaSeconds);
 		}
+	}
+
+	TickOvertime();
+	TickShipBoarding();
+}
+
+void AYSGameMode::OnDayStarted(int32 Day)
+{
+	if (bOvertime && bDayNightCycle && Day >= OvertimeDay && OvertimeStartTime < 0.0f)
+	{
+		StartOvertime();
+	}
+}
+
+void AYSGameMode::StartOvertime()
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || !YSGameState->IsMatchStarted() || OvertimeStartTime >= 0.0f)
+	{
+		return;
+	}
+	OvertimeStartTime = YSGameState->GetMatchElapsedTime();
+	NextOvertimeWave = 0;
+	YSGameState->SetOvertime();
+	UE_LOG(LogTemp, Log, TEXT("[YSOvertime] Jour %d : l'île passe en overtime (%d circle spawn(s), l'île coulera à la tombée de la nuit)"), YSGameState->GetDayNumber(), OvertimeWaves.Num());
+}
+
+void AYSGameMode::TickOvertime()
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (OvertimeStartTime < 0.0f || !YSGameState || !OvertimeWaves.IsValidIndex(NextOvertimeWave))
+	{
+		return;
+	}
+	const FYSOvertimeWave& Wave = OvertimeWaves[NextOvertimeWave];
+	if (YSGameState->GetMatchElapsedTime() - OvertimeStartTime < Wave.Delay)
+	{
+		return;
+	}
+
+	// circle spawn sur la plage, niveau = jour en cours + décalage (morts compris dans le nombre de joueurs, comme les vagues)
+	int32 Players = 0;
+	for (const APlayerState* Player : YSGameState->PlayerArray)
+	{
+		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player);
+		Players += YSPlayer && YSPlayer->IsReady() ? 1 : 0;
+	}
+	const int32 Level = YSGameState->GetDayNumber() + Wave.LevelOffset;
+	SpawnCircle(Wave.EnemyClasses, Wave.EnemiesPerPlayer * FMath::Max(1, Players), FString::Printf(TEXT("overtime %d, niveau %d"), NextOvertimeWave + 1, Level), Level);
+	++NextOvertimeWave;
+}
+
+void AYSGameMode::StartIslandSink()
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || YSGameState->IsIslandSinking())
+	{
+		return;
+	}
+	YSGameState->StartIslandSink(IslandSinkDuration, IslandSinkDepth, IslandSinkEaseExponent);
+	UE_LOG(LogTemp, Log, TEXT("[YSOvertime] Nuit %d : l'île coule (%.0f cm en %.0f s)"), YSGameState->GetDayNumber(), IslandSinkDepth, IslandSinkDuration);
+}
+
+void AYSGameMode::ShipArrives(const TCHAR* Reason)
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (YSGameState && !YSGameState->IsShipPresent())
+	{
+		YSGameState->SetShipPresent(true);
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] Le bateau arrive (%s)"), Reason);
+	}
+}
+
+void AYSGameMode::TickShipBoarding()
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!bShipBoardingVictory || !YSGameState || !YSGameState->IsShipPresent() || YSGameState->IsVictory())
+	{
+		return;
+	}
+
+	// à bord = debout sur le bateau (base de mouvement), hors planche d'embarquement ; joueurs comptés = vivants
+	int32 Total = 0;
+	int32 Aboard = 0;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AYSPlayerCharacter* Character = It->Get() ? Cast<AYSPlayerCharacter>(It->Get()->GetPawn()) : nullptr;
+		if (!Character || !Character->IsAlive())
+		{
+			continue;
+		}
+		++Total;
+		const UPrimitiveComponent* Base = Cast<UPrimitiveComponent>(Character->GetCharacterMovement()->GetMovementBaseObject());
+		const bool bOnShip = Base && Base->GetOwner() && Base->GetOwner()->IsA<AYSPirateShip>() && !Base->GetName().Contains(TEXT("Gangplank"));
+		Aboard += bOnShip ? 1 : 0;
+	}
+
+	if (Aboard != YSGameState->GetShipAboardPlayers() || Total != YSGameState->GetShipTotalPlayers())
+	{
+		YSGameState->SetShipBoarding(Aboard, Total);
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %d / %d joueur(s) sur le bateau"), Aboard, Total);
+	}
+	if (Total > 0 && Aboard == Total)
+	{
+		YSGameState->SetVictory(VictoryReturnDelay);
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] Tous les joueurs sont sur le bateau : BRAVO, retour au menu dans %.0f s"), VictoryReturnDelay);
 	}
 }
 
@@ -84,6 +199,8 @@ void AYSGameMode::InitGameState()
 		YSGameState->SetCustomizationOptions(CustomizationColors, CustomizationFaces);
 		YSGameState->SetTeamProgress(0, 0.0f, GetExperienceForLevel(0));
 		YSGameState->SetDoubloons(0, DoubloonGoal);
+		// bateau : là dès le début, ou seulement à l'objectif de doublons (GameMap)
+		YSGameState->SetShipPresent(!bShipArrivesAtDoubloonGoal);
 	}
 }
 
@@ -405,6 +522,12 @@ void AYSGameMode::StartNight()
 
 	YSGameState->StartNight();
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Nuit %d"), YSGameState->GetDayNumber());
+	// overtime : pas d'élite ni de NME cette nuit, l'île coule
+	if (OvertimeStartTime >= 0.0f)
+	{
+		StartIslandSink();
+		return;
+	}
 	for (UYSEnemySpawnRule* Rule : SpawnRules)
 	{
 		if (Rule)
@@ -424,8 +547,9 @@ void AYSGameMode::OnEliteKilled(AYSFoeCharacter* Elite)
 
 	YSGameState->StartDay(YSGameState->GetDayNumber() + 1);
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Élite %s tué : jour %d"), Elite ? *Elite->GetName() : TEXT("?"), YSGameState->GetDayNumber());
-	// nouveau jour : nouvelle carte au trésor
+	// nouveau jour : nouvelle carte au trésor ; overtime à partir de Overtime Day
 	SpawnTreasureMap();
+	OnDayStarted(YSGameState->GetDayNumber());
 	for (UYSEnemySpawnRule* Rule : SpawnRules)
 	{
 		if (Rule)
@@ -530,6 +654,7 @@ void AYSGameMode::AddDoubloons(int32 Amount)
 	if (!bWasReached && YSGameState->GetDoubloons() >= DoubloonGoal)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Objectif atteint : %d doublons"), YSGameState->GetDoubloons());
+		ShipArrives(TEXT("objectif de doublons atteint"));
 	}
 }
 
@@ -665,7 +790,7 @@ int32 AYSGameMode::SpawnNumpadCircle(int32 Key)
 	return 0;
 }
 
-int32 AYSGameMode::SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason)
+int32 AYSGameMode::SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason, int32 ForcedLevel)
 {
 	TArray<TSubclassOf<AYSFoeCharacter>> ValidClasses = Classes;
 	ValidClasses.RemoveAll([](const TSubclassOf<AYSFoeCharacter>& Class) { return !Class; });
@@ -683,7 +808,7 @@ int32 AYSGameMode::SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Class
 		FVector Ground;
 		if (FindShorePoint(StartAngle + 2.0f * PI * Index / Count, Ground))
 		{
-			Spawned += SpawnFoeOnGround(UYSEnemySpawnRule::PickEnemyClass(ValidClasses), Ground, IslandCenter) ? 1 : 0;
+			Spawned += SpawnFoeOnGround(UYSEnemySpawnRule::PickEnemyClass(ValidClasses), Ground, IslandCenter, ForcedLevel) ? 1 : 0;
 		}
 	}
 
@@ -691,7 +816,7 @@ int32 AYSGameMode::SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Class
 	return Spawned;
 }
 
-AYSFoeCharacter* AYSGameMode::SpawnFoeOnGround(UClass* FoeClass, const FVector& Ground, const FVector& FacingTarget)
+AYSFoeCharacter* AYSGameMode::SpawnFoeOnGround(UClass* FoeClass, const FVector& Ground, const FVector& FacingTarget, int32 ForcedLevel)
 {
 	if (!FoeClass || !FoeClass->IsChildOf(AYSFoeCharacter::StaticClass()))
 	{
@@ -704,9 +829,15 @@ AYSFoeCharacter* AYSGameMode::SpawnFoeOnGround(UClass* FoeClass, const FVector& 
 	const FVector Location = Ground + FVector(0.0f, 0.0f, HalfHeight + 2.0f);
 	const FRotator Rotation(0.0f, (FacingTarget - Location).Rotation().Yaw, 0.0f);
 
-	FActorSpawnParameters Params;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
-	return GetWorld()->SpawnActor<AYSFoeCharacter>(FoeClass, Location, Rotation, Params);
+	// niveau imposé avant le BeginPlay (overtime)
+	const FTransform SpawnTransform(Rotation, Location);
+	AYSFoeCharacter* Foe = GetWorld()->SpawnActorDeferred<AYSFoeCharacter>(FoeClass, SpawnTransform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding);
+	if (Foe)
+	{
+		Foe->SetForcedLevel(ForcedLevel);
+		Foe->FinishSpawning(SpawnTransform);
+	}
+	return Foe;
 }
 
 bool AYSGameMode::FindIslandGround(const FVector& Point, FVector& OutGround) const

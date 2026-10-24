@@ -6,12 +6,15 @@
 #include "GameFramework/PlayerState.h"
 #include "UI/YSDamageNumber.h"
 #include "Net/UnrealNetwork.h"
+#include "EngineUtils.h"
+#include "LandscapeProxy.h"
 #include "Core/YSPlayerState.h"
 #include "Player/YSPlayerCharacter.h"
 
 AYSGameState::AYSGameState()
 {
 	DamageNumberClass = AYSDamageNumber::StaticClass();
+	PrimaryActorTick.bCanEverTick = true;
 }
 
 bool AYSGameState::IsCharacterTaken(int32 CharacterIndex, const APlayerState* Except) const
@@ -54,6 +57,83 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, CurrentElite);
 	DOREPLIFETIME(AYSGameState, Doubloons);
 	DOREPLIFETIME(AYSGameState, DoubloonGoal);
+	DOREPLIFETIME(AYSGameState, bShipPresent);
+	DOREPLIFETIME(AYSGameState, ShipAboardPlayers);
+	DOREPLIFETIME(AYSGameState, ShipTotalPlayers);
+	DOREPLIFETIME(AYSGameState, bVictory);
+	DOREPLIFETIME(AYSGameState, VictoryReturnDelay);
+	DOREPLIFETIME(AYSGameState, bOvertime);
+	DOREPLIFETIME(AYSGameState, IslandSinkStartServerTime);
+	DOREPLIFETIME(AYSGameState, IslandSinkDuration);
+	DOREPLIFETIME(AYSGameState, IslandSinkDepth);
+	DOREPLIFETIME(AYSGameState, IslandSinkEaseExponent);
+}
+
+void AYSGameState::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	UpdateIslandSink();
+}
+
+void AYSGameState::StartIslandSink(float Duration, float Depth, float EaseExponent)
+{
+	IslandSinkDuration = FMath::Max(Duration, 0.1f);
+	IslandSinkDepth = Depth;
+	IslandSinkEaseExponent = EaseExponent;
+	IslandSinkStartServerTime = FMath::Max(GetServerWorldTimeSeconds(), 0.001);
+	ForceNetUpdate();
+}
+
+void AYSGameState::UpdateIslandSink()
+{
+	if (!IsIslandSinking())
+	{
+		return;
+	}
+
+	// une fois : l'île (Landscape) et tout ce qui y est accroché (props, ponton, Brooker), rendus mobiles
+	if (!bSinkingActorsGathered)
+	{
+		bSinkingActorsGathered = true;
+		TArray<AActor*> Roots;
+		for (TActorIterator<ALandscapeProxy> It(GetWorld()); It; ++It)
+		{
+			Roots.Add(*It);
+		}
+		for (AActor* Root : Roots)
+		{
+			TArray<AActor*> Attached;
+			Root->GetAttachedActors(Attached, false, true);
+			Attached.Insert(Root, 0);
+			for (AActor* Actor : Attached)
+			{
+				TInlineComponentArray<USceneComponent*> Components(Actor);
+				for (USceneComponent* Component : Components)
+				{
+					Component->SetMobility(EComponentMobility::Movable);
+				}
+				SinkingActors.Emplace(Actor, Actor->GetActorLocation());
+			}
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSOvertime] L'île coule : %d acteur(s) (Landscape et acteurs accrochés)"), SinkingActors.Num());
+	}
+
+	// même descente sur toutes les machines (temps serveur)
+	const float Alpha = FMath::Clamp(static_cast<float>(GetServerWorldTimeSeconds() - IslandSinkStartServerTime) / IslandSinkDuration, 0.0f, 1.0f);
+	const float Offset = -IslandSinkDepth * FMath::Pow(Alpha, IslandSinkEaseExponent);
+	for (const TPair<TWeakObjectPtr<AActor>, FVector>& Entry : SinkingActors)
+	{
+		AActor* Actor = Entry.Key.Get();
+		// les enfants suivent leur parent : seules les racines sont déplacées
+		if (Actor && !Actor->GetAttachParentActor())
+		{
+			const FVector Target = Entry.Value + FVector(0.0f, 0.0f, Offset);
+			if (!Actor->GetActorLocation().Equals(Target, 0.1f))
+			{
+				Actor->SetActorLocation(Target);
+			}
+		}
+	}
 }
 
 void AYSGameState::SetMatchStarted()

@@ -33,4 +33,12 @@ public:
 	AYSPirateShip();
 
 	FText GetShipName() const { return ShipName; }
+
+	/** Présence du bateau (AYSGameState::IsShipPresent) : absent = caché, sans collision (GameMap : jusqu'à l'objectif de doublons) */
+	virtual void Tick(float DeltaSeconds) override;
+
+private:
+
+	/** Présence appliquée (-1 = pas encore) */
+	int8 AppliedPresence = -1;
 };
