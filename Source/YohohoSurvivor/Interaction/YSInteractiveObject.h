@@ -127,7 +127,16 @@ public:
 	/** Fait apparaître un objet posé au sol sous Location (serveur) */
 	static AYSInteractiveObject* SpawnOnGround(UWorld* World, TSubclassOf<AYSInteractiveObject> ObjectClass, const FVector& Location, float Yaw);
 
+	/** Dernier sol sûr (hors de l'eau) où l'objet a été posé ou porté (serveur) : il y revient s'il est lâché dans la mer */
+	void SetLastSafeLocation(const FVector& Location) { LastSafeLocation = Location; }
+	const FVector& GetLastSafeLocation() const { return LastSafeLocation; }
+
+	/** Point de pose valable : au sol, hors de l'eau, au-dessus de la deadzone */
+	static bool IsSafeDropLocation(const UWorld* World, const FVector& Ground);
+
 private:
+
+	FVector LastSafeLocation = FVector::ZeroVector;
 
 	/** Collisions et invite selon l'état porté / posé (toutes machines) */
 	void ApplyCarryState();

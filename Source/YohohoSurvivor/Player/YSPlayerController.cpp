@@ -1039,9 +1039,9 @@ void AYSPlayerController::UpdateUpgradeMenu()
 	}
 
 	UpgradeMenu->SetSelectedIndex(MyState->GetChosenUpgradeOffer());
-	// relance : seulement tant que le joueur n'a pas choisi, jamais pour un choix de classe
+	// relance (et changement de choix) : tant que la sélection dure, jamais pour un choix de classe
 	const AYSGameMode* AuthGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
-	UpgradeMenu->SetRerollVisible(MyState->IsChoosingUpgrade() && !bClassChoice && (!AuthGameMode || AuthGameMode->IsUpgradeRerollAllowed()));
+	UpgradeMenu->SetRerollVisible(MyState->HasUpgradeOffers() && !bClassChoice && (!AuthGameMode || AuthGameMode->IsUpgradeRerollAllowed()));
 
 	// debug / tests automatisés en réseau : -YSAutoUpgrade choisit la première proposition
 	if (MyState->IsChoosingUpgrade() && FParse::Param(FCommandLine::Get(), TEXT("YSAutoUpgrade")))
@@ -1067,7 +1067,7 @@ void AYSPlayerController::UpdateUpgradeMenu()
 void AYSPlayerController::ChooseUpgrade(int32 OfferIndex)
 {
 	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
-	if (MyState && MyState->IsChoosingUpgrade())
+	if (MyState && MyState->HasUpgradeOffers())
 	{
 		ServerChooseUpgrade(OfferIndex);
 	}
@@ -1084,7 +1084,7 @@ void AYSPlayerController::ServerChooseUpgrade_Implementation(int32 OfferIndex)
 void AYSPlayerController::RerollUpgrades()
 {
 	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
-	if (MyState && MyState->IsChoosingUpgrade())
+	if (MyState && MyState->HasUpgradeOffers())
 	{
 		ServerRerollUpgrades();
 	}
@@ -1572,18 +1572,19 @@ void AYSPlayerController::YSSpawnFoe(const FString& Name, float Distance)
 	UE_LOG(LogTemp, Log, TEXT("[YSSpawnFoe] %s"), Foe ? *Foe->GetName() : TEXT("échec"));
 }
 
-void AYSPlayerController::YSTreasureNextPoint()
+void AYSPlayerController::YSTreasureNextPoint(int32 Skip)
 {
 	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
 	const AYSTreasureMap* TreasureMap = PlayerCharacter ? Cast<AYSTreasureMap>(PlayerCharacter->GetCarriedObject()) : nullptr;
-	if (!TreasureMap || !HasAuthority() || TreasureMap->GetReachedPointIndex() + 1 >= TreasureMap->GetPathPoints().Num())
+	const int32 Target = TreasureMap ? TreasureMap->GetReachedPointIndex() + 1 + FMath::Max(0, Skip) : INDEX_NONE;
+	if (!TreasureMap || !HasAuthority() || Target >= TreasureMap->GetPathPoints().Num())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[YSTreasureNextPoint] impossible (carte portée %d, hôte %d)"), TreasureMap != nullptr, HasAuthority());
 		return;
 	}
-	const FVector Point = TreasureMap->GetPathPoints()[TreasureMap->GetReachedPointIndex() + 1];
+	const FVector Point = TreasureMap->GetPathPoints()[Target];
 	PlayerCharacter->TeleportTo(Point + FVector(0.0f, 0.0f, 100.0f), PlayerCharacter->GetActorRotation());
-	UE_LOG(LogTemp, Log, TEXT("[YSTreasureNextPoint] %s -> point %d (%.0f, %.0f)"), *PlayerCharacter->GetName(), TreasureMap->GetReachedPointIndex() + 1, Point.X, Point.Y);
+	UE_LOG(LogTemp, Log, TEXT("[YSTreasureNextPoint] %s -> point %d (%.0f, %.0f)"), *PlayerCharacter->GetName(), Target, Point.X, Point.Y);
 }
 
 void AYSPlayerController::YSGoToBrooker(float Distance)

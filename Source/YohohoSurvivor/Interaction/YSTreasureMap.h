@@ -79,11 +79,16 @@ protected:
 
 	/** Pointillés affichés jusqu'à cette distance du porteur */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes", meta=(ClampMin="0", Units="Centimeters"))
-	float VisibleRadius = 750.0f;
+	float VisibleRadius = 1500.0f;
 
 	/** Les pointillés rétrécissent sur cette distance avant la limite d'affichage */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes", meta=(ClampMin="0", Units="Centimeters"))
-	float FadeDistance = 200.0f;
+	float FadeDistance = 300.0f;
+
+	/** Chemin arrondi entre les points (courbe) ; décoché = segments droits, exactement ceux dont le sol a été vérifié
+	 *  (la courbe déborde dans les virages : pointillés au-dessus de la mer ou d'obstacles) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes")
+	bool bSmoothPath = false;
 
 	/** Distance entre le début de deux pointillés */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes", meta=(ClampMin="1", Units="Centimeters"))
@@ -172,6 +177,9 @@ private:
 
 	/** Spline locale reconstruite depuis PathPoints */
 	void RebuildSpline();
+
+	/** Log : le chemin affiché reste-t-il sur le sol vérifié (écart aux segments, pointillés sans sol) */
+	void LogDisplayedPathCheck();
 
 	/** Pointillés autour du porteur local (cachés sinon) */
 	void UpdateDashes();

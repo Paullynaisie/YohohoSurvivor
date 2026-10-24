@@ -4,6 +4,7 @@
 #include "Core/YSGameMode.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "LandscapeProxy.h"
 #include "Map/YSOcean.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
@@ -197,6 +198,58 @@ void AYSTreasureMap::SetPath(const TArray<FVector>& Points)
 	ReachedPointIndex = 0;
 	RebuildSpline();
 	ForceNetUpdate();
+	LogDisplayedPathCheck();
+}
+
+void AYSTreasureMap::LogDisplayedPathCheck()
+{
+	// le chemin affiché (spline) doit rester sur le sol vérifié par BuildPath : écart aux segments droits et pointillés sans sol ;
+	// mesuré pour le chemin arrondi et pour les segments droits
+	auto Measure = [this](float& OutMaxDeviation, int32& OutUngrounded) -> int32
+	{
+		int32 Samples = 0;
+		OutMaxDeviation = 0.0f;
+		OutUngrounded = 0;
+		const FVector Flat(1.0f, 1.0f, 0.0f);
+		for (float Distance = 0.0f; Distance <= PathSpline->GetSplineLength(); Distance += DashSpacing, ++Samples)
+		{
+			const FVector Location = PathSpline->GetLocationAtDistanceAlongSpline(Distance, ESplineCoordinateSpace::World);
+			float Deviation = TNumericLimits<float>::Max();
+			for (int32 Index = 0; Index + 1 < PathPoints.Num(); ++Index)
+			{
+				const FVector Closest = FMath::ClosestPointOnSegment(Location * Flat, PathPoints[Index] * Flat, PathPoints[Index + 1] * Flat);
+				Deviation = FMath::Min(Deviation, static_cast<float>(FVector::Dist2D(Location, Closest)));
+			}
+			OutMaxDeviation = FMath::Max(OutMaxDeviation, Deviation);
+			FVector Ground;
+			OutUngrounded += FindPathGround(GetWorld(), Location, Location.Z, MaxHeightDifference, Ground) ? 0 : 1;
+
+			// pointillé posé sur autre chose que l'île (ponton, bateau...)
+			FHitResult Hit;
+			const FVector Up(0.0f, 0.0f, YSTreasureMap::GroundTraceRange);
+			if (GetWorld()->LineTraceSingleByObjectType(Hit, Location + Up, Location - Up, FCollisionObjectQueryParams(ECC_WorldStatic)) && !(Hit.GetActor() && Hit.GetActor()->IsA<ALandscapeProxy>()))
+			{
+				UE_LOG(LogTemp, Verbose, TEXT("[YSTreasureMap] %s : pointillé à %.0f cm sur %s"), *GetName(), Distance, Hit.GetActor() ? *Hit.GetActor()->GetName() : TEXT("?"));
+			}
+		}
+		return Samples;
+	};
+
+	const bool bWasSmooth = bSmoothPath;
+	float Deviation[2];
+	int32 Ungrounded[2];
+	int32 Samples[2];
+	for (int32 Smooth = 0; Smooth < 2; ++Smooth)
+	{
+		bSmoothPath = Smooth == 1;
+		RebuildSpline();
+		Samples[Smooth] = Measure(Deviation[Smooth], Ungrounded[Smooth]);
+	}
+	bSmoothPath = bWasSmooth;
+	RebuildSpline();
+
+	UE_LOG(LogTemp, Verbose, TEXT("[YSTreasureMap] %s : chemin de %.0f cm (%s) ; segments droits : écart %.0f cm, %d / %d pointillés sans sol ; arrondi : écart %.0f cm, %d / %d sans sol"),
+		*GetName(), PathSpline->GetSplineLength(), bSmoothPath ? TEXT("arrondi") : TEXT("segments droits"), Deviation[0], Ungrounded[0], Samples[0], Deviation[1], Ungrounded[1], Samples[1]);
 }
 
 void AYSTreasureMap::OnRep_PathPoints()
@@ -207,9 +260,10 @@ void AYSTreasureMap::OnRep_PathPoints()
 void AYSTreasureMap::RebuildSpline()
 {
 	PathSpline->ClearSplinePoints(false);
-	for (const FVector& Point : PathPoints)
+	for (int32 Index = 0; Index < PathPoints.Num(); ++Index)
 	{
-		PathSpline->AddSplinePoint(Point, ESplineCoordinateSpace::World, false);
+		PathSpline->AddSplinePoint(PathPoints[Index], ESplineCoordinateSpace::World, false);
+		PathSpline->SetSplinePointType(Index, bSmoothPath ? ESplinePointType::Curve : ESplinePointType::Linear, false);
 	}
 	PathSpline->UpdateSpline();
 }
@@ -222,17 +276,26 @@ void AYSTreasureMap::UpdateProgress()
 		return;
 	}
 
-	if (FVector::Dist2D(Character->GetActorLocation(), PathPoints[ReachedPointIndex + 1]) > ReachRadius)
+	// n'importe quel point plus loin sur le chemin (le plus loin d'abord) : un virage coupé sans passer près du coin
+	// ne bloque plus la progression (avant : seul le point suivant comptait, le trésor n'était alors jamais trouvé)
+	int32 Reached = INDEX_NONE;
+	for (int32 Index = PathPoints.Num() - 1; Index > ReachedPointIndex && Reached == INDEX_NONE; --Index)
+	{
+		Reached = FVector::Dist2D(Character->GetActorLocation(), PathPoints[Index]) <= ReachRadius ? Index : INDEX_NONE;
+	}
+	if (Reached == INDEX_NONE)
 	{
 		return;
 	}
 
-	++ReachedPointIndex;
+	const int32 PreviousReached = ReachedPointIndex;
+	ReachedPointIndex = Reached;
 	ForceNetUpdate();
-	UE_LOG(LogTemp, Log, TEXT("[YSTreasureMap] %s : %s atteint le point %d / %d"), *GetName(), *Character->GetName(), ReachedPointIndex, PathPoints.Num() - 1);
+	UE_LOG(LogTemp, Log, TEXT("[YSTreasureMap] %s : %s atteint le point %d / %d%s"), *GetName(), *Character->GetName(), ReachedPointIndex, PathPoints.Num() - 1,
+		Reached > PreviousReached + 1 ? *FString::Printf(TEXT(" (%d point(s) passé(s) de loin)"), Reached - PreviousReached - 1) : TEXT(""));
 
-	// milieu du chemin : grosse vague
-	if (ReachedPointIndex == WaveAtPoint)
+	// milieu du chemin : grosse vague (aussi si le point a été passé de loin)
+	if (WaveAtPoint > PreviousReached && WaveAtPoint <= ReachedPointIndex)
 	{
 		if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
 		{

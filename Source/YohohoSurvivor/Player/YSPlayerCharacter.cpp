@@ -669,6 +669,16 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	// vitesse : peut dépendre d'une action en cours (visée du Rolling shot) ; serveur et client propriétaire
 	UpdateMaxWalkSpeed();
 
+	// objet porté : dernier sol sûr sous les pieds (il y revient s'il est lâché dans la mer)
+	if (HasAuthority() && IsValid(CarriedObject) && GetCharacterMovement()->IsMovingOnGround())
+	{
+		const FVector Feet = GetActorLocation() - FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+		if (AYSInteractiveObject::IsSafeDropLocation(GetWorld(), Feet))
+		{
+			CarriedObject->SetLastSafeLocation(Feet);
+		}
+	}
+
 	// déplacement forcé quand le joueur n'appuie sur aucune direction (roulade du Rolling shot) ou toujours si l'action
 	// impose sa trajectoire (Dashing Slash) ; machine qui contrôle le perso
 	const bool bMoveOverridden = IsMoveInputOverridden();
@@ -2035,7 +2045,14 @@ void AYSPlayerCharacter::DropCarriedObject(const TCHAR* Reason)
 
 	// reposé au sol devant le personnage
 	const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
-	const FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), GetActorLocation() + Forward * Object->GetDropDistance(), this);
+	FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), GetActorLocation() + Forward * Object->GetDropDistance(), this);
+	// lâché dans la mer (porteur tombé à l'eau, mort au bord) : sinon perdu pour de bon -> dernier sol sûr du porteur
+	if (!AYSInteractiveObject::IsSafeDropLocation(GetWorld(), Ground))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s : %s lâché hors du sol (%s), reposé au dernier sol sûr %s"), *GetName(), *Object->GetName(),
+			*Ground.ToCompactString(), *Object->GetLastSafeLocation().ToCompactString());
+		Ground = Object->GetLastSafeLocation();
+	}
 	CarriedObject = nullptr;
 	Object->SetCarrier(nullptr, Ground, GetActorRotation().Yaw);
 	ApplyCarryVisuals();

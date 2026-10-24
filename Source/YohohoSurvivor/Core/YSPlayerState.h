@@ -87,6 +87,9 @@ public:
 	/** Ce joueur doit encore choisir une upgrade */
 	bool IsChoosingUpgrade() const { return UpgradeOffers.Num() > 0 && ChosenUpgradeOffer == INDEX_NONE; }
 
+	/** Ce joueur a des propositions (choix modifiable tant que tous les joueurs n'ont pas choisi) */
+	bool HasUpgradeOffers() const { return UpgradeOffers.Num() > 0; }
+
 	/** Serveur uniquement : nouvelles propositions (vide = pas concerné par cette sélection) */
 	void SetUpgradeOffers(const TArray<FYSUpgradeOffer>& Offers) { UpgradeOffers = Offers; ChosenUpgradeOffer = INDEX_NONE; ForceNetUpdate(); }
 

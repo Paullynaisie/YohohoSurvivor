@@ -1,6 +1,8 @@
 #include "Interaction/YSInteractiveObject.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/World.h"
+#include "GameFramework/WorldSettings.h"
+#include "Map/YSOcean.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
 #include "UI/YSInteractPromptWidget.h"
@@ -52,6 +54,7 @@ void AYSInteractiveObject::BeginPlay()
 	Super::BeginPlay();
 
 	OriginalScale = GetActorScale3D();
+	LastSafeLocation = GetActorLocation();
 
 	if (PromptWidgetClass)
 	{
@@ -135,6 +138,12 @@ FVector AYSInteractiveObject::FindGround(const UWorld* World, const FVector& Loc
 	const FVector Start = Location + FVector(0.0f, 0.0f, YSInteractiveObject::GroundTraceUp);
 	const FVector End = Location - FVector(0.0f, 0.0f, YSInteractiveObject::GroundTraceDown);
 	return World->LineTraceSingleByObjectType(Hit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params) ? Hit.ImpactPoint : Location;
+}
+
+bool AYSInteractiveObject::IsSafeDropLocation(const UWorld* World, const FVector& Ground)
+{
+	const AWorldSettings* WorldSettings = World ? World->GetWorldSettings() : nullptr;
+	return World && !AYSOcean::IsUnderwater(World, Ground) && (!WorldSettings || !WorldSettings->bEnableWorldBoundsChecks || Ground.Z > WorldSettings->KillZ);
 }
 
 AYSInteractiveObject* AYSInteractiveObject::SpawnOnGround(UWorld* World, TSubclassOf<AYSInteractiveObject> ObjectClass, const FVector& Location, float Yaw)

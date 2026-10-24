@@ -235,9 +235,10 @@ public:
 	UFUNCTION(Exec)
 	void YSSpawnFoe(const FString& Name, float Distance = 1500.0f);
 
-	/** Debug (hôte) : le personnage qui porte une carte au trésor est téléporté au point suivant de son chemin */
+	/** Debug (hôte) : le personnage qui porte une carte au trésor est téléporté au point suivant de son chemin
+	 *  (Skip : points sautés sans y passer, comme un virage coupé) */
 	UFUNCTION(Exec)
-	void YSTreasureNextPoint();
+	void YSTreasureNextPoint(int32 Skip = 0);
 
 	/** Debug (console, hôte) : met l'arme BP de /Game/Placeable/Weapons (sous-dossiers compris) dans une main (0 droite, 1 gauche).  Ex : YSEquipWeapon 0 BattlePetoir (préfixe BP_ facultatif) */
 	UFUNCTION(Exec)

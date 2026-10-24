@@ -309,13 +309,14 @@ void AYSGameMode::PlayerChoseUpgrade(APlayerController* Player, int32 OfferIndex
 	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
 	AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
 	if (!YSGameState || !YSGameState->IsUpgradeSelectionActive() || !PlayerState || !Character
-		|| !PlayerState->IsChoosingUpgrade() || !PlayerState->GetUpgradeOffers().IsValidIndex(OfferIndex))
+		|| !PlayerState->GetUpgradeOffers().IsValidIndex(OfferIndex) || PlayerState->GetChosenUpgradeOffer() == OfferIndex)
 	{
 		return;
 	}
 
-	Character->ApplyUpgrade(PlayerState->GetUpgradeOffers()[OfferIndex]);
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s choisit l'upgrade %d (pool %d, variante %d, rareté %d)"), *PlayerState->GetPlayerName(), OfferIndex, PlayerState->GetUpgradeOffers()[OfferIndex].PoolIndex, PlayerState->GetUpgradeOffers()[OfferIndex].Variant, (int32)PlayerState->GetUpgradeOffers()[OfferIndex].Rarity);
+	// choix modifiable tant que tous les joueurs n'ont pas choisi : appliqué à la fin de la sélection (TryFinishUpgradeSelection)
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s choisit l'upgrade %d (pool %d, variante %d, rareté %d)%s"), *PlayerState->GetPlayerName(), OfferIndex, PlayerState->GetUpgradeOffers()[OfferIndex].PoolIndex, PlayerState->GetUpgradeOffers()[OfferIndex].Variant, (int32)PlayerState->GetUpgradeOffers()[OfferIndex].Rarity,
+		PlayerState->GetChosenUpgradeOffer() != INDEX_NONE ? *FString::Printf(TEXT(", à la place de %d"), PlayerState->GetChosenUpgradeOffer()) : TEXT(""));
 	PlayerState->SetChosenUpgradeOffer(OfferIndex);
 	TryFinishUpgradeSelection();
 }
@@ -326,7 +327,7 @@ void AYSGameMode::PlayerRerolledUpgrades(APlayerController* Player)
 	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
 	const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
 	if (!bAllowUpgradeReroll || !YSGameState || !YSGameState->IsUpgradeSelectionActive() || !PlayerState || !Character || !Character->IsAlive()
-		|| !PlayerState->IsChoosingUpgrade())
+		|| !PlayerState->HasUpgradeOffers())
 	{
 		return;
 	}
@@ -364,12 +365,18 @@ void AYSGameMode::TryFinishUpgradeSelection()
 		}
 	}
 
-	// tout le monde a choisi : on enchaîne s'il reste des niveaux gagnés, sinon la partie reprend
+	// tout le monde a choisi : choix appliqués, puis on enchaîne s'il reste des niveaux gagnés, sinon la partie reprend
 	YSGameState->SetUpgradeSelectionActive(false);
 	for (APlayerState* Player : YSGameState->PlayerArray)
 	{
 		if (AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player))
 		{
+			AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(YSPlayer->GetPawn());
+			if (Character && Character->IsAlive() && YSPlayer->GetUpgradeOffers().IsValidIndex(YSPlayer->GetChosenUpgradeOffer()))
+			{
+				Character->ApplyUpgrade(YSPlayer->GetUpgradeOffers()[YSPlayer->GetChosenUpgradeOffer()]);
+				UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s : upgrade %d appliquée"), *YSPlayer->GetPlayerName(), YSPlayer->GetChosenUpgradeOffer());
+			}
 			YSPlayer->SetUpgradeOffers(TArray<FYSUpgradeOffer>());
 		}
 	}
