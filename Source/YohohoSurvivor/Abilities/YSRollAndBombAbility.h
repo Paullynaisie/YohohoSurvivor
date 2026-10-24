@@ -58,11 +58,14 @@ protected:
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	/** Pose la bombe au sol sous le personnage (serveur) */
+	void DropBomb();
+
+	/** Bombe (ou mine) aux pieds, et la seconde mine de Golden Mine en cours de roulade (serveur) */
+	void DropBombs();
+
 private:
 
 	/** Golden Mine : seconde mine posée pendant la roulade */
 	FTimerHandle SecondMineTimer;
-
-	/** Pose la bombe au sol sous le personnage (serveur) */
-	void DropBomb();
 };

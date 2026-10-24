@@ -154,7 +154,7 @@ protected:
 
 	/** Mine armée : délai entre la détection d'un NME dans son rayon et l'explosion (les NME dans le rayon À L'EXPLOSION sont touchés) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0", Units="Seconds", EditCondition="bMine"))
-	float MineTriggerDelay = 1.0f;
+	float MineTriggerDelay = 0.5f;
 
 	/** Pendant ce délai : clignotement rapide (fréquence) pour prévenir */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Mine", meta=(ClampMin="0", EditCondition="bMine"))
@@ -185,6 +185,12 @@ public:
 	void SetDamage(float NewDamage) { Damage = NewDamage; }
 
 	void SetExtraPushback(float NewExtraPushback) { ExtraPushback = NewExtraPushback; }
+
+	/** Peut encore exploser (pas déjà explosée) */
+	bool CanDetonate() const { return !bExploded; }
+
+	/** Touchée par la balle de « Roll, bomb and shot » (serveur) : explose tout de suite, dégâts critiques (ceux du tireur) */
+	void DetonateCritical();
 
 	bool IsMine() const { return bMine; }
 
@@ -238,6 +244,9 @@ private:
 	double ExplosionStartTime = -1.0;
 
 	bool bExploded = false;
+
+	/** Explosion critique (DetonateCritical) */
+	bool bCriticalExplosion = false;
 
 	/** Mine : prochaine recherche de NME (serveur, temps local) et armement déjà signalé dans le log */
 	double NextMineCheckTime = 0.0;

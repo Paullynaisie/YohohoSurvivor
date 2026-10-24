@@ -107,7 +107,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ricochet", meta=(ClampMin="0", Units="Seconds"))
 	float RicochetPauseDuration = 0.1f;
 
+	/** « Roll, bomb and shot » : la balle passe à moins de cette distance (à plat) d'une bombe / mine de son tireur -> explosion critique */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Bomb", meta=(ClampMin="0", Units="Centimeters"))
+	float BombHitRadius = 60.0f;
+
+	/** Cette balle fait exploser les bombes de son tireur (donné par l'action au tir) */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="AMMO|Bomb")
+	bool bDetonatesBombs = false;
+
 private:
+
+	/** Position à la frame précédente (balles qui font exploser les bombes : segment parcouru) */
+	FVector PreviousLocation = FVector::ZeroVector;
+
+	/** Bombes du tireur sur le segment parcouru : explosion critique, la balle disparaît (serveur) */
+	void CheckBombHits();
 
 	/** Plus de dégâts possibles (balle en cours de destruction) */
 	bool bHasHit = false;
@@ -164,6 +178,9 @@ public:
 
 	/** Sniper : la balle traverse les NME et en touche Count avant de disparaître (1 = s'arrête au premier) */
 	void SetMaxHits(int32 Count) { MaxHits = FMath::Max(1, Count); }
+
+	/** « Roll, bomb and shot » : la balle fait exploser (critique) les bombes de son tireur qu'elle touche */
+	void SetDetonatesBombs(bool bDetonates) { bDetonatesBombs = bDetonates; }
 
 	/** Atk critique à la distance : critique si le point d'impact est à moins de Within / à plus de Beyond du tireur (0 = non) */
 	void SetCriticalDistances(float Within, float Beyond) { CriticalWithinDistance = Within; CriticalBeyondDistance = Beyond; }

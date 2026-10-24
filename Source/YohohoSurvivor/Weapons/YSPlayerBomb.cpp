@@ -8,6 +8,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Enemies/YSFoeCharacter.h"
+#include "Player/YSPlayerCharacter.h"
 #include "Map/YSGroundZoneComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
@@ -230,9 +231,23 @@ void AYSPlayerBomb::SetFuseAlpha(float Alpha)
 	BombMaterialInstance->SetVectorParameterValue(TEXT("Emissive"), FuseColor * (FuseGlow * Clamped));
 }
 
+void AYSPlayerBomb::DetonateCritical()
+{
+	if (!HasAuthority() || bExploded)
+	{
+		return;
+	}
+	bCriticalExplosion = true;
+	Explode();
+}
+
 void AYSPlayerBomb::Explode()
 {
 	bExploded = true;
+
+	// explosion critique : dégâts critiques du personnage qui a posé la bombe
+	const AYSPlayerCharacter* BombOwner = Cast<AYSPlayerCharacter>(GetInstigator());
+	const float HitDamage = bCriticalExplosion && BombOwner ? Damage * BombOwner->GetCriticalDamageMultiplier() : Damage;
 
 	// dégâts aux NME dont la hurtbox (le corps) touche la sphère ; jamais aux joueurs
 	const FVector Center = GetExplosionCenter();
@@ -244,10 +259,15 @@ void AYSPlayerBomb::Explode()
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur le NME
 		const FVector ShotDirection = (Foe->GetActorLocation() - Center).GetSafeNormal2D();
 		FHitResult Hit(Foe, Foe->GetHurtbox(), Foe->GetActorLocation(), -ShotDirection);
-		Foe->TakeDamage(Damage, FYSPushbackDamageEvent(Damage, Hit, ShotDirection, ExtraPushback), GetInstigatorController(), nullptr);
+		FYSPushbackDamageEvent DamageEvent(HitDamage, Hit, ShotDirection, ExtraPushback);
+		if (bCriticalExplosion)
+		{
+			DamageEvent.DamageTypeClass = UYSCriticalDamageType::StaticClass();
+		}
+		Foe->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), nullptr);
 	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s %s en (%.0f, %.0f) : %d NME touché(s), %.0f dégâts, pushback en plus %.0f"), *GetName(), bMine ? TEXT("(mine) explose") : TEXT("explose"),
-		Center.X, Center.Y, Foes.Num(), Damage, ExtraPushback);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s %s%s en (%.0f, %.0f) : %d NME touché(s), %.0f dégâts, pushback en plus %.0f"), *GetName(), bMine ? TEXT("(mine) explose") : TEXT("explose"),
+		bCriticalExplosion ? TEXT(" (CRITIQUE)") : TEXT(""), Center.X, Center.Y, Foes.Num(), HitDamage, ExtraPushback);
 
 	MulticastExploded();
 	SetLifeSpan(ExplosionGrowDuration + ExplosionFadeDuration + 0.5f);

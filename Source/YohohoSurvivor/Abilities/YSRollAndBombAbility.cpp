@@ -22,7 +22,7 @@ UYSRollAndBombAbility::UYSRollAndBombAbility()
 	AimMoveSpeedMultiplier = 1.0f;
 }
 
-void UYSRollAndBombAbility::ExecuteAbility(const FVector& TargetLocation)
+void UYSRollAndBombAbility::DropBombs()
 {
 	DropBomb();
 
@@ -31,6 +31,11 @@ void UYSRollAndBombAbility::ExecuteAbility(const FVector& TargetLocation)
 	{
 		GetWorld()->GetTimerManager().SetTimer(SecondMineTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { DropBomb(); }), FMath::Max(RollDuration * SecondMineRollFraction, KINDA_SMALL_NUMBER), false);
 	}
+}
+
+void UYSRollAndBombAbility::ExecuteAbility(const FVector& TargetLocation)
+{
+	DropBombs();
 
 	StartRoll();
 	MulticastRollStarted();

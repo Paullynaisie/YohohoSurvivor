@@ -43,6 +43,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw", meta=(ClampMin="1", Units="Centimeters"))
 	float ApexHeight = 300.0f;
 
+	/** Bombes lancées en même temps : la première vers le curseur, les autres de part et d'autre en arc de cercle autour du joueur (Shotgun : 3) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw", meta=(ClampMin="1"))
+	int32 BombCount = 1;
+
+	/** Angle entre deux bombes voisines de l'arc (vu depuis le joueur, même distance que la première) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw", meta=(ClampMin="0", ClampMax="180", Units="Degrees"))
+	float BombSpreadAngle = 30.0f;
+
 	/** Distance max du point d'impact au joueur (le curseur plus loin est ramené à cette distance) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw", meta=(ClampMin="0", Units="Centimeters"))
 	float MaxThrowDistance = 1000.0f;
@@ -137,7 +145,7 @@ protected:
 private:
 
 	/** Fait partir la bombe vers Landing (serveur) */
-	void ReleaseBomb(FVector Landing);
+	void ReleaseBomb(FVector Landing, TArray<FVector> ExtraLandings);
 
 	/** Main du porteur qui lance (l'autre main si bThrowWithOffHand et arme à deux mains) */
 	USceneComponent* GetThrowingHand() const;

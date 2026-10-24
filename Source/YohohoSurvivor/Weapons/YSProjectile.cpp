@@ -8,6 +8,7 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameplayTagAssetInterface.h"
 #include "Map/YSOcean.h"
+#include "Weapons/YSPlayerBomb.h"
 #include "Core/YSDamageTypes.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Player/YSPlayerCharacter.h"
@@ -135,9 +136,50 @@ bool AYSProjectile::FindGroundZ(const FVector2D& Point, float ReferenceZ, float 
 	return true;
 }
 
+void AYSProjectile::CheckBombHits()
+{
+	const FVector Location = GetActorLocation();
+	if (PreviousLocation.IsZero())
+	{
+		PreviousLocation = Location;
+	}
+	const FVector2D From(PreviousLocation.X, PreviousLocation.Y);
+	const FVector2D To(Location.X, Location.Y);
+	PreviousLocation = Location;
+
+	// à plat : la bombe est au sol, la balle vole au-dessus
+	for (TActorIterator<AYSPlayerBomb> It(GetWorld()); It; ++It)
+	{
+		AYSPlayerBomb* Bomb = *It;
+		if (Bomb->GetInstigator() != GetInstigator() || !Bomb->CanDetonate())
+		{
+			continue;
+		}
+		const FVector2D BombLocation(Bomb->GetActorLocation().X, Bomb->GetActorLocation().Y);
+		const FVector2D Closest = FMath::ClosestPointOnSegment2D(BombLocation, From, To);
+		if (FVector2D::Distance(Closest, BombLocation) <= BombHitRadius)
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche la bombe %s : explosion critique"), *GetName(), *Bomb->GetName());
+			Bomb->DetonateCritical();
+			bHasHit = true;
+			Destroy();
+			return;
+		}
+	}
+}
+
 void AYSProjectile::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	if (bDetonatesBombs && HasAuthority() && !bHasHit && !bRicochetPaused)
+	{
+		CheckBombHits();
+		if (bHasHit)
+		{
+			return;
+		}
+	}
 
 	if (HeightAboveGround < 0.0f || bRicochetPaused)
 	{

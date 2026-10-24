@@ -149,19 +149,30 @@ void UYSBombThrowerAbility::ExecuteAbility(const FVector& TargetLocation)
 
 	// point d'impact choisi au clic ; la bombe part au lâcher de l'animation
 	const FVector Landing = FindLandingPoint(TargetLocation);
+
+	// Bomb Count > 1 : les autres bombes de part et d'autre de la première (+angle, -angle, +2 angles...), à la même distance du joueur
+	TArray<FVector> ExtraLandings;
+	const FVector HolderLocation = GetHolderPawn()->GetActorLocation();
+	const FVector ToLanding(Landing.X - HolderLocation.X, Landing.Y - HolderLocation.Y, 0.0f);
+	for (int32 Index = 1; Index < BombCount; ++Index)
+	{
+		const float Yaw = BombSpreadAngle * ((Index + 1) / 2) * (Index % 2 == 1 ? 1.0f : -1.0f);
+		ExtraLandings.Add(FindLandingPoint(HolderLocation + FRotator(0.0f, Yaw, 0.0f).RotateVector(ToLanding)));
+	}
+
 	const float ReleaseDelay = bPlayThrowAnim ? ThrowWindupDuration + ThrowDuration : 0.0f;
 	if (ReleaseDelay <= 0.0f)
 	{
-		ReleaseBomb(Landing);
+		ReleaseBomb(Landing, ExtraLandings);
 		return;
 	}
-	GetWorld()->GetTimerManager().SetTimer(ReleaseTimer, FTimerDelegate::CreateWeakLambda(this, [this, Landing]()
+	GetWorld()->GetTimerManager().SetTimer(ReleaseTimer, FTimerDelegate::CreateWeakLambda(this, [this, Landing, ExtraLandings]()
 	{
-		ReleaseBomb(Landing);
+		ReleaseBomb(Landing, ExtraLandings);
 	}), ReleaseDelay, false);
 }
 
-void UYSBombThrowerAbility::ReleaseBomb(FVector Landing)
+void UYSBombThrowerAbility::ReleaseBomb(FVector Landing, TArray<FVector> ExtraLandings)
 {
 	// upgrade « Une Mine ! » : une mine à la place de la bombe
 	const bool bMine = MineClass && GetWeaponStat(UYSMineUpgrade::MineStat, 0.0f) > 0.0f;
@@ -184,6 +195,8 @@ void UYSBombThrowerAbility::ReleaseBomb(FVector Landing)
 	{
 		Landings.Add(FindLandingPoint((Holder->GetActorLocation() + Landing) * 0.5f));
 	}
+	// bombes de l'arc (Bomb Count)
+	Landings.Append(ExtraLandings);
 
 	for (const FVector& Target : Landings)
 	{

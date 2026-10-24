@@ -203,6 +203,9 @@ protected:
 	/** La première balle part à l'activation (le client qui active la prédit) ; faux si le tir vient plus tard (Rolling shot) */
 	virtual bool PredictsFirstBullet() const { return true; }
 
+	/** Réglages en plus d'une balle avant son apparition (serveur ; ex. Roll, bomb and shot : fait exploser les bombes) */
+	virtual void ConfigureProjectile(AYSProjectile* Projectile) const {}
+
 	/** Point visé par la balle numéro BulletIndex de la rafale (par défaut : le point visé à l'activation) */
 	virtual FVector GetBurstTargetLocation(int32 BulletIndex) const { return BurstTargetLocation; }
 
