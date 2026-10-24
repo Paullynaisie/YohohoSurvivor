@@ -75,10 +75,9 @@ void UYSDashingSlashAbility::OnActivationPredicted(const FVector& TargetLocation
 void UYSDashingSlashAbility::ExecuteAbility(const FVector& TargetLocation)
 {
 	LockDirection(TargetLocation);
-	HitThisSwing.Reset();
-	// BloodRage : rage au maximum -> coupe critique (stacks consommées)
-	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	bCriticalSwing = Character && Character->ConsumeBloodRageCritical();
+	ResetSwingHits();
+	// BloodRage : rage au maximum -> coupe critique (stacks consommées si la coupe touche)
+	StartCriticalTracking(false, false);
 	bDashKickApplied = false;
 	ApplyPhaseKick(0);
 	StartPartner();
@@ -97,7 +96,7 @@ void UYSDashingSlashAbility::StartPartner()
 	}
 	// même recharge, coupe jouée sur toutes les machines (le client qui a activé l'a déjà prédite)
 	Partner->ReadyServerTime = ReadyServerTime;
-	Partner->HitThisSwing.Reset();
+	Partner->ResetSwingHits();
 	Partner->MulticastActivated();
 }
 

@@ -70,9 +70,13 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	{
 		bCriticalSwing = false;
 	}
-	if (IsHitboxActive(Elapsed))
+	// coupe traversée depuis le dernier passage (image plus longue que la coupe) : les coups de cette image sont ceux de la coupe
+	const float From = LastHitCheckElapsed >= 0.0f && LastHitCheckElapsed <= Elapsed ? LastHitCheckElapsed : Elapsed;
+	LastHitCheckElapsed = Elapsed;
+	const bool bSwingWindow = From < GetWindupTime() + GetSwingTime() && Elapsed >= GetWindupTime();
+	if (IsHitboxActive(Elapsed, bSwingWindow))
 	{
-		ApplySwingHits(Elapsed);
+		ApplySwingHits(Elapsed, bSwingWindow);
 	}
 
 	// Yoloooooo++ : taille du boulet et longueur de sa chaîne (répliquées par l'arme)
@@ -135,7 +139,7 @@ void UYSAutoSwingAbility::PlayAttackLocally(EYSSwingAnim Anim)
 {
 	// NME (arme locale, non répliquée) : l'animation part sur cette machine à la réception du NetMulticast du NME
 	CurrentAnim = Anim;
-	HitThisSwing.Reset();
+	ResetSwingHits();
 	NotifyActivated();
 }
 
@@ -148,9 +152,10 @@ bool UYSAutoSwingAbility::StartAttack()
 	CancelLowerPriorityActions();
 
 	// Golden bloodlust : l'attaque est critique si toutes les BL stacks sont là au moment où elle part ;
-	// BloodRage : rage au maximum -> attaque critique (stacks consommées)
+	// BloodRage : rage au maximum -> attaque critique (stacks consommées si la coupe touche)
 	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	bCriticalSwing = Character && (Character->IsBloodlustCritical() || Character->ConsumeBloodRageCritical());
+	bool bCritical = Character && Character->IsBloodlustCritical();
+	bool bCountsForCritical = false;
 	EYSSwingAnim Anim = EYSSwingAnim::Main;
 	if (IsAutomatic() && MeleeSystem == EYSMeleeSystem::Swing)
 	{
@@ -160,13 +165,15 @@ bool UYSAutoSwingAbility::StartAttack()
 		{
 			Anim = EYSSwingAnim::Second;
 		}
-		// Atk critique : le personnage compte ses attaques auto (épées akimbo comptées ensemble), une sur N est toujours critique (estoc)
+		// Atk critique : le personnage compte ses attaques auto qui TOUCHENT pendant la coupe (épées akimbo comptées ensemble),
+		// une sur N est toujours critique (estoc) ; une attaque qui ne touche pas n'est pas comptée (la suivante reste critique)
 		if (Character && Character->GetCriticalSwingInterval() > 0)
 		{
-			const int32 Count = Character->RegisterAutoSwing();
+			bCountsForCritical = true;
+			const int32 Count = Character->GetAutoSwingCounter() + 1;
 			if (Count % Character->GetCriticalSwingInterval() == 0)
 			{
-				bCriticalSwing = true;
+				bCritical = true;
 				if (bCriticalThrust)
 				{
 					Anim = EYSSwingAnim::Critical;
@@ -175,14 +182,24 @@ bool UYSAutoSwingAbility::StartAttack()
 			}
 		}
 	}
+	StartCriticalTracking(bCritical, bCountsForCritical);
 	// la durée de l'animation (donc la recharge) dépend de l'animation choisie
 	CurrentAnim = Anim;
 	ReadyServerTime = GetServerTime() + GetActivationLockDuration();
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s attaque à %.2f, prête à %.2f, anim %s%s"), *GetOwner()->GetName(), *GetName(), GetServerTime(), ReadyServerTime,
 		*StaticEnum<EYSSwingAnim>()->GetNameStringByValue(static_cast<int64>(Anim)), bCriticalSwing ? TEXT(" (critique)") : TEXT(""));
-	HitThisSwing.Reset();
+	ResetSwingHits();
 	MulticastSwingStarted(Anim);
 	return true;
+}
+
+void UYSAutoSwingAbility::StartCriticalTracking(bool bCritical, bool bCountsForCritical)
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	bBloodRageCritical = Character && Character->IsBloodRageReady();
+	bCriticalSwing = bCritical || bBloodRageCritical;
+	bCountsForCriticalSwing = bCountsForCritical;
+	bSwingHitCounted = false;
 }
 
 void UYSAutoSwingAbility::MulticastSwingStarted_Implementation(EYSSwingAnim Anim)
@@ -290,14 +307,20 @@ bool UYSAutoSwingAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLoc
 	return true;
 }
 
-bool UYSAutoSwingAbility::IsHitboxActive(float SwingElapsed) const
+bool UYSAutoSwingAbility::IsHitboxActive(float SwingElapsed, bool bSwingWindow) const
 {
+	// arme cachée (objet porté) : jamais de coups
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	if ((GetOwner() && GetOwner()->IsHidden()) || (Character && Character->IsCarrying()))
+	{
+		return false;
+	}
 	// Yoloooooo : en permanence (attaque auto du joueur seulement)
 	const bool bAlwaysActive = IsAutomatic() && GetWeaponStat(UYSYoloUpgrade::YoloStat, 0.0f) > 0.0f;
-	return IsInSwingWindow(SwingElapsed) || (bHitboxDuringWholeAnimation && IsInAttack(SwingElapsed)) || bAlwaysActive;
+	return bSwingWindow || (bHitboxDuringWholeAnimation && IsInAttack(SwingElapsed)) || bAlwaysActive;
 }
 
-void UYSAutoSwingAbility::ApplySwingHits(float SwingElapsed)
+void UYSAutoSwingAbility::ApplySwingHits(float SwingElapsed, bool bMainHit)
 {
 	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 	const UBoxComponent* Hitbox = Weapon ? Weapon->FindComponentByClass<UBoxComponent>() : nullptr;
@@ -313,10 +336,12 @@ void UYSAutoSwingAbility::ApplySwingHits(float SwingElapsed)
 		FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeBox(Hitbox->GetScaledBoxExtent()), Params);
 
 	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Holder);
-	// pendant l'attaque : chaque cible une fois ; hors attaque (hitbox permanente) : une fois par Idle Rehit Interval
+	// pendant l'attaque : chaque cible une fois par la coupe et une fois par les dégâts secondaires (préparation, retour) ;
+	// hors attaque (hitbox permanente) : une fois par Idle Rehit Interval
 	const bool bInAttack = IsInAttack(SwingElapsed);
-	// hors de la coupe (préparation, retour, hors attaque) : dégâts secondaires
-	const float DamageFactor = IsInSwingWindow(SwingElapsed) ? 1.0f : SecondaryDamageMultiplier;
+	// hors de la coupe (préparation, retour, hors attaque) : dégâts secondaires, jamais critiques ni comptés
+	TSet<TWeakObjectPtr<AActor>>& AttackHits = bMainHit ? HitThisSwing : SecondaryHitThisSwing;
+	const float DamageFactor = bMainHit ? 1.0f : SecondaryDamageMultiplier;
 	const float Now = GetWorld()->GetTimeSeconds();
 	if (LastHitTimes.Num() > 64)
 	{
@@ -338,24 +363,37 @@ void UYSAutoSwingAbility::ApplySwingHits(float SwingElapsed)
 			continue;
 		}
 		const float* LastHit = LastHitTimes.Find(Target);
-		if (bInAttack ? HitThisSwing.Contains(Target) : (LastHit && Now - *LastHit < IdleRehitInterval))
+		if (bInAttack ? AttackHits.Contains(Target) : (LastHit && Now - *LastHit < IdleRehitInterval))
 		{
 			continue;
 		}
 
-		// Bloodlust : une seule BL stack par attaque auto, même si elle touche plusieurs NME
-		if (bInAttack && HitThisSwing.Num() == 0 && IsAutomatic() && Character)
+		// 1er coup de la COUPE de l'attaque (pas les dégâts secondaires) : une BL stack (attaque auto), l'attaque compte pour
+		// l'Atk critique et la rage qui la rend critique est consommée ; une seule fois par attaque, même sur plusieurs NME
+		if (bMainHit && !bSwingHitCounted && Character)
 		{
-			Character->AddBloodlustStack();
+			bSwingHitCounted = true;
+			if (IsAutomatic())
+			{
+				Character->AddBloodlustStack();
+			}
+			if (bCountsForCriticalSwing)
+			{
+				Character->RegisterAutoSwing();
+			}
+			if (bBloodRageCritical)
+			{
+				Character->ConsumeBloodRageCritical();
+			}
 		}
 
 		if (bInAttack)
 		{
-			HitThisSwing.Add(Target);
+			AttackHits.Add(Target);
 		}
 		LastHitTimes.Add(Target, Now);
 		// coupe critique, ou minion du Captain sur le NME marqué par la Captain Sword
-		const bool bCritical = Character && (bCriticalSwing || Character->HasForcedCriticalAgainst(Target));
+		const bool bCritical = bMainHit && Character && (bCriticalSwing || Character->HasForcedCriticalAgainst(Target));
 		const float FinalDamage = Damage * DamageFactor * GetDamageMultiplier() * (bCritical ? Character->GetCriticalDamageMultiplier() : 1.0f);
 		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.2f x %.3f%s%s)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
 			FinalDamage, Damage, DamageFactor, GetDamageMultiplier(), !bInAttack ? TEXT(", secondaires hors attaque") : DamageFactor < 1.0f ? TEXT(", secondaires") : TEXT(""), bCritical ? TEXT(", critique") : TEXT(""));

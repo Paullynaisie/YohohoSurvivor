@@ -121,9 +121,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Detection")
 	bool bHitboxDuringWholeAnimation = false;
 
-	/** Dégâts secondaires = coups de la hitbox hors de la coupe (préparation, retour, hitbox permanente du Yoloooooo) : Damage x ce multiplicateur */
+	/**
+	 *  Dégâts secondaires = coups de la hitbox hors de la coupe (préparation, retour, hitbox permanente du Yoloooooo) : Damage x ce multiplicateur.
+	 *  Jamais critiques et jamais comptés (Atk critique, BloodRage, BL stacks) : seuls les coups de la coupe le sont
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Detection", meta=(ClampMin="0"))
-	float SecondaryDamageMultiplier = 0.5f;
+	float SecondaryDamageMultiplier = 0.3f;
 
 	/** Hitbox permanente (Yoloooooo) hors attaque : une même cible est touchée au plus une fois par cet intervalle */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Detection", meta=(ClampMin="0.05", Units="Seconds"))
@@ -283,11 +286,15 @@ protected:
 	/** Pendant l'animation (0 <= SwingElapsed < durée de l'attaque) */
 	bool IsInAttack(float SwingElapsed) const { return SwingElapsed >= 0.0f && SwingElapsed < GetAttackDuration(); }
 
-	/** La hitbox frappe : coupe, toute l'animation (Hitbox During Whole Animation) ou en permanence (Yoloooooo) */
-	bool IsHitboxActive(float SwingElapsed) const;
+	/** La hitbox frappe : coupe, toute l'animation (Hitbox During Whole Animation) ou en permanence (Yoloooooo) ; jamais arme cachée */
+	bool IsHitboxActive(float SwingElapsed) const { return IsHitboxActive(SwingElapsed, IsInSwingWindow(SwingElapsed)); }
+	bool IsHitboxActive(float SwingElapsed, bool bSwingWindow) const;
 
-	/** Applique les dégâts aux cibles dans la hitbox de l'arme (serveur) ; hors coupe = dégâts secondaires */
-	void ApplySwingHits(float SwingElapsed);
+	/** Applique les dégâts aux cibles dans la hitbox de l'arme (serveur) ; bMainHit : coupe (sinon dégâts secondaires) */
+	void ApplySwingHits(float SwingElapsed, bool bMainHit);
+
+	/** Temps de l'animation au dernier passage des coups (serveur) : une coupe plus courte qu'une image compte quand même */
+	float LastHitCheckElapsed = -1.0f;
 
 	/** Dégâts d'un coup sur une cible (serveur) ; ShotDirection = du porteur vers la cible (pushback). Ex. Bumping Slash : coup qui bumpe */
 	virtual void DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController, bool bCritical);
@@ -295,11 +302,29 @@ protected:
 	/** Cibles déjà touchées par la coupe en cours */
 	TSet<TWeakObjectPtr<AActor>> HitThisSwing;
 
+	/** Cibles déjà touchées par des dégâts secondaires pendant l'attaque en cours (préparation, retour) : la coupe peut encore les toucher */
+	TSet<TWeakObjectPtr<AActor>> SecondaryHitThisSwing;
+
+	/** Nouvelle attaque : plus aucune cible touchée (coupe et dégâts secondaires) */
+	void ResetSwingHits() { HitThisSwing.Reset(); SecondaryHitThisSwing.Reset(); }
+
 	/** Heure du dernier coup sur chaque cible (hitbox permanente hors attaque : Idle Rehit Interval) */
 	TMap<TWeakObjectPtr<AActor>, float> LastHitTimes;
 
 	/** Coupe en cours critique (Golden bloodlust au maximum de stacks au début de l'attaque ; serveur) */
 	bool bCriticalSwing = false;
+
+	/** Attaque en cours comptée au 1er coup de la coupe (Atk critique) : seulement les attaques auto Swing (serveur) */
+	bool bCountsForCriticalSwing = false;
+
+	/** Attaque en cours critique grâce à la rage (BloodRage) : stacks consommées au 1er coup de la coupe (serveur) */
+	bool bBloodRageCritical = false;
+
+	/** L'attaque en cours a déjà touché pendant la coupe (comptage Atk critique, rage, BL stack : une fois par attaque ; serveur) */
+	bool bSwingHitCounted = false;
+
+	/** Début d'une attaque (serveur) : coupe critique si la rage est au maximum (consommée seulement si la coupe touche) */
+	void StartCriticalTracking(bool bCritical, bool bCountsForCritical);
 
 	/** NME : attaques auto déjà lancées par cette arme (alternance des swings ; serveur). Joueur : compteur du personnage (épées akimbo comptées ensemble) */
 	int32 AutoSwingCount = 0;

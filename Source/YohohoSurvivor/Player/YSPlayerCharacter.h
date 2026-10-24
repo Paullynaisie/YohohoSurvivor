@@ -755,6 +755,9 @@ public:
 	/** Atk critique : une attaque auto Swing de plus pour le personnage (serveur), renvoie le total */
 	int32 RegisterAutoSwing() { return ++AutoSwingCounter; }
 
+	/** Atk critique : attaques auto Swing déjà comptées (la suivante sera la n° GetAutoSwingCounter() + 1) */
+	int32 GetAutoSwingCounter() const { return AutoSwingCounter; }
+
 	/** Multiplicateur de base des critiques : celui du passif s'il en fixe un (Marksman), sinon Critical Damage Multiplier */
 	float GetBaseCriticalDamageMultiplier() const;
 
