@@ -11,9 +11,36 @@
 
 UYSSummonCrewAbility::UYSSummonCrewAbility()
 {
+	PrimaryComponentTick.bCanEverTick = true;
 	WeaponType = EYSWeaponType::Summon;
-	Cooldown = 10.0f;
+	Cooldown = 20.0f;
 	DisplayName = NSLOCTEXT("YS", "SummonTheCrew", "Summon the crew !");
+}
+
+void UYSSummonCrewAbility::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	// invocation passive : un minion toutes les Passive Spawn Interval secondes tant que le maximum n'est pas atteint
+	const AYSPlayerCharacter* Captain = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	if (PassiveSpawnInterval <= 0.0f || !MinionClass || !Captain || !Captain->HasAuthority() || !Captain->IsAlive())
+	{
+		return;
+	}
+	if (CountMinions(GetWorld(), Captain) >= GetMaxMinions())
+	{
+		PassiveSpawnTimer = 0.0f;
+		return;
+	}
+
+	PassiveSpawnTimer += DeltaTime;
+	if (PassiveSpawnTimer >= PassiveSpawnInterval)
+	{
+		PassiveSpawnTimer = 0.0f;
+		const int32 Spawned = SpawnMinions(1);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSSummon] %s : minion passif (%s), %d / %d"), *Captain->GetName(), Spawned > 0 ? TEXT("invoqué") : TEXT("pas de place au sol"),
+			CountMinions(GetWorld(), Captain), GetMaxMinions());
+	}
 }
 
 bool UYSSummonCrewAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const
@@ -83,7 +110,7 @@ void UYSSummonCrewAbility::ExecuteAbility(const FVector& TargetLocation)
 
 void UYSSummonCrewAbility::OnHookStrike()
 {
-	SpawnMinions();
+	SpawnMinions(bSummonUpToMax ? GetMaxMinions() : MinionsPerSummon);
 }
 
 void UYSSummonCrewAbility::OnActionCancelled()
@@ -100,23 +127,27 @@ void UYSSummonCrewAbility::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void UYSSummonCrewAbility::SpawnMinions()
+int32 UYSSummonCrewAbility::SpawnMinions(int32 Count)
 {
 	AYSPlayerCharacter* Captain = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	UWorld* World = GetWorld();
 	if (!Captain || !World || !MinionClass || !Captain->IsAlive())
 	{
-		return;
+		return 0;
 	}
 
-	const int32 ToSpawn = FMath::Clamp(GetMaxMinions() - CountMinions(World, Captain), 0, MinionsPerSummon);
+	const int32 Alive = CountMinions(World, Captain);
+	const int32 ToSpawn = FMath::Clamp(GetMaxMinions() - Alive, 0, Count);
+	int32 Spawned = 0;
 	for (int32 Index = 0; Index < ToSpawn; ++Index)
 	{
-		// sur les côtés du Captain, un peu derrière (alternés droite / gauche, puis de plus en plus derrière)
-		const float Side = Index % 2 == 0 ? 1.0f : -1.0f;
-		const float Yaw = Captain->GetActorRotation().Yaw + Side * (110.0f + 25.0f * (Index / 2));
-		SpawnMinionAt(Captain->GetActorLocation() + FRotator(0.0f, Yaw, 0.0f).Vector() * SpawnDistance, Captain->GetActorRotation().Yaw);
+		// sur les côtés du Captain, un peu derrière (alternés droite / gauche, puis de plus en plus derrière ; suite des minions déjà là)
+		const int32 Slot = Alive + Index;
+		const float Side = Slot % 2 == 0 ? 1.0f : -1.0f;
+		const float Yaw = Captain->GetActorRotation().Yaw + Side * (110.0f + 25.0f * (Slot / 2));
+		Spawned += SpawnMinionAt(Captain->GetActorLocation() + FRotator(0.0f, Yaw, 0.0f).Vector() * SpawnDistance, Captain->GetActorRotation().Yaw) ? 1 : 0;
 	}
+	return Spawned;
 }
 
 AYSCaptainMinion* UYSSummonCrewAbility::SpawnMinionAt(const FVector& Location, float Yaw)

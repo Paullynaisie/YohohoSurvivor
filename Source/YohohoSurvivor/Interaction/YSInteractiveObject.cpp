@@ -51,6 +51,8 @@ void AYSInteractiveObject::BeginPlay()
 {
 	Super::BeginPlay();
 
+	OriginalScale = GetActorScale3D();
+
 	if (PromptWidgetClass)
 	{
 		InteractPrompt->SetWidgetClass(PromptWidgetClass);
@@ -85,11 +87,14 @@ void AYSInteractiveObject::SetCarrier(AYSPlayerCharacter* NewCarrier, const FVec
 		AttachToComponent(Carrier->GetBodyPivot(), FAttachmentTransformRules::KeepRelativeTransform);
 		SetActorRelativeLocation(CarryLocation);
 		SetActorRelativeRotation(CarryRotation);
+		// échelle du monde inchangée : sinon elle est multipliée par celle du porteur (personnage x1.25), et le reste une fois posé
+		SetActorScale3D(OriginalScale);
 	}
 	else
 	{
 		DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 		SetActorLocationAndRotation(DropLocation, FRotator(0.0f, DropYaw, 0.0f));
+		SetActorScale3D(OriginalScale);
 	}
 	ApplyCarryState();
 	ForceNetUpdate();

@@ -438,10 +438,11 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 		return Damage;
 	}
 
-	// coup qui bumpe (Bumping Slash) : NME lancé en cloche ; un élite reçoit le pushback normal
-	if (DamageEvent.IsOfType(FYSBumpDamageEvent::ClassID) && !bIsElite)
+	// coup qui bumpe (Bumping Slash) : NME lancé en cloche ; un élite seulement si l'Ability le permet (Bump Elites), sinon pushback normal
+	const FYSBumpDamageEvent* BumpEventPtr = DamageEvent.IsOfType(FYSBumpDamageEvent::ClassID) ? static_cast<const FYSBumpDamageEvent*>(&DamageEvent) : nullptr;
+	if (BumpEventPtr && (!bIsElite || BumpEventPtr->bBumpElites))
 	{
-		const FYSBumpDamageEvent& BumpEvent = static_cast<const FYSBumpDamageEvent&>(DamageEvent);
+		const FYSBumpDamageEvent& BumpEvent = *BumpEventPtr;
 		StartBump(BumpEvent.ShotDirection, BumpEvent.Distance, BumpEvent.ApexHeight, BumpEvent.Duration, BumpEvent.SpinTurns);
 		return Damage;
 	}

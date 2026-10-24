@@ -10,6 +10,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Engine/DamageEvents.h"
 #include "EngineUtils.h"
+#include "Summons/YSCaptainMinion.h"
 #include "TimerManager.h"
 #include "Containers/Ticker.h"
 #include "GameFramework/Pawn.h"
@@ -942,6 +943,31 @@ void AYSPlayerController::UpdatePlayerHUD()
 		}
 	}
 	PlayerHUD->SetAllies(Allies);
+
+	// minions du joueur (Captain) : icône (sa couleur + visage du minion) et PV, dans l'ordre d'apparition
+	TArray<const AYSCaptainMinion*> MyMinions;
+	for (TActorIterator<AYSCaptainMinion> It(GetWorld()); It && PlayerCharacter; ++It)
+	{
+		if (It->GetCaptain() == PlayerCharacter && It->IsAlive() && !It->IsActorBeingDestroyed())
+		{
+			MyMinions.Add(*It);
+		}
+	}
+	MyMinions.Sort([](const AYSCaptainMinion& A, const AYSCaptainMinion& B) { return A.GetUniqueID() < B.GetUniqueID(); });
+	TArray<FYSHUDPlayerInfo> Minions;
+	for (const AYSCaptainMinion* Minion : MyMinions)
+	{
+		FYSHUDPlayerInfo& Info = Minions.AddDefaulted_GetRef();
+		if (MyState)
+		{
+			GetIcon(MyState, Info.Color, Info.Face);
+		}
+		Info.Face = YSGameState->GetCustomizationFace(Minion->GetFaceIndex());
+		Info.bAlive = true;
+		Info.Health = Minion->GetHealth();
+		Info.MaxHealth = Minion->GetMaxHealth();
+	}
+	PlayerHUD->SetMinions(Minions);
 
 	// objet porté vendable : bulle du Brooker le plus proche (au-dessus de lui, ou au bord de l'écran)
 	if (PlayerCharacter && PlayerCharacter->IsCarrying() && PlayerCharacter->GetCarriedObject()->GetDoubloonValue() > 0)

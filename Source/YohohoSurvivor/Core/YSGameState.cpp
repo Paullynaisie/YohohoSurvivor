@@ -9,6 +9,7 @@
 #include "EngineUtils.h"
 #include "LandscapeProxy.h"
 #include "Core/YSPlayerState.h"
+#include "NPC/YSBrookerNPC.h"
 #include "Player/YSPlayerCharacter.h"
 
 AYSGameState::AYSGameState()
@@ -41,6 +42,9 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
+	DOREPLIFETIME(AYSGameState, bHarborPlaced);
+	DOREPLIFETIME(AYSGameState, HarborPivot);
+	DOREPLIFETIME(AYSGameState, HarborYawDelta);
 	DOREPLIFETIME(AYSGameState, SelectableCharacters);
 	DOREPLIFETIME(AYSGameState, CustomizationColors);
 	DOREPLIFETIME(AYSGameState, CustomizationFaces);
@@ -72,7 +76,84 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 void AYSGameState::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	UpdateHarborPlacement();
 	UpdateIslandSink();
+}
+
+const FName AYSGameState::HarborTag(TEXT("Harbor"));
+const FName AYSGameState::HarborPivotTag(TEXT("HarborPivot"));
+const FName AYSGameState::HarborLandTag(TEXT("HarborLand"));
+const FName AYSGameState::HarborSeaTag(TEXT("HarborSea"));
+
+void AYSGameState::SetHarborPlacement(const FVector& Pivot, float YawDelta)
+{
+	HarborPivot = Pivot;
+	HarborYawDelta = YawDelta;
+	bHarborPlaced = true;
+	ForceNetUpdate();
+	UpdateHarborPlacement();
+}
+
+AActor* AYSGameState::FindHarborPivot(const UWorld* World)
+{
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		if (It->ActorHasTag(HarborPivotTag))
+		{
+			return *It;
+		}
+	}
+	return nullptr;
+}
+
+FTransform AYSGameState::GetHarborTransform(const FTransform& Original, const FVector& OldPivot, const FVector& NewPivot, float YawDelta)
+{
+	const FQuat Rotation(FRotator(0.0f, YawDelta, 0.0f));
+	return FTransform(Rotation * Original.GetRotation(), NewPivot + Rotation.RotateVector(Original.GetLocation() - OldPivot), Original.GetScale3D());
+}
+
+void AYSGameState::UpdateHarborPlacement()
+{
+	if (!bHarborPlaced || bHarborApplied)
+	{
+		return;
+	}
+	bHarborApplied = true;
+
+	// même calcul sur toutes les machines, depuis les positions de la map (le port n'a pas encore bougé ici)
+	const AActor* Pivot = FindHarborPivot(GetWorld());
+	if (!Pivot)
+	{
+		return;
+	}
+	const FVector OldPivot = Pivot->GetActorLocation();
+	TArray<AActor*> HarborActors;
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		if (It->ActorHasTag(HarborTag))
+		{
+			HarborActors.Add(*It);
+		}
+	}
+	for (AActor* Actor : HarborActors)
+	{
+		// props statiques (ponton) : rendus mobiles pour être déplacés
+		TInlineComponentArray<USceneComponent*> Components(Actor);
+		for (USceneComponent* Component : Components)
+		{
+			Component->SetMobility(EComponentMobility::Movable);
+		}
+		const FTransform Placed = GetHarborTransform(Actor->GetActorTransform(), OldPivot, HarborPivot, HarborYawDelta);
+		Actor->SetActorLocationAndRotation(Placed.GetLocation(), Placed.GetRotation());
+
+		// Brooker : reposé au sol, zone de rachat reconstruite sur le relief
+		if (AYSBrookerNPC* Brooker = Cast<AYSBrookerNPC>(Actor))
+		{
+			Brooker->Resettle();
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSHarbor] %s : port déplacé (%d acteur(s)), ponton en (%.0f, %.0f), rotation %.0f°"),
+		HasAuthority() ? TEXT("serveur") : TEXT("client"), HarborActors.Num(), HarborPivot.X, HarborPivot.Y, HarborYawDelta);
 }
 
 void AYSGameState::StartIslandSink(float Duration, float Depth, float EaseExponent)

@@ -69,6 +69,10 @@ struct FYSBumpDamageEvent : public FPointDamageEvent
 	UPROPERTY()
 	float SpinTurns = 1.0f;
 
+	/** Faux : un élite reçoit le pushback normal au lieu du bump */
+	UPROPERTY()
+	bool bBumpElites = true;
+
 	FYSBumpDamageEvent() = default;
 
 	FYSBumpDamageEvent(float InDamage, const FVector& InShotDirection, TSubclassOf<UDamageType> InDamageType)

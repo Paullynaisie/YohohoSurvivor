@@ -135,6 +135,22 @@ protected:
 	/** Descente de l'île appliquée sur cette machine */
 	void UpdateIslandSink();
 
+	/** Port placé au hasard (AYSGameMode::PlaceHarbor) : nouvelle position du ponton (tag HarborPivot) et rotation autour de lui */
+	UPROPERTY(Replicated)
+	bool bHarborPlaced = false;
+
+	UPROPERTY(Replicated)
+	FVector HarborPivot = FVector::ZeroVector;
+
+	UPROPERTY(Replicated)
+	float HarborYawDelta = 0.0f;
+
+	/** Port déjà déplacé sur cette machine */
+	bool bHarborApplied = false;
+
+	/** Déplace les acteurs du port (tag Harbor) sur cette machine, une fois la position reçue */
+	void UpdateHarborPlacement();
+
 public:
 
 	AYSGameState();
@@ -205,6 +221,21 @@ public:
 	void SetVictory(float ReturnDelay) { bVictory = true; VictoryReturnDelay = ReturnDelay; ForceNetUpdate(); }
 	void SetOvertime() { bOvertime = true; ForceNetUpdate(); }
 	void StartIslandSink(float Duration, float Depth, float EaseExponent);
+
+	/** Port au hasard (serveur) : le ponton va en Pivot, tout le port tourne de YawDelta autour de lui (appliqué sur toutes les machines) */
+	void SetHarborPlacement(const FVector& Pivot, float YawDelta);
+
+	/** Tags des acteurs du port placés dans la map (ponton = pivot, Brooker sur la terre ferme, bateau en mer) */
+	static const FName HarborTag;
+	static const FName HarborPivotTag;
+	static const FName HarborLandTag;
+	static const FName HarborSeaTag;
+
+	/** Acteur pivot du port (tag HarborPivot), nullptr s'il n'y en a pas */
+	static AActor* FindHarborPivot(const UWorld* World);
+
+	/** Transform d'un acteur du port une fois le ponton déplacé de OldPivot à NewPivot et le port tourné de YawDelta autour de lui */
+	static FTransform GetHarborTransform(const FTransform& Original, const FVector& OldPivot, const FVector& NewPivot, float YawDelta);
 
 	/** Secondes écoulées depuis le démarrage de la partie (0 avant ; valable sur serveur et clients) */
 	UFUNCTION(BlueprintPure, Category="Match")

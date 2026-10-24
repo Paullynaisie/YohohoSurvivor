@@ -131,4 +131,7 @@ private:
 
 	/** Collisions et invite selon l'état porté / posé (toutes machines) */
 	void ApplyCarryState();
+
+	/** Échelle de l'objet à son apparition : gardée quand il est porté (un porteur plus grand, ex. Quartermaster, ne le fait pas grossir) */
+	FVector OriginalScale = FVector::OneVector;
 };

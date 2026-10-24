@@ -72,6 +72,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="HUD|Allies")
 	FVector2D AllyBarSize = FVector2D(200.0f, 14.0f);
 
+	/** Minions du joueur (Captain), entre ses infos et les autres joueurs : espace avant la liste, entre deux minions, icône, barre de PV */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="HUD|Minions")
+	float MinionsTopSpacing = 16.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="HUD|Minions")
+	float MinionSpacing = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="HUD|Minions")
+	float MinionIconSize = 26.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="HUD|Minions")
+	FVector2D MinionBarSize = FVector2D(150.0f, 12.0f);
+
 	virtual bool Initialize() override;
 
 	/** Icône du joueur (taille = SelfIconScreenRatio × largeur de l'écran en unités Slate) */
@@ -79,6 +92,9 @@ public:
 
 	/** Autres joueurs de la partie (lignes recréées si leur nombre change) */
 	void SetAllies(const TArray<FYSHUDPlayerInfo>& Allies);
+
+	/** Minions du joueur (icône + barre de PV ; liste cachée s'il n'en a pas, lignes recréées si leur nombre change) */
+	void SetMinions(const TArray<FYSHUDPlayerInfo>& Minions);
 
 	/** PV du personnage (bHasCharacter = false : barre de PV cachée) */
 	void SetHealth(bool bHasCharacter, float Health, float MaxHealth);
@@ -132,4 +148,20 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UProgressBar>> AllyBars;
+
+	/** Liste des minions et ses lignes (icône, barre) */
+	UPROPERTY(Transient)
+	TObjectPtr<UVerticalBox> MinionsList;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UYSPlayerIconWidget>> MinionIcons;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UProgressBar>> MinionBars;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTextBlock>> MinionLabels;
+
+	/** Barre de PV fine (fond + remplissage), comme celles des autres joueurs */
+	UProgressBar* CreateSmallBar(const FVector2D& Size, UWidget*& OutContainer);
 };

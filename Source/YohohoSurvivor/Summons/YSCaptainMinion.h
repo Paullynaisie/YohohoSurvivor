@@ -66,6 +66,9 @@ public:
 
 	AYSPlayerCharacter* GetCaptain() const { return Captain; }
 
+	/** Visage (index dans les visages de personnalisation ; icône du HUD de son Captain) */
+	int32 GetFaceIndex() const { return FaceIndex; }
+
 	virtual void Tick(float DeltaSeconds) override;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -98,6 +101,9 @@ protected:
 	int32 FaceIndex = 0;
 
 private:
+
+	/** Hps bonus et Armor de son Captain recopiés (serveur, à chaque image ; sans effet s'ils n'ont pas changé) */
+	void SyncCaptainUpgrades();
 
 	/** Cible : NME le plus proche (le marqué compte plus près) dans la portée, pas trop loin du Captain ; nullptr sinon */
 	AYSFoeCharacter* FindTarget() const;

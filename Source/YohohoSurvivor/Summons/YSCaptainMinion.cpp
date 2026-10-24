@@ -38,6 +38,24 @@ void AYSCaptainMinion::BeginPlay()
 	}
 }
 
+void AYSCaptainMinion::SyncCaptainUpgrades()
+{
+	if (!IsValid(Captain))
+	{
+		return;
+	}
+	if (!FMath::IsNearlyEqual(GetMaxHealthMultiplier(), Captain->GetMaxHealthMultiplier()))
+	{
+		SetMaxHealthMultiplier(Captain->GetMaxHealthMultiplier());
+		UE_LOG(LogTemp, Verbose, TEXT("[YSMinion] %s : PV max x%.3f (Captain) -> %.0f / %.0f"), *GetName(), GetMaxHealthMultiplier(), GetHealth(), GetMaxHealth());
+	}
+	if (!FMath::IsNearlyEqual(GetArmor(), Captain->GetArmor()))
+	{
+		SetArmor(Captain->GetArmor());
+		UE_LOG(LogTemp, Verbose, TEXT("[YSMinion] %s : armure %.1f (Captain)"), *GetName(), GetArmor());
+	}
+}
+
 void AYSCaptainMinion::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -126,6 +144,9 @@ void AYSCaptainMinion::Tick(float DeltaSeconds)
 
 	// même vitesse que le Captain (sans les bonus des actions : roulade, dash...)
 	MoveSpeed = Captain->GetUnmodifiedWalkSpeed();
+
+	// upgrades du Captain : Hps bonus (PV max du minion x le même multiplicateur, les PV gagnés s'ajoutent) et Armor
+	SyncCaptainUpgrades();
 
 	AAIController* AIController = Cast<AAIController>(GetController());
 	const FVector Location = GetActorLocation();

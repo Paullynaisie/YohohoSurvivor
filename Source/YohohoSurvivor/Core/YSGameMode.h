@@ -132,7 +132,7 @@ protected:
 
 	/** Circle spawn : distance au centre d'où l'on part du large pour chercher la plage (au-delà de la côte la plus lointaine) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island", meta=(ClampMin="0", Units="Centimeters"))
-	float ShoreSearchRadius = 6300.0f;
+	float ShoreSearchRadius = 9000.0f;
 
 	/** Circle spawn : pas de la recherche de la plage, du large vers le centre */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island", meta=(ClampMin="10", Units="Centimeters"))
@@ -141,6 +141,19 @@ protected:
 	/** Circle spawn : les NME sont posés à cette distance à l'intérieur de la limite de l'eau */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island", meta=(ClampMin="0", Units="Centimeters"))
 	float ShoreInset = 200.0f;
+
+	/**
+	 *  Port placé au hasard sur la plage au début de la partie : les acteurs de la map tagués « Harbor » (ponton, Brooker, bateau)
+	 *  tournent ensemble autour du ponton (tag « HarborPivot ») qui est posé au bord de l'eau dans une direction tirée au hasard,
+	 *  en gardant leurs positions relatives. Un acteur tagué « HarborLand » doit rester sur la terre ferme (Brooker),
+	 *  « HarborSea » entièrement en mer (bateau), sinon une autre direction est tirée.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island")
+	bool bRandomHarbor = true;
+
+	/** Directions essayées pour le port avant d'abandonner (le port reste alors à sa place dans la map) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island", meta=(EditCondition="bRandomHarbor", ClampMin="1"))
+	int32 HarborPlacementAttempts = 40;
 
 	/** Le bateau n'existe pas au début de la partie : il apparaît quand l'objectif de doublons est atteint (GameMap ; décoché = toujours là) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship")
@@ -203,6 +216,12 @@ public:
 	AYSGameMode();
 
 	virtual void InitGameState() override;
+
+	/** Port au hasard (Random Harbor) : les traces du sol marchent maintenant */
+	virtual void BeginPlay() override;
+
+	/** Tire une direction de plage pour le port (Random Harbor) et la donne au GameState, qui déplace le port sur toutes les machines */
+	void PlaceHarbor();
 
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -284,7 +303,10 @@ public:
 	bool FindIslandGround(const FVector& Point, FVector& OutGround) const;
 
 	/** Point de plage dans la direction Angle (radians) depuis IslandCenter : premier sol hors de l'eau en venant du large, puis ShoreInset vers l'intérieur */
-	bool FindShorePoint(float Angle, FVector& OutGround) const;
+	bool FindShorePoint(float Angle, FVector& OutGround) const { return FindShorePoint(Angle, OutGround, ShoreInset); }
+
+	/** Idem avec un autre retrait vers l'intérieur (0 = le bord de l'eau lui-même) */
+	bool FindShorePoint(float Angle, FVector& OutGround, float Inset) const;
 
 	const FVector& GetIslandCenter() const { return IslandCenter; }
 

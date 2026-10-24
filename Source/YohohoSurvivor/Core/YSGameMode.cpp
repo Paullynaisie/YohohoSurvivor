@@ -1,5 +1,6 @@
 #include "Core/YSGameMode.h"
 #include "GameFramework/GameSession.h"
+#include "EngineUtils.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
 #include "Enemies/YSEnemySpawnRule.h"
@@ -192,6 +193,16 @@ void AYSGameMode::InitGameState()
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Personnalisation : %d couleur(s) (%s), %d visage(s) (%s)"), CustomizationColors.Num(),
 		CustomizationColorTable ? *CustomizationColorTable->GetName() : TEXT("liste"), CustomizationFaces.Num(), CustomizationFaceTable ? *CustomizationFaceTable->GetName() : TEXT("liste"));
+
+#if !WITH_EDITOR
+	// build packagée : personnages de test retirés (les index de sélection suivent la liste filtrée, sur toutes les machines)
+	const int32 CharacterCount = SelectableCharacters.Num();
+	SelectableCharacters.RemoveAll([](const TSubclassOf<AYSPlayerCharacter>& CharacterClass)
+	{
+		return CharacterClass && CharacterClass->GetDefaultObject<AYSPlayerCharacter>()->IsEditorOnlyCharacter();
+	});
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Personnages de test retirés de la sélection : %d"), CharacterCount - SelectableCharacters.Num());
+#endif
 
 	// la liste est répliquée par le GameState pour que les clients puissent construire leurs boutons
 	if (AYSGameState* YSGameState = GetGameState<AYSGameState>())
@@ -875,7 +886,86 @@ bool AYSGameMode::FindIslandGround(const FVector& Point, FVector& OutGround) con
 	return false;
 }
 
-bool AYSGameMode::FindShorePoint(float Angle, FVector& OutGround) const
+void AYSGameMode::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (bRandomHarbor)
+	{
+		PlaceHarbor();
+	}
+}
+
+void AYSGameMode::PlaceHarbor()
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	const AActor* Pivot = AYSGameState::FindHarborPivot(GetWorld());
+	if (!YSGameState || !Pivot)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSHarbor] Pas de port à placer (aucun acteur tagué %s)"), *AYSGameState::HarborPivotTag.ToString());
+		return;
+	}
+
+	// acteurs du port et leurs contraintes (sur la terre ferme / entièrement en mer)
+	TArray<const AActor*> LandActors;
+	TArray<const AActor*> SeaActors;
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		if (It->ActorHasTag(AYSGameState::HarborLandTag))
+		{
+			LandActors.Add(*It);
+		}
+		if (It->ActorHasTag(AYSGameState::HarborSeaTag))
+		{
+			SeaActors.Add(*It);
+		}
+	}
+
+	const FVector OldPivot = Pivot->GetActorLocation();
+	const float OldAngle = FMath::Atan2(OldPivot.Y - IslandCenter.Y, OldPivot.X - IslandCenter.X);
+	for (int32 Attempt = 1; Attempt <= HarborPlacementAttempts; ++Attempt)
+	{
+		const float Angle = FMath::FRandRange(-PI, PI);
+		FVector Edge;
+		if (!FindShorePoint(Angle, Edge, 0.0f))
+		{
+			continue;
+		}
+		const FVector NewPivot(Edge.X, Edge.Y, OldPivot.Z);
+		const float YawDelta = FMath::RadiansToDegrees(Angle - OldAngle);
+
+		bool bValid = true;
+		for (const AActor* Actor : LandActors)
+		{
+			FVector Ground;
+			const FTransform Placed = AYSGameState::GetHarborTransform(Actor->GetActorTransform(), OldPivot, NewPivot, YawDelta);
+			bValid &= FindIslandGround(Placed.GetLocation(), Ground);
+		}
+		for (const AActor* Actor : SeaActors)
+		{
+			// centre et coins de la boîte englobante (à plat) : aucun sol de l'île hors de l'eau dessous
+			FVector Origin, Extent;
+			Actor->GetActorBounds(false, Origin, Extent);
+			for (const FVector2D Corner : { FVector2D(0.0f, 0.0f), FVector2D(1.0f, 1.0f), FVector2D(1.0f, -1.0f), FVector2D(-1.0f, 1.0f), FVector2D(-1.0f, -1.0f) })
+			{
+				FVector Ground;
+				const FVector Point(Origin.X + Corner.X * Extent.X, Origin.Y + Corner.Y * Extent.Y, Origin.Z);
+				const FTransform Placed = AYSGameState::GetHarborTransform(FTransform(Point), OldPivot, NewPivot, YawDelta);
+				bValid &= !FindIslandGround(Placed.GetLocation(), Ground);
+			}
+		}
+		if (bValid)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[YSHarbor] Port placé (essai %d) : direction %.0f°, ponton en (%.0f, %.0f), rotation %.0f°"),
+				Attempt, FMath::RadiansToDegrees(Angle), NewPivot.X, NewPivot.Y, YawDelta);
+			YSGameState->SetHarborPlacement(NewPivot, YawDelta);
+			return;
+		}
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[YSHarbor] Aucune direction valable en %d essais : le port reste à sa place"), HarborPlacementAttempts);
+}
+
+bool AYSGameMode::FindShorePoint(float Angle, FVector& OutGround, float Inset) const
 {
 	const FVector Direction(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f);
 	const float Step = FMath::Max(ShoreSearchStep, 10.0f);
@@ -888,7 +978,7 @@ bool AYSGameMode::FindShorePoint(float Angle, FVector& OutGround) const
 		{
 			// un peu à l'intérieur pour avoir les pieds au sec (sinon le bord lui-même)
 			FVector Inland;
-			OutGround = FindIslandGround(IslandCenter + Direction * FMath::Max(Distance - ShoreInset, 0.0f), Inland) ? Inland : Shore;
+			OutGround = Inset > 0.0f && FindIslandGround(IslandCenter + Direction * FMath::Max(Distance - Inset, 0.0f), Inland) ? Inland : Shore;
 			return true;
 		}
 	}

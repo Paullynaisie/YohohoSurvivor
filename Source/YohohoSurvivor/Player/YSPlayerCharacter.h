@@ -118,6 +118,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C")
 	bool bUniqueCharacter = false;
 
+	/** Personnage de test : proposé à la sélection dans l'éditeur (PIE, -game) mais retiré des builds packagées (ex. JohnnyPlaytest) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C")
+	bool bEditorOnlyCharacter = false;
+
 	/** Taille du personnage : échelle de tout l'acteur (capsule, corps, mains, armes) ; 1.2 = 20 % plus grand ; x Character Scale Multiplier du set d'arme */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C", meta=(ClampMin="0.1"))
 	float CharacterScale = 1.0f;
@@ -592,6 +596,10 @@ public:
 	/** Armor (serveur) */
 	void SetArmor(float Amount) { Armor = Amount; }
 
+	float GetArmor() const { return Armor; }
+
+	float GetMaxHealthMultiplier() const { return MaxHealthMultiplier; }
+
 	/** Luck (serveur ; répliquée) : points de % de chance déplacés du Bronze vers le Gold */
 	void SetLuck(float Amount) { Luck = Amount; }
 
@@ -893,6 +901,8 @@ public:
 	FText GetCharacterName() const { return CharacterName.IsEmpty() ? FText::FromString(GetClass()->GetName().Replace(TEXT("_C"), TEXT(""))) : CharacterName; }
 
 	bool IsUniqueCharacter() const { return bUniqueCharacter; }
+
+	bool IsEditorOnlyCharacter() const { return bEditorOnlyCharacter; }
 
 protected:
 

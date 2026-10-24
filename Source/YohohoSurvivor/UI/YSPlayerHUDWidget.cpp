@@ -89,6 +89,12 @@ void UYSPlayerHUDWidget::BuildWidgetTree()
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
 	Row->AddChildToHorizontalBox(Column);
 
+	// minions du joueur (Captain) : entre ses infos et les autres joueurs
+	MinionsList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Minions"));
+	UVerticalBoxSlot* MinionsSlot = Outer->AddChildToVerticalBox(MinionsList);
+	MinionsSlot->SetPadding(FMargin(0.0f, MinionsTopSpacing, 0.0f, 0.0f));
+	MinionsList->SetVisibility(ESlateVisibility::Collapsed);
+
 	AlliesList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Allies"));
 	UVerticalBoxSlot* AlliesSlot = Outer->AddChildToVerticalBox(AlliesList);
 	AlliesSlot->SetPadding(FMargin(0.0f, AlliesTopSpacing, 0.0f, 0.0f));
@@ -195,16 +201,8 @@ void UYSPlayerHUDWidget::SetAllies(const TArray<FYSHUDPlayerInfo>& Allies)
 			YSPlayerHUD::StyleText(Name, 14);
 			Info->AddChildToVerticalBox(Name)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 2.0f));
 
-			USizeBox* BarBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-			BarBox->SetWidthOverride(AllyBarSize.X);
-			BarBox->SetHeightOverride(AllyBarSize.Y);
-			UProgressBar* Bar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
-			FProgressBarStyle Style = Bar->GetWidgetStyle();
-			Style.BackgroundImage.TintColor = FSlateColor(BarBackgroundColor);
-			Style.FillImage.TintColor = FSlateColor(FLinearColor::White);
-			Bar->SetWidgetStyle(Style);
-			Bar->SetFillColorAndOpacity(HealthColor);
-			BarBox->AddChild(Bar);
+			UWidget* BarBox = nullptr;
+			UProgressBar* Bar = CreateSmallBar(AllyBarSize, BarBox);
 			Info->AddChildToVerticalBox(BarBox);
 
 			AllyIcons.Add(Icon);
@@ -225,5 +223,87 @@ void UYSPlayerHUDWidget::SetAllies(const TArray<FYSHUDPlayerInfo>& Allies)
 		}
 		AllyNames[Index]->SetRenderOpacity(Ally.bAlive ? 1.0f : 0.4f);
 		AllyBars[Index]->SetPercent(Ally.bAlive && Ally.MaxHealth > 0.0f ? Ally.Health / Ally.MaxHealth : 0.0f);
+	}
+}
+
+UProgressBar* UYSPlayerHUDWidget::CreateSmallBar(const FVector2D& Size, UWidget*& OutContainer)
+{
+	USizeBox* BarBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	BarBox->SetWidthOverride(Size.X);
+	BarBox->SetHeightOverride(Size.Y);
+	UProgressBar* Bar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
+	FProgressBarStyle Style = Bar->GetWidgetStyle();
+	Style.BackgroundImage.TintColor = FSlateColor(BarBackgroundColor);
+	Style.FillImage.TintColor = FSlateColor(FLinearColor::White);
+	Bar->SetWidgetStyle(Style);
+	Bar->SetFillColorAndOpacity(HealthColor);
+	BarBox->AddChild(Bar);
+	OutContainer = BarBox;
+	return Bar;
+}
+
+void UYSPlayerHUDWidget::SetMinions(const TArray<FYSHUDPlayerInfo>& Minions)
+{
+	if (!MinionsList)
+	{
+		return;
+	}
+
+	const ESlateVisibility ListVisibility = Minions.Num() > 0 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+	if (MinionsList->GetVisibility() != ListVisibility)
+	{
+		MinionsList->SetVisibility(ListVisibility);
+	}
+
+	// une ligne par minion : petite icône (couleur du Captain + visage du minion), barre de PV avec « PV / max »
+	if (MinionIcons.Num() != Minions.Num())
+	{
+		MinionsList->ClearChildren();
+		MinionIcons.Reset();
+		MinionBars.Reset();
+		MinionLabels.Reset();
+
+		for (int32 Index = 0; Index < Minions.Num(); ++Index)
+		{
+			UHorizontalBox* MinionRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+			UVerticalBoxSlot* RowSlot = MinionsList->AddChildToVerticalBox(MinionRow);
+			RowSlot->SetPadding(FMargin(0.0f, Index > 0 ? MinionSpacing : 0.0f, 0.0f, 0.0f));
+
+			UYSPlayerIconWidget* Icon = CreateWidget<UYSPlayerIconWidget>(this, UYSPlayerIconWidget::StaticClass());
+			Icon->SetIconSize(MinionIconSize);
+			UHorizontalBoxSlot* IconSlot = MinionRow->AddChildToHorizontalBox(Icon);
+			IconSlot->SetVerticalAlignment(VAlign_Center);
+			IconSlot->SetPadding(FMargin(0.0f, 0.0f, 6.0f, 0.0f));
+
+			USizeBox* BarBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+			BarBox->SetWidthOverride(MinionBarSize.X);
+			BarBox->SetHeightOverride(MinionBarSize.Y);
+			UOverlay* Overlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+			BarBox->AddChild(Overlay);
+			UWidget* InnerBox = nullptr;
+			UProgressBar* Bar = CreateSmallBar(MinionBarSize, InnerBox);
+			UOverlaySlot* BarSlot = Overlay->AddChildToOverlay(InnerBox);
+			BarSlot->SetHorizontalAlignment(HAlign_Fill);
+			BarSlot->SetVerticalAlignment(VAlign_Fill);
+			UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+			YSPlayerHUD::StyleText(Label, FMath::Max(7, FMath::RoundToInt(MinionBarSize.Y * 0.75f)));
+			UOverlaySlot* LabelSlot = Overlay->AddChildToOverlay(Label);
+			LabelSlot->SetHorizontalAlignment(HAlign_Center);
+			LabelSlot->SetVerticalAlignment(VAlign_Center);
+			MinionRow->AddChildToHorizontalBox(BarBox)->SetVerticalAlignment(VAlign_Center);
+
+			MinionIcons.Add(Icon);
+			MinionBars.Add(Bar);
+			MinionLabels.Add(Label);
+		}
+	}
+
+	for (int32 Index = 0; Index < Minions.Num(); ++Index)
+	{
+		const FYSHUDPlayerInfo& Minion = Minions[Index];
+		MinionIcons[Index]->SetIcon(Minion.Color, Minion.Face);
+		MinionBars[Index]->SetPercent(Minion.MaxHealth > 0.0f ? Minion.Health / Minion.MaxHealth : 0.0f);
+		MinionLabels[Index]->SetText(FText::Format(NSLOCTEXT("YS", "HUDMinionHealth", "{0} / {1}"),
+			YSPlayerHUD::FormatValue(FMath::CeilToFloat(Minion.Health)), YSPlayerHUD::FormatValue(Minion.MaxHealth)));
 	}
 }

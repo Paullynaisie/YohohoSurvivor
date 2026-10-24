@@ -34,6 +34,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bumping Slash|Bump", meta=(ClampMin="0"))
 	float BumpSpinTurns = 1.0f;
 
+	/** Les élites sont bumpés aussi (sinon ils reçoivent le pushback normal) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Bumping Slash|Bump")
+	bool bBumpElites = true;
+
 	UYSBumpingSlashAbility();
 
 protected:

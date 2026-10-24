@@ -1,19 +1,24 @@
 ﻿"""
-Île pirate (GameMap) :
-  - le sol plat « Ground » est remplacé par un Landscape « Island » (4 x 4 composants de 63 quads, 50 cm par quad = 126 m de côté)
-    sculpté par une formule : côte irrégulière, collines douces (pentes < 20°, toujours praticables à pied), plage en pente légère,
+Île pirate (GameMap et TestMap) :
+  - le sol plat « Ground » est remplacé par un Landscape « Island » (6 x 6 composants de 63 quads, 50 cm par quad = 189 m de côté)
+    sculpté par une formule : côte irrégulière, collines douces (pentes < 23°, toujours praticables à pied), plage en pente légère,
     jusqu'au bord de l'eau, puis à pic sous la mer (on passe à travers l'océan et on tombe sous la KillZ : deadzone)
+    Surface doublée le 2026-10-24 (demande de Paul) : rayon, collines et dénivelé x racine de 2 (ISLAND_SCALE, mêmes pentes)
   - matériau /Game/Art/Materials/M_IslandGround : sable en bas, herbe en haut (selon l'altitude : suit les retouches au sculpt)
   - océan : acteur AYSOcean (plane bleu /Game/Art/Materials/M_Ocean, sans collision) au niveau de la mer : niveau de la mer
     pour le jeu (pas de NME ni de carte au trésor sous l'eau, balles et zones au sol au-dessus de la surface)
-  - Brooker en bord de mer au sud (-X : bas de l'écran), les 4 PlayerStart juste à côté, ponton (/Game/Art/Props/BP_Prop_Pier) qui part
-    vers la mer à côté du Brooker
+  - port au sud (-X : bas de l'écran) : ponton (/Game/Art/Props/BP_Prop_Pier) au bord de l'eau, Brooker et bateau gardent leur position
+    par rapport au ponton ; tags « Harbor » (+ « HarborPivot » ponton, « HarborLand » Brooker, « HarborSea » bateau) : en jeu le
+    GameMode (Random Harbor) déplace tout le port dans une direction tirée au hasard (GameMap ; décoché sur BP_TestMapGameMode)
+  - les 4 PlayerStart au centre de l'île
   - palmiers : les anciens sont retirés, de nouveaux placés sur l'île (graine fixe : même placement à chaque lancement)
+  - palmiers, ponton et Brooker accrochés au Landscape (ils coulent avec l'île en overtime)
   - NME de test reposés sur le sol
+  - BP_TestGameMode : Shore Search Radius et zone des cartes au trésor agrandis avec l'île
 Relançable : l'île, l'océan, le ponton et les palmiers qu'il a créés sont recréés.
 
 Lancement (éditeur fermé) :
-  UnrealEditor.exe YohohoSurvivor.uproject -ExecutePythonScript="Tools/EditorScripts/setup_island.py"
+  UnrealEditor.exe YohohoSurvivor.uproject /Game/Maps/MainMenu -ExecutePythonScript="Tools/EditorScripts/setup_island.py"
 Rapport : Saved/Logs/setup_island.txt
 """
 import math
@@ -21,7 +26,11 @@ import os
 import random
 import unreal
 
-LEVEL = "/Game/Maps/GameMap"
+LEVELS = ["/Game/Maps/GameMap", "/Game/Maps/TestMap"]
+GM_DIR = "/Game/Core/GameModes"
+GAME_GM = f"{GM_DIR}/BP_TestGameMode"
+TEST_GM = f"{GM_DIR}/BP_TestMapGameMode"
+HARBOR_TAGS = {"pier": ["Harbor", "HarborPivot"], "brooker": ["Harbor", "HarborLand"], "ship": ["Harbor", "HarborSea"]}
 MAT_DIR = "/Game/Art/Materials"
 GROUND_MAT = f"{MAT_DIR}/M_IslandGround"
 OCEAN_MAT = f"{MAT_DIR}/M_Ocean"
@@ -33,26 +42,36 @@ BROWN = "/Game/Art/Materials/PH_materials/m_PH_monochrome_Brown"
 CUBE = "/Engine/BasicShapes/Cube"
 CYLINDER = "/Engine/BasicShapes/Cylinder"
 
+# taille : surface doublée le 2026-10-24 = rayon, collines et dénivelé x racine de 2 (mêmes pentes)
+ISLAND_SCALE = math.sqrt(2.0)
+
 # landscape
-COMPONENTS = 4
+COMPONENTS = 6
 QUADS = 63
 QUAD_SIZE = 50.0
-SIZE = COMPONENTS * QUADS + 1                      # 253 sommets
-HALF = COMPONENTS * QUADS * QUAD_SIZE / 2.0        # 6300 cm
+SIZE = COMPONENTS * QUADS + 1                      # 379 sommets
+HALF = COMPONENTS * QUADS * QUAD_SIZE / 2.0        # 9450 cm
 SEA_LEVEL = -30.0
+SHORE_MARGIN = 20.0       # AYSOcean::ShoreMargin : un sol à moins de 20 cm au-dessus de la mer compte comme sous l'eau
 
 # forme de l'île
-ISLAND_RADIUS = 4600.0
+ISLAND_RADIUS = 4600.0 * ISLAND_SCALE
 LAND_HEIGHT = 30.0        # plateau côtier
 SHORE_DEPTH = -22.0       # au bord de l'eau (d = 1) : juste au-dessus de la mer
-CLIFF_WIDTH = 0.02        # puis à pic jusqu'au fond (~1 m) : on tombe dans l'eau au lieu d'y marcher
+CLIFF_WIDTH = 0.02        # puis à pic jusqu'au fond (~1.3 m) : on tombe dans l'eau au lieu d'y marcher
 SEA_FLOOR = -650.0        # sous la KillZ (-300) : tomber dans l'océan = mort
-HILLS = [                 # (x, y, hauteur, rayon) ; sud = -X
+HILLS = [(x * ISLAND_SCALE, y * ISLAND_SCALE, h * ISLAND_SCALE, s * ISLAND_SCALE) for x, y, h, s in [  # (x, y, hauteur, rayon) ; sud = -X
     (1600.0, 600.0, 380.0, 1500.0),
     (-200.0, -2400.0, 240.0, 1000.0),
     (-600.0, 2300.0, 200.0, 900.0),
     (2800.0, -1500.0, 140.0, 800.0),
-]
+]]
+PALM_COUNT = 60           # 30 sur l'île d'avant : même densité
+PLAYER_SPAWN_RADIUS = 1200.0  # pas de palmier autour des PlayerStart (centre de l'île)
+
+# BP_TestGameMode : agrandis avec l'île
+SHORE_SEARCH_RADIUS = 9000.0
+TREASURE_EXTENT = 4500.0 * ISLAND_SCALE
 
 assets = unreal.EditorAssetLibrary
 tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -75,7 +94,7 @@ def smoothstep(t):
 
 
 def coast_radius(theta):
-    return ISLAND_RADIUS + 350.0 * math.sin(3.0 * theta + 0.4) + 200.0 * math.sin(5.0 * theta + 1.3) + 120.0 * math.sin(9.0 * theta + 2.1)
+    return ISLAND_RADIUS + ISLAND_SCALE * (350.0 * math.sin(3.0 * theta + 0.4) + 200.0 * math.sin(5.0 * theta + 1.3) + 120.0 * math.sin(9.0 * theta + 2.1))
 
 
 def height(x, y):
@@ -91,7 +110,7 @@ def height(x, y):
     # collines (seulement à l'intérieur des terres) + petites ondulations
     inland = smoothstep((0.82 - d) / 0.25)
     hills = sum(h * math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (2.0 * s * s)) for cx, cy, h, s in HILLS)
-    ripples = 12.0 * math.sin(x / 700.0) * math.cos(y / 900.0)
+    ripples = 12.0 * ISLAND_SCALE * math.sin(x / (700.0 * ISLAND_SCALE)) * math.cos(y / (900.0 * ISLAND_SCALE))
     return base + (hills + ripples) * inland
 
 
@@ -218,22 +237,33 @@ def spawn(cls, location, yaw=0.0, label=None, folder="Island"):
     return actor
 
 
-def shore_x(target_height):
-    """X (vers le sud, -X) où le sol descend à target_height sur l'axe Y = 0"""
-    x = -2000.0
-    while x > -HALF and height(x, 0.0) > target_height:
-        x -= 10.0
+def water_edge_x():
+    """X du bord de l'eau au sud (-X) sur l'axe Y = 0 : premier sol hors de l'eau en venant du large (comme AYSGameMode::FindShorePoint)"""
+    x = -HALF
+    while x < 0.0 and height(x, 0.0) < SEA_LEVEL + SHORE_MARGIN:
+        x += 10.0
     return x
 
 
-try:
-    levels.load_level(LEVEL)
-    world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+def add_tags(actor, tags):
+    current = [str(t) for t in actor.get_editor_property("tags")]
+    actor.set_editor_property("tags", [unreal.Name(t) for t in current + [t for t in tags if t not in current]])
 
-    ground_mat = get_or_create_material(GROUND_MAT, build_ground)
-    ocean_mat = get_or_create_material(OCEAN_MAT, build_ocean)
-    pier_class = get_or_create_pier()
-    palm_class = assets.load_blueprint_class(PALM_BP)
+
+def build_map(level, ground_mat, ocean_mat, pier_class, palm_class):
+    if not levels.load_level(level):
+        raise RuntimeError(f"impossible d'ouvrir {level}")
+    world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+    log(f"--- {level}")
+
+    # port actuel : Brooker et bateau gardent leur position par rapport au ponton
+    old_pier = next((a for a in actors_sub.get_all_level_actors() if a.get_actor_label() == "Pier"), None)
+    old_pier_location = old_pier.get_actor_location() if old_pier else None
+    brookers = [a for a in actors_sub.get_all_level_actors() if isinstance(a, unreal.YSBrookerNPC)]
+    ships = [a for a in actors_sub.get_all_level_actors() if isinstance(a, unreal.YSPirateShip)]
+    offsets = {}
+    for actor in brookers + ships:
+        offsets[actor.get_name()] = actor.get_actor_location() - old_pier_location if old_pier_location else None
 
     # nettoyage : ancien sol, anciens palmiers, éléments d'un lancement précédent
     removed = 0
@@ -264,32 +294,42 @@ try:
     ocean.set_actor_scale3d(unreal.Vector(800.0, 800.0, 1.0))
     log(f"océan : AYSOcean, plane de 800 m à Z {SEA_LEVEL:.0f} (sans collision)")
 
-    # Brooker au bord de la mer, au sud ; joueurs juste au nord de lui ; ponton à côté vers la mer
-    brooker_x = shore_x(LAND_HEIGHT - 5.0) + 150.0
-    for actor in actors_sub.get_all_level_actors():
-        if actor.get_class().get_name().startswith("BP_NPC_Brooker"):
-            actor.set_actor_location(unreal.Vector(brooker_x, 0.0, height(brooker_x, 0.0) + 60.0), False, False)
-            actor.set_actor_rotation(unreal.Rotator(0, 0, 0), False)
-            log(f"Brooker : ({brooker_x:.0f}, 0)")
+    # port au sud : ponton au bord de l'eau (pivot du port en jeu), Brooker et bateau à la même place par rapport à lui
+    edge_x = water_edge_x()
+    pier = spawn(pier_class, unreal.Vector(edge_x, 0.0, 15.0), yaw=180.0, label="Pier")
+    add_tags(pier, HARBOR_TAGS["pier"])
+    pier_location = pier.get_actor_location()
+    log(f"ponton : départ au bord de l'eau ({edge_x:.0f}, 0), 15 m vers la mer, tags {HARBOR_TAGS['pier']}")
+    for actor in brookers:
+        offset = offsets.get(actor.get_name()) or unreal.Vector(220.0, -550.0, 0.0)
+        x, y = pier_location.x + offset.x, pier_location.y + offset.y
+        actor.set_actor_location(unreal.Vector(x, y, height(x, y) + 60.0), False, False)
+        add_tags(actor, HARBOR_TAGS["brooker"])
+        log(f"Brooker : ({x:.0f}, {y:.0f}), {height(x, y):.0f} cm au-dessus de 0, tags {HARBOR_TAGS['brooker']}")
+    for actor in ships:
+        offset = offsets.get(actor.get_name())
+        if offset is not None:
+            actor.set_actor_location(pier_location + offset, False, False)
+        add_tags(actor, HARBOR_TAGS["ship"])
+        loc = actor.get_actor_location()
+        log(f"bateau : ({loc.x:.0f}, {loc.y:.0f}, {loc.z:.0f}){'' if offset is not None else ' (inchangé : pas d ancien ponton)'}, tags {HARBOR_TAGS['ship']}")
+
+    # joueurs au centre de l'île
     starts = [a for a in actors_sub.get_all_level_actors() if isinstance(a, unreal.PlayerStart)]
     for index, start in enumerate(starts):
-        x = brooker_x + 600.0 + (index // 2) * 250.0
+        x = -125.0 + (index // 2) * 250.0
         y = -150.0 + (index % 2) * 300.0
         start.set_actor_location(unreal.Vector(x, y, height(x, y) + 100.0), False, False)
         start.set_actor_rotation(unreal.Rotator(0, 0, 0), False)
-    log(f"{len(starts)} PlayerStart près du Brooker")
+    log(f"{len(starts)} PlayerStart au centre de l'île")
 
-    pier_y = 550.0
-    pier_x = shore_x(5.0)
-    pier = spawn(pier_class, unreal.Vector(pier_x + 100.0, pier_y, 15.0), yaw=180.0, label="Pier")
-    log(f"ponton : départ ({pier_x + 100:.0f}, {pier_y:.0f}), 15 m vers la mer")
-
-    # palmiers : graine fixe, sur la terre ferme, espacés, loin du Brooker / des spawns / du ponton
+    # palmiers : graine fixe, sur la terre ferme, espacés, loin des spawns (centre), du ponton et du Brooker de la map
     rng = random.Random(7)
-    keep_out = [(brooker_x, 0.0, 900.0), (brooker_x + 700.0, 0.0, 700.0), (pier_x - 700.0, pier_y, 900.0)]
+    keep_out = [(0.0, 0.0, PLAYER_SPAWN_RADIUS), (pier_location.x, pier_location.y, 1200.0)]
+    keep_out += [(b.get_actor_location().x, b.get_actor_location().y, 900.0) for b in brookers]
     palms = []
     tries = 0
-    while len(palms) < 30 and tries < 5000:
+    while len(palms) < PALM_COUNT and tries < 20000:
         tries += 1
         x, y = rng.uniform(-HALF, HALF), rng.uniform(-HALF, HALF)
         d = math.hypot(x, y) / coast_radius(math.atan2(y, x))
@@ -312,9 +352,40 @@ try:
             foes += 1
     log(f"NME de test reposés : {foes}")
 
+    # palmiers, ponton, Brooker accrochés à l'île : ils coulent avec elle (overtime)
+    attached = 0
+    for actor in actors_sub.get_all_level_actors():
+        if actor.get_class() == palm_class or actor is pier or actor in brookers:
+            actor.attach_to_actor(landscape, "", unreal.AttachmentRule.KEEP_WORLD, unreal.AttachmentRule.KEEP_WORLD, unreal.AttachmentRule.KEEP_WORLD, False)
+            attached += 1 if actor.get_attach_parent_actor() == landscape else 0
+    log(f"accrochés à l'île : {attached}")
+
     if not levels.save_current_level():
-        raise RuntimeError("sauvegarde de la map impossible")
-    log("map sauvegardée")
+        raise RuntimeError(f"sauvegarde de {level} impossible")
+    log(f"{level} sauvegardée")
+
+
+try:
+    ground_mat = get_or_create_material(GROUND_MAT, build_ground)
+    ocean_mat = get_or_create_material(OCEAN_MAT, build_ocean)
+    pier_class = get_or_create_pier()
+    palm_class = assets.load_blueprint_class(PALM_BP)
+    for level in LEVELS:
+        build_map(level, ground_mat, ocean_mat, pier_class, palm_class)
+
+    # GameModes : recherche de la plage et zone des cartes au trésor à la taille de l'île ; port au hasard dans GameMap seulement
+    game_gm = unreal.get_default_object(assets.load_blueprint_class(GAME_GM))
+    game_gm.set_editor_property("shore_search_radius", SHORE_SEARCH_RADIUS)
+    game_gm.set_editor_property("treasure_map_area_extent", unreal.Vector2D(TREASURE_EXTENT, TREASURE_EXTENT))
+    game_gm.set_editor_property("random_harbor", True)
+    assets.save_asset(GAME_GM, only_if_is_dirty=False)
+    test_gm = unreal.get_default_object(assets.load_blueprint_class(TEST_GM))
+    test_gm.set_editor_property("random_harbor", False)
+    assets.save_asset(TEST_GM, only_if_is_dirty=False)
+    for path in (GAME_GM, TEST_GM):
+        gm = unreal.get_default_object(assets.load_blueprint_class(path))
+        log(f"relu {path.split('/')[-1]} : Shore Search Radius {gm.get_editor_property('shore_search_radius')}, "
+            f"zone des cartes {gm.get_editor_property('treasure_map_area_extent')}, port au hasard {gm.get_editor_property('random_harbor')}")
     log("OK")
 except Exception as e:
     log(f"ERREUR : {e!r}")

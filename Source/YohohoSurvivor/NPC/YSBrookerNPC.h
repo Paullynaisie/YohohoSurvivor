@@ -94,6 +94,9 @@ public:
 	/** Taille et matériau de la zone de rachat (AcceptRange, réglages Brooker|Zone) */
 	void ApplyZone();
 
+	/** Après un déplacement (port placé au hasard) : reposé au sol, zone de rachat reconstruite sur le relief */
+	void Resettle();
+
 	/** Rachète l'objet s'il a une valeur et qu'il est à portée (serveur) : doublons à l'équipe, objet détruit */
 	bool TryBuy(AYSInteractiveObject* Object);
 

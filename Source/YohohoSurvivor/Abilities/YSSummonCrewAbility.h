@@ -31,9 +31,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Summon the crew")
 	TArray<TObjectPtr<UYSWeaponSet>> MinionWeaponSets;
 
-	/** Minions invoqués à chaque activation (moins s'il ne reste pas assez de place sous le maximum) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Summon the crew", meta=(ClampMin="1"))
+	/** Chaque activation invoque les minions qui manquent jusqu'au maximum (sinon Minions Per Summon) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Summon the crew")
+	bool bSummonUpToMax = true;
+
+	/** Minions invoqués à chaque activation si Summon Up To Max est décoché (moins s'il ne reste pas assez de place sous le maximum) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Summon the crew", meta=(ClampMin="1", EditCondition="!bSummonUpToMax"))
 	int32 MinionsPerSummon = 2;
+
+	/** Invocation passive : un minion apparaît toutes les X secondes tant que le maximum n'est pas atteint (0 = aucune ; serveur) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Summon the crew", meta=(ClampMin="0", Units="Seconds"))
+	float PassiveSpawnInterval = 5.0f;
 
 	/** Minions vivants maximum en même temps (+ upgrade Summon system) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Summon the crew", meta=(ClampMin="1"))
@@ -79,6 +87,9 @@ public:
 
 	UYSSummonCrewAbility();
 
+	/** Invocation passive (serveur) */
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
 	virtual float GetBaseDamage() const override { return MinionBaseDamage; }
 
 	/** Préparation + crochet (les minions apparaissent à la fin) */
@@ -115,8 +126,11 @@ protected:
 
 private:
 
-	/** Invoque les minions qui manquent (jusqu'à Minions Per Summon, sans dépasser le maximum ; serveur) */
-	void SpawnMinions();
+	/** Invoque jusqu'à Count minions sur les côtés du Captain, sans dépasser le maximum (serveur) ; renvoie le nombre invoqué */
+	int32 SpawnMinions(int32 Count);
 
 	FTimerHandle SummonTimer;
+
+	/** Temps écoulé depuis le dernier minion passif (remis à 0 tant que le maximum est atteint) */
+	float PassiveSpawnTimer = 0.0f;
 };

@@ -14,5 +14,6 @@ void UYSBumpingSlashAbility::DealSwingDamage(AActor* Target, float FinalDamage, 
 	DamageEvent.ApexHeight = BumpApexHeight;
 	DamageEvent.Duration = BumpDuration;
 	DamageEvent.SpinTurns = BumpSpinTurns;
+	DamageEvent.bBumpElites = bBumpElites;
 	Target->TakeDamage(FinalDamage, DamageEvent, InstigatorController, nullptr);
 }

@@ -65,6 +65,12 @@ void AYSBrookerNPC::BeginPlay()
 		GroundZone->GetNumSections() > 0 ? GroundZone->GetProcMeshSection(0)->ProcVertexBuffer.Num() : 0);
 }
 
+void AYSBrookerNPC::Resettle()
+{
+	SetActorLocation(AYSInteractiveObject::FindGround(GetWorld(), GetActorLocation(), this));
+	ApplyZone();
+}
+
 bool AYSBrookerNPC::TryBuy(AYSInteractiveObject* Object)
 {
 	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
