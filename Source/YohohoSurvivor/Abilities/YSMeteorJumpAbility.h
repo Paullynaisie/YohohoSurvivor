@@ -45,6 +45,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Meteor Jump|Jump", meta=(ClampMin="0", Units="Seconds", EditCondition="bJumpThroughFoes"))
 	float PassThroughAfterLanding = 0.2f;
 
+	/** Pendant le MeteorJump (pas en arrière + saut), la Hitbox de l'arme est agrandie : extent x ce multiplicateur */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Meteor Jump|Jump", meta=(ClampMin="0.1"))
+	float HitboxExtentMultiplier = 2.0f;
+
 	/** Courbe de la coupe pendant le saut (EaseOut ; 1 = la lame balaye régulièrement tout le saut, jusqu'à l'atterrissage) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Meteor Jump|Jump", meta=(ClampMin="1"))
 	float JumpSwingEaseExponent = 1.0f;
@@ -86,6 +90,13 @@ private:
 
 	/** Fin du saut : gravité normale */
 	void EndJump();
+
+	/** Hitbox de l'arme x Hitbox Extent Multiplier pendant le MeteorJump, taille du Blueprint sinon (toutes les machines) */
+	void UpdateHitboxExtent();
+
+	/** Extent de la Hitbox du Blueprint (notée au premier passage) */
+	FVector BaseHitboxExtent = FVector::ZeroVector;
+	bool bHitboxEnlarged = false;
 
 	/** Point d'arrivée du saut (sol), choisi au clic */
 	FVector JumpLanding = FVector::ZeroVector;

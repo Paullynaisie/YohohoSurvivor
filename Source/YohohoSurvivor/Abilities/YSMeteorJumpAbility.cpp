@@ -1,9 +1,11 @@
 #include "Abilities/YSMeteorJumpAbility.h"
+#include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Core/YSCombat.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Weapons/YSWeapon.h"
 
 UYSMeteorJumpAbility::UYSMeteorJumpAbility()
 {
@@ -87,6 +89,9 @@ void UYSMeteorJumpAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 		}
 	}
 
+	// hitbox agrandie avant les coups de cette image
+	UpdateHitboxExtent();
+
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	// fin du saut : gravité normale (atterrissage géré par le CharacterMovement)
@@ -94,6 +99,30 @@ void UYSMeteorJumpAbility::TickComponent(float DeltaTime, ELevelTick TickType, F
 	{
 		EndJump();
 	}
+}
+
+void UYSMeteorJumpAbility::UpdateHitboxExtent()
+{
+	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
+	UBoxComponent* Hitbox = Weapon ? Weapon->FindComponentByClass<UBoxComponent>() : nullptr;
+	if (!Hitbox)
+	{
+		return;
+	}
+	const float Elapsed = GetTimeSinceActivation();
+	const bool bEnlarge = Elapsed >= 0.0f && Elapsed < StepBackDuration + JumpDuration;
+	if (bEnlarge == bHitboxEnlarged)
+	{
+		return;
+	}
+	if (!bHitboxEnlarged)
+	{
+		BaseHitboxExtent = Hitbox->GetUnscaledBoxExtent();
+	}
+	bHitboxEnlarged = bEnlarge;
+	Hitbox->SetBoxExtent(bEnlarge ? BaseHitboxExtent * HitboxExtentMultiplier : BaseHitboxExtent);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSMeteorJump] %s : hitbox %s (%.0f, %.0f, %.0f)"), *GetOwner()->GetName(), bEnlarge ? TEXT("agrandie") : TEXT("normale"),
+		Hitbox->GetUnscaledBoxExtent().X, Hitbox->GetUnscaledBoxExtent().Y, Hitbox->GetUnscaledBoxExtent().Z);
 }
 
 bool UYSMeteorJumpAbility::PassesThroughPawns(int32 Phase) const
