@@ -4,24 +4,13 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
-#include "LandscapeProxy.h"
-#include "Map/YSOcean.h"
+#include "Core/YSCombat.h"
 #include "Player/YSPlayerCharacter.h"
 #include "TimerManager.h"
 #include "Upgrades/YSUpgrade.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Weapons/YSPlayerBomb.h"
 #include "Weapons/YSWeapon.h"
-
-namespace YSBombThrower
-{
-	/** Recherche du sol : au-dessus et en dessous de la hauteur du joueur */
-	constexpr float GroundSearchUp = 2000.0f;
-	constexpr float GroundSearchDown = 3000.0f;
-
-	/** Props traversés au plus pour trouver l'île sous un point */
-	constexpr int32 MaxIgnoredActors = 8;
-}
 
 UYSBombThrowerAbility::UYSBombThrowerAbility()
 {
@@ -146,62 +135,9 @@ void UYSBombThrowerAbility::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-bool UYSBombThrowerAbility::FindIslandGround(const FVector& Point, float ReferenceZ, FVector& OutGround) const
-{
-	// seul le Landscape (l'île) compte : un prop touché (ponton, bateau, palmier) est traversé
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSBombThrowerGround), false, GetHolderPawn());
-	const FVector Start(Point.X, Point.Y, ReferenceZ + YSBombThrower::GroundSearchUp);
-	const FVector End(Point.X, Point.Y, ReferenceZ - YSBombThrower::GroundSearchDown);
-	for (int32 Attempt = 0; Attempt < YSBombThrower::MaxIgnoredActors; ++Attempt)
-	{
-		FHitResult Hit;
-		if (!GetWorld()->LineTraceSingleByObjectType(Hit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params))
-		{
-			return false;
-		}
-		if (Hit.GetActor() && Hit.GetActor()->IsA<ALandscapeProxy>())
-		{
-			// pas dans l'eau
-			OutGround = Hit.ImpactPoint;
-			return !AYSOcean::IsUnderwater(GetWorld(), OutGround);
-		}
-		Params.AddIgnoredActor(Hit.GetActor());
-	}
-	return false;
-}
-
 FVector UYSBombThrowerAbility::FindLandingPoint(const FVector& TargetLocation) const
 {
-	const ACharacter* Character = Cast<ACharacter>(GetHolderPawn());
-	if (!Character)
-	{
-		return TargetLocation;
-	}
-	const FVector Feet = Character->GetActorLocation() - FVector(0.0f, 0.0f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
-
-	// curseur ramené à la portée max, puis on recule vers le joueur jusqu'à un sol de l'île hors de l'eau
-	FVector Offset = TargetLocation - Feet;
-	Offset.Z = 0.0f;
-	const float Distance = FMath::Min(Offset.Size(), MaxThrowDistance);
-	const FVector Direction = Offset.GetSafeNormal();
-	FVector Ground;
-	for (float Step = Distance; Step > 0.0f; Step -= RetreatStep)
-	{
-		if (FindIslandGround(Feet + Direction * Step, Feet.Z, Ground))
-		{
-			return Ground;
-		}
-	}
-
-	// aucun sol valide : sur place
-	if (FindIslandGround(Feet, Feet.Z, Ground))
-	{
-		return Ground;
-	}
-	FHitResult Hit;
-	const FCollisionQueryParams Params(SCENE_QUERY_STAT(YSBombThrowerFeet), false, Character);
-	return GetWorld()->LineTraceSingleByObjectType(Hit, Feet + FVector(0.0f, 0.0f, 50.0f), Feet - FVector(0.0f, 0.0f, 500.0f), FCollisionObjectQueryParams(ECC_WorldStatic), Params)
-		? Hit.ImpactPoint : Feet;
+	return YSCombat::FindLandingPoint(Cast<ACharacter>(GetHolderPawn()), TargetLocation, MaxThrowDistance, RetreatStep);
 }
 
 void UYSBombThrowerAbility::ExecuteAbility(const FVector& TargetLocation)

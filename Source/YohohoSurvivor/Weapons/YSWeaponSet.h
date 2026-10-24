@@ -33,6 +33,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon Set")
 	TSubclassOf<AYSWeapon> LeftHandWeapon;
 
+	/** Taille du personnage qui a ce set : multiplie son Character Scale (ex. Quartermaster : GreatAxe x1.25, Anchor Bearer x1.5) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon Set", meta=(ClampMin="0.1"))
+	float CharacterScaleMultiplier = 1.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Health", meta=(InlineEditConditionToggle))
 	bool bOverrideMaxHealth = false;
 

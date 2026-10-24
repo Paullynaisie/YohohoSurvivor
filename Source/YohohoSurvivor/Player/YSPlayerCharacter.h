@@ -117,7 +117,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C")
 	bool bUniqueCharacter = false;
 
-	/** Taille du personnage : échelle de tout l'acteur (capsule, corps, mains, armes) ; 1.2 = 20 % plus grand */
+	/** Taille du personnage : échelle de tout l'acteur (capsule, corps, mains, armes) ; 1.2 = 20 % plus grand ; x Character Scale Multiplier du set d'arme */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C", meta=(ClampMin="0.1"))
 	float CharacterScale = 1.0f;
 
@@ -196,8 +196,15 @@ protected:
 	float HopEaseExponent = 2.0f;
 
 	/** Set d'arme du personnage (Data Asset : arme de chaque main, /Game/Core/WeaponSets) ; prioritaire sur les armes par main ci-dessous */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category="3C|Weapons")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_WeaponSet, Category="3C|Weapons")
 	TObjectPtr<UYSWeaponSet> WeaponSet;
+
+	/** Clients : la taille dépend du set (Character Scale Multiplier) */
+	UFUNCTION()
+	void OnRep_WeaponSet();
+
+	/** Échelle ABSOLUE de l'acteur = échelle de la classe x Character Scale x Character Scale Multiplier du set */
+	void ApplyCharacterScale();
 
 	/** Sans set d'arme (tests) : arme tenue dans la main gauche */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Weapons", meta=(EditCondition="WeaponSet == nullptr"))

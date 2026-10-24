@@ -34,9 +34,9 @@ int32 UYSDashingSlashAbility::GetPhase(float& OutAlpha) const
 		OutAlpha = Elapsed / StepBackDuration;
 		return 0;
 	}
-	if (Elapsed < StepBackDuration + DashDuration)
+	if (Elapsed < StepBackDuration + GetDashPhaseDuration())
 	{
-		OutAlpha = (Elapsed - StepBackDuration) / DashDuration;
+		OutAlpha = (Elapsed - StepBackDuration) / GetDashPhaseDuration();
 		return 1;
 	}
 	return -1;
@@ -127,12 +127,8 @@ void UYSDashingSlashAbility::TickComponent(float DeltaTime, ELevelTick TickType,
 	{
 		bDashKickApplied = true;
 		ApplyPhaseKick(1);
-		SetPassThroughPawns(bDashThroughFoes);
 	}
-	else if (Phase != 1 && bPassingThroughPawns)
-	{
-		SetPassThroughPawns(false);
-	}
+	SetPassThroughPawns(Phase >= 0 && PassesThroughPawns(Phase));
 }
 
 void UYSDashingSlashAbility::ApplyPhaseKick(int32 Phase)
@@ -171,7 +167,7 @@ void UYSDashingSlashAbility::OnActionCancelled()
 bool UYSDashingSlashAbility::IsGrantingInvulnerability() const
 {
 	const float Elapsed = GetTimeSinceActivation();
-	return bDashInvulnerable && IsMovementDriver() && Elapsed >= StepBackDuration && Elapsed < StepBackDuration + DashDuration + ExtraInvulnerability;
+	return bDashInvulnerable && IsMovementDriver() && Elapsed >= StepBackDuration && Elapsed < StepBackDuration + GetDashPhaseDuration() + ExtraInvulnerability;
 }
 
 float UYSDashingSlashAbility::GetMoveSpeedMultiplier() const

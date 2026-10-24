@@ -289,7 +289,7 @@ protected:
 
 	/** Poses de l'animation en cours et courbes */
 	const FYSSwingPoses& GetCurrentPoses(FYSSwingPoses& MainPoses) const;
-	void GetCurrentEases(float& OutWindup, float& OutSwing, float& OutRecover) const;
+	virtual void GetCurrentEases(float& OutWindup, float& OutSwing, float& OutRecover) const;
 
 private:
 

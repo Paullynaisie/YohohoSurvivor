@@ -133,9 +133,6 @@ protected:
 
 private:
 
-	/** Sol de l'île (Landscape, props ignorés) sous Point, hors de l'eau ; faux sinon */
-	bool FindIslandGround(const FVector& Point, float ReferenceZ, FVector& OutGround) const;
-
 	/** Fait partir la bombe vers Landing (serveur) */
 	void ReleaseBomb(FVector Landing);
 

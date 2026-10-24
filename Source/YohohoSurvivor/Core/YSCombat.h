@@ -2,7 +2,10 @@
 
 #include "CoreMinimal.h"
 
+class ACharacter;
+class AActor;
 class UPrimitiveComponent;
+class UWorld;
 
 /**
  *  Collisions de combat (requêtes uniquement, aucun blocage : le mouvement reste géré par la capsule) :
@@ -28,4 +31,13 @@ namespace YSCombat
 	 *  deux points, gravité déduite (bombes lancées, bump des NME). Calcul identique sur toutes les machines.
 	 */
 	FVector GetBellLocation(const FVector& Start, const FVector& Target, float Duration, float ApexHeight, float Time);
+
+	/** Sol de l'île (Landscape seul : les props touchés sont traversés) sous Point, hors de l'eau ; faux sinon */
+	bool FindIslandGround(const UWorld* World, const FVector& Point, float ReferenceZ, const AActor* IgnoredActor, FVector& OutGround);
+
+	/**
+	 *  Point d'arrivée d'un lancer / saut de Character vers TargetLocation (BombThrower, MeteorJump) : ramené à MaxDistance,
+	 *  puis on recule vers le personnage par pas de RetreatStep jusqu'à un sol de l'île hors de l'eau ; aucun = sous ses pieds.
+	 */
+	FVector FindLandingPoint(const ACharacter* Character, const FVector& TargetLocation, float MaxDistance, float RetreatStep);
 }

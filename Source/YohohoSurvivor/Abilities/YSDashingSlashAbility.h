@@ -78,16 +78,16 @@ public:
 	virtual bool IsAutomatic() const override { return false; }
 
 	/** Pas en arrière + dash, puis la recharge (CD reduction : seulement la recharge) */
-	virtual float GetCooldownDuration() const override { return StepBackDuration + DashDuration + Cooldown * GetCooldownMultiplier(); }
+	virtual float GetCooldownDuration() const override { return StepBackDuration + GetDashPhaseDuration() + Cooldown * GetCooldownMultiplier(); }
 
 	virtual float GetBaseCooldown() const override { return Cooldown; }
 
 	/** Priorités : en cours pendant le pas en arrière, puis le dash et l'animation de coupe */
-	virtual float GetActionDuration() const override { return FMath::Max(StepBackDuration + DashDuration, GetAttackDuration()); }
+	virtual float GetActionDuration() const override { return FMath::Max(StepBackDuration + GetDashPhaseDuration(), GetAttackDuration()); }
 
 	/** Animation calée sur le mouvement : préparation pendant le pas en arrière, coupe pendant le dash (Windup / Swing Duration ignorés) */
 	virtual float GetWindupTime() const override { return StepBackDuration; }
-	virtual float GetSwingTime() const override { return DashDuration; }
+	virtual float GetSwingTime() const override { return GetDashPhaseDuration(); }
 
 	virtual bool BlocksAllWeapons() const override { return true; }
 
@@ -114,7 +114,8 @@ protected:
 
 	virtual void OnActionCancelled() override;
 
-private:
+	/** Durée de la 2e phase (dash ; MeteorJump : le saut) */
+	virtual float GetDashPhaseDuration() const { return DashDuration; }
 
 	/** Cette épée pilote le mouvement (une seule fois en akimbo : la main principale) */
 	bool IsMovementDriver() const;
@@ -122,23 +123,28 @@ private:
 	/** En cours : 0 pas en arrière, 1 dash, -1 hors enchaînement (machine qui pilote le mouvement seulement) */
 	int32 GetPhase(float& OutAlpha) const;
 
-	/** Direction du curseur au moment du clic, à plat */
-	void LockDirection(const FVector& TargetLocation);
+	/** Direction du curseur au moment du clic, à plat (MeteorJump : et le point d'arrivée du saut) */
+	virtual void LockDirection(const FVector& TargetLocation);
 
-	/** Élan immédiat dans la direction de la phase (vitesse de base x multiplicateur de départ) */
-	void ApplyPhaseKick(int32 Phase);
+	/** Élan immédiat dans la direction de la phase (vitesse de base x multiplicateur de départ ; MeteorJump : le saut) */
+	virtual void ApplyPhaseKick(int32 Phase);
+
+	/** Le personnage traverse les pawns pendant cette phase (Dashing Slash : le dash, si Dash Through Foes) */
+	virtual bool PassesThroughPawns(int32 Phase) const { return Phase == 1 && bDashThroughFoes; }
 
 	/** Collisions avec les pawns ignorées pendant le dash, puis rétablies */
 	void SetPassThroughPawns(bool bPassThrough);
+
+	/** Direction figée (vers le curseur au clic) */
+	FVector LockedDirection = FVector::ForwardVector;
+
+private:
 
 	/** Démarre l'autre épée en même temps (serveur) */
 	void StartPartner();
 
 	/** En akimbo : le Dashing Slash de l'autre main si celle-ci est la principale */
 	UYSDashingSlashAbility* GetDashPartner() const;
-
-	/** Direction figée (vers le curseur au clic) */
-	FVector LockedDirection = FVector::ForwardVector;
 
 	/** Élan du dash déjà donné / traversée des pawns active (machine qui pilote le mouvement) */
 	bool bDashKickApplied = false;

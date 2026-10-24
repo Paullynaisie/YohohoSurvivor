@@ -53,12 +53,53 @@ void UYSDanglingChainComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// bouts : composants placés en coordonnées absolues (la simulation les place, ils ne suivent plus leur parent)
+	EndAnchor = FindSiblingComponent(EndAnchorComponentName);
+	EndAttached.Reset();
+	for (const FName Name : EndAttachedComponentNames)
+	{
+		if (USceneComponent* Component = FindSiblingComponent(Name))
+		{
+			Component->SetUsingAbsoluteLocation(true);
+			Component->SetUsingAbsoluteRotation(true);
+			EndAttached.Add(Component);
+		}
+	}
+
 	// l'acteur est maintenant à sa position de départ : on repart d'une chaîne au repos
 	if (Segments.Num() > 0)
 	{
 		ResetPoints();
 		UpdateSegmentTransforms();
 	}
+}
+
+USceneComponent* UYSDanglingChainComponent::FindSiblingComponent(FName Name) const
+{
+	if (Name.IsNone() || !GetOwner())
+	{
+		return nullptr;
+	}
+	const FString Wanted = Name.ToString().Replace(TEXT(" "), TEXT(""));
+	TInlineComponentArray<USceneComponent*> Components(GetOwner());
+	for (USceneComponent* Component : Components)
+	{
+		if (Component != this && Component->GetName().Replace(TEXT(" "), TEXT("")) == Wanted)
+		{
+			return Component;
+		}
+	}
+	return nullptr;
+}
+
+float UYSDanglingChainComponent::GetInverseMass(int32 Index) const
+{
+	const bool bLast = Index == Points.Num() - 1;
+	if (Index == 0 || (bLast && EndAnchor.IsValid()))
+	{
+		return 0.0f;
+	}
+	return bLast ? 1.0f / FMath::Max(EndMass, 0.1f) : 1.0f;
 }
 
 void UYSDanglingChainComponent::OnUpdateTransform(EUpdateTransformFlags UpdateTransformFlags, ETeleportType Teleport)
@@ -130,9 +171,26 @@ void UYSDanglingChainComponent::ResetPoints()
 	const FVector RestDirection = TrailAcceleration > 0.0f ? (GetTrailDirection() - FVector::UpVector).GetSafeNormal() : -FVector::UpVector;
 
 	Points.SetNum(SegmentCount + 1);
-	for (int32 Index = 0; Index < Points.Num(); ++Index)
+	const USceneComponent* EndComponent = EndAnchor.IsValid() ? EndAnchor.Get() : FindSiblingComponent(EndAnchorComponentName);
+	if (EndComponent)
 	{
-		Points[Index] = Anchor + RestDirection * SegmentLength * Index;
+		// accrochée aux deux bouts : ligne entre les deux, creusée vers le bas par la longueur en trop
+		const FVector End = EndComponent->GetComponentLocation();
+		const float Span = FVector::Dist(Anchor, End);
+		const float Length = SegmentLength * SegmentCount;
+		const float Sag = Length > Span ? 0.5f * FMath::Sqrt(FMath::Square(Length) - FMath::Square(Span)) : 0.0f;
+		for (int32 Index = 0; Index < Points.Num(); ++Index)
+		{
+			const float Alpha = static_cast<float>(Index) / SegmentCount;
+			Points[Index] = FMath::Lerp(Anchor, End, Alpha) - FVector::UpVector * Sag * FMath::Sin(PI * Alpha);
+		}
+	}
+	else
+	{
+		for (int32 Index = 0; Index < Points.Num(); ++Index)
+		{
+			Points[Index] = Anchor + RestDirection * SegmentLength * Index;
+		}
 	}
 	PreviousPoints = Points;
 }
@@ -177,33 +235,68 @@ void UYSDanglingChainComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 		PreviousPoints[Index] = Points[Index];
 		Points[Index] += Velocity + Acceleration * Step * Step;
 	}
+	// dernier point accroché (corde entre deux points)
+	if (const USceneComponent* EndComponent = EndAnchor.Get())
+	{
+		Points.Last() = EndComponent->GetComponentLocation();
+		PreviousPoints.Last() = Points.Last();
+	}
 
-	// contraintes : chaque segment garde sa longueur, le premier point reste accroché
+	// contraintes : chaque segment garde sa longueur, les points accrochés ne bougent pas, un bout lourd bouge moins
 	for (int32 Iteration = 0; Iteration < SolverIterations; ++Iteration)
 	{
 		for (int32 Index = 1; Index < Points.Num(); ++Index)
 		{
 			const FVector Delta = Points[Index] - Points[Index - 1];
 			const float Length = Delta.Size();
-			if (Length <= KINDA_SMALL_NUMBER)
+			const float PreviousWeight = GetInverseMass(Index - 1);
+			const float Weight = GetInverseMass(Index);
+			if (Length <= KINDA_SMALL_NUMBER || PreviousWeight + Weight <= 0.0f)
 			{
 				continue;
 			}
 
 			const FVector Correction = Delta * ((Length - SegmentLength) / Length);
-			if (Index == 1)
-			{
-				Points[Index] -= Correction;
-			}
-			else
-			{
-				Points[Index - 1] += Correction * 0.5f;
-				Points[Index] -= Correction * 0.5f;
-			}
+			Points[Index - 1] += Correction * (PreviousWeight / (PreviousWeight + Weight));
+			Points[Index] -= Correction * (Weight / (PreviousWeight + Weight));
+		}
+	}
+
+	// bout libre posé sur le sol au lieu de passer dessous (boulet), avec un peu de frottement
+	if (EndGroundRadius > 0.0f && !EndAnchor.IsValid())
+	{
+		FVector& End = Points.Last();
+		FHitResult Hit;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(YSChainGround), false, GetOwner());
+		Params.AddIgnoredActor(GetOwner()->GetOwner());
+		if (GetWorld()->LineTraceSingleByObjectType(Hit, End + FVector(0.0f, 0.0f, 200.0f), End - FVector(0.0f, 0.0f, EndGroundRadius), FCollisionObjectQueryParams(ECC_WorldStatic), Params)
+			&& End.Z < Hit.ImpactPoint.Z + EndGroundRadius)
+		{
+			End.Z = Hit.ImpactPoint.Z + EndGroundRadius;
+			FVector& Previous = PreviousPoints.Last();
+			Previous.Z = End.Z;
+			const float Keep = FMath::Pow(1.0f - EndGroundFriction, Step * 60.0f);
+			Previous = End - (End - Previous) * Keep;
 		}
 	}
 
 	UpdateSegmentTransforms();
+
+	// composants au bout (boulet, hitbox), orientés selon le dernier segment
+	if (EndAttached.Num() > 0)
+	{
+		const FVector Axis = (Points.Last() - Points[Points.Num() - 2]).GetSafeNormal();
+		const FQuat Rotation = Axis.IsNearlyZero() ? FQuat::Identity : FRotationMatrix::MakeFromZ(Axis).ToQuat();
+		for (const TWeakObjectPtr<USceneComponent>& Component : EndAttached)
+		{
+			if (Component.IsValid())
+			{
+				Component->SetWorldLocationAndRotation(Points.Last(), Rotation);
+			}
+		}
+		UE_LOG(LogTemp, VeryVerbose, TEXT("[YSChain] %s.%s : bout à %.0f cm de l'accroche (%.0f à plat), %.0f cm au-dessus, vitesse %.0f"), *GetOwner()->GetName(), *GetName(),
+			FVector::Dist(Points.Last(), Anchor), FVector::Dist2D(Points.Last(), Anchor), Points.Last().Z - Anchor.Z, FVector::Dist(Points.Last(), PreviousPoints.Last()) / Step);
+	}
 }
 
 void UYSDanglingChainComponent::UpdateSegmentTransforms()

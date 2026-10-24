@@ -65,6 +65,32 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Physics", meta=(ClampMin="1", ClampMax="16"))
 	int32 SolverIterations = 4;
 
+	/**
+	 *  Le dernier point est accroché à ce composant du même acteur (nom de variable du Blueprint) : corde tendue entre deux points
+	 *  qui pend entre eux (ex. MorningStar : chaîne entre les deux mains, vers l'Off Hand Socket). Vide = bout libre.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Ends")
+	FName EndAnchorComponentName;
+
+	/** Masse du dernier point (bout libre) par rapport à un point de la chaîne : boulet lourd = la chaîne le tire moins */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Ends", meta=(ClampMin="0.1"))
+	float EndMass = 1.0f;
+
+	/** Le bout libre ne passe pas sous le sol (WorldStatic) : rayon du boulet (0 = pas de collision avec le sol) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Ends", meta=(ClampMin="0", Units="Centimeters"))
+	float EndGroundRadius = 0.0f;
+
+	/** Frottement du bout sur le sol (part de sa vitesse horizontale perdue par image à 60 fps) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Ends", meta=(ClampMin="0", ClampMax="1"))
+	float EndGroundFriction = 0.15f;
+
+	/**
+	 *  Composants du même acteur placés au bout de la chaîne à chaque image, en jeu (noms de variable du Blueprint), orientés selon
+	 *  le dernier segment ; ex. MorningStar : le boulet et la Hitbox de l'arme. Dans l'éditeur, ils restent où le Blueprint les place.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Chain|Ends")
+	TArray<FName> EndAttachedComponentNames;
+
 public:
 
 	UYSDanglingChainComponent();
@@ -97,6 +123,18 @@ private:
 
 	/** Direction « arrière » du personnage, à plat */
 	FVector GetTrailDirection() const;
+
+	/** Composant du même acteur par nom de variable (espaces ignorés) */
+	USceneComponent* FindSiblingComponent(FName Name) const;
+
+	/** Inverse de la masse d'un point (0 = accroché) */
+	float GetInverseMass(int32 Index) const;
+
+	/** Composant où est accroché le dernier point (nullptr = bout libre) */
+	TWeakObjectPtr<USceneComponent> EndAnchor;
+
+	/** Composants placés au bout de la chaîne (en jeu) */
+	TArray<TWeakObjectPtr<USceneComponent>> EndAttached;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> Segments;
