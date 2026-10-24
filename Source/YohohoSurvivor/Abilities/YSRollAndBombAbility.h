@@ -42,6 +42,9 @@ public:
 
 	virtual float GetBaseDamage() const override { return BombDamage; }
 
+	/** CD reduction x Mine Cooldown Multiplier de l'upgrade « Une Mine ! » */
+	virtual float GetCooldownMultiplier() const override;
+
 	/** Roulade (+ pause éventuelle), puis la recharge (CD reduction : seulement la recharge) */
 	virtual float GetCooldownDuration() const override { return RollDuration + AimDuration + Cooldown * GetCooldownMultiplier(); }
 

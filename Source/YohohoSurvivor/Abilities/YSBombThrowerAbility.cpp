@@ -191,12 +191,21 @@ void UYSBombThrowerAbility::ReleaseBomb(FVector Landing)
 		AYSPlayerBomb* Bomb = GetWorld()->SpawnActorDeferred<AYSPlayerBomb>(SpawnClass, SpawnTransform, Holder, Holder, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 		if (Bomb)
 		{
-			Bomb->SetDamage(BombDamage * GetDamageMultiplier());
+			// mine : x Mine Damage Multiplier de l'upgrade
+			const float BombHitDamage = BombDamage * GetDamageMultiplier() * (bMine ? GetWeaponStat(UYSMineUpgrade::MineDamageStat, 1.0f) : 1.0f);
+			Bomb->SetDamage(BombHitDamage);
 			Bomb->SetExtraPushback(bMine ? GetWeaponStat(UYSMineUpgrade::MinePushbackStat, 0.0f) : 0.0f);
 			Bomb->SetThrow(Start, Target, FlightDuration, ApexHeight);
 			Bomb->FinishSpawning(SpawnTransform);
 			UE_LOG(LogTemp, Verbose, TEXT("[YSBombThrower] %s lance %s vers (%.0f, %.0f, %.0f), %.0f cm du joueur : %.0f dégâts"), *GetOwner()->GetName(),
-				*Bomb->GetName(), Target.X, Target.Y, Target.Z, FVector::Dist2D(Target, Holder->GetActorLocation()), BombDamage * GetDamageMultiplier());
+				*Bomb->GetName(), Target.X, Target.Y, Target.Z, FVector::Dist2D(Target, Holder->GetActorLocation()), BombHitDamage);
 		}
 	}
+}
+
+float UYSBombThrowerAbility::GetCooldownMultiplier() const
+{
+	// « Une Mine ! » : recharge x Mine Cooldown Multiplier
+	const bool bMine = MineClass && GetWeaponStat(UYSMineUpgrade::MineStat, 0.0f) > 0.0f;
+	return Super::GetCooldownMultiplier() * (bMine ? GetWeaponStat(UYSMineUpgrade::MineCooldownStat, 1.0f) : 1.0f);
 }

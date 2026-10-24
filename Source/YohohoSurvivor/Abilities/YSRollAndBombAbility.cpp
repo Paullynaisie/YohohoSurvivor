@@ -63,12 +63,21 @@ void UYSRollAndBombAbility::DropBomb()
 	AYSPlayerBomb* Bomb = GetWorld()->SpawnActorDeferred<AYSPlayerBomb>(SpawnClass, SpawnTransform, Character, Character, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (Bomb)
 	{
-		Bomb->SetDamage(BombDamage * GetDamageMultiplier());
+		// mine : x Mine Damage Multiplier de l'upgrade
+		const float BombHitDamage = BombDamage * GetDamageMultiplier() * (bMine ? GetWeaponStat(UYSMineUpgrade::MineDamageStat, 1.0f) : 1.0f);
+		Bomb->SetDamage(BombHitDamage);
 		Bomb->SetExtraPushback(bMine ? GetWeaponStat(UYSMineUpgrade::MinePushbackStat, 0.0f) : 0.0f);
 		Bomb->FinishSpawning(SpawnTransform);
 		UE_LOG(LogTemp, Verbose, TEXT("[YSRollAndBomb] %s pose %s en (%.0f, %.0f, %.0f) : %.0f dégâts"), *GetOwner()->GetName(), *Bomb->GetName(),
-			Location.X, Location.Y, Location.Z, BombDamage * GetDamageMultiplier());
+			Location.X, Location.Y, Location.Z, BombHitDamage);
 	}
+}
+
+float UYSRollAndBombAbility::GetCooldownMultiplier() const
+{
+	// « Une Mine ! » : recharge x Mine Cooldown Multiplier
+	const bool bMine = MineClass && GetWeaponStat(UYSMineUpgrade::MineStat, 0.0f) > 0.0f;
+	return Super::GetCooldownMultiplier() * (bMine ? GetWeaponStat(UYSMineUpgrade::MineCooldownStat, 1.0f) : 1.0f);
 }
 
 void UYSRollAndBombAbility::EndPlay(const EEndPlayReason::Type EndPlayReason)

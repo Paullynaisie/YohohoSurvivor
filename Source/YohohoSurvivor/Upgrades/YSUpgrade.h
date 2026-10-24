@@ -912,6 +912,7 @@ protected:
  *  DA_Upgrade_MineThrower (BombThrower : Sniper), progression convertie au changement de set.
  *  Bonus « Mine repulsante » : + Silver / Gold Value de pushback (additif) en plus du pushback naturel des NME touchés ;
  *  Super « Golden Mine » : mines par 2 (roulade : la 2e au point d'arrivée ; lancer : la 2e entre le joueur et la 1re).
+ *  Dès le Déblocage : dégâts des mines x Mine Damage Multiplier, recharge de l'Ability x Mine Cooldown Multiplier.
  */
 UCLASS(meta=(DisplayName="Upgrade d'arme : Une Mine !"))
 class UYSMineUpgrade : public UYSWeaponUpgrade
@@ -926,6 +927,16 @@ public:
 	static const FName MineStat;
 	static const FName MinePushbackStat;
 	static const FName MineDoubleStat;
+	static const FName MineDamageStat;
+	static const FName MineCooldownStat;
+
+	/** Déblocage : multiplicateur des dégâts des mines (en plus du Damage bonus de l'Ability) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Mine", meta=(ClampMin="0"))
+	float MineDamageMultiplier = 2.0f;
+
+	/** Déblocage : multiplicateur de la recharge de l'Ability (Cooldown, en plus de la CD reduction ; pas la roulade) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Mine", meta=(ClampMin="0.01"))
+	float MineCooldownMultiplier = 0.5f;
 
 protected:
 

@@ -112,6 +112,9 @@ public:
 
 	virtual float GetBaseDamage() const override { return BombDamage; }
 
+	/** CD reduction x Mine Cooldown Multiplier de l'upgrade « Une Mine ! » */
+	virtual float GetCooldownMultiplier() const override;
+
 	/** Préparation + lancer : les actions moins prioritaires (Auto shot) attendent le lâcher */
 	virtual float GetActionDuration() const override { return bPlayThrowAnim ? ThrowWindupDuration + ThrowDuration : 0.0f; }
 
