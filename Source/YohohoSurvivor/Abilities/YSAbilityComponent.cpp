@@ -429,6 +429,18 @@ void UYSAbilityComponent::ResetCooldown()
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s recharge rendue à %.2f"), *GetOwner()->GetName(), *GetName(), GetServerTime());
 }
 
+void UYSAbilityComponent::ReduceCooldown(float Seconds)
+{
+	const float Now = GetServerTime();
+	if (Seconds <= 0.0f || ReadyServerTime <= Now)
+	{
+		return;
+	}
+	ReadyServerTime = FMath::Max(Now, ReadyServerTime - Seconds);
+	GetOwner()->ForceNetUpdate();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s recharge -%.2f s : prête à %.2f"), *GetOwner()->GetName(), *GetName(), Seconds, ReadyServerTime);
+}
+
 void UYSAbilityComponent::MulticastCancelled_Implementation()
 {
 	LastActivationTime = -1.0e6;

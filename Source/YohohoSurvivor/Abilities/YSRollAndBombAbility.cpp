@@ -72,6 +72,7 @@ void UYSRollAndBombAbility::DropBomb()
 		const float BombHitDamage = BombDamage * GetDamageMultiplier() * (bMine ? GetWeaponStat(UYSMineUpgrade::MineDamageStat, 1.0f) : 1.0f);
 		Bomb->SetDamage(BombHitDamage);
 		Bomb->SetExtraPushback(bMine ? GetWeaponStat(UYSMineUpgrade::MinePushbackStat, 0.0f) : 0.0f);
+		Bomb->SetRadiusMultiplier(bMine ? 1.0f + GetWeaponStat(UYSMineUpgrade::MineRadiusStat, 0.0f) : 1.0f);
 		Bomb->FinishSpawning(SpawnTransform);
 		UE_LOG(LogTemp, Verbose, TEXT("[YSRollAndBomb] %s pose %s en (%.0f, %.0f, %.0f) : %.0f dégâts"), *GetOwner()->GetName(), *Bomb->GetName(),
 			Location.X, Location.Y, Location.Z, BombHitDamage);

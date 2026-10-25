@@ -242,6 +242,7 @@ void UYSBombThrowerAbility::ReleaseBomb(FVector Landing, TArray<FVector> ExtraLa
 			const float BombHitDamage = BombDamage * GetDamageMultiplier() * (bMine ? GetWeaponStat(UYSMineUpgrade::MineDamageStat, 1.0f) : 1.0f);
 			Bomb->SetDamage(BombHitDamage);
 			Bomb->SetExtraPushback(bMine ? GetWeaponStat(UYSMineUpgrade::MinePushbackStat, 0.0f) : 0.0f);
+			Bomb->SetRadiusMultiplier(bMine ? 1.0f + GetWeaponStat(UYSMineUpgrade::MineRadiusStat, 0.0f) : 1.0f);
 			Bomb->SetThrow(Start, Target, FlightDuration, ApexHeight);
 			Bomb->FinishSpawning(SpawnTransform);
 			UE_LOG(LogTemp, Verbose, TEXT("[YSBombThrower] %s lance %s vers (%.0f, %.0f, %.0f), %.0f cm du joueur : %.0f dégâts"), *GetOwner()->GetName(),

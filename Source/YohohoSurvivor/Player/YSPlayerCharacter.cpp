@@ -639,6 +639,12 @@ void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 	// la partie est en pause pendant les choix : sans ça, la progression n'est pas renvoyée aux clients
 	ForceNetUpdate();
 	Upgrade->Apply(this, Offer.Variant, *Progress);
+
+	// upgrade d'arme du système de shards : shards en plus (Gold / Mythique)
+	for (const TObjectPtr<UYSUpShard>& Shard : Offer.Shards)
+	{
+		AddShardLevels(Shard, 1);
+	}
 }
 
 float AYSPlayerCharacter::GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const
@@ -1347,6 +1353,42 @@ float AYSPlayerCharacter::GetWeaponStat(const AYSWeapon* Weapon, FName Stat, flo
 {
 	const float* Value = Weapon && GetHeldWeapons().Contains(Weapon) ? WeaponStats.Find(Stat) : nullptr;
 	return Value ? *Value : Default;
+}
+
+float AYSPlayerCharacter::GetMarkStat(const AActor* Target, FName Stat)
+{
+	float Best = 0.0f;
+	UWorld* World = Target ? Target->GetWorld() : nullptr;
+	for (TActorIterator<AYSPlayerCharacter> It(World); It && World; ++It)
+	{
+		if (It->MarkedFoe && It->MarkedFoe == Target)
+		{
+			Best = FMath::Max(Best, It->GetCharacterWeaponStat(Stat, 0.0f));
+		}
+	}
+	return Best;
+}
+
+bool AYSPlayerCharacter::HasForcedCriticalAgainst(const AActor* Target) const
+{
+	// Marquage Critique : tous les joueurs font des critiques sur le NME marqué par un Captain qui l'a débloqué
+	return GetMarkStat(Target, UYSMarkCriticalUpgrade::MarkCriticalStat) > 0.0f;
+}
+
+void AYSPlayerCharacter::ReduceAbilityCooldown(float Seconds)
+{
+	if (!HasAuthority() || Seconds <= 0.0f)
+	{
+		return;
+	}
+	for (const AYSWeapon* Weapon : GetHeldWeapons())
+	{
+		UYSAbilityComponent* Action = Weapon->GetActiveAction();
+		if (Action && Action->GetActionSlot() == EYSActionSlot::Ability)
+		{
+			Action->ReduceCooldown(Seconds);
+		}
+	}
 }
 
 void AYSPlayerCharacter::UpdateDayNight(float DeltaSeconds)

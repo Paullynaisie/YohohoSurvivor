@@ -31,6 +31,7 @@
 #include "Map/YSGroundZoneComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Enemies/YSFoeRangedAction.h"
+#include "Upgrades/YSUpgrade.h"
 
 namespace YSFoe
 {
@@ -419,11 +420,24 @@ void AYSFoeCharacter::UpdateHealthBar()
 
 float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-	// dégâts toujours entiers (arrondis à l'entier le plus proche)
-	const float Damage = FMath::RoundToFloat(Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser));
+	// Marquage Critique ++ : le NME marqué subit plus de dégâts (toutes les sources) ; dégâts toujours entiers (arrondis à l'entier le plus proche)
+	const float MarkMultiplier = HasAuthority() ? 1.0f + AYSPlayerCharacter::GetMarkStat(this, UYSMarkCriticalUpgrade::MarkDamageBonusStat) : 1.0f;
+	const float Damage = FMath::RoundToFloat(Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser) * MarkMultiplier);
 	if (!HasAuthority() || Health <= 0.0f || Damage <= 0.0f)
 	{
 		return 0.0f;
+	}
+
+	// Golden Marquage : chaque coup d'un joueur (pas d'un minion : sans PlayerState) sur le NME marqué raccourcit la recharge de son Ability
+	const float CooldownRefund = AYSPlayerCharacter::GetMarkStat(this, UYSMarkCriticalUpgrade::MarkCooldownRefundStat);
+	AYSPlayerCharacter* Attacker = EventInstigator ? Cast<AYSPlayerCharacter>(EventInstigator->GetPawn()) : nullptr;
+	if (CooldownRefund > 0.0f && Attacker && Attacker->GetPlayerState())
+	{
+		Attacker->ReduceAbilityCooldown(CooldownRefund);
+	}
+	if (MarkMultiplier > 1.0f)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSMark] %s marqué : dégâts x%.2f -> %.0f"), *GetName(), MarkMultiplier, Damage);
 	}
 
 	Health = FMath::Max(0.0f, Health - Damage);

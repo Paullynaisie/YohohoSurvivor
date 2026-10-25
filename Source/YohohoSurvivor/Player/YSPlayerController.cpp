@@ -1060,6 +1060,8 @@ void AYSPlayerController::UpdateUpgradeMenu()
 			else if (Upgrade)
 			{
 				Upgrade->GetOfferCard(PlayerCharacter, Offer.Variant, PlayerCharacter->GetUpgradeProgress(Offer.PoolIndex, Offer.Variant), Offer.Rarity, Card);
+				// upgrade d'arme du système de shards : shards en plus (Gold / Mythique)
+				YSShardUpgrades::AddShardCardLines(PlayerCharacter, Offer.Shards, Card);
 			}
 			else
 			{

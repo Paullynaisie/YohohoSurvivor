@@ -214,6 +214,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
 	FLinearColor GoldColor = FLinearColor(1.0f, 0.8f, 0.1f);
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Rarity")
+	FLinearColor MythicColor = FLinearColor(0.85f, 0.2f, 1.0f);
+
 	/** Upgrade requise : celle-ci n'est proposée que si le joueur a déjà l'autre (ex. Atk speed / Shoot system après Atk critique) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Requirements")
 	TObjectPtr<UYSUpgrade> RequiredUpgrade;
@@ -783,6 +786,27 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
 	float SuperWeight = 10.0f;
 
+	/**
+	 *  Système de shards : proposée avec les DA_Up_Stats (pool du personnage) ; Déblocage et Bonus en Silver, Gold ou Mythique,
+	 *  Super en Gold seulement ; chaque Bonus vaut Bonus Gold Value quelle que soit sa rareté (Max Bonus Stacks : 5)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Shards")
+	bool bShardSystem = false;
+
+	/** Shards données en plus par le Déblocage : Gold = la première, Mythique = les deux */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Shards", meta=(EditFixedSize, EditCondition="bShardSystem"))
+	TArray<TObjectPtr<UYSUpShard>> UnlockShards;
+
+	/** Shards données en plus par le Bonus : Gold = la première, Mythique = les deux */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Shards", meta=(EditFixedSize, EditCondition="bShardSystem"))
+	TArray<TObjectPtr<UYSUpShard>> BonusShards;
+
+	/** Shards d'un palier (système de shards) : Déblocage / Bonus, rien pour le Super */
+	const TArray<TObjectPtr<UYSUpShard>>& GetTierShards(int32 Variant) const;
+
+	/** Nombre de shards du palier données dans cette rareté (Gold 1, Mythique 2) */
+	static int32 GetShardCount(EYSUpgradeRarity Rarity);
+
 	/** Une arme tenue a l'action requise (jumelle : Upgrade > Twin Upgrade, conversion palier par palier) */
 	virtual bool IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const override { return GetRequiredActions(Character).Num() > 0; }
 
@@ -829,8 +853,8 @@ protected:
 
 /**
  *  Ricochet (Coup d'Petoir) : la balle repart vers le NME le plus proche pas encore touché après chaque dégât.
- *  Déblocage : UnlockRicochets ricochet(s) ; Bonus « Ricochet bonus » : dégâts x (1 + somme) après chaque ricochet ;
- *  Super « Golden ricochet » : SuperExtraRicochets ricochet(s) de plus.
+ *  Déblocage : UnlockRicochets ricochet(s) ; Bonus « Ricochet ++ » : + Bonus Value ricochet(s) chacun (somme arrondie à l'entier
+ *  inférieur) ; Super « Golden ricochet » : dégâts x (1 + SuperDamageBonus) à chaque ricochet (cumulatif) et SuperExtraRicochets en plus.
  */
 UCLASS(meta=(DisplayName="Upgrade d'arme : Ricochet"))
 class UYSRicochetUpgrade : public UYSWeaponUpgrade
@@ -847,7 +871,11 @@ public:
 
 	/** Ricochets ajoutés par le Golden ricochet */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
-	int32 SuperExtraRicochets = 1;
+	int32 SuperExtraRicochets = 0;
+
+	/** Golden ricochet : dégâts en plus à chaque ricochet (0.25 = x1.25, cumulatif : 100 -> 125 -> 156) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
+	float SuperDamageBonus = 0.25f;
 
 	/** Noms des propriétés d'arme posées sur le personnage (lues par le Coup d'Petoir) */
 	static const FName RicochetCountStat;
@@ -855,8 +883,8 @@ public:
 
 protected:
 
-	/** Dégâts de base du Coup d'Petoir */
-	virtual float GetBonusBaseValue(const AYSPlayerCharacter* Character) const override;
+	/** Nombre de ricochets */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override;
 
 	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
 };
@@ -934,7 +962,7 @@ protected:
  *  mine, rayon / 1.5, en cube) qui s'arme au lieu d'exploser puis explose quand un NME entre dans son rayon.
  *  Deux assets jumeaux (comme Ricochet / Bloodlust) : DA_Upgrade_Mine (Roll and Bomb : Bomb, Shotgun) et
  *  DA_Upgrade_MineThrower (BombThrower : Sniper), progression convertie au changement de set.
- *  Bonus « Mine repulsante » : + Silver / Gold Value de pushback (additif) en plus du pushback naturel des NME touchés ;
+ *  Bonus « Une Mine ! ++ » : rayon d'explosion des mines x (1 + somme des Bonus Value) (additif : 0.2 = +20 % par bonus) ;
  *  Super « Golden Mine » : mines par 2 (roulade : la 2e au point d'arrivée ; lancer : la 2e entre le joueur et la 1re).
  *  Dès le Déblocage : dégâts des mines x Mine Damage Multiplier, recharge de l'Ability x Mine Cooldown Multiplier.
  */
@@ -953,6 +981,7 @@ public:
 	static const FName MineDoubleStat;
 	static const FName MineDamageStat;
 	static const FName MineCooldownStat;
+	static const FName MineRadiusStat;
 
 	/** Déblocage : multiplicateur des dégâts des mines (en plus du Damage bonus de l'Ability) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Mine", meta=(ClampMin="0"))
@@ -970,8 +999,8 @@ public:
 
 protected:
 
-	/** Pushback ajouté par les mines (somme des bonus) */
-	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal; }
+	/** Rayon d'explosion des mines en plus (%) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal * 100.0f; }
 
 	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
 };
@@ -1021,7 +1050,11 @@ protected:
 	/** Longueur de la chaîne en plus (somme) pour les bonus déjà obtenus */
 	float GetLengthTotal(const FYSUpgradeProgress& BonusProgress) const;
 
-	float GetLengthValue(EYSUpgradeRarity Rarity) const { return Rarity == EYSUpgradeRarity::Gold ? BonusLengthGoldValue : Rarity == EYSUpgradeRarity::Silver ? BonusLengthSilverValue : 0.0f; }
+	/** Système de shards : valeur fixe = Length Gold Value */
+	float GetLengthValue(EYSUpgradeRarity Rarity) const
+	{
+		return bShardSystem || Rarity == EYSUpgradeRarity::Gold ? BonusLengthGoldValue : Rarity == EYSUpgradeRarity::Silver ? BonusLengthSilverValue : 0.0f;
+	}
 
 	/** Taille du boulet en plus (%) */
 	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal * 100.0f; }
@@ -1052,6 +1085,38 @@ public:
 protected:
 
 	/** Bonus de dégâts des actions forcées (%) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal * 100.0f; }
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+};
+
+/**
+ *  « Marquage Critique » (Captain et Corsaire : Summon the crew ; jumeau de You're all my minions) :
+ *  Déblocage : tous les joueurs font des coups critiques sur le NME marqué par ce Captain ;
+ *  Bonus « Marquage Critique ++ » : le NME marqué subit + Bonus Value de dégâts par bonus (additif : 0.1 = +10 %), de toutes les sources ;
+ *  Super « Golden Marquage » : chaque coup d'un joueur sur le NME marqué réduit de SuperCooldownRefund la recharge de son Ability.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : Marquage Critique"))
+class UYSMarkCriticalUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSMarkCriticalUpgrade();
+
+	/** Golden Marquage : secondes de recharge d'Ability retirées par coup sur le NME marqué */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0", Units="Seconds"))
+	float SuperCooldownRefund = 1.0f;
+
+	/** Noms des propriétés d'arme posées sur le Captain (lues par les coups des joueurs et les dégâts des NME) */
+	static const FName MarkCriticalStat;
+	static const FName MarkDamageBonusStat;
+	static const FName MarkCooldownRefundStat;
+
+protected:
+
+	/** Dégâts subis en plus par le NME marqué (%) */
 	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal * 100.0f; }
 
 	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;

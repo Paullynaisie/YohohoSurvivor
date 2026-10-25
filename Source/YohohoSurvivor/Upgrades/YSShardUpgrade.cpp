@@ -313,6 +313,11 @@ void UYSUpStats::GetOfferCard(const AYSPlayerCharacter* Character, const FYSUpgr
 	OutCard.Color = GetRarityColor(Offer.Rarity);
 	OutCard.Icon = Icon;
 	OutCard.Description = Description;
+	YSShardUpgrades::AddShardCardLines(Character, Offer.Shards, OutCard);
+}
+
+void YSShardUpgrades::AddShardCardLines(const AYSPlayerCharacter* Character, const TArray<TObjectPtr<UYSUpShard>>& Shards, FYSUpgradeCard& OutCard)
+{
 	if (!Character)
 	{
 		return;
@@ -320,7 +325,7 @@ void UYSUpStats::GetOfferCard(const AYSPlayerCharacter* Character, const FYSUpgr
 
 	// chaque shard donnée (une fois par shard, même si elle est donnée plusieurs fois) : niveau atteint et valeur concrète
 	TArray<const UYSUpShard*> Distinct;
-	for (const TObjectPtr<UYSUpShard>& Shard : Offer.Shards)
+	for (const TObjectPtr<UYSUpShard>& Shard : Shards)
 	{
 		if (Shard)
 		{
@@ -329,7 +334,7 @@ void UYSUpStats::GetOfferCard(const AYSPlayerCharacter* Character, const FYSUpgr
 	}
 	for (const UYSUpShard* Shard : Distinct)
 	{
-		const int32 Given = Offer.Shards.FilterByPredicate([Shard](const TObjectPtr<UYSUpShard>& Other) { return Other == Shard; }).Num();
+		const int32 Given = Shards.FilterByPredicate([Shard](const TObjectPtr<UYSUpShard>& Other) { return Other == Shard; }).Num();
 		const int32 OldLevel = Character->GetShardLevel(Shard);
 		const int32 NewLevel = FMath::Min(Shard->MaxLevel, OldLevel + Given);
 		const FText ShardName = Shard->DisplayName.IsEmpty() ? FText::FromString(Shard->GetName()) : Shard->DisplayName;
@@ -442,8 +447,13 @@ EYSUpgradeRarity YSShardUpgrades::RollRarity(const AYSPlayerCharacter* Character
 
 TArray<TObjectPtr<UYSUpShard>> YSShardUpgrades::ResolveShards(const AYSPlayerCharacter* Character, const UYSUpStats* Stats, EYSUpgradeRarity Rarity, const TArray<UYSUpShard*>& Candidates)
 {
+	return Stats ? ResolveShardList(Character, Stats->Shards, UYSUpStats::GetShardCount(Rarity), Candidates) : TArray<TObjectPtr<UYSUpShard>>();
+}
+
+TArray<TObjectPtr<UYSUpShard>> YSShardUpgrades::ResolveShardList(const AYSPlayerCharacter* Character, const TArray<TObjectPtr<UYSUpShard>>& Source, int32 SourceCount, const TArray<UYSUpShard*>& Candidates)
+{
 	TArray<TObjectPtr<UYSUpShard>> Result;
-	if (!Character || !Stats)
+	if (!Character)
 	{
 		return Result;
 	}
@@ -500,10 +510,10 @@ TArray<TObjectPtr<UYSUpShard>> YSShardUpgrades::ResolveShards(const AYSPlayerCha
 		return PickRandom(Open);
 	};
 
-	const int32 Count = FMath::Min(UYSUpStats::GetShardCount(Rarity), Stats->Shards.Num());
+	const int32 Count = FMath::Min(SourceCount, Source.Num());
 	for (int32 Slot = 0; Slot < Count; ++Slot)
 	{
-		const UYSUpShard* Shard = Stats->Shards[Slot];
+		const UYSUpShard* Shard = Source[Slot];
 		if (!Shard)
 		{
 			continue;
@@ -528,36 +538,93 @@ TArray<FYSUpgradeOffer> YSShardUpgrades::PickOffers(const AYSPlayerCharacter* Ch
 		return Offers;
 	}
 
-	TArray<UYSUpStats*> Pool = GetAvailableUpStats(Character, Table).FilterByPredicate([Character](const UYSUpStats* Stats)
+	// candidats : les DA_Up_Stats de la table et chaque palier proposable des upgrades d'arme du pool (système de shards)
+	struct FCandidate
 	{
-		return Stats->OfferWeight > 0.0f && Stats->IsApplicable(Character);
-	});
+		UYSUpStats* Stats = nullptr;
+		const UYSWeaponUpgrade* Weapon = nullptr;
+		int32 PoolIndex = INDEX_NONE;
+		int32 Variant = 0;
+	};
+	TArray<FCandidate> Pool;
+	for (UYSUpStats* Stats : GetAvailableUpStats(Character, Table))
+	{
+		if (Stats->OfferWeight > 0.0f && Stats->IsApplicable(Character))
+		{
+			Pool.Add({ Stats });
+		}
+	}
+	const TArray<TObjectPtr<UYSUpgrade>>& UpgradePool = Character->GetUpgradePool();
+	for (int32 PoolIndex = 0; PoolIndex < UpgradePool.Num(); ++PoolIndex)
+	{
+		const UYSWeaponUpgrade* Weapon = Cast<UYSWeaponUpgrade>(UpgradePool[PoolIndex]);
+		for (int32 Variant = 0; Weapon && Weapon->bShardSystem && Variant < Weapon->GetVariantCount(); ++Variant)
+		{
+			if (Weapon->GetOfferWeight(Variant) > 0.0f && Weapon->CanBeOffered(Character, Variant, Character->GetUpgradeProgress(PoolIndex, Variant)))
+			{
+				Pool.Add({ nullptr, Weapon, PoolIndex, Variant });
+			}
+		}
+	}
+	// poids dans la rareté tirée (une upgrade d'arme n'existe pas dans toutes les raretés : jamais en Bronze)
+	const auto WeightOf = [Character](const FCandidate& Candidate, EYSUpgradeRarity Rarity)
+	{
+		return Candidate.Stats ? Candidate.Stats->OfferWeight
+			: Candidate.Weapon->CanOfferRarity(Character, Candidate.Variant, Rarity) ? Candidate.Weapon->GetOfferWeight(Candidate.Variant) : 0.0f;
+	};
+
 	const TArray<UYSUpShard*> Candidates = GetCandidateShards(Character, Table, Replacements);
 	TArray<UYSUpStats*> ValidReplacements = Replacements.FilterByPredicate([](const UYSUpStats* Stats) { return Stats != nullptr; });
 
-	while (Offers.Num() < Count && Pool.Num() > 0)
+	// garde-fou : raretés tirées sans aucun candidat (ex. Bronze alors qu'il ne reste que des upgrades d'arme)
+	int32 EmptyRolls = 0;
+	while (Offers.Num() < Count && Pool.Num() > 0 && EmptyRolls < 50)
 	{
 		const EYSUpgradeRarity Rarity = RollRarity(Character);
 
 		// upgrade au poids, sans remise
 		float TotalWeight = 0.0f;
-		for (const UYSUpStats* Stats : Pool)
+		for (const FCandidate& Candidate : Pool)
 		{
-			TotalWeight += Stats->OfferWeight;
+			TotalWeight += WeightOf(Candidate, Rarity);
 		}
-		int32 Picked = 0;
+		if (TotalWeight <= 0.0f)
+		{
+			++EmptyRolls;
+			continue;
+		}
+		int32 Picked = INDEX_NONE;
 		float Roll = FMath::FRand() * TotalWeight;
 		for (int32 Index = 0; Index < Pool.Num(); ++Index)
 		{
-			Picked = Index;
-			Roll -= Pool[Index]->OfferWeight;
-			if (Roll < 0.0f)
+			if (WeightOf(Pool[Index], Rarity) > 0.0f)
 			{
-				break;
+				Picked = Index;
+				Roll -= WeightOf(Pool[Index], Rarity);
+				if (Roll < 0.0f)
+				{
+					break;
+				}
 			}
 		}
-		UYSUpStats* Stats = Pool[Picked];
+		const FCandidate Chosen = Pool[Picked];
 		Pool.RemoveAt(Picked);
+
+		// upgrade d'arme : palier + shards du palier selon la rareté (Gold : la première, Mythique : les deux)
+		if (Chosen.Weapon)
+		{
+			FYSUpgradeOffer Offer;
+			Offer.PoolIndex = Chosen.PoolIndex;
+			Offer.Variant = Chosen.Variant;
+			Offer.Rarity = Rarity;
+			Offer.Shards = ResolveShardList(Character, Chosen.Weapon->GetTierShards(Chosen.Variant), UYSWeaponUpgrade::GetShardCount(Rarity), Candidates);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSShard] %s : proposition %s palier %d %s + %d shard(s)"), *Character->GetName(), *Chosen.Weapon->GetName(), Chosen.Variant,
+				*YSUpgradeText::RarityName(Rarity).ToString(), Offer.Shards.Num());
+			Offers.Add(Offer);
+			continue;
+		}
+
+		UYSUpStats* Stats = Chosen.Stats;
 
 		// interdite (Blocking Shard au maximum) : une upgrade de remplacement pas encore proposée (sinon n'importe laquelle)
 		if (Stats->IsBlocked(Character))

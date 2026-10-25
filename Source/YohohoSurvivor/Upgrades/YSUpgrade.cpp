@@ -6,6 +6,7 @@
 #include "Abilities/YSRollAndBombAbility.h"
 #include "Abilities/YSSummonCrewAbility.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Upgrades/YSShardUpgrade.h"
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
 
@@ -120,6 +121,7 @@ FLinearColor UYSUpgrade::GetRarityColor(EYSUpgradeRarity Rarity) const
 	case EYSUpgradeRarity::Bronze:	return BronzeColor;
 	case EYSUpgradeRarity::Silver:	return SilverColor;
 	case EYSUpgradeRarity::Gold:	return GoldColor;
+	case EYSUpgradeRarity::Mythic:	return MythicColor;
 	default:						return FLinearColor::White;
 	}
 }
@@ -548,6 +550,24 @@ void UYSCriticalDamageUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 V
 UYSWeaponUpgrade::UYSWeaponUpgrade()
 {
 	UpgradeType = EYSUpgradeType::Weapon;
+	UnlockShards.SetNum(2);
+	BonusShards.SetNum(2);
+}
+
+const TArray<TObjectPtr<UYSUpShard>>& UYSWeaponUpgrade::GetTierShards(int32 Variant) const
+{
+	static const TArray<TObjectPtr<UYSUpShard>> NoShards;
+	switch (GetTier(Variant))
+	{
+	case EYSWeaponUpgradeTier::Unlock:	return UnlockShards;
+	case EYSWeaponUpgradeTier::Bonus:	return BonusShards;
+	default:							return NoShards;
+	}
+}
+
+int32 UYSWeaponUpgrade::GetShardCount(EYSUpgradeRarity Rarity)
+{
+	return Rarity == EYSUpgradeRarity::Mythic ? 2 : Rarity == EYSUpgradeRarity::Gold ? 1 : 0;
 }
 
 FText UYSWeaponUpgrade::GetVariantName(int32 Variant) const
@@ -631,6 +651,12 @@ float UYSWeaponUpgrade::GetOfferWeight(int32 Variant) const
 
 bool UYSWeaponUpgrade::SupportsRarity(int32 Variant, EYSUpgradeRarity Rarity) const
 {
+	// système de shards : jamais en Bronze ; Gold / Mythique donnent en plus des shards ; le Super reste en Gold seulement
+	if (bShardSystem)
+	{
+		return GetTier(Variant) == EYSWeaponUpgradeTier::Super ? Rarity == EYSUpgradeRarity::Gold
+			: Rarity == EYSUpgradeRarity::Silver || Rarity == EYSUpgradeRarity::Gold || Rarity == EYSUpgradeRarity::Mythic;
+	}
 	switch (GetTier(Variant))
 	{
 	case EYSWeaponUpgradeTier::Unlock:	return Rarity == EYSUpgradeRarity::Silver;
@@ -644,6 +670,11 @@ float UYSWeaponUpgrade::GetBonusValue(int32 Variant, EYSUpgradeRarity Rarity) co
 	if (GetTier(Variant) != EYSWeaponUpgradeTier::Bonus)
 	{
 		return 0.0f;
+	}
+	// système de shards : valeur fixe quelle que soit la rareté
+	if (bShardSystem)
+	{
+		return BonusGoldValue;
 	}
 	return Rarity == EYSUpgradeRarity::Gold ? BonusGoldValue : Rarity == EYSUpgradeRarity::Silver ? BonusSilverValue : 0.0f;
 }
@@ -698,26 +729,25 @@ UYSRicochetUpgrade::UYSRicochetUpgrade()
 	ExcludedActionClasses.Add(UYSRollAndBombAbility::StaticClass());
 	UnlockName = NSLOCTEXT("YS", "RicochetUnlockName", "Ricochet");
 	UnlockDescription = NSLOCTEXT("YS", "RicochetUnlockDesc", "Après avoir touché, la balle ricoche\nvers le NME le plus proche");
-	BonusDescription = NSLOCTEXT("YS", "RicochetBonusDesc", "Chaque ricochet fait plus de dégâts");
-	BonusName = NSLOCTEXT("YS", "RicochetBonusName", "Ricochet bonus");
-	BonusStatLabel = NSLOCTEXT("YS", "RicochetBonusStat", "Dégât après ricochet");
-	BonusSilverValue = 0.15f;
-	BonusGoldValue = 0.25f;
+	BonusDescription = NSLOCTEXT("YS", "RicochetBonusDesc", "La balle ricoche une fois de plus");
+	BonusName = NSLOCTEXT("YS", "RicochetBonusName", "Ricochet ++");
+	BonusStatLabel = NSLOCTEXT("YS", "RicochetBonusStat", "Ricochets");
+	BonusSilverValue = 1.0f;
+	BonusGoldValue = 1.0f;
 	SuperName = NSLOCTEXT("YS", "RicochetSuperName", "Golden ricochet");
-	SuperDescription = NSLOCTEXT("YS", "RicochetSuperDesc", "La balle ricoche une fois de plus");
+	SuperDescription = NSLOCTEXT("YS", "RicochetSuperDesc", "+25 % de dégâts à chaque ricochet");
 }
 
-float UYSRicochetUpgrade::GetBonusBaseValue(const AYSPlayerCharacter* Character) const
+float UYSRicochetUpgrade::GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const
 {
-	const TArray<UYSAbilityComponent*> Actions = GetRequiredActions(Character);
-	return Actions.Num() > 0 ? Actions[0]->GetBaseDamage() : 0.0f;
+	return UnlockRicochets + FMath::FloorToInt(BonusTotal + KINDA_SMALL_NUMBER);
 }
 
 void UYSRicochetUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
 {
-	const int32 Ricochets = bUnlocked ? UnlockRicochets + (bSuper ? SuperExtraRicochets : 0) : 0;
+	const int32 Ricochets = bUnlocked ? UnlockRicochets + FMath::FloorToInt(BonusTotal + KINDA_SMALL_NUMBER) + (bSuper ? SuperExtraRicochets : 0) : 0;
 	Character->SetWeaponStat(RicochetCountStat, Ricochets);
-	Character->SetWeaponStat(RicochetDamageBonusStat, BonusTotal);
+	Character->SetWeaponStat(RicochetDamageBonusStat, bUnlocked && bSuper ? SuperDamageBonus : 0.0f);
 }
 
 UYSBloodlustUpgrade::UYSBloodlustUpgrade()
@@ -767,6 +797,7 @@ const FName UYSMineUpgrade::MinePushbackStat(TEXT("MinePushback"));
 const FName UYSMineUpgrade::MineDoubleStat(TEXT("MineDouble"));
 const FName UYSMineUpgrade::MineDamageStat(TEXT("MineDamage"));
 const FName UYSMineUpgrade::MineCooldownStat(TEXT("MineCooldown"));
+const FName UYSMineUpgrade::MineRadiusStat(TEXT("MineRadius"));
 
 UYSMineUpgrade::UYSMineUpgrade()
 {
@@ -774,11 +805,11 @@ UYSMineUpgrade::UYSMineUpgrade()
 	RequiredActionClass = UYSRollAndBombAbility::StaticClass();
 	UnlockName = NSLOCTEXT("YS", "MineUnlockName", "Une Mine !");
 	UnlockDescription = NSLOCTEXT("YS", "MineUnlockDesc", "La bombe devient une mine : elle s'arme au lieu d'exploser,\npuis explose dès qu'un NME entre dans sa zone.\nDégâts x2, recharge x0.5");
-	BonusDescription = NSLOCTEXT("YS", "MineBonusDesc", "Les mines repoussent les NME");
-	BonusName = NSLOCTEXT("YS", "MineBonusName", "Mine repulsante");
-	BonusStatLabel = NSLOCTEXT("YS", "MineBonusStat", "Pushback des mines");
-	BonusSilverValue = 100.0f;
-	BonusGoldValue = 175.0f;
+	BonusDescription = NSLOCTEXT("YS", "MineBonusDesc", "Les mines explosent plus loin");
+	BonusName = NSLOCTEXT("YS", "MineBonusName", "Une Mine ! ++");
+	BonusStatLabel = NSLOCTEXT("YS", "MineBonusStat", "Rayon d'explosion des mines (+%)");
+	BonusSilverValue = 0.2f;
+	BonusGoldValue = 0.2f;
 	SuperName = NSLOCTEXT("YS", "MineSuperName", "Golden Mine");
 	SuperDescription = NSLOCTEXT("YS", "MineSuperDesc", "Les mines sont lancées par 2");
 }
@@ -786,7 +817,9 @@ UYSMineUpgrade::UYSMineUpgrade()
 void UYSMineUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
 {
 	Character->SetWeaponStat(MineStat, bUnlocked ? 1.0f : 0.0f);
-	Character->SetWeaponStat(MinePushbackStat, bUnlocked ? BonusTotal : 0.0f);
+	// Bonus = rayon d'explosion (l'ancienne « Mine repulsante » ne donne plus de pushback)
+	Character->SetWeaponStat(MinePushbackStat, 0.0f);
+	Character->SetWeaponStat(MineRadiusStat, bUnlocked ? BonusTotal : 0.0f);
 	Character->SetWeaponStat(MineDoubleStat, bUnlocked && bSuper ? 1.0f : 0.0f);
 	Character->SetWeaponStat(MineDamageStat, bUnlocked ? MineDamageMultiplier : 1.0f);
 	Character->SetWeaponStat(MineCooldownStat, bUnlocked ? MineCooldownMultiplier : 1.0f);
@@ -905,6 +938,33 @@ void UYSAllMyMinionsUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, 
 	Character->SetWeaponStat(AllMyMinionsStat, bUnlocked ? 1.0f : 0.0f);
 	Character->SetWeaponStat(ForcedDamageStat, bUnlocked ? BonusTotal : 0.0f);
 	Character->SetWeaponStat(ForcedCooldownResetStat, bUnlocked && bSuper ? 1.0f : 0.0f);
+}
+
+const FName UYSMarkCriticalUpgrade::MarkCriticalStat(TEXT("MarkCritical"));
+const FName UYSMarkCriticalUpgrade::MarkDamageBonusStat(TEXT("MarkDamageBonus"));
+const FName UYSMarkCriticalUpgrade::MarkCooldownRefundStat(TEXT("MarkCooldownRefund"));
+
+UYSMarkCriticalUpgrade::UYSMarkCriticalUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "MarkCriticalName", "Marquage Critique");
+	RequiredActionClass = UYSSummonCrewAbility::StaticClass();
+	ExcludedActionClasses.Add(UYSGoMinionsAbility::StaticClass());
+	UnlockName = NSLOCTEXT("YS", "MarkCriticalUnlockName", "Marquage Critique");
+	UnlockDescription = NSLOCTEXT("YS", "MarkCriticalUnlockDesc", "Tous les joueurs font des coups critiques\nsur le NME marqué par le Captain");
+	BonusDescription = NSLOCTEXT("YS", "MarkCriticalBonusDesc", "Le NME marqué subit plus de dégâts");
+	BonusName = NSLOCTEXT("YS", "MarkCriticalBonusName", "Marquage Critique ++");
+	BonusStatLabel = NSLOCTEXT("YS", "MarkCriticalBonusStat", "Dégâts subis par le NME marqué (+%)");
+	BonusSilverValue = 0.1f;
+	BonusGoldValue = 0.1f;
+	SuperName = NSLOCTEXT("YS", "MarkCriticalSuperName", "Golden Marquage");
+	SuperDescription = NSLOCTEXT("YS", "MarkCriticalSuperDesc", "Chaque coup d'un joueur sur le NME marqué\nréduit de 1 s la recharge de son Ability");
+}
+
+void UYSMarkCriticalUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	Character->SetWeaponStat(MarkCriticalStat, bUnlocked ? 1.0f : 0.0f);
+	Character->SetWeaponStat(MarkDamageBonusStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(MarkCooldownRefundStat, bUnlocked && bSuper ? SuperCooldownRefund : 0.0f);
 }
 
 UYSClassUpgrade::UYSClassUpgrade()

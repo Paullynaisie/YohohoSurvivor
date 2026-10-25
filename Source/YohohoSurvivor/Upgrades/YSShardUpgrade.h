@@ -250,4 +250,10 @@ namespace YSShardUpgrades
 
 	/** Shards réellement données par Stats dans cette rareté (spéciales résolues en tenant compte des précédentes) */
 	TArray<TObjectPtr<UYSUpShard>> ResolveShards(const AYSPlayerCharacter* Character, const UYSUpStats* Stats, EYSUpgradeRarity Rarity, const TArray<UYSUpShard*>& Candidates);
+
+	/** Les Count premières shards de Source résolues (spéciales remplacées, shard au maximum ou qui ne concerne pas le personnage -> Random) */
+	TArray<TObjectPtr<UYSUpShard>> ResolveShardList(const AYSPlayerCharacter* Character, const TArray<TObjectPtr<UYSUpShard>>& Source, int32 SourceCount, const TArray<UYSUpShard*>& Candidates);
+
+	/** Lignes de la carte pour des shards données : niveau atteint et valeur concrète actuelle -> nouvelle (DA_Up_Stats, upgrades d'arme) */
+	void AddShardCardLines(const AYSPlayerCharacter* Character, const TArray<TObjectPtr<UYSUpShard>>& Shards, FYSUpgradeCard& OutCard);
 }

@@ -172,6 +172,9 @@ public:
 	/** Recharge terminée tout de suite (serveur, ex. level up) */
 	void ResetCooldown();
 
+	/** Recharge en cours raccourcie de Seconds (serveur, ex. Golden Marquage) */
+	void ReduceCooldown(float Seconds);
+
 	/** Appelé par CancelAction (serveur) : arrêter ce que l'action a en cours (ex. rafale) */
 	virtual void OnActionCancelled() {}
 

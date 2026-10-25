@@ -172,6 +172,10 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Bomb")
 	float ExtraPushback = 0.0f;
 
+	/** Multiplicateur du rayon d'explosion (« Une Mine ! ++ » ; serveur avant FinishSpawning, répliqué pour le disque au sol) */
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Bomb")
+	float RadiusMultiplier = 1.0f;
+
 public:
 
 	AYSPlayerBomb();
@@ -186,6 +190,8 @@ public:
 
 	void SetExtraPushback(float NewExtraPushback) { ExtraPushback = NewExtraPushback; }
 
+	void SetRadiusMultiplier(float NewRadiusMultiplier) { RadiusMultiplier = FMath::Max(NewRadiusMultiplier, 0.01f); }
+
 	/** Peut encore exploser (pas déjà explosée) */
 	bool CanDetonate() const { return !bExploded; }
 
@@ -194,8 +200,8 @@ public:
 
 	bool IsMine() const { return bMine; }
 
-	/** Rayon effectif (mine : Explosion Radius / Mine Radius Divisor) */
-	float GetExplosionRadius() const { return bMine ? ExplosionRadius / FMath::Max(MineRadiusDivisor, 0.1f) : ExplosionRadius; }
+	/** Rayon effectif (mine : Explosion Radius / Mine Radius Divisor), x Radius Multiplier */
+	float GetExplosionRadius() const { return (bMine ? ExplosionRadius / FMath::Max(MineRadiusDivisor, 0.1f) : ExplosionRadius) * RadiusMultiplier; }
 
 	/** Lancer en cloche de Start vers Target (sol) en Duration : la bombe explose en touchant le sol, sans mèche (serveur, avant FinishSpawning) */
 	void SetThrow(const FVector& Start, const FVector& Target, float Duration, float ApexHeight);

@@ -67,6 +67,7 @@ void AYSPlayerBomb::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 
 	DOREPLIFETIME_CONDITION(AYSPlayerBomb, Damage, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AYSPlayerBomb, Flight, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSPlayerBomb, RadiusMultiplier, COND_InitialOnly);
 }
 
 void AYSPlayerBomb::SetThrow(const FVector& Start, const FVector& Target, float Duration, float ApexHeight)

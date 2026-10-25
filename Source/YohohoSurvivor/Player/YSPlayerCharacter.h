@@ -760,7 +760,10 @@ public:
 	void SpawnMinionAtFoe(const AYSFoeCharacter* Foe, const TCHAR* Reason);
 
 	/** Coups toujours critiques sur cette cible (ex. minion du Captain sur le NME marqué par la Captain Sword ; serveur) */
-	virtual bool HasForcedCriticalAgainst(const AActor* Target) const { return false; }
+	virtual bool HasForcedCriticalAgainst(const AActor* Target) const;
+
+	/** Marquage Critique : plus grande valeur de la propriété d'arme Stat parmi les Captains dont Target est le NME marqué (0 sinon ; serveur) */
+	static float GetMarkStat(const AActor* Target, FName Stat);
 
 	/**
 	 *  « Allez-y mes minions ! » (serveur) : force l'Ability du clic (actions de clic des deux mains, comme le clic gauche), vers le
@@ -779,6 +782,12 @@ public:
 
 	/** Propriété d'arme de Weapon (Default si absente ou arme pas tenue) */
 	float GetWeaponStat(const AYSWeapon* Weapon, FName Stat, float Default) const;
+
+	/** Propriété d'arme posée sur ce personnage, sans condition d'arme (Default si absente ; serveur) */
+	float GetCharacterWeaponStat(FName Stat, float Default) const { const float* Value = WeaponStats.Find(Stat); return Value ? *Value : Default; }
+
+	/** Retire Seconds à la recharge des Abilities (actions de clic) des armes tenues (serveur ; Golden Marquage) */
+	void ReduceAbilityCooldown(float Seconds);
 
 	/** Multiplicateurs d'un type d'action pour Weapon (1 si elle n'est pas tenue) */
 	float GetWeaponCooldownMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const;
