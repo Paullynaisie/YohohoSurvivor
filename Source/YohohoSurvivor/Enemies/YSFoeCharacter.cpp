@@ -1071,13 +1071,14 @@ APawn* AYSFoeCharacter::FindNearestPlayer() const
 	for (const APlayerState* Player : GameState->PlayerArray)
 	{
 		APawn* Pawn = Player ? Player->GetPawn() : nullptr;
-		if (!Pawn)
+		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(Pawn);
+		// corps en ragdoll d'un joueur mort : plus une cible
+		if (!Pawn || (PlayerCharacter && !PlayerCharacter->IsAlive()))
 		{
 			continue;
 		}
 
 		// toujours le plus proche, mais un joueur qui porte un objet (coffre) compte comme N fois plus proche
-		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(Pawn);
 		const float Attraction = PlayerCharacter ? PlayerCharacter->GetFoeAttractionMultiplier() : 1.0f;
 		const float DistSq = FVector::DistSquared2D(Pawn->GetActorLocation(), GetActorLocation()) / FMath::Square(FMath::Max(Attraction, KINDA_SMALL_NUMBER));
 		if (DistSq < NearestDistSq)

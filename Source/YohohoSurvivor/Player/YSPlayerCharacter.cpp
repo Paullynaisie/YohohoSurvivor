@@ -198,6 +198,8 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, SummonSystemBonus);
 	DOREPLIFETIME(AYSPlayerCharacter, MarkedFoe);
+	DOREPLIFETIME(AYSPlayerCharacter, Rise);
+	DOREPLIFETIME(AYSPlayerCharacter, Death);
 	DOREPLIFETIME(AYSPlayerCharacter, MaxHealthMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, CooldownMultipliers);
 	DOREPLIFETIME(AYSPlayerCharacter, Luck);
@@ -278,12 +280,32 @@ float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Dam
 
 	if (!IsAlive())
 	{
+		PendingDeathImpulse = ComputeDeathImpulse(DamageEvent, EventInstigator, DamageCauser);
 		Die();
 		return Damage;
 	}
 
 	ApplyPushback(Damage, DamageEvent, EventInstigator, DamageCauser);
 	return Damage;
+}
+
+FVector AYSPlayerCharacter::ComputeDeathImpulse(const FDamageEvent& DamageEvent, const AController* EventInstigator, const AActor* DamageCauser) const
+{
+	// force MAXIMALE du pushback du NME tueur (comme la mort des NME), dans la direction du coup
+	const AYSFoeCharacter* Attacker = EventInstigator ? Cast<AYSFoeCharacter>(EventInstigator->GetPawn()) : nullptr;
+	if (!Attacker && DamageCauser)
+	{
+		Attacker = Cast<AYSFoeCharacter>(DamageCauser->GetInstigator());
+	}
+	const FVector Direction = DamageEvent.IsOfType(FPointDamageEvent::ClassID) ? static_cast<const FPointDamageEvent&>(DamageEvent).ShotDirection.GetSafeNormal2D() : FVector::ZeroVector;
+	float Force = 0.0f;
+	float Up = DeathExtraUpImpulse;
+	if (Attacker && !Direction.IsNearlyZero())
+	{
+		Force = Attacker->ComputePushbackForce(GetMaxHealth(), GetMaxHealth());
+		Up += Attacker->GetPushbackVerticalForce();
+	}
+	return (Direction * Force + FVector(0.0f, 0.0f, Up)) * DeathImpulseMultiplier;
 }
 
 void AYSPlayerCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator, const AActor* DamageCauser)
@@ -298,6 +320,8 @@ void AYSPlayerCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageE
 	{
 		return;
 	}
+	// encore en train de sortir du sol (minion) : sorti tout de suite, puis poussé
+	FinishRiseNow();
 	const FVector Direction = static_cast<const FPointDamageEvent&>(DamageEvent).ShotDirection.GetSafeNormal2D();
 	const float Force = Attacker->ComputePushbackForce(Damage, GetMaxHealth());
 	UE_LOG(LogTemp, Verbose, TEXT("[YSPushback] %s frappé par %s : %.0f dégâts sur %.0f PV max (%.1f %%), pushback %.0f vers (%.2f, %.2f)"), *GetName(), *Attacker->GetName(),
@@ -323,6 +347,12 @@ void AYSPlayerCharacter::ClientLaunch_Implementation(FVector_NetQuantize10 Launc
 
 void AYSPlayerCharacter::Die()
 {
+	if (!HasAuthority() || IsDying() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	Health = 0.0f;
+
 	// l'objet porté tombe au sol
 	DropCarriedObject(TEXT("mort"));
 
@@ -332,25 +362,218 @@ void AYSPlayerCharacter::Die()
 		YSPlayerState->SetDead();
 	}
 
-	// la caméra du joueur reste là où il est mort
+	// ragdoll : le corps vole puis rétrécit (UpdateDeath -> FinishDeath) ; deadzone : tout de suite
+	if (!bDeathRagdoll || bSkipDeathAnim)
+	{
+		FinishDeath();
+		return;
+	}
+	Death.bDead = true;
+	// mort sans coup (minion qui meurt avec son Captain) : juste la poussée vers le haut
+	Death.Impulse = PendingDeathImpulse.IsNearlyZero() ? FVector(0.0f, 0.0f, DeathExtraUpImpulse * DeathImpulseMultiplier) : PendingDeathImpulse;
+	ForceNetUpdate();
+	BeginDeathLocal();
+}
+
+void AYSPlayerCharacter::FinishDeath()
+{
+	if (!HasAuthority() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	// caméra de secours là où il est mort (s'il n'y a plus aucun joueur vivant à regarder)
 	if (AYSPlayerController* PlayerController = Cast<AYSPlayerController>(GetController()))
 	{
 		PlayerController->ClientPlayerDied(TopDownCamera->GetComponentLocation(), TopDownCamera->GetComponentRotation(), TopDownCamera->FieldOfView);
 	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s : corps disparu, détruit"), *GetName());
 
 	// les armes (acteurs enfants) disparaissent avec le personnage
 	Destroy();
 }
 
+void AYSPlayerCharacter::OnRep_Death()
+{
+	if (Death.bDead)
+	{
+		BeginDeathLocal();
+	}
+}
+
+void AYSPlayerCharacter::BeginDeathLocal()
+{
+	if (bLocalDeathStarted)
+	{
+		return;
+	}
+	bLocalDeathStarted = true;
+	bLocalRiseActive = false;
+	DeathStartTime = GetWorld()->GetTimeSeconds();
+
+	// plus de gameplay : sans tag il n'est plus ciblé ni touché, plus de mouvement (la caméra reste où il est tombé)
+	GameplayTags.Reset();
+	Nameplate->SetVisibility(false);
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->StopMovementImmediately();
+	Movement->DisableMovement();
+	Movement->SetComponentTickEnabled(false);
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (HasAuthority())
+	{
+		SetReplicateMovement(false);
+	}
+
+	// armes : actions arrêtées (pas de tir ni de coup après la mort)
+	for (AYSWeapon* Weapon : GetHeldWeapons())
+	{
+		for (UActorComponent* Component : Weapon->GetComponents())
+		{
+			GetWorldTimerManager().ClearAllTimersForObject(Component);
+			Component->SetComponentTickEnabled(false);
+		}
+	}
+
+	// tout le visuel suit le corps (tête, visage, mains et armes), qui part en physique : ne bloque que le décor
+	TArray<USceneComponent*> Followers;
+	for (USceneComponent* Child : BodyPivot->GetAttachChildren())
+	{
+		if (Child && Child != BodyMesh)
+		{
+			Followers.Add(Child);
+		}
+	}
+	Followers.AddUnique(LeftHand);
+	Followers.AddUnique(RightHand);
+	Followers.AddUnique(FaceDecal);
+	for (USceneComponent* Component : Followers)
+	{
+		Component->SetUsingAbsoluteLocation(false);
+		Component->SetUsingAbsoluteRotation(false);
+		Component->AttachToComponent(BodyMesh, FAttachmentTransformRules::KeepWorldTransform);
+	}
+	BodyMesh->SetGenerateOverlapEvents(false);
+	BodyMesh->SetCollisionObjectType(ECC_PhysicsBody);
+	BodyMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+	BodyMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+	BodyMesh->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
+	BodyMesh->SetSimulatePhysics(true);
+	BodyMesh->SetPhysicsLinearVelocity(Death.Impulse);
+	BodyMesh->SetPhysicsAngularVelocityInDegrees(FMath::VRand() * DeathAngularImpulse);
+	DeathBodyScale = BodyMesh->GetComponentScale();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s (%s) meurt : ragdoll à (%.0f, %.0f, %.0f) cm/s"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"),
+		Death.Impulse.X, Death.Impulse.Y, Death.Impulse.Z);
+}
+
+void AYSPlayerCharacter::UpdateDeath()
+{
+	// après Death Scale Delay, le corps (et tout ce qui le suit) rétrécit jusqu'à 0, puis le personnage disparaît
+	const float Elapsed = static_cast<float>(GetWorld()->GetTimeSeconds() - DeathStartTime);
+	const float Alpha = FMath::Clamp((Elapsed - DeathScaleDelay) / FMath::Max(DeathScaleDuration, 0.01f), 0.0f, 1.0f);
+	if (Alpha > 0.0f)
+	{
+		BodyMesh->SetWorldScale3D(DeathBodyScale * FMath::Max(1.0f - Alpha, 0.01f));
+	}
+	if (Alpha >= 1.0f)
+	{
+		BodyMesh->SetVisibility(false, true);
+		FinishDeath();
+	}
+}
+
+void AYSPlayerCharacter::StartRise()
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	Rise.bActive = true;
+	Rise.Ground = GetActorLocation();
+	Rise.Depth = GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 2.0f + SpawnRiseExtraDepth * GetActorScale3D().Z;
+	Rise.Duration = SpawnRiseDuration;
+	Rise.StartServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	BeginRiseLocal();
+	ForceNetUpdate();
+}
+
+void AYSPlayerCharacter::OnRep_Rise()
+{
+	if (Rise.bActive && !bLocalRiseActive && !bLocalDeathStarted)
+	{
+		BeginRiseLocal();
+	}
+	else if (!Rise.bActive && bLocalRiseActive)
+	{
+		EndRiseLocal();
+	}
+}
+
+void AYSPlayerCharacter::BeginRiseLocal()
+{
+	bLocalRiseActive = true;
+
+	// comme les NME : position calculée par UpdateRise sur chaque machine, mouvement du personnage et sa réplication coupés
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->StopMovementImmediately();
+	Movement->SetComponentTickEnabled(false);
+	if (HasAuthority())
+	{
+		SetReplicateMovement(false);
+	}
+	UpdateRise();
+}
+
+void AYSPlayerCharacter::UpdateRise()
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const float Alpha = FMath::Clamp(static_cast<float>(Now - Rise.StartServerTime) / FMath::Max(Rise.Duration, 0.05f), 0.0f, 1.0f);
+	if (Alpha >= 1.0f)
+	{
+		EndRiseLocal();
+		return;
+	}
+	const float Eased = 1.0f - FMath::Pow(1.0f - Alpha, SpawnRiseEaseExponent);
+	SetActorLocation(FVector(Rise.Ground) - FVector(0.0f, 0.0f, Rise.Depth * (1.0f - Eased)));
+}
+
+void AYSPlayerCharacter::EndRiseLocal()
+{
+	if (!bLocalRiseActive)
+	{
+		return;
+	}
+	bLocalRiseActive = false;
+
+	SetActorLocation(Rise.Ground);
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->SetComponentTickEnabled(true);
+	if (HasAuthority())
+	{
+		Movement->Velocity = FVector::ZeroVector;
+		Movement->SetMovementMode(MOVE_Falling);
+		Rise.bActive = false;
+		SetReplicateMovement(true);
+		ForceNetUpdate();
+	}
+}
+
+void AYSPlayerCharacter::FinishRiseNow()
+{
+	if (!HasAuthority() || !bLocalRiseActive)
+	{
+		return;
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s : coup pendant la sortie du sol, sorti tout de suite"), *GetName());
+	EndRiseLocal();
+}
+
 void AYSPlayerCharacter::FellOutOfWorld(const UDamageType& DamageType)
 {
-	// le serveur décide de la mort (le personnage répliqué ne doit pas être détruit par un client)
-	if (!HasAuthority() || IsActorBeingDestroyed())
+	// le serveur décide de la mort (le personnage répliqué ne doit pas être détruit par un client) ; pas de ragdoll sous la map
+	if (!HasAuthority() || IsActorBeingDestroyed() || IsDying())
 	{
 		return;
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSDeadZone] %s tombé sous la map (Z %.0f) : mort"), *GetName(), GetActorLocation().Z);
 	Health = 0.0f;
+	bSkipDeathAnim = true;
 	Die();
 }
 
@@ -753,6 +976,12 @@ void AYSPlayerCharacter::BeginPlay()
 		{
 			SetAutoAttackCriticals(StartSwingCriticalInterval, StartBulletCriticalInterval, StartShotgunCriticalMaxDistance, StartSniperCriticalMinDistance);
 		}
+
+		// apparition en sortant du sol (minions du Captain), comme les NME
+		if (bSpawnRise)
+		{
+			StartRise();
+		}
 	}
 
 	// le strafe ne s'applique que si un mesh squelettique est renseigné
@@ -765,6 +994,17 @@ void AYSPlayerCharacter::BeginPlay()
 void AYSPlayerCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// mort : corps en ragdoll qui rétrécit, plus rien d'autre
+	if (bLocalDeathStarted)
+	{
+		UpdateDeath();
+		return;
+	}
+	if (bLocalRiseActive)
+	{
+		UpdateRise();
+	}
 
 	UpdateStrafeAnimation(DeltaSeconds);
 	UpdateBodyPivot(DeltaSeconds);

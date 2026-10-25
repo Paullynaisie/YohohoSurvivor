@@ -43,7 +43,9 @@ TArray<APawn*> UYSEnemySpawnRule::GetActivePlayers() const
 	for (const APlayerState* Player : GameState->PlayerArray)
 	{
 		APawn* Pawn = Player ? Player->GetPawn() : nullptr;
-		if (Cast<AYSPlayerCharacter>(Pawn))
+		// pas le corps en ragdoll d'un joueur mort
+		const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Pawn);
+		if (Character && Character->IsAlive())
 		{
 			Players.Add(Pawn);
 		}

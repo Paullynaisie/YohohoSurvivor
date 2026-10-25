@@ -5,6 +5,7 @@
 #include "GameplayTagAssetInterface.h"
 #include "GameplayTagContainer.h"
 #include "Abilities/YSAutoSwingAbility.h"
+#include "Core/YSBodyAnimTypes.h"
 #include "YSFoeCharacter.generated.h"
 
 class APlayerState;
@@ -57,43 +58,6 @@ struct FYSFoeBump
 	/** Incrémenté à chaque bump : un nouveau bump pendant le vol est vu par les clients */
 	UPROPERTY()
 	uint8 Counter = 0;
-};
-
-/** Sortie du sol à l'apparition : répliquée, position recalculée à l'identique sur chaque machine */
-USTRUCT()
-struct FYSFoeRise
-{
-	GENERATED_BODY()
-
-	UPROPERTY()
-	bool bActive = false;
-
-	/** Position finale de l'acteur (au sol) */
-	UPROPERTY()
-	FVector_NetQuantize Ground = FVector::ZeroVector;
-
-	/** Profondeur de départ sous Ground */
-	UPROPERTY()
-	float Depth = 0.0f;
-
-	UPROPERTY()
-	float Duration = 2.0f;
-
-	UPROPERTY()
-	double StartServerTime = 0.0;
-};
-
-/** Mort : ragdoll local sur chaque machine, lancé à la vitesse Impulse */
-USTRUCT()
-struct FYSFoeDeath
-{
-	GENERATED_BODY()
-
-	UPROPERTY()
-	bool bDead = false;
-
-	UPROPERTY()
-	FVector_NetQuantize Impulse = FVector::ZeroVector;
 };
 
 /**

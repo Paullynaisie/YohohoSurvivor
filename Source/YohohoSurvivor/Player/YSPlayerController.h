@@ -159,9 +159,28 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UYSDeathScreenWidget> DeathScreen;
 
-	/** Caméra fixe laissée à l'endroit de la mort (locale, non répliquée) */
+	/** Caméra fixe laissée à l'endroit de la mort (locale, non répliquée) : vue de secours quand plus personne n'est vivant */
 	UPROPERTY(Transient)
 	TObjectPtr<ACameraActor> DeathCamera;
+
+	/** Spectateur (mort, corps disparu) : joueur vivant dont on regarde la caméra */
+	TWeakObjectPtr<AYSPlayerCharacter> SpectateTarget;
+
+	/** Joueurs vivants regardables (pas les minions), dans l'ordre des PlayerState */
+	TArray<AYSPlayerCharacter*> GetSpectateTargets() const;
+
+	/** Vue du spectateur et écran de mort (local, chaque image) */
+	void UpdateSpectating();
+
+	/** Q / A : joueur précédent, D : suivant (seulement en spectateur) */
+	void SpectateStep(int32 Step);
+
+public:
+
+	/** Mort et plus de personnage : regarde la caméra d'un autre joueur */
+	bool IsSpectating() const;
+
+private:
 
 	/** Choix local (affiché immédiatement, confirmé par le serveur via le PlayerState) */
 	int32 LocalSelectedCharacter = INDEX_NONE;

@@ -21,6 +21,11 @@ AYSCaptainMinion::AYSCaptainMinion()
 
 	// critiques : seulement ceux donnés par le Captain (marque du Corsaire)
 	bCriticalsFromStart = false;
+
+	// même cycle que les NME : sort du sol à l'apparition, ragdoll 1 s puis rétrécit 1 s à la mort
+	bSpawnRise = true;
+	DeathScaleDelay = 1.0f;
+	DeathScaleDuration = 1.0f;
 }
 
 void AYSCaptainMinion::BeginPlay()
@@ -84,7 +89,8 @@ void AYSCaptainMinion::RefreshCustomization()
 	if (CaptainState && YSGameState)
 	{
 		UMaterialInterface* ColorMaterial = YSGameState->GetCustomizationMaterial(CaptainState->GetColorIndex());
-		UTexture2D* FaceTexture = YSGameState->GetCustomizationFace(FaceIndex);
+		// même visage que le Captain
+		UTexture2D* FaceTexture = YSGameState->GetCustomizationFace(CaptainState->GetFaceIndex());
 		ApplyCustomization(ColorMaterial, FaceTexture);
 		bCustomizationApplied = ColorMaterial && FaceTexture;
 	}
@@ -125,15 +131,20 @@ bool AYSCaptainMinion::IsAbilityInProgress() const
 
 void AYSCaptainMinion::Die()
 {
-	UE_LOG(LogTemp, Verbose, TEXT("[YSMinion] %s meurt"), *GetName());
-	Destroy();
+	if (!IsDying())
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSMinion] %s meurt"), *GetName());
+	}
+	// ragdoll comme les NME (détruit à la fin)
+	Super::Die();
 }
 
 void AYSCaptainMinion::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	if (!HasAuthority() || IsActorBeingDestroyed())
+	// en train de sortir du sol ou de mourir : pas d'IA
+	if (!HasAuthority() || IsActorBeingDestroyed() || IsDying() || IsRising())
 	{
 		return;
 	}

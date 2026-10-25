@@ -206,6 +206,16 @@ void AYSPlayerController::SetupInputComponent()
 
 	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AYSPlayerController::YSLeaveGame);
 
+	// spectateur : Q / A (gauche) et D (droite) passent d'un joueur vivant à l'autre ; sans consommer la touche (déplacement du vivant)
+	for (const TPair<FKey, int32>& Spectate : { TPair<FKey, int32>(EKeys::Q, -1), TPair<FKey, int32>(EKeys::A, -1), TPair<FKey, int32>(EKeys::D, 1) })
+	{
+		FInputKeyBinding Binding(FInputChord(Spectate.Key), IE_Pressed);
+		Binding.bConsumeInput = false;
+		const int32 Step = Spectate.Value;
+		Binding.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [this, Step]() { SpectateStep(Step); });
+		InputComponent->KeyBindings.Add(Binding);
+	}
+
 #if !UE_BUILD_SHIPPING
 	// codes de triche pour les tests (absents des builds Shipping)
 	InputComponent->BindKey(EKeys::Right, IE_Pressed, this, &AYSPlayerController::YSCheatAtkSpeed);
@@ -1329,11 +1339,8 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 
 	UpdateAim();
 
-	// la destruction du personnage (UnPossess) remet la vue sur le contrôleur : on garde la caméra de mort
-	if (DeathCamera && GetViewTarget() != DeathCamera)
-	{
-		SetViewTarget(DeathCamera);
-	}
+	// mort, corps disparu : caméra d'un joueur vivant (la destruction du personnage remet sinon la vue sur le contrôleur)
+	UpdateSpectating();
 
 	if (DebugWalkRemaining > 0.0f)
 	{
@@ -1428,6 +1435,80 @@ void AYSPlayerController::ServerDamageSelf_Implementation(float Amount)
 	}
 }
 
+bool AYSPlayerController::IsSpectating() const
+{
+	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
+	return MyState && MyState->IsDead() && !Cast<AYSPlayerCharacter>(GetPawn());
+}
+
+TArray<AYSPlayerCharacter*> AYSPlayerController::GetSpectateTargets() const
+{
+	TArray<AYSPlayerCharacter*> Targets;
+	for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
+	{
+		// joueurs seulement (les minions n'ont pas de PlayerState), vivants
+		if (It->GetPlayerState() && It->IsAlive() && !It->IsDying() && !It->IsActorBeingDestroyed())
+		{
+			Targets.Add(*It);
+		}
+	}
+	Targets.Sort([](const AYSPlayerCharacter& A, const AYSPlayerCharacter& B) { return A.GetPlayerState()->GetPlayerId() < B.GetPlayerState()->GetPlayerId(); });
+	return Targets;
+}
+
+void AYSPlayerController::UpdateSpectating()
+{
+	if (!IsSpectating())
+	{
+		SpectateTarget.Reset();
+		if (DeathScreen)
+		{
+			DeathScreen->SetSpectating(false, FText::GetEmpty());
+		}
+		return;
+	}
+
+	// cible perdue (morte, partie) : le premier joueur vivant ; plus personne : caméra de secours là où on est mort
+	const TArray<AYSPlayerCharacter*> Targets = GetSpectateTargets();
+	if (!SpectateTarget.IsValid() || !Targets.Contains(SpectateTarget.Get()))
+	{
+		SpectateTarget = Targets.Num() > 0 ? Targets[0] : nullptr;
+		if (SpectateTarget.IsValid())
+		{
+			UE_LOG(LogTemp, Log, TEXT("[YSSpectate] %s regarde %s"), *GetName(), *SpectateTarget->GetName());
+		}
+	}
+	AActor* View = SpectateTarget.IsValid() ? static_cast<AActor*>(SpectateTarget.Get()) : static_cast<AActor*>(DeathCamera.Get());
+	if (View && GetViewTarget() != View)
+	{
+		SetViewTarget(View);
+	}
+
+	if (DeathScreen)
+	{
+		const AYSPlayerState* TargetState = SpectateTarget.IsValid() ? SpectateTarget->GetPlayerState<AYSPlayerState>() : nullptr;
+		DeathScreen->SetSpectating(true, TargetState ? FText::FromString(TargetState->GetDisplayName()) : FText::GetEmpty());
+	}
+}
+
+void AYSPlayerController::SpectateStep(int32 Step)
+{
+	if (!IsSpectating())
+	{
+		return;
+	}
+	const TArray<AYSPlayerCharacter*> Targets = GetSpectateTargets();
+	if (Targets.Num() == 0)
+	{
+		return;
+	}
+	const int32 Current = SpectateTarget.IsValid() ? Targets.IndexOfByKey(SpectateTarget.Get()) : INDEX_NONE;
+	const int32 Next = Current == INDEX_NONE ? 0 : (Current + Step + Targets.Num()) % Targets.Num();
+	SpectateTarget = Targets[Next];
+	UE_LOG(LogTemp, Log, TEXT("[YSSpectate] %s regarde %s (%d / %d)"), *GetName(), *SpectateTarget->GetName(), Next + 1, Targets.Num());
+	UpdateSpectating();
+}
+
 void AYSPlayerController::ClientPlayerDied_Implementation(FVector CameraLocation, FRotator CameraRotation, float CameraFOV)
 {
 	if (!DeathCamera)
@@ -1442,7 +1523,6 @@ void AYSPlayerController::ClientPlayerDied_Implementation(FVector CameraLocation
 	{
 		DeathCamera->SetActorLocationAndRotation(CameraLocation, CameraRotation);
 		DeathCamera->GetCameraComponent()->SetFieldOfView(CameraFOV);
-		SetViewTarget(DeathCamera);
 	}
 }
 

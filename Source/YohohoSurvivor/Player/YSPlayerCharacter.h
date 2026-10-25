@@ -7,6 +7,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Upgrades/YSUpgrade.h"
 #include "Upgrades/YSShardUpgrade.h"
+#include "Core/YSBodyAnimTypes.h"
 #include "YSPlayerCharacter.generated.h"
 
 class UCameraComponent;
@@ -547,6 +548,47 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Tags")
 	FGameplayTagContainer GameplayTags;
 
+	/**
+	 *  Apparition en sortant du sol, comme les NME (minions du Captain ; faux pour les joueurs) : pendant Spawn Rise Duration,
+	 *  ni déplacement ni attaque ; un coup qui pousse le sort tout de suite
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Spawn Anim")
+	bool bSpawnRise = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Spawn Anim", meta=(ClampMin="0.05", Units="s", EditCondition="bSpawnRise"))
+	float SpawnRiseDuration = 2.0f;
+
+	/** Profondeur de départ en plus de la hauteur du personnage, x sa taille */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Spawn Anim", meta=(ClampMin="0", Units="Centimeters", EditCondition="bSpawnRise"))
+	float SpawnRiseExtraDepth = 120.0f;
+
+	/** Courbe : rapide au début, ralentit en arrivant au sol */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Spawn Anim", meta=(ClampMin="0.1", EditCondition="bSpawnRise"))
+	float SpawnRiseEaseExponent = 2.0f;
+
+	/**
+	 *  Mort en ragdoll, comme les NME : le corps (mains, armes, tête comprises) est lancé par le pushback maximal du NME qui l'a tué
+	 *  (x Death Impulse Multiplier), reste Death Scale Delay au sol puis rétrécit en Death Scale Duration ; ensuite le joueur
+	 *  passe en spectateur (minion : détruit)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death")
+	bool bDeathRagdoll = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(ClampMin="0", EditCondition="bDeathRagdoll"))
+	float DeathImpulseMultiplier = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(Units="CentimetersPerSecond", EditCondition="bDeathRagdoll"))
+	float DeathExtraUpImpulse = 200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(ClampMin="0", Units="DegreesPerSecond", EditCondition="bDeathRagdoll"))
+	float DeathAngularImpulse = 360.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(ClampMin="0", Units="s", EditCondition="bDeathRagdoll"))
+	float DeathScaleDelay = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(ClampMin="0.01", Units="s", EditCondition="bDeathRagdoll"))
+	float DeathScaleDuration = 1.0f;
+
 private:
 
 	/** Position actuelle (lissée) dans le BlendSpace : X = direction, Y = vitesse */
@@ -587,7 +629,54 @@ private:
 	/** Objet dont l'invite « E » est affichée (joueur local) */
 	TWeakObjectPtr<AYSInteractiveObject> FocusedInteractable;
 
+	/** Sortie du sol (serveur -> toutes les machines) */
+	UPROPERTY(ReplicatedUsing=OnRep_Rise)
+	FYSFoeRise Rise;
+
+	UFUNCTION()
+	void OnRep_Rise();
+
+	void StartRise();
+	void BeginRiseLocal();
+	void UpdateRise();
+	void EndRiseLocal();
+
+	bool bLocalRiseActive = false;
+
+	/** Mort en ragdoll (serveur -> toutes les machines) */
+	UPROPERTY(ReplicatedUsing=OnRep_Death)
+	FYSFoeDeath Death;
+
+	UFUNCTION()
+	void OnRep_Death();
+
+	void BeginDeathLocal();
+
+	/** Rétrécissement après Death Scale Delay ; à 0 : FinishDeath (serveur) */
+	void UpdateDeath();
+
+	/** Corps disparu (serveur) : caméra de secours du joueur, personnage détruit (le joueur passe en spectateur) */
+	void FinishDeath();
+
+	/** Vitesse du ragdoll : pushback maximal du NME tueur dans la direction du coup, + vertical */
+	FVector ComputeDeathImpulse(const FDamageEvent& DamageEvent, const AController* EventInstigator, const AActor* DamageCauser) const;
+
+	bool bLocalDeathStarted = false;
+	double DeathStartTime = 0.0;
+	FVector DeathBodyScale = FVector::OneVector;
+	FVector PendingDeathImpulse = FVector::ZeroVector;
+	bool bSkipDeathAnim = false;
+
 public:
+
+	/** En train de sortir du sol (pas d'attaque ni de déplacement) */
+	bool IsRising() const { return bLocalRiseActive; }
+
+	/** Mort, corps en ragdoll en attendant sa disparition */
+	bool IsDying() const { return Death.bDead; }
+
+	/** Sortie du sol terminée tout de suite (coup qui pousse ; serveur) */
+	void FinishRiseNow();
 
 	AYSPlayerCharacter();
 
@@ -1060,7 +1149,7 @@ protected:
 	/** Cible de la visée assistée de l'arme d'une main (Coup d'Petoir), ou nullptr */
 	const AActor* GetHandAssistTarget(bool bLeft) const;
 
-	/** PV à 0 (serveur) : PlayerState mort, caméra laissée sur place, personnage détruit */
+	/** PV à 0 (serveur) : PlayerState mort, corps en ragdoll (FinishDeath à la fin : personnage détruit, spectateur) */
 	virtual void Die();
 
 	/** Deadzone : tombé sous le KillZ de la map (World Settings) -> mort (serveur ; rien chez les clients) */
