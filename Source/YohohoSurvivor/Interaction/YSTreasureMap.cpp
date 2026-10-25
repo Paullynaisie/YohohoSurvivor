@@ -184,12 +184,40 @@ bool AYSTreasureMap::BuildPath(const UWorld* World, const FVector& Start, TArray
 			}
 		}
 
-		if (OutPoints.Num() == SegmentCount + 1)
+		// chemin arrondi : la courbe affichée doit aussi rester sur le sol (elle déborde des segments dans les virages)
+		if (OutPoints.Num() == SegmentCount + 1 && (!bSmoothPath || IsSmoothPathGrounded(World, OutPoints)))
 		{
 			return true;
 		}
 	}
 	return false;
+}
+
+bool AYSTreasureMap::IsSmoothPathGrounded(const UWorld* World, const TArray<FVector>& Points) const
+{
+	// même courbe que la spline en points Curve (tangentes automatiques), vérifiée tous les GroundCheckStep / 4
+	FInterpCurveVector Curve;
+	for (int32 Index = 0; Index < Points.Num(); ++Index)
+	{
+		const int32 Added = Curve.AddPoint(static_cast<float>(Index), Points[Index]);
+		Curve.Points[Added].InterpMode = CIM_CurveAuto;
+	}
+	Curve.AutoSetTangents(0.0f, false);
+
+	for (int32 Index = 0; Index + 1 < Points.Num(); ++Index)
+	{
+		const int32 Steps = FMath::Max(1, FMath::CeilToInt(FVector::Dist(Points[Index], Points[Index + 1]) / (YSTreasureMap::GroundCheckStep * 0.25f)));
+		for (int32 Step = 1; Step < Steps; ++Step)
+		{
+			const FVector Sample = Curve.Eval(Index + static_cast<float>(Step) / Steps);
+			FVector Ground;
+			if (!FindPathGround(World, Sample, Sample.Z, MaxHeightDifference, Ground))
+			{
+				return false;
+			}
+		}
+	}
+	return true;
 }
 
 void AYSTreasureMap::SetPath(const TArray<FVector>& Points)

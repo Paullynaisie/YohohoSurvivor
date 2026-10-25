@@ -7,6 +7,7 @@
 class AYSPlayerCharacter;
 class UUserWidget;
 class UWidgetComponent;
+class UTexture2D;
 
 /**
  *  Objet avec lequel le joueur interagit (touche E) : par défaut, un objet qu'il peut porter (ex. le coffre).
@@ -80,6 +81,25 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Brooker", meta=(ClampMin="0"))
 	int32 DoubloonValue = 0;
 
+	/** Bulle d'indication (comme celle du Brooker) : au bord de l'écran quand l'objet posé est hors écran (coffres : pour ne pas les perdre) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator")
+	bool bShowIndicator = false;
+
+	/** Bulle aussi affichée au-dessus de l'objet quand il est à l'écran */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator", meta=(EditCondition="bShowIndicator"))
+	bool bIndicatorOnScreen = false;
+
+	/** Couleur du rond et image (optionnelle) de la bulle */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator", meta=(EditCondition="bShowIndicator"))
+	FLinearColor IndicatorColor = FLinearColor(0.85f, 0.55f, 0.15f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator", meta=(EditCondition="bShowIndicator"))
+	TObjectPtr<UTexture2D> IndicatorIcon;
+
+	/** Hauteur visée au-dessus de l'origine (bas) de l'objet */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator", meta=(Units="Centimeters", EditCondition="bShowIndicator"))
+	float IndicatorHeight = 120.0f;
+
 	/** Joueur qui porte l'objet (nullptr = au sol) */
 	UPROPERTY(ReplicatedUsing=OnRep_Carrier, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Interaction")
 	TObjectPtr<AYSPlayerCharacter> Carrier;
@@ -118,6 +138,12 @@ public:
 	float GetDropDistance() const { return DropDistance; }
 
 	int32 GetDoubloonValue() const { return DoubloonValue; }
+
+	bool ShowsIndicator() const { return bShowIndicator; }
+	bool ShowsIndicatorOnScreen() const { return bIndicatorOnScreen; }
+	FLinearColor GetIndicatorColor() const { return IndicatorColor; }
+	UTexture2D* GetIndicatorIcon() const { return IndicatorIcon; }
+	FVector GetIndicatorLocation() const { return GetActorLocation() + FVector(0.0f, 0.0f, IndicatorHeight); }
 
 	FText GetDisplayName() const { return DisplayName; }
 

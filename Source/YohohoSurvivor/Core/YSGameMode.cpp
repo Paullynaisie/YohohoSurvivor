@@ -75,10 +75,7 @@ void AYSGameMode::Tick(float DeltaSeconds)
 
 void AYSGameMode::OnDayStarted(int32 Day)
 {
-	if (bOvertime && bDayNightCycle && Day >= OvertimeDay && OvertimeStartTime < 0.0f)
-	{
-		StartOvertime();
-	}
+	// l'overtime commence à la tombée de la nuit d'Overtime Day (StartNight) : le jour lui-même est normal
 }
 
 void AYSGameMode::StartOvertime()
@@ -89,16 +86,28 @@ void AYSGameMode::StartOvertime()
 		return;
 	}
 	OvertimeStartTime = YSGameState->GetMatchElapsedTime();
+	LastOvertimeWaveTime = OvertimeStartTime;
 	NextOvertimeWave = 0;
 	YSGameState->SetOvertime();
-	UE_LOG(LogTemp, Log, TEXT("[YSOvertime] Jour %d : l'île passe en overtime (%d circle spawn(s), l'île coulera à la tombée de la nuit)"), YSGameState->GetDayNumber(), OvertimeWaves.Num());
+	UE_LOG(LogTemp, Log, TEXT("[YSOvertime] Nuit %d : l'île passe en overtime (pas d'élite, %d circle spawn(s), l'île coulera %.0f s après le dernier)"),
+		YSGameState->GetDayNumber(), OvertimeWaves.Num(), IslandSinkDelayAfterLastWave);
 }
 
 void AYSGameMode::TickOvertime()
 {
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
-	if (OvertimeStartTime < 0.0f || !YSGameState || !OvertimeWaves.IsValidIndex(NextOvertimeWave))
+	if (OvertimeStartTime < 0.0f || !YSGameState)
 	{
+		return;
+	}
+
+	// toutes les vagues parties : l'île coule Island Sink Delay After Last Wave secondes après la dernière
+	if (!OvertimeWaves.IsValidIndex(NextOvertimeWave))
+	{
+		if (!YSGameState->IsIslandSinking() && YSGameState->GetMatchElapsedTime() - LastOvertimeWaveTime >= IslandSinkDelayAfterLastWave)
+		{
+			StartIslandSink();
+		}
 		return;
 	}
 	const FYSOvertimeWave& Wave = OvertimeWaves[NextOvertimeWave];
@@ -111,6 +120,8 @@ void AYSGameMode::TickOvertime()
 	const int32 Level = YSGameState->GetDayNumber() + Wave.LevelOffset;
 	SpawnCircle(Wave.EnemyClasses, ScaleEnemyCount(Wave.EnemiesPerPlayer), FString::Printf(TEXT("overtime %d, niveau %d"), NextOvertimeWave + 1, Level), Level);
 	++NextOvertimeWave;
+	// sans vague (liste vide) : l'île coule le même délai après le début de l'overtime
+	LastOvertimeWaveTime = YSGameState->GetMatchElapsedTime();
 }
 
 void AYSGameMode::StartIslandSink()
@@ -559,10 +570,10 @@ void AYSGameMode::StartNight()
 
 	YSGameState->StartNight();
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Nuit %d"), YSGameState->GetDayNumber());
-	// overtime : pas d'élite ni de NME cette nuit, l'île coule
-	if (OvertimeStartTime >= 0.0f)
+	// nuit d'Overtime Day : overtime = pas d'élite (ni de circle spawn de la nuit), vagues d'overtime puis l'île coule
+	if (bOvertime && YSGameState->GetDayNumber() >= OvertimeDay)
 	{
-		StartIslandSink();
+		StartOvertime();
 		return;
 	}
 	for (UYSEnemySpawnRule* Rule : SpawnRules)

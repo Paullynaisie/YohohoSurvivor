@@ -978,6 +978,15 @@ void AYSPlayerController::UpdatePlayerHUD()
 		}
 	}
 
+	// objets posés avec bulle (coffres) : au bord de l'écran quand ils sont hors écran
+	for (TActorIterator<AYSInteractiveObject> It(GetWorld()); It && bInMatch; ++It)
+	{
+		if (It->ShowsIndicator() && !It->GetCarrier() && !It->IsActorBeingDestroyed())
+		{
+			AddIndicator(It->GetIndicatorLocation(), It->GetIndicatorColor(), It->GetIndicatorIcon(), It->ShowsIndicatorOnScreen());
+		}
+	}
+
 	if (OffscreenIndicators)
 	{
 		OffscreenIndicators->SetVisibility(bInMatch ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);

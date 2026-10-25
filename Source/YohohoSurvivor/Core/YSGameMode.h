@@ -198,11 +198,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship", meta=(ClampMin="0", Units="s", EditCondition="bShipBoardingVictory"))
 	float VictoryReturnDelay = 5.0f;
 
-	/** Overtime de l'île (GameMap) : à partir du jour Overtime Day, circle spawns plus forts puis l'île coule à la tombée de la nuit */
+	/** Overtime de l'île (GameMap) : la nuit d'Overtime Day, pas d'élite : circle spawns plus forts (Overtime Waves), puis l'île coule */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime")
 	bool bOvertime = true;
 
-	/** Jour où l'île passe en overtime (au début de ce jour) */
+	/** Jour dont la NUIT lance l'overtime (ce jour-là reste normal) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(ClampMin="1", EditCondition="bOvertime"))
 	int32 OvertimeDay = 3;
 
@@ -210,7 +210,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(EditCondition="bOvertime"))
 	TArray<FYSOvertimeWave> OvertimeWaves;
 
-	/** Nuit de l'overtime : au lieu de l'élite et des NME, l'île (Landscape et ce qui y est accroché) descend sous l'eau, jusque sous la deadzone */
+	/** Overtime : après les vagues, l'île (Landscape et ce qui y est accroché) descend sous l'eau, jusque sous la deadzone */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(ClampMin="1", Units="s", EditCondition="bOvertime"))
 	float IslandSinkDuration = 30.0f;
 
@@ -221,6 +221,10 @@ protected:
 	/** Courbe de la descente (1 = vitesse constante, 2 = lente au début puis de plus en plus vite) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(ClampMin="0.1", EditCondition="bOvertime"))
 	float IslandSinkEaseExponent = 1.5f;
+
+	/** L'île commence à couler ce délai après le spawn de la dernière vague d'overtime */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(ClampMin="0", Units="s", EditCondition="bOvertime"))
+	float IslandSinkDelayAfterLastWave = 30.0f;
 
 	/** Objectif commun : doublons à réunir en revendant des coffres au Brooker (jauge d'objectif du HUD) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="1"))
@@ -387,6 +391,7 @@ protected:
 
 	/** Temps de partie du début de l'overtime (< 0 = pas d'overtime) et prochaine vague d'overtime */
 	float OvertimeStartTime = -1.0f;
+	float LastOvertimeWaveTime = -1.0f;
 	int32 NextOvertimeWave = 0;
 
 	/** Prochain numéro de joueur (nom par défaut « Player N », couleur par défaut) */

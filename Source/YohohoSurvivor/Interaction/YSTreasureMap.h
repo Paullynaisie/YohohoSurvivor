@@ -85,10 +85,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes", meta=(ClampMin="0", Units="Centimeters"))
 	float FadeDistance = 300.0f;
 
-	/** Chemin arrondi entre les points (courbe) ; décoché = segments droits, exactement ceux dont le sol a été vérifié
-	 *  (la courbe déborde dans les virages : pointillés au-dessus de la mer ou d'obstacles) */
+	/** Chemin arrondi entre les points (courbe, sol vérifié aussi le long de la courbe : un chemin dont la courbe passe hors du sol
+	 *  est refusé) ; décoché = segments droits */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes")
-	bool bSmoothPath = false;
+	bool bSmoothPath = true;
 
 	/** Distance entre le début de deux pointillés */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes", meta=(ClampMin="1", Units="Centimeters"))
@@ -154,6 +154,9 @@ public:
 	 *  faux si aucun chemin complet n'a été trouvé
 	 */
 	bool BuildPath(const UWorld* World, const FVector& Start, TArray<FVector>& OutPoints) const;
+
+	/** Chemin arrondi (bSmoothPath) : la courbe entre les points reste sur un sol valide */
+	bool IsSmoothPathGrounded(const UWorld* World, const TArray<FVector>& Points) const;
 
 	/** Fixe le chemin (serveur, avant ou juste après l'apparition) */
 	void SetPath(const TArray<FVector>& Points);

@@ -59,6 +59,43 @@ struct FYSFoeBump
 	uint8 Counter = 0;
 };
 
+/** Sortie du sol à l'apparition : répliquée, position recalculée à l'identique sur chaque machine */
+USTRUCT()
+struct FYSFoeRise
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	bool bActive = false;
+
+	/** Position finale de l'acteur (au sol) */
+	UPROPERTY()
+	FVector_NetQuantize Ground = FVector::ZeroVector;
+
+	/** Profondeur de départ sous Ground */
+	UPROPERTY()
+	float Depth = 0.0f;
+
+	UPROPERTY()
+	float Duration = 2.0f;
+
+	UPROPERTY()
+	double StartServerTime = 0.0;
+};
+
+/** Mort : ragdoll local sur chaque machine, lancé à la vitesse Impulse */
+USTRUCT()
+struct FYSFoeDeath
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	bool bDead = false;
+
+	UPROPERTY()
+	FVector_NetQuantize Impulse = FVector::ZeroVector;
+};
+
 /**
  *  Ennemi de base : attiré en ligne droite vers le joueur le plus proche, sans pathfinding,
  *  et toujours tourné vers lui. Meurt (détruit) quand ses points de vie tombent à 0 et donne alors de l'XP à l'équipe.
@@ -306,6 +343,45 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn", meta=(ClampMin="0"))
 	float SpawnWeight = 1.0f;
 
+	/** Apparition : le NME sort du sol (parti de sous la map) pendant Spawn Rise Duration ; touchable mais sans comportement
+	 *  ni attaque ; un coup qui le pousse (pushback, bump) le sort tout de suite et il démarre son comportement */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn Anim")
+	bool bSpawnRise = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn Anim", meta=(ClampMin="0.05", Units="s", EditCondition="bSpawnRise"))
+	float SpawnRiseDuration = 2.0f;
+
+	/** Profondeur de départ en plus de la hauteur du NME, x sa taille (complètement caché sous le sol au début, arme comprise) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn Anim", meta=(ClampMin="0", Units="Centimeters", EditCondition="bSpawnRise"))
+	float SpawnRiseExtraDepth = 120.0f;
+
+	/** Courbe de la sortie (1 = vitesse constante, 2 = rapide au début puis ralentit en arrivant au sol) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn Anim", meta=(ClampMin="0.1", EditCondition="bSpawnRise"))
+	float SpawnRiseEaseExponent = 2.0f;
+
+	/** Mort : corps lancé en ragdoll (physique) à la force MAXIMALE du pushback de celui qui a porté le coup (même direction), puis réduit à 0 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Death")
+	bool bDeathRagdoll = true;
+
+	/** Multiplicateur de toute la vitesse donnée au corps (1 = pushback maximal du tueur ; 2 demandé par Paul) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Death", meta=(ClampMin="0", EditCondition="bDeathRagdoll"))
+	float DeathImpulseMultiplier = 2.0f;
+
+	/** Vitesse verticale en plus (le corps décolle ; s'ajoute à la verticale du pushback du tueur) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Death", meta=(Units="CentimetersPerSecond", EditCondition="bDeathRagdoll"))
+	float DeathExtraUpImpulse = 200.0f;
+
+	/** Rotation donnée au corps (axe au hasard) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Death", meta=(ClampMin="0", Units="DegreesPerSecond", EditCondition="bDeathRagdoll"))
+	float DeathAngularImpulse = 360.0f;
+
+	/** Le corps commence à rétrécir après ce délai, puis atteint 0 en Death Scale Duration (ensuite le NME est détruit) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Death", meta=(ClampMin="0", Units="s", EditCondition="bDeathRagdoll"))
+	float DeathScaleDelay = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Death", meta=(ClampMin="0.01", Units="s", EditCondition="bDeathRagdoll"))
+	float DeathScaleDuration = 1.0f;
+
 	/** Map de test (GameMode avec Numpad Foe Spawn) : touche du pavé numérique (0 à 9) qui fait apparaître ce NME ; -1 = aucune */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Spawn", meta=(ClampMin="-1", ClampMax="9"))
 	int32 NumpadSpawnKey = -1;
@@ -373,6 +449,12 @@ public:
 
 	/** En vol après un bump (comportement coupé) */
 	bool IsBumped() const { return Bump.bActive; }
+
+	/** Sort encore du sol (apparition : pas de comportement ni d'attaque) */
+	bool IsRising() const { return bLocalRiseActive; }
+
+	/** Mort, corps en ragdoll avant sa disparition (plus de gameplay) */
+	bool IsDying() const { return Death.bDead; }
 
 	/** Affiche ou cache la marque au sol (Captain AMMO ; local, appelé par le personnage qui marque sur chaque machine) */
 	void SetMarked(bool bMarked);
@@ -507,6 +589,50 @@ protected:
 
 	/** Fin du vol sur cette machine : posé à l'arrivée, mouvement rétabli (serveur : il retombe s'il n'y a pas de sol) */
 	void EndBumpLocal();
+
+	/** Sortie du sol (serveur, répliquée) */
+	UPROPERTY(ReplicatedUsing=OnRep_Rise)
+	FYSFoeRise Rise;
+
+	UFUNCTION()
+	void OnRep_Rise();
+
+	/** Apparition (serveur, BeginPlay) : placé sous le sol, sort jusqu'à sa position */
+	void StartRise();
+
+	/** Début / position / fin de la sortie sur cette machine (comme le bump : mouvement du personnage coupé) */
+	void BeginRiseLocal();
+	void UpdateRise();
+	void EndRiseLocal();
+
+	/** Sortie interrompue (serveur, coup qui pousse) : tout de suite au sol, comportement démarré */
+	void FinishRiseNow();
+
+	bool bLocalRiseActive = false;
+
+	/** Mort (serveur, répliquée) : ragdoll sur chaque machine */
+	UPROPERTY(ReplicatedUsing=OnRep_Death)
+	FYSFoeDeath Death;
+
+	UFUNCTION()
+	void OnRep_Death();
+
+	/** Corps en ragdoll sur cette machine : plus de collision de gameplay ni de tags (plus ciblé), armes arrêtées */
+	void BeginDeathLocal();
+
+	/** Rétrécissement après Death Scale Delay ; à 0 : détruit (serveur) */
+	void UpdateDeath();
+
+	/** Vitesse du corps à la mort : pushback maximal du tueur dans la direction du coup (serveur, TakeDamage) */
+	FVector ComputeDeathImpulse(const FDamageEvent& DamageEvent, const AController* EventInstigator) const;
+
+	bool bLocalDeathStarted = false;
+	double DeathStartTime = 0.0;
+	FVector DeathBodyScale = FVector::OneVector;
+
+	/** Vitesse du corps pour la prochaine mort (renseignée par le coup fatal) ; tombé dans la deadzone : pas de ragdoll */
+	FVector PendingDeathImpulse = FVector::ZeroVector;
+	bool bSkipDeathAnim = false;
 
 	/** Marque affichée : disque reposé sur le relief sous le NME quand il s'est assez déplacé */
 	void UpdateMark();

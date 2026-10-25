@@ -67,7 +67,7 @@ int32 UYSEnemySpawnRule::CountAliveEnemies() const
 	int32 Count = 0;
 	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
 	{
-		Count += IsValid(*It) ? 1 : 0;
+		Count += IsValid(*It) && !It->IsDying() ? 1 : 0;
 	}
 	return Count;
 }
