@@ -309,9 +309,9 @@ bool UYSAutoSwingAbility::EvaluateHandPose(float& OutIdleWeight, FVector& OutLoc
 
 bool UYSAutoSwingAbility::IsHitboxActive(float SwingElapsed, bool bSwingWindow) const
 {
-	// arme cachée (objet porté) : jamais de coups
+	// arme cachée (objet porté, nage) : jamais de coups
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	if ((GetOwner() && GetOwner()->IsHidden()) || (Character && Character->IsCarrying()))
+	if ((GetOwner() && GetOwner()->IsHidden()) || (Character && Character->AreWeaponsStowed()))
 	{
 		return false;
 	}

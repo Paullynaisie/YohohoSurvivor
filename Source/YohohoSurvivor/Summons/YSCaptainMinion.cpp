@@ -16,14 +16,16 @@ AYSCaptainMinion::AYSCaptainMinion()
 	AIControllerClass = AAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
-	// le corps entier (et les mains) prend la couleur du Captain
-	CustomizationColorComponentName = TEXT("BodyPivot");
+	// comme les joueurs : corps blanc, Head Feature (celle de Mouss) de la couleur du Captain, armes de leur couleur de base
+	CustomizationColorComponentName = TEXT("Head Feature");
+	bWeaponColoration = false;
 
 	// critiques : seulement ceux donnés par le Captain (marque du Corsaire)
 	bCriticalsFromStart = false;
 
 	// même cycle que les NME : sort du sol à l'apparition, ragdoll 1 s puis rétrécit 1 s à la mort
 	bSpawnRise = true;
+	SpawnRiseDuration = 0.5f;
 	DeathScaleDelay = 1.0f;
 	DeathScaleDuration = 1.0f;
 }
@@ -113,7 +115,9 @@ float AYSCaptainMinion::GetCriticalDamageMultiplier() const
 
 FVector AYSCaptainMinion::GetAimLocation() const
 {
-	return CurrentTarget.IsValid() ? CurrentTarget->GetActorLocation() : GetActorLocation() + GetActorForwardVector() * 1000.0f;
+	// pas encore de cible (Ability forcée pendant la sortie du sol : l'IA n'a pas encore tourné) : on la cherche
+	const AYSFoeCharacter* Target = CurrentTarget.IsValid() ? CurrentTarget.Get() : FindTarget();
+	return Target ? Target->GetActorLocation() : GetActorLocation() + GetActorForwardVector() * 1000.0f;
 }
 
 bool AYSCaptainMinion::IsAbilityInProgress() const

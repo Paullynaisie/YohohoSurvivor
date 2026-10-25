@@ -43,6 +43,8 @@
 #include "EngineUtils.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "NPC/YSBrookerNPC.h"
+#include "Map/YSOcean.h"
+#include "Engine/StaticMesh.h"
 
 namespace
 {
@@ -560,7 +562,7 @@ void AYSPlayerCharacter::FinishRiseNow()
 	{
 		return;
 	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s : coup pendant la sortie du sol, sorti tout de suite"), *GetName());
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s : sortie du sol terminée tout de suite (coup ou Ability forcée)"), *GetName());
 	EndRiseLocal();
 }
 
@@ -1006,6 +1008,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 		UpdateRise();
 	}
 
+	UpdateSwimming(DeltaSeconds);
 	UpdateStrafeAnimation(DeltaSeconds);
 	UpdateBodyPivot(DeltaSeconds);
 	UpdateHands(DeltaSeconds);
@@ -1163,7 +1166,9 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 			FMath::PerlinNoise1D(NoiseTime + 31.7f),
 			FMath::PerlinNoise1D(NoiseTime + 67.3f)) * HandSwayAmplitude;
 
-		const FVector Target = PivotTransform.TransformPosition(GetHandTargetLocation(bLeft) + Sway.GetClampedToMaxSize(HandSwayAmplitude));
+		FVector Target = PivotTransform.TransformPosition(GetHandTargetLocation(bLeft) + Sway.GetClampedToMaxSize(HandSwayAmplitude));
+		// nage : les mains à la hauteur de l'eau
+		Target.Z = FMath::Lerp(Target.Z, SwimSurfaceZ + SwimHandHeight, SwimBlend);
 
 		// retard : la main rejoint sa cible progressivement (téléportation / première image : directement)
 		if (!bHandsInitialized || HandFollowSpeed <= 0.0f || FVector::DistSquared(WorldLocation, Target) > FMath::Square(HandSnapDistance))
@@ -1245,8 +1250,8 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 	UpdateHand(RightHand, RightHandWorldLocation, RightHandYaw, false, 100.0f);
 
 	// arme à deux mains (ex. Shotgun) : l'autre main toujours sur le socket de l'arme, sans retard, même pendant le recul
-	// (après la main qui la tient : l'arme, attachée à cette main, l'a déjà suivie) ; pas pendant le port d'un objet
-	if (!IsValid(CarriedObject))
+	// (après la main qui la tient : l'arme, attachée à cette main, l'a déjà suivie) ; pas pendant le port d'un objet ni la nage
+	if (!IsValid(CarriedObject) && !bSwimming)
 	{
 		for (const bool bWeaponInLeft : { false, true })
 		{
@@ -1282,12 +1287,14 @@ void AYSPlayerCharacter::UpdateBodyPivot(float DeltaSeconds)
 {
 	const FVector Velocity = GetVelocity();
 	const FQuat LeanQuat = UpdateLean(DeltaSeconds, Velocity);
-	const float Hop = UpdateHop(DeltaSeconds, Velocity.Size2D());
+	// pas de sautillement en nageant
+	const float Hop = UpdateHop(DeltaSeconds, bSwimming ? 0.0f : Velocity.Size2D());
 
-	// pivot autour des pieds (bas de la capsule) pour que le personnage reste posé au sol, puis sautillement vertical
+	// pivot autour des pieds (bas de la capsule) pour que le personnage reste posé au sol, puis sautillement vertical ;
+	// nage : le corps est placé à Swim Immersion sous la surface
 	const FVector ActorLocation = GetActorLocation();
 	const FVector Feet = ActorLocation - FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
-	FVector PivotLocation = Feet + LeanQuat.RotateVector(ActorLocation - Feet) + FVector(0.0f, 0.0f, Hop);
+	FVector PivotLocation = Feet + LeanQuat.RotateVector(ActorLocation - Feet) + FVector(0.0f, 0.0f, Hop + GetSwimBodyOffset());
 
 	// roulade (Rolling shot) : le corps tourne sur lui-même vers la direction du mouvement et se met en boule
 	FQuat RollQuat = FQuat::Identity;
@@ -2023,10 +2030,12 @@ void AYSPlayerCharacter::RestoreOnLevelUp()
 
 void AYSPlayerCharacter::ForceAbility(const FYSForcedActivation& Forced)
 {
-	if (!HasAuthority() || !IsAlive() || IsCarrying())
+	if (!HasAuthority() || !IsAlive() || AreWeaponsStowed())
 	{
 		return;
 	}
+	// encore en train de sortir du sol (minion) : sortie terminée tout de suite pour lancer l'Ability
+	FinishRiseNow();
 	// accord du serveur sur les actions de clic des deux mains
 	for (const AYSWeapon* Weapon : { GetMainHandWeapon(), GetOffHandWeapon() })
 	{
@@ -2299,7 +2308,10 @@ void AYSPlayerCharacter::UpdateMaxWalkSpeed()
 	// serveur et client propriétaire doivent avoir la même vitesse (prédiction de mouvement)
 	float ActionMultiplier = 1.0f;
 	ForEachHeldAction([&ActionMultiplier](const UYSAbilityComponent* Action) { ActionMultiplier *= Action->GetMoveSpeedMultiplier(); });
-	GetCharacterMovement()->MaxWalkSpeed = GetUnmodifiedWalkSpeed() * ActionMultiplier;
+	// nage : Swim Speed Multiplier, ou celui du passif (Larbin : nage moins ralentie)
+	const float PassiveSwim = Passive ? Passive->GetSwimSpeedMultiplierOverride() : 0.0f;
+	const float SwimMultiplier = bSwimming ? (PassiveSwim > 0.0f ? PassiveSwim : SwimSpeedMultiplier) : 1.0f;
+	GetCharacterMovement()->MaxWalkSpeed = GetUnmodifiedWalkSpeed() * ActionMultiplier * SwimMultiplier;
 }
 
 bool AYSPlayerCharacter::IsMoveInputOverridden() const
@@ -2400,18 +2412,7 @@ void AYSPlayerCharacter::StartCarrying(AYSInteractiveObject* Object)
 	}
 
 	// les armes sont désactivées : actions en cours interrompues (anim du sabre, main suivante de l'akimbo)
-	GetWorldTimerManager().ClearTimer(AkimboTimer);
-	for (const AYSWeapon* Weapon : { GetLeftHandWeapon(), GetRightHandWeapon() })
-	{
-		if (Weapon)
-		{
-			TInlineComponentArray<UYSAbilityComponent*> Actions(Weapon);
-			for (UYSAbilityComponent* Action : Actions)
-			{
-				Action->CancelAction();
-			}
-		}
-	}
+	CancelAllActions();
 
 	CarriedObject = Object;
 	Object->SetCarrier(this);
@@ -2463,13 +2464,85 @@ void AYSPlayerCharacter::ApplyCarryVisuals()
 	{
 		if (Weapon)
 		{
-			Weapon->SetActorHiddenInGame(IsCarrying());
+			Weapon->SetActorHiddenInGame(AreWeaponsStowed());
 		}
 	}
 }
 
+void AYSPlayerCharacter::CancelAllActions()
+{
+	GetWorldTimerManager().ClearTimer(AkimboTimer);
+	for (const AYSWeapon* Weapon : { GetLeftHandWeapon(), GetRightHandWeapon() })
+	{
+		if (Weapon)
+		{
+			TInlineComponentArray<UYSAbilityComponent*> Actions(Weapon);
+			for (UYSAbilityComponent* Action : Actions)
+			{
+				Action->CancelAction();
+			}
+		}
+	}
+}
+
+void AYSPlayerCharacter::UpdateSwimming(float DeltaSeconds)
+{
+	// pendant que l'île coule, plus de sol de nage : tout le monde coule avec elle (seuls ceux du bateau survivent)
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const bool bFloorActive = !(YSGameState && YSGameState->IsIslandSinking());
+	if (bFloorActive != bSwimFloorBlocked)
+	{
+		bSwimFloorBlocked = bFloorActive;
+		GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_YSWater, bFloorActive ? ECR_Block : ECR_Ignore);
+	}
+
+	// nage : pieds presque à la profondeur du sol de nage (même calcul sur toutes les machines, depuis la position)
+	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+	const FVector Feet = GetActorLocation() - FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	const bool bNowSwimming = Ocean && bFloorActive && IsAlive() && AYSOcean::GetWaterDepth(GetWorld(), Feet) >= Ocean->GetSwimFloorDepth() - SwimEnterTolerance;
+	if (Ocean)
+	{
+		SwimSurfaceZ = Ocean->GetSeaLevel();
+	}
+	if (bNowSwimming != bSwimming)
+	{
+		bSwimming = bNowSwimming;
+		ApplyCarryVisuals();
+		UpdateMaxWalkSpeed();
+		if (bSwimming && HasAuthority())
+		{
+			// armes rangées : actions en cours interrompues
+			CancelAllActions();
+		}
+		UE_LOG(LogTemp, Verbose, TEXT("[YSSwim] %s (%s) %s à (%.0f, %.0f, %.0f), vitesse %.0f"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"),
+			bSwimming ? TEXT("nage") : TEXT("sort de l'eau"), Feet.X, Feet.Y, Feet.Z, GetCharacterMovement()->MaxWalkSpeed);
+	}
+	SwimBlend = SwimBlendSpeed > 0.0f ? FMath::FInterpTo(SwimBlend, bSwimming ? 1.0f : 0.0f, DeltaSeconds, SwimBlendSpeed) : (bSwimming ? 1.0f : 0.0f);
+}
+
+float AYSPlayerCharacter::GetSwimBodyOffset() const
+{
+	const UStaticMesh* BodyStaticMesh = BodyMesh->GetStaticMesh();
+	if (SwimBlend <= KINDA_SMALL_NUMBER || !BodyStaticMesh)
+	{
+		return 0.0f;
+	}
+	// bas et hauteur du corps sans inclinaison (relatifs au pivot, à l'échelle du personnage)
+	const FBox Box = BodyStaticMesh->GetBoundingBox();
+	const FTransform Relative = BodyMesh->GetRelativeTransform();
+	const float PivotScale = BodyPivot->GetComponentScale().Z;
+	const float Bottom = GetActorLocation().Z + (Relative.GetLocation().Z + Box.Min.Z * Relative.GetScale3D().Z) * PivotScale;
+	const float Height = Box.GetSize().Z * Relative.GetScale3D().Z * PivotScale;
+	return (SwimSurfaceZ - SwimImmersion * Height - Bottom) * SwimBlend;
+}
+
 void AYSPlayerCharacter::UpdateWeaponColoration()
 {
+	if (!bWeaponColoration)
+	{
+		return;
+	}
+
 	// set différent de celui du Blueprint du personnage = obtenu par une upgrade de classe (joueurs seulement : le set d'un
 	// minion est tiré au hasard)
 	const AYSPlayerCharacter* Defaults = GetClass()->GetDefaultObject<AYSPlayerCharacter>();

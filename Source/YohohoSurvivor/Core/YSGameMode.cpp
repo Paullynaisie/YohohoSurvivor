@@ -589,7 +589,7 @@ void AYSGameMode::TryStartMatch()
 
 	YSGameState->SetMatchStarted();
 	// jour 1 : carte au trésor
-	SpawnTreasureMap();
+	SpawnDailyTreasureMap();
 	for (UYSEnemySpawnRule* Rule : SpawnRules)
 	{
 		if (Rule)
@@ -648,8 +648,8 @@ void AYSGameMode::OnEliteKilled(AYSFoeCharacter* Elite)
 
 	YSGameState->StartDay(YSGameState->GetDayNumber() + 1);
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Élite %s tué : jour %d"), Elite ? *Elite->GetName() : TEXT("?"), YSGameState->GetDayNumber());
-	// nouveau jour : nouvelle carte au trésor ; overtime à partir de Overtime Day
-	SpawnTreasureMap();
+	// nouveau jour : nouvelle carte au trésor (si la précédente est finie) ; overtime à partir de Overtime Day
+	SpawnDailyTreasureMap();
 	OnDayStarted(YSGameState->GetDayNumber());
 	for (UYSEnemySpawnRule* Rule : SpawnRules)
 	{
@@ -811,6 +811,23 @@ int32 AYSGameMode::SpawnBonusWave(int32 EnemiesPerPlayer, const TCHAR* Reason)
 	}
 	UE_LOG(LogTemp, Warning, TEXT("[YSGameMode] Vague bonus (%s) : aucune règle de spawn avec des NME"), Reason);
 	return 0;
+}
+
+void AYSGameMode::SpawnDailyTreasureMap()
+{
+	if (bOneTreasureMapAtATime)
+	{
+		// une seule île pour l'instant : n'importe quelle carte encore là (posée ou portée) compte
+		for (TActorIterator<AYSTreasureMap> It(GetWorld()); It; ++It)
+		{
+			if (!It->IsActorBeingDestroyed())
+			{
+				UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Carte au trésor du jour : aucune, %s n'est pas encore finie"), *It->GetName());
+				return;
+			}
+		}
+	}
+	SpawnTreasureMap();
 }
 
 AYSTreasureMap* AYSGameMode::SpawnTreasureMap()

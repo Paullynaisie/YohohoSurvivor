@@ -201,7 +201,7 @@ void UYSBombThrowerAbility::ReleaseBomb(FVector Landing, TArray<FVector> ExtraLa
 	const TSubclassOf<AYSPlayerBomb> SpawnClass = bMine ? MineClass : BombClass;
 	APawn* Holder = GetHolderPawn();
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Holder);
-	if (!SpawnClass || !IsValid(Holder) || (Character && Character->IsCarrying()))
+	if (!SpawnClass || !IsValid(Holder) || (Character && Character->AreWeaponsStowed()))
 	{
 		return;
 	}

@@ -277,6 +277,30 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Customization")
 	FName CustomizationColorComponentName = TEXT("Head Feature");
 
+	/** Nage (eau profonde, sur le sol de nage de l'océan) : vitesse x ce multiplicateur (passif Larbin : le sien) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Swim", meta=(ClampMin="0", ClampMax="1"))
+	float SwimSpeedMultiplier = 0.3f;
+
+	/** Part de la hauteur du corps sous la surface pendant la nage (2/3) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Swim", meta=(ClampMin="0", ClampMax="1"))
+	float SwimImmersion = 0.667f;
+
+	/** Nage dès que les pieds sont à (profondeur du sol de nage - cette marge) sous la surface */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Swim", meta=(ClampMin="0", Units="Centimeters"))
+	float SwimEnterTolerance = 10.0f;
+
+	/** Hauteur des mains par rapport à la surface de l'eau pendant la nage */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Swim", meta=(Units="Centimeters"))
+	float SwimHandHeight = 0.0f;
+
+	/** Vitesse de passage marche <-> nage (corps qui s'enfonce, mains qui descendent à la surface) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Swim", meta=(ClampMin="0"))
+	float SwimBlendSpeed = 6.0f;
+
+	/** Armes colorées selon la main (principale / autre / set d'upgrade de classe) ; faux = matériaux de base de leur Blueprint (minions) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Customization")
+	bool bWeaponColoration = true;
+
 	/** Gaucher (choisi à l'écran de sélection) : miroir du personnage, réglé en droitier dans son Blueprint */
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Customization")
 	bool bLeftHanded = false;
@@ -1058,6 +1082,12 @@ public:
 
 	bool IsCarrying() const { return CarriedObject != nullptr; }
 
+	/** Nage (eau profonde) : calculé sur chaque machine depuis la position (pieds sous la surface) ; plus ciblé par les NME */
+	bool IsSwimming() const { return bSwimming; }
+
+	/** Armes rangées (objet porté, nage) : cachées, ni Ability ni attaque auto */
+	bool AreWeaponsStowed() const { return IsCarrying() || bSwimming; }
+
 	/** Prend l'objet dans ses mains (serveur) : actions en cours interrompues, armes cachées, plus lent */
 	void StartCarrying(AYSInteractiveObject* Object);
 
@@ -1107,8 +1137,28 @@ protected:
 	/** MaxWalkSpeed = MoveSpeed x Move speed bonus x objet porté (serveur et client : prédiction) */
 	void UpdateMaxWalkSpeed();
 
-	/** Armes cachées pendant le portage (toutes machines) */
+	/** Armes cachées pendant le portage et la nage (toutes machines) */
 	void ApplyCarryVisuals();
+
+	/** Toutes les actions des armes interrompues (serveur : prise d'un objet, entrée dans l'eau) */
+	void CancelAllActions();
+
+	/** État de nage depuis la position (toutes machines), sol de nage coupé pendant que l'île coule, passage marche <-> nage */
+	void UpdateSwimming(float DeltaSeconds);
+
+	/** Décalage vertical du corps pendant la nage : Swim Immersion de sa hauteur sous la surface (0 hors de l'eau) */
+	float GetSwimBodyOffset() const;
+
+	bool bSwimming = false;
+
+	/** 0 = marche, 1 = nage (lissé) */
+	float SwimBlend = 0.0f;
+
+	/** Hauteur de la surface de la mer (dernière connue) */
+	float SwimSurfaceZ = 0.0f;
+
+	/** Le capsule bloque le sol de nage (coupé pendant que l'île coule : on coule avec elle) */
+	bool bSwimFloorBlocked = false;
 
 	/** Couleur des armes (composant Coloration) : main principale, autre main, ou set d'upgrade de classe ; local */
 	void UpdateWeaponColoration();

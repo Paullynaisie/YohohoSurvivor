@@ -1,6 +1,6 @@
 #include "Abilities/YSSummonCrewAbility.h"
 #include "Components/CapsuleComponent.h"
-#include "Core/YSGameState.h"
+#include "Core/YSPlayerState.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Map/YSOcean.h"
@@ -186,10 +186,10 @@ AYSCaptainMinion* UYSSummonCrewAbility::SpawnMinionAt(const FVector& Location, f
 	{
 		return nullptr;
 	}
-	const AYSGameState* YSGameState = World->GetGameState<AYSGameState>();
-	const int32 FaceCount = YSGameState ? YSGameState->GetCustomizationFaces().Num() : 0;
+	// même visage que le Captain (aussi l'icône du HUD)
+	const AYSPlayerState* CaptainState = Captain->GetPlayerState<AYSPlayerState>();
 	UYSWeaponSet* Set = MinionWeaponSets.Num() > 0 ? MinionWeaponSets[FMath::RandRange(0, MinionWeaponSets.Num() - 1)].Get() : nullptr;
-	Minion->InitMinion(Captain, Set, FaceCount > 0 ? FMath::RandRange(0, FaceCount - 1) : 0);
+	Minion->InitMinion(Captain, Set, CaptainState ? CaptainState->GetFaceIndex() : 0);
 	Minion->FinishSpawning(SpawnTransform);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSSummon] %s invoque %s (set %s) en (%.0f, %.0f, %.0f) : %d / %d minions"), *Captain->GetName(), *Minion->GetName(),
 		Set ? *Set->GetName() : TEXT("par défaut"), SpawnLocation.X, SpawnLocation.Y, SpawnLocation.Z, Alive + 1, GetMaxMinions());

@@ -29,6 +29,7 @@
 #include "Weapons/YSWeaponSet.h"
 #include "Abilities/YSAutoSwingAbility.h"
 #include "Map/YSGroundZoneComponent.h"
+#include "Map/YSOcean.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Enemies/YSFoeRangedAction.h"
 #include "Upgrades/YSUpgrade.h"
@@ -622,10 +623,19 @@ void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEven
 
 void AYSFoeCharacter::Die()
 {
-	// XP commune à toute l'équipe
+	// XP commune à toute l'équipe ; rien pour un NME mort dans l'eau (tombé dans la deadzone sous la mer, ou pieds sous la surface)
 	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
 	{
-		GameMode->AddTeamExperience(GetExperienceReward());
+		const FVector Feet = GetActorLocation() - FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+		const float WaterDepth = AYSOcean::GetWaterDepth(GetWorld(), Feet);
+		if (bSkipDeathAnim || WaterDepth > NoExperienceWaterDepth)
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s meurt dans l'eau (%s, %.0f cm d'eau) : pas d'XP"), *GetName(), bSkipDeathAnim ? TEXT("deadzone") : TEXT("dans la mer"), WaterDepth);
+		}
+		else
+		{
+			GameMode->AddTeamExperience(GetExperienceReward());
+		}
 
 		// butin (coffre de l'élite) posé au sol là où il meurt
 		if (DeathLootClass)
@@ -1072,8 +1082,8 @@ APawn* AYSFoeCharacter::FindNearestPlayer() const
 	{
 		APawn* Pawn = Player ? Player->GetPawn() : nullptr;
 		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(Pawn);
-		// corps en ragdoll d'un joueur mort : plus une cible
-		if (!Pawn || (PlayerCharacter && !PlayerCharacter->IsAlive()))
+		// corps en ragdoll d'un joueur mort, joueur qui nage : pas une cible
+		if (!Pawn || (PlayerCharacter && (!PlayerCharacter->IsAlive() || PlayerCharacter->IsSwimming())))
 		{
 			continue;
 		}
@@ -1092,7 +1102,7 @@ APawn* AYSFoeCharacter::FindNearestPlayer() const
 	for (TActorIterator<AYSCaptainMinion> It(GetWorld()); It; ++It)
 	{
 		AYSCaptainMinion* Minion = *It;
-		if (!Minion->IsAlive() || Minion->IsActorBeingDestroyed())
+		if (!Minion->IsAlive() || Minion->IsActorBeingDestroyed() || Minion->IsSwimming())
 		{
 			continue;
 		}

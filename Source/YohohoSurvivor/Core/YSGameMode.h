@@ -264,6 +264,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap", meta=(ClampMin="1"))
 	int32 TreasureMapSpawnAttempts = 30;
 
+	/** Une seule carte au trésor active à la fois sur l'île : si celle d'un jour n'est pas finie, aucune nouvelle carte le jour suivant */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap")
+	bool bOneTreasureMapAtATime = true;
+
 public:
 
 	AYSGameMode();
@@ -393,6 +397,9 @@ public:
 
 	/** Carte au trésor au hasard dans la zone (début de jour) ; nullptr si aucun emplacement n'a de chemin complet */
 	AYSTreasureMap* SpawnTreasureMap();
+
+	/** Carte du début de jour : rien si une carte est encore active sur l'île (One Treasure Map At A Time) */
+	void SpawnDailyTreasureMap();
 
 	/** Carte au trésor posée à Location si un chemin complet en part (debug) */
 	AYSTreasureMap* SpawnTreasureMapAt(const FVector& Location);

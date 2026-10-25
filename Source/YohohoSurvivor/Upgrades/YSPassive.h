@@ -32,9 +32,12 @@ public:
 
 	/** %Armor : part des dégâts subis ignorée, appliquée avant l'armure (0.2 = 20 %) */
 	virtual float GetArmorPercent() const { return 0.0f; }
+
+	/** Vitesse de nage à la place de Swim Speed Multiplier du personnage (0 = celle du personnage) */
+	virtual float GetSwimSpeedMultiplierOverride() const { return 0.0f; }
 };
 
-/** « Larbin » (Mouss) : aucune perte de vitesse en portant un objet */
+/** « Larbin » (Mouss) : aucune perte de vitesse en portant un objet, et nage un peu moins ralentie (50 % au lieu de 30 %) */
 UCLASS(meta=(DisplayName="Passif : pas de ralentissement en portant un objet"))
 class UYSCarrySpeedPassive : public UYSPassive
 {
@@ -42,7 +45,13 @@ class UYSCarrySpeedPassive : public UYSPassive
 
 public:
 
+	/** Vitesse de nage (x MoveSpeed) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Passive", meta=(ClampMin="0", ClampMax="1"))
+	float SwimSpeedMultiplier = 0.5f;
+
 	virtual bool IgnoresCarrySlowdown() const override { return true; }
+
+	virtual float GetSwimSpeedMultiplierOverride() const override { return SwimSpeedMultiplier; }
 };
 
 /** « Marksman » (Cannoneer) : les critiques font Critical Damage Multiplier (200 %) au lieu de 150 % */

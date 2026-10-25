@@ -186,6 +186,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0"))
 	float ExperiencePerLevel = 1.0f;
 
+	/** Mort dans l'eau = pas d'XP : pieds à plus de cette profondeur sous la surface de la mer (ou tombé dans la deadzone) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0", Units="Centimeters"))
+	float NoExperienceWaterDepth = 30.0f;
+
 	/** PV max, calculés au spawn depuis le niveau */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="Foe|Health")
 	float MaxHealth = 100.0f;

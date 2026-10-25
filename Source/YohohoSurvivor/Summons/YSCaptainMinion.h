@@ -8,7 +8,8 @@ class AYSFoeCharacter;
 
 /**
  *  Minion du Captain (invoqué par « Summon the crew ! » du Crochet du capitaine) : personnage auto-piloté (AAIController, logique
- *  serveur dans Tick), même corps que Mouss sans Head Feature : le CORPS prend la couleur de son Captain, visage tiré au hasard.
+ *  serveur dans Tick), même corps que Mouss avec sa Head Feature : corps blanc comme les joueurs, Head Feature de la couleur de
+ *  son Captain, même visage que lui, armes de leur couleur de base. Sort du sol en 0.5 s (fini tout de suite si son Ability est forcée).
  *  Même vitesse que son Captain (sans les bonus d'actions), lean et sautillement comme les joueurs ; set d'arme tiré au hasard à
  *  l'apparition (MinionAutoGun ou MinionSword : attaque auto seulement, 50 PV via le set).
  *  Comportement : un NME à moins de Aggro Range (les NME marqués par le Captain comptent Marked Foe Attraction fois plus près)
@@ -73,7 +74,7 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	/** Couleur du Captain sur le corps, visage tiré au hasard */
+	/** Couleur du Captain sur la Head Feature, visage du Captain */
 	virtual void RefreshCustomization() override;
 
 	/** Dégâts : Damage bonus de l'Ability de son Captain */
@@ -96,7 +97,7 @@ protected:
 	UPROPERTY(Replicated)
 	TObjectPtr<AYSPlayerCharacter> Captain;
 
-	/** Visage (index dans les visages de personnalisation), tiré au hasard par le serveur */
+	/** Visage (index dans les visages de personnalisation) : celui du Captain à l'invocation */
 	UPROPERTY(Replicated)
 	int32 FaceIndex = 0;
 
