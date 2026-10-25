@@ -10,6 +10,8 @@
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "Landscape.h"
+#include "LandscapeEdit.h"
+#include "LandscapeEditLayer.h"
 #include "LandscapeInfo.h"
 #include "LandscapeProxy.h"
 #include "Materials/MaterialInterface.h"
@@ -132,6 +134,74 @@ ALandscape* UYSEditorScriptLibrary::CreateLandscapeFromHeights(UObject* WorldCon
 		Landscape->SetActorLabel(Label);
 	}
 	return Landscape;
+}
+
+namespace YSEditorLandscape
+{
+	/** Edit layer de base du Landscape (GUID vide sans edit layers) */
+	FGuid GetBaseEditLayerGuid(const ALandscape* Landscape)
+	{
+		const ULandscapeEditLayerBase* Layer = Landscape->HasLayersContent() ? Landscape->GetEditLayerConst(0) : nullptr;
+		return Layer ? Layer->GetGuid() : FGuid();
+	}
+}
+
+TArray<float> UYSEditorScriptLibrary::GetLandscapeHeights(ALandscape* Landscape, int32& OutSizeX, int32& OutSizeY)
+{
+	TArray<float> Heights;
+	OutSizeX = OutSizeY = 0;
+	ULandscapeInfo* Info = Landscape ? Landscape->GetLandscapeInfo() : nullptr;
+	int32 MinX, MinY, MaxX, MaxY;
+	if (!Info || !Info->GetLandscapeExtent(MinX, MinY, MaxX, MaxY))
+	{
+		return Heights;
+	}
+	OutSizeX = MaxX - MinX + 1;
+	OutSizeY = MaxY - MinY + 1;
+	TArray<uint16> Data;
+	Data.SetNumZeroed(OutSizeX * OutSizeY);
+	FLandscapeEditDataInterface Edit(Info, YSEditorLandscape::GetBaseEditLayerGuid(Landscape));
+	Edit.GetHeightData(MinX, MinY, MaxX, MaxY, Data.GetData(), 0);
+
+	const double ScaleZ = Landscape->GetActorScale3D().Z;
+	Heights.SetNumUninitialized(Data.Num());
+	for (int32 Index = 0; Index < Data.Num(); ++Index)
+	{
+		Heights[Index] = static_cast<float>((Data[Index] - 32768.0) * ScaleZ / 128.0);
+	}
+	return Heights;
+}
+
+bool UYSEditorScriptLibrary::SetLandscapeHeights(ALandscape* Landscape, const TArray<float>& HeightsCm)
+{
+	ULandscapeInfo* Info = Landscape ? Landscape->GetLandscapeInfo() : nullptr;
+	int32 MinX, MinY, MaxX, MaxY;
+	if (!Info || !Info->GetLandscapeExtent(MinX, MinY, MaxX, MaxY) || HeightsCm.Num() != (MaxX - MinX + 1) * (MaxY - MinY + 1))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[YSEditorScriptLibrary] SetLandscapeHeights : données invalides (%d hauteurs)"), HeightsCm.Num());
+		return false;
+	}
+
+	const double ScaleZ = Landscape->GetActorScale3D().Z;
+	TArray<uint16> Data;
+	Data.SetNumUninitialized(HeightsCm.Num());
+	for (int32 Index = 0; Index < HeightsCm.Num(); ++Index)
+	{
+		Data[Index] = static_cast<uint16>(FMath::Clamp(FMath::RoundToInt(32768.0 + HeightsCm[Index] * 128.0 / ScaleZ), 0, 65535));
+	}
+
+	Landscape->Modify();
+	{
+		FLandscapeEditDataInterface Edit(Info, YSEditorLandscape::GetBaseEditLayerGuid(Landscape));
+		Edit.SetHeightData(MinX, MinY, MaxX, MaxY, Data.GetData(), 0, true);
+		Edit.Flush();
+	}
+	if (Landscape->HasLayersContent())
+	{
+		Landscape->ForceUpdateLayersContent();
+	}
+	Landscape->MarkPackageDirty();
+	return true;
 }
 
 bool UYSEditorScriptLibrary::AddCustomizationColorRow(UDataTable* Table, FName RowName, const FYSCustomizationColor& Color)

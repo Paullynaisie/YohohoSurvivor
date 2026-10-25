@@ -784,8 +784,9 @@ void AYSPlayerController::ServerTeleport_Implementation(FVector Location)
 {
 	if (APawn* ControlledPawn = GetPawn())
 	{
-		ControlledPawn->TeleportTo(Location, ControlledPawn->GetActorRotation());
-		UE_LOG(LogTemp, Log, TEXT("[YSDebug] %s téléporté en %s"), *ControlledPawn->GetName(), *Location.ToCompactString());
+		const bool bTeleported = ControlledPawn->TeleportTo(Location, ControlledPawn->GetActorRotation());
+		UE_LOG(LogTemp, Log, TEXT("[YSDebug] %s téléporté en %s%s (position %s)"), *ControlledPawn->GetName(), *Location.ToCompactString(),
+			bTeleported ? TEXT("") : TEXT(" : REFUSÉ"), *ControlledPawn->GetActorLocation().ToCompactString());
 	}
 }
 

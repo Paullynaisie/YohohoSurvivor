@@ -58,7 +58,7 @@ SHORE_MARGIN = 20.0       # AYSOcean::ShoreMargin : un sol à moins de 20 cm au-
 ISLAND_RADIUS = 4600.0 * ISLAND_SCALE
 LAND_HEIGHT = 30.0        # plateau côtier
 SHORE_DEPTH = -22.0       # au bord de l'eau (d = 1) : juste au-dessus de la mer
-CLIFF_WIDTH = 0.02        # puis à pic jusqu'au fond (~1.3 m) : on tombe dans l'eau au lieu d'y marcher
+CLIFF_WIDTH = 0.2         # puis pente douce jusqu'au fond (~13 m, 2026-10-25 : l'ancien 0.02 = à pic) ; smooth_island_shore.py
 SEA_FLOOR = -650.0        # sous la KillZ (-300) : tomber dans l'océan = mort
 HILLS = [(x * ISLAND_SCALE, y * ISLAND_SCALE, h * ISLAND_SCALE, s * ISLAND_SCALE) for x, y, h, s in [  # (x, y, hauteur, rayon) ; sud = -X
     (1600.0, 600.0, 380.0, 1500.0),

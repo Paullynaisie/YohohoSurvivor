@@ -44,6 +44,14 @@ public:
 	static class ALandscape* CreateLandscapeFromHeights(UObject* WorldContextObject, FVector MinCorner, FVector Scale, int32 ComponentCount, int32 QuadsPerComponent,
 		const TArray<float>& HeightsCm, class UMaterialInterface* Material, const FString& Label);
 
+	/** Hauteurs (cm au-dessus du Z de l'acteur) de tous les sommets d'un Landscape, ligne par ligne (Y puis X) ; OutSize = sommets par côté */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static TArray<float> GetLandscapeHeights(class ALandscape* Landscape, int32& OutSizeX, int32& OutSizeY);
+
+	/** Remplace les hauteurs de tous les sommets d'un Landscape existant (même ordre que GetLandscapeHeights), collisions comprises */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static bool SetLandscapeHeights(class ALandscape* Landscape, const TArray<float>& HeightsCm);
+
 	/** Ajoute une ligne de couleur de personnalisation (DT_CustomizationColors) ; remplace la ligne du même nom */
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static bool AddCustomizationColorRow(class UDataTable* Table, FName RowName, const FYSCustomizationColor& Color);
