@@ -21,6 +21,10 @@ public:
 
 	UYSRollBombShotAbility();
 
+	/** La balle traverse tous les NME (sinon : NME touchés du Shoot system, comme l'Auto shot du Sniper) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Roll, bomb and shot")
+	bool bPierceAllFoes = true;
+
 	/** Roulade + visée + rafale, puis la recharge */
 	virtual float GetCooldownDuration() const override { return RollDuration + AimDuration + GetBurstTime() + Cooldown * GetCooldownMultiplier(); }
 

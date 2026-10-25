@@ -227,7 +227,8 @@ UYSHandAtkBonusUpgrade::UYSHandAtkBonusUpgrade()
 float UYSHandAtkBonusUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
 {
 	const UYSAbilityComponent* Action = GetSlotAction(Character, Variant);
-	return Action ? Action->GetBaseDamage() : 0.0f;
+	// « Une Mine ! » : dégâts des mines x Mine Damage Multiplier
+	return Action ? Action->GetBaseDamage() * UYSMineUpgrade::GetMineDamageMultiplierFor(Character, Action) : 0.0f;
 }
 
 void UYSHandAtkBonusUpgrade::ApplyBonus(AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
@@ -788,6 +789,25 @@ void UYSMineUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUn
 	Character->SetWeaponStat(MineDoubleStat, bUnlocked && bSuper ? 1.0f : 0.0f);
 	Character->SetWeaponStat(MineDamageStat, bUnlocked ? MineDamageMultiplier : 1.0f);
 	Character->SetWeaponStat(MineCooldownStat, bUnlocked ? MineCooldownMultiplier : 1.0f);
+}
+
+float UYSMineUpgrade::GetMineDamageMultiplierFor(const AYSPlayerCharacter* Character, const UYSAbilityComponent* Action)
+{
+	if (!Character || !Action)
+	{
+		return 1.0f;
+	}
+	const TArray<TObjectPtr<UYSUpgrade>>& Pool = Character->GetUpgradePool();
+	for (int32 PoolIndex = 0; PoolIndex < Pool.Num(); ++PoolIndex)
+	{
+		const UYSMineUpgrade* Mine = Cast<UYSMineUpgrade>(Pool[PoolIndex]);
+		if (Mine && Character->GetUpgradeProgress(PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Unlock)).Stacks > 0
+			&& Mine->GetRequiredActions(Character).ContainsByPredicate([Action](const UYSAbilityComponent* Required) { return Required == Action; }))
+		{
+			return Mine->MineDamageMultiplier;
+		}
+	}
+	return 1.0f;
 }
 
 const FName UYSYoloUpgrade::YoloStat(TEXT("Yolo"));

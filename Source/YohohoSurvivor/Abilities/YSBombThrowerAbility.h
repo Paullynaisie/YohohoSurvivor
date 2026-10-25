@@ -51,6 +51,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw", meta=(ClampMin="0", ClampMax="180", Units="Degrees"))
 	float BombSpreadAngle = 30.0f;
 
+	/**
+	 *  Écart minimum entre deux bombes / mines lancées ensemble (arc de Bomb Count, Golden Mine) : trop proches, l'angle de l'arc
+	 *  s'ouvre (au plus : réparties sur tout le cercle) puis elles s'éloignent du joueur ; 0 = pas de minimum
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw", meta=(ClampMin="0", Units="Centimeters"))
+	float MinBombSpacing = 350.0f;
+
+	/** Golden Mine : mines en plus sur la ligne de la première (1 = une plus près ; 2 = une plus près et une plus loin, même écart) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw", meta=(ClampMin="0"))
+	int32 GoldenMineCount = 2;
+
 	/** Distance max du point d'impact au joueur (le curseur plus loin est ramené à cette distance) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="BombThrower|Throw", meta=(ClampMin="0", Units="Centimeters"))
 	float MaxThrowDistance = 1000.0f;

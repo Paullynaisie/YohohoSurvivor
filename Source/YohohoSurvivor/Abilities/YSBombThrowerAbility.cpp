@@ -150,14 +150,36 @@ void UYSBombThrowerAbility::ExecuteAbility(const FVector& TargetLocation)
 	// point d'impact choisi au clic ; la bombe part au lâcher de l'animation
 	const FVector Landing = FindLandingPoint(TargetLocation);
 
-	// Bomb Count > 1 : les autres bombes de part et d'autre de la première (+angle, -angle, +2 angles...), à la même distance du joueur
+	// Bomb Count > 1 : les autres bombes de part et d'autre de la première (+angle, -angle, +2 angles...), à la même distance du joueur ;
+	// trop proches (Min Bomb Spacing) : l'angle s'ouvre (au plus : bombes réparties sur tout le cercle), puis elles s'éloignent du joueur
 	TArray<FVector> ExtraLandings;
 	const FVector HolderLocation = GetHolderPawn()->GetActorLocation();
 	const FVector ToLanding(Landing.X - HolderLocation.X, Landing.Y - HolderLocation.Y, 0.0f);
+	const float Radius = ToLanding.Size();
+	const FVector Direction = Radius > KINDA_SMALL_NUMBER ? ToLanding / Radius : FVector(GetHolderPawn()->GetActorForwardVector().GetSafeNormal2D());
+	float SpreadAngle = BombSpreadAngle;
+	float ArcRadius = Radius;
+	if (BombCount > 1 && MinBombSpacing > 0.0f)
+	{
+		const float NeededAngle = Radius > MinBombSpacing * 0.5f ? FMath::RadiansToDegrees(2.0f * FMath::Asin(MinBombSpacing / (2.0f * Radius))) : 180.0f;
+		SpreadAngle = FMath::Min(FMath::Max(SpreadAngle, NeededAngle), 360.0f / BombCount);
+		const float SpreadRad = FMath::DegreesToRadians(SpreadAngle);
+		// distance à la première bombe (rayon Radius) : rayon de l'arc agrandi si besoin (plus grande racine de la loi des cosinus)
+		const float SinSpread = FMath::Sin(SpreadRad);
+		if (FMath::Sqrt(2.0f * Radius * Radius * (1.0f - FMath::Cos(SpreadRad))) < MinBombSpacing)
+		{
+			ArcRadius = Radius * FMath::Cos(SpreadRad) + FMath::Sqrt(FMath::Max(0.0f, FMath::Square(MinBombSpacing) - FMath::Square(Radius * SinSpread)));
+		}
+		// entre deux bombes voisines de l'arc (+angle et +2 angles...)
+		if (BombCount > 3 && SpreadRad > KINDA_SMALL_NUMBER)
+		{
+			ArcRadius = FMath::Max(ArcRadius, MinBombSpacing / (2.0f * FMath::Sin(SpreadRad * 0.5f)));
+		}
+	}
 	for (int32 Index = 1; Index < BombCount; ++Index)
 	{
-		const float Yaw = BombSpreadAngle * ((Index + 1) / 2) * (Index % 2 == 1 ? 1.0f : -1.0f);
-		ExtraLandings.Add(FindLandingPoint(HolderLocation + FRotator(0.0f, Yaw, 0.0f).RotateVector(ToLanding)));
+		const float Yaw = SpreadAngle * ((Index + 1) / 2) * (Index % 2 == 1 ? 1.0f : -1.0f);
+		ExtraLandings.Add(FindLandingPoint(HolderLocation + FRotator(0.0f, Yaw, 0.0f).RotateVector(Direction * ArcRadius)));
 	}
 
 	const float ReleaseDelay = bPlayThrowAnim ? ThrowWindupDuration + ThrowDuration : 0.0f;
@@ -189,11 +211,23 @@ void UYSBombThrowerAbility::ReleaseBomb(FVector Landing, TArray<FVector> ExtraLa
 	const USceneComponent* Hand = bPlayThrowAnim ? GetThrowingHand() : nullptr;
 	const FVector Start = Hand ? Hand->GetComponentTransform().TransformPosition(HeldBombOffset) : (Weapon ? Weapon->GetMuzzleLocation() : Holder->GetActorLocation());
 
-	// Golden Mine : une seconde mine vise le point entre le joueur et la première (ramené sur un sol valide)
+	// Golden Mine : mines en plus sur la ligne joueur -> première mine, une plus près (le point entre le joueur et la première) puis
+	// une plus loin du même écart ; écart d'au moins Min Bomb Spacing (la plus proche peut passer derrière le joueur) ; sol valide
 	TArray<FVector> Landings = { Landing };
 	if (bMine && GetWeaponStat(UYSMineUpgrade::MineDoubleStat, 0.0f) > 0.0f)
 	{
-		Landings.Add(FindLandingPoint((Holder->GetActorLocation() + Landing) * 0.5f));
+		const FVector HolderLocation = Holder->GetActorLocation();
+		const FVector ToLanding(Landing.X - HolderLocation.X, Landing.Y - HolderLocation.Y, 0.0f);
+		const float Radius = ToLanding.Size();
+		const FVector Direction = Radius > KINDA_SMALL_NUMBER ? ToLanding / Radius : FVector(Holder->GetActorForwardVector().GetSafeNormal2D());
+		const float Gap = FMath::Max(Radius * 0.5f, MinBombSpacing);
+		const ACharacter* HolderCharacter = Cast<ACharacter>(Holder);
+		for (int32 Index = 0; Index < GoldenMineCount; ++Index)
+		{
+			const float Distance = Index % 2 == 0 ? Radius - Gap * (Index / 2 + 1) : Radius + Gap * (Index / 2 + 1);
+			// plus loin que la première : la distance max de lancer est repoussée d'autant
+			Landings.Add(YSCombat::FindLandingPoint(HolderCharacter, HolderLocation + Direction * Distance, FMath::Max(MaxThrowDistance, FMath::Abs(Distance)), RetreatStep));
+		}
 	}
 	// bombes de l'arc (Bomb Count)
 	Landings.Append(ExtraLandings);

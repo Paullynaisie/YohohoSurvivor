@@ -938,6 +938,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Mine", meta=(ClampMin="0.01"))
 	float MineCooldownMultiplier = 0.5f;
 
+	/**
+	 *  Multiplicateur des dégâts de Action si une upgrade « Une Mine ! » débloquée du personnage la concerne, sinon 1.
+	 *  Lu depuis la progression répliquée : valable aussi chez les clients (affichage des cartes d'upgrade).
+	 */
+	static float GetMineDamageMultiplierFor(const AYSPlayerCharacter* Character, const UYSAbilityComponent* Action);
+
 protected:
 
 	/** Pushback ajouté par les mines (somme des bonus) */

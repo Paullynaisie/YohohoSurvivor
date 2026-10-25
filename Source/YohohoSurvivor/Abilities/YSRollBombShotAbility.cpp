@@ -20,4 +20,8 @@ void UYSRollBombShotAbility::ExecuteAbility(const FVector& TargetLocation)
 void UYSRollBombShotAbility::ConfigureProjectile(AYSProjectile* Projectile) const
 {
 	Projectile->SetDetonatesBombs(true);
+	if (bPierceAllFoes)
+	{
+		Projectile->SetMaxHits(MAX_int32);
+	}
 }
