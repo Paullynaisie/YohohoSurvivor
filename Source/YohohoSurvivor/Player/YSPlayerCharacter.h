@@ -141,7 +141,7 @@ protected:
 
 	/** Hps regen de base : PV rendus à chaque intervalle de regen, sans upgrade (les upgrades Hps regen s'y ajoutent) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0"))
-	float BaseHealthRegen = 1.0f;
+	float BaseHealthRegen = 0.0f;
 
 	/** Hps regen : délai sans dégât subi avant que la regen démarre */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0", Units="s"))

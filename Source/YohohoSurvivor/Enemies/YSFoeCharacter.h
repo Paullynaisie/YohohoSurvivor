@@ -272,7 +272,7 @@ protected:
 	 *  (le NME préfère les joueurs, mais attaque un minion beaucoup plus proche)
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Movement", meta=(ClampMin="1"))
-	float MinionTargetDistanceMultiplier = 3.0f;
+	float MinionTargetDistanceMultiplier = 2.0f;
 
 	/** Tags portés par l'ennemi (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Tags")

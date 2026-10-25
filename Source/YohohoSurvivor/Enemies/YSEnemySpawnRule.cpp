@@ -9,6 +9,7 @@
 #include "GameFramework/PlayerState.h"
 #include "Map/YSOcean.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Ship/YSPirateShip.h"
 
 void UYSEnemySpawnRule::Start(AYSGameMode* InGameMode)
 {
@@ -196,6 +197,12 @@ bool UYSEnemySpawnRule::FindSpawnLocation(const TArray<APawn*>& Players, float C
 	const FVector TraceEnd(Candidate.X, Candidate.Y, Center.Z - 5000.0f);
 	FCollisionObjectQueryParams Objects(ECC_WorldStatic);
 	if (!World->LineTraceSingleByObjectType(Hit, TraceStart, TraceEnd, Objects) || Hit.ImpactNormal.Z < 0.7f)
+	{
+		return false;
+	}
+
+	// jamais sur le bateau pirate (son pont est un sol WorldStatic au-dessus de l'eau)
+	if (Hit.GetActor() && Hit.GetActor()->IsA<AYSPirateShip>())
 	{
 		return false;
 	}

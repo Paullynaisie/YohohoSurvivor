@@ -68,10 +68,10 @@ protected:
 
 	/**
 	 *  Choix de cible des NME : le porteur est considéré comme ce nombre de fois plus proche
-	 *  (5 : à 200 m avec l'objet, il compte comme à 40 m)
+	 *  (2 : à 20 m avec l'objet, il compte comme à 10 m)
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Carry", meta=(ClampMin="0.01"))
-	float FoeAttractionMultiplier = 5.0f;
+	float FoeAttractionMultiplier = 2.0f;
 
 	/** Distance devant le porteur où l'objet est reposé */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Carry", meta=(ClampMin="0", Units="Centimeters"))

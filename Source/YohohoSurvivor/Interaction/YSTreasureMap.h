@@ -39,7 +39,7 @@ protected:
 
 	/** Nombre de segments du chemin */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Path", meta=(ClampMin="1"))
-	int32 SegmentCount = 4;
+	int32 SegmentCount = 5;
 
 	/** Longueur min d'un segment */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Path", meta=(ClampMin="100", Units="Centimeters"))

@@ -1,6 +1,7 @@
 #include "Upgrades/YSShardUpgrade.h"
 #include "Abilities/YSAbilityComponent.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
+#include "Abilities/YSSummonCrewAbility.h"
 #include "Engine/DataTable.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSWeapon.h"
@@ -46,6 +47,15 @@ namespace YSShardUpgrades
 			const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(Action);
 			return Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->IsAutomatic()
 				&& (Gun->ShootSystem == EYSShootSystem::PewPew || Gun->ShootSystem == EYSShootSystem::Shotgun || Gun->ShootSystem == EYSShootSystem::Sniper);
+		}));
+	}
+
+	/** Summon system : Ability d'invocation (Summon the crew, Allez-y mes minions !) */
+	const UYSSummonCrewAbility* FindSummonAction(const AYSPlayerCharacter* Character)
+	{
+		return Cast<UYSSummonCrewAbility>(FindAction(Character, false, [](const UYSAbilityComponent* Action)
+		{
+			return Cast<UYSSummonCrewAbility>(Action) != nullptr;
 		}));
 	}
 
@@ -118,6 +128,7 @@ bool UYSUpShard::IsApplicable(const AYSPlayerCharacter* Character) const
 	case EYSShardStat::CdReduction:		return YSShardUpgrades::FindAction(Character, false) != nullptr;
 	case EYSShardStat::AtkSpeed:		return YSShardUpgrades::FindAction(Character, true, YSShardUpgrades::IsAtkSpeedAction) != nullptr;
 	case EYSShardStat::ShootSystem:		return YSShardUpgrades::FindShootSystemGun(Character) != nullptr;
+	case EYSShardStat::SummonSystem:	return YSShardUpgrades::FindSummonAction(Character) != nullptr;
 	default:							return true;
 	}
 }
@@ -141,6 +152,7 @@ void UYSUpShard::Apply(AYSPlayerCharacter* Character, int32 Level) const
 	case EYSShardStat::CdReduction:		Character->SetCooldownMultiplier(EYSActionSlot::Ability, YSShardUpgrades::Evaluate(this, 1.0f, Level, LevelIndex)); break;
 	case EYSShardStat::AtkSpeed:		Character->SetCooldownMultiplier(EYSActionSlot::AutoAtk, YSShardUpgrades::Evaluate(this, 1.0f, Level, LevelIndex)); break;
 	case EYSShardStat::ShootSystem:		Character->SetShootSystemBonus(EYSActionSlot::AutoAtk, YSShardUpgrades::Evaluate(this, 0.0f, Level, LevelIndex)); break;
+	case EYSShardStat::SummonSystem:	Character->SetSummonSystemBonus(YSShardUpgrades::Evaluate(this, 0.0f, Level, LevelIndex)); break;
 	case EYSShardStat::CritDamage:
 		// multiplicateur de base du personnage (1.5, Marksman : 2) à la place de Base : dégâts critiques = base + Index x Lvl
 		Character->SetCriticalDamageAdd(LevelIndex * Level);
@@ -232,6 +244,17 @@ bool UYSUpShard::GetDisplayValue(const AYSPlayerCharacter* Character, int32 Leve
 			OutValue = YSShardUpgrades::Evaluate(this, Gun->BulletsPerBurst, Level, LevelIndex);
 			break;
 		}
+		return true;
+	}
+	case EYSShardStat::SummonSystem:
+	{
+		const UYSSummonCrewAbility* Summon = YSShardUpgrades::FindSummonAction(Character);
+		if (!Summon)
+		{
+			return false;
+		}
+		OutLabel = NSLOCTEXT("YS", "ShardSummonLabel", "Minions max");
+		OutValue = YSShardUpgrades::Evaluate(this, Summon->BaseMaxMinions, Level, LevelIndex);
 		return true;
 	}
 	case EYSShardStat::Luck:

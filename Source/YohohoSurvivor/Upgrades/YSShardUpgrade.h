@@ -26,6 +26,7 @@ enum class EYSShardStat : uint8
 	CdReduction		UMETA(DisplayName="Cd reduction (Ability)"),
 	AtkSpeed		UMETA(DisplayName="Atk speed (Auto atk)"),
 	ShootSystem		UMETA(DisplayName="Shoot system (Auto atk des Guns)"),
+	SummonSystem	UMETA(DisplayName="Summon system (minions max des armes d'invocation)"),
 	Luck			UMETA(DisplayName="Luck"),
 	MaxStats		UMETA(DisplayName="Max stats (spéciale)"),
 	MinStats		UMETA(DisplayName="Min stats (spéciale)"),
