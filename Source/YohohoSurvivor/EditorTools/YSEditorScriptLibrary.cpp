@@ -13,6 +13,7 @@
 #include "LandscapeInfo.h"
 #include "LandscapeProxy.h"
 #include "Materials/MaterialInterface.h"
+#include "Upgrades/YSShardUpgrade.h"
 #endif
 
 #if WITH_EDITOR
@@ -153,6 +154,23 @@ bool UYSEditorScriptLibrary::AddCustomizationFaceRow(UDataTable* Table, FName Ro
 	}
 	FYSCustomizationFace Row;
 	Row.Face = Face;
+	Table->Modify();
+	Table->AddRow(RowName, Row);
+	Table->MarkPackageDirty();
+	return true;
+}
+
+bool UYSEditorScriptLibrary::SetCharaUpgradesRow(UDataTable* Table, FName RowName, const TArray<UYSUpStats*>& Upgrades)
+{
+	if (!Table || Table->GetRowStruct() != FYSCharaUpgradesRow::StaticStruct() || RowName.IsNone())
+	{
+		return false;
+	}
+	FYSCharaUpgradesRow Row;
+	for (UYSUpStats* Stats : Upgrades)
+	{
+		Row.Upgrades.Add(Stats);
+	}
 	Table->Modify();
 	Table->AddRow(RowName, Row);
 	Table->MarkPackageDirty();

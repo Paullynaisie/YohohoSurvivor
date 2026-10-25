@@ -180,6 +180,10 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 		ShootSystemBonus[Index] = 0.0f;
 		CooldownMultipliers[Index] = 1.0f;
 	}
+	for (float& Offset : RarityChanceOffsets)
+	{
+		Offset = 0.0f;
+	}
 
 	GameplayTags.AddTag(YSTags::Team_Player);
 }
@@ -197,6 +201,8 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, MaxHealthMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, CooldownMultipliers);
 	DOREPLIFETIME(AYSPlayerCharacter, Luck);
+	DOREPLIFETIME(AYSPlayerCharacter, ShardLevels);
+	DOREPLIFETIME(AYSPlayerCharacter, RarityChanceOffsets);
 	DOREPLIFETIME(AYSPlayerCharacter, bLeftHanded);
 	DOREPLIFETIME(AYSPlayerCharacter, WeaponSet);
 	DOREPLIFETIME(AYSPlayerCharacter, Passive);
@@ -382,7 +388,81 @@ int32 AYSPlayerCharacter::GetTotalUpgradeStacks() const
 	{
 		Total += Progress.Stacks;
 	}
+	for (const FYSShardLevel& Entry : ShardLevels)
+	{
+		Total += Entry.Level;
+	}
 	return Total;
+}
+
+int32 AYSPlayerCharacter::GetShardLevel(const UYSUpShard* Shard) const
+{
+	const FYSShardLevel* Found = Shard ? ShardLevels.FindByPredicate([Shard](const FYSShardLevel& Entry) { return Entry.Shard == Shard; }) : nullptr;
+	return Found ? Found->Level : 0;
+}
+
+void AYSPlayerCharacter::AddShardLevels(UYSUpShard* Shard, int32 Levels)
+{
+	if (!HasAuthority() || !Shard || Shard->IsSpecial() || Levels <= 0)
+	{
+		return;
+	}
+	FYSShardLevel* Entry = ShardLevels.FindByPredicate([Shard](const FYSShardLevel& Other) { return Other.Shard == Shard; });
+	if (!Entry)
+	{
+		Entry = &ShardLevels.AddDefaulted_GetRef();
+		Entry->Shard = Shard;
+	}
+	Entry->Level = FMath::Min(Shard->MaxLevel, Entry->Level + Levels);
+	// la partie est en pause pendant les choix : sans ça, les niveaux ne sont pas renvoyés aux clients
+	ForceNetUpdate();
+	Shard->Apply(this, Entry->Level);
+}
+
+void AYSPlayerCharacter::RestoreShards(const TArray<FYSShardLevel>& OldLevels)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// shard qui ne concerne plus le nouveau set (ex. Atk speed sans épée) : ses niveaux passent à sa jumelle (Shoot system)
+	ShardLevels.Reset();
+	for (const FYSShardLevel& Old : OldLevels)
+	{
+		UYSUpShard* Shard = Old.Shard;
+		UYSUpShard* Twin = Shard ? Shard->TwinShard.Get() : nullptr;
+		if (Shard && Twin && !Shard->IsApplicable(this) && Twin->IsApplicable(this))
+		{
+			UE_LOG(LogTemp, Log, TEXT("[YSShard] %s : %s converti en %s (%d niveau(x))"), *GetName(), *Shard->GetName(), *Twin->GetName(), Old.Level);
+			Shard = Twin;
+		}
+		if (!Shard)
+		{
+			continue;
+		}
+		FYSShardLevel* Entry = ShardLevels.FindByPredicate([Shard](const FYSShardLevel& Other) { return Other.Shard == Shard; });
+		if (!Entry)
+		{
+			Entry = &ShardLevels.AddDefaulted_GetRef();
+			Entry->Shard = Shard;
+		}
+		Entry->Level = FMath::Min(Shard->MaxLevel, Entry->Level + Old.Level);
+	}
+	for (const FYSShardLevel& Entry : ShardLevels)
+	{
+		Entry.Shard->Apply(this, Entry.Level);
+	}
+	ForceNetUpdate();
+}
+
+void AYSPlayerCharacter::SetRarityChanceOffsets(float Bronze, float Silver, float Gold, float Mythic)
+{
+	RarityChanceOffsets[0] = Bronze;
+	RarityChanceOffsets[1] = Silver;
+	RarityChanceOffsets[2] = Gold;
+	RarityChanceOffsets[3] = Mythic;
+	ForceNetUpdate();
 }
 
 TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickUpgradeOffers(int32 Count) const
@@ -499,24 +579,41 @@ float AYSPlayerCharacter::GetBaseRarityChance(EYSUpgradeRarity Rarity) const
 	case EYSUpgradeRarity::Bronze:	return BronzeChance;
 	case EYSUpgradeRarity::Silver:	return SilverChance;
 	case EYSUpgradeRarity::Gold:	return GoldChance;
+	case EYSUpgradeRarity::Mythic:	return MythicChance;
 	default:						return 0.0f;
 	}
 }
 
 float AYSPlayerCharacter::GetRarityChance(EYSUpgradeRarity Rarity) const
 {
+	// ancienne upgrade Luck (points déplacés du Bronze vers le Gold), puis shard Luck (points ajoutés / retirés à chaque rareté)
 	const float Bronze = FMath::Max(0.0f, BronzeChance - Luck);
 	switch (Rarity)
 	{
-	case EYSUpgradeRarity::Bronze:	return Bronze;
-	case EYSUpgradeRarity::Silver:	return SilverChance;
-	case EYSUpgradeRarity::Gold:	return GoldChance + (BronzeChance - Bronze);
+	case EYSUpgradeRarity::Bronze:	return FMath::Max(0.0f, Bronze + RarityChanceOffsets[0]);
+	case EYSUpgradeRarity::Silver:	return FMath::Max(0.0f, SilverChance + RarityChanceOffsets[1]);
+	case EYSUpgradeRarity::Gold:	return FMath::Max(0.0f, GoldChance + (BronzeChance - Bronze) + RarityChanceOffsets[2]);
+	case EYSUpgradeRarity::Mythic:	return FMath::Max(0.0f, MythicChance + RarityChanceOffsets[3]);
 	default:						return 0.0f;
 	}
 }
 
 void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 {
+	// système de shards : +1 niveau par shard donnée (déjà résolues au tirage)
+	if (Offer.UpStats)
+	{
+		if (HasAuthority())
+		{
+			for (const TObjectPtr<UYSUpShard>& Shard : Offer.Shards)
+			{
+				AddShardLevels(Shard, 1);
+			}
+			UE_LOG(LogTemp, Log, TEXT("[YSShard] %s : %s (rareté %d, %d shard(s))"), *GetName(), *Offer.UpStats->GetName(), (int32)Offer.Rarity, Offer.Shards.Num());
+		}
+		return;
+	}
+
 	const UYSUpgrade* Upgrade = UpgradePool.IsValidIndex(Offer.PoolIndex) ? UpgradePool[Offer.PoolIndex].Get() : nullptr;
 	if (!HasAuthority() || !Upgrade)
 	{
@@ -644,6 +741,12 @@ void AYSPlayerCharacter::BeginPlay()
 		Health = GetMaxHealth();
 		// regen de base ; les upgrades Hps regen (RestoreUpgrades au changement de classe) s'y ajoutent
 		HealthRegen = BaseHealthRegen;
+
+		// coups critiques dès le début, comme avec l'ancienne upgrade Atk critique
+		if (bCriticalsFromStart)
+		{
+			SetAutoAttackCriticals(StartSwingCriticalInterval, StartBulletCriticalInterval, StartShotgunCriticalMaxDistance, StartSniperCriticalMinDistance);
+		}
 	}
 
 	// le strafe ne s'applique que si un mesh squelettique est renseigné
@@ -1323,6 +1426,7 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, U
 	// tout ce qui passe au nouveau personnage
 	const TArray<TObjectPtr<UYSUpgrade>> OldPool = UpgradePool;
 	const TArray<FYSUpgradeProgress> OldProgress = UpgradeProgress;
+	const TArray<FYSShardLevel> OldShards = ShardLevels;
 	const float HealthRatio = GetMaxHealth() > 0.0f ? Health / GetMaxHealth() : 1.0f;
 	const FTransform SpawnTransform(FRotator(0.0f, GetActorRotation().Yaw, 0.0f), GetActorLocation());
 	const FString OldName = GetName();
@@ -1362,6 +1466,7 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, U
 
 	OwningController->Possess(NewCharacter);
 	NewCharacter->RestoreUpgrades(OldPool, OldProgress);
+	NewCharacter->RestoreShards(OldShards);
 	NewCharacter->Health = FMath::Max(1.0f, HealthRatio * NewCharacter->GetMaxHealth());
 	UE_LOG(LogTemp, Log, TEXT("[YSPlayerCharacter] Changement de classe : %s -> %s, set %s (%d upgrade(s) conservée(s), PV %.0f / %.0f)"),
 		*OldName, *NewCharacter->GetName(), NewCharacter->WeaponSet ? *NewCharacter->WeaponSet->GetName() : TEXT("aucun"), NewCharacter->UpgradeProgress.Num(), NewCharacter->Health, NewCharacter->GetMaxHealth());

@@ -6,6 +6,7 @@
 #include "GameplayTagContainer.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Upgrades/YSUpgrade.h"
+#include "Upgrades/YSShardUpgrade.h"
 #include "YSPlayerCharacter.generated.h"
 
 class UCameraComponent;
@@ -235,6 +236,41 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Upgrades", meta=(ClampMin="0"))
 	float GoldChance = 10.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Upgrades", meta=(ClampMin="0"))
+	float MythicChance = 0.0f;
+
+	/** Ligne de DT_Chara_Upgrades des upgrades exclusives de ce personnage (vide = son Character Name) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Upgrades")
+	FName UpgradeTableRow;
+
+	/** Niveau de chaque shard obtenue (système de shards ; répliqué pour l'affichage du menu) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	TArray<FYSShardLevel> ShardLevels;
+
+	/** Shard Luck : points de % ajoutés aux chances Bronze, Silver, Gold, Mythique (répliqué : affichage) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, Category="3C|Upgrades")
+	float RarityChanceOffsets[4];
+
+	/** Coups critiques dès le début de la partie, comme avec l'ancienne upgrade Atk critique (réglages ci-dessous) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Combat")
+	bool bCriticalsFromStart = true;
+
+	/** Auto swing : une attaque auto sur N est critique */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Combat", meta=(ClampMin="1", EditCondition="bCriticalsFromStart"))
+	int32 StartSwingCriticalInterval = 5;
+
+	/** PewPew : une balle d'attaque auto sur N reçue par un même NME est critique */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Combat", meta=(ClampMin="1", EditCondition="bCriticalsFromStart"))
+	int32 StartBulletCriticalInterval = 3;
+
+	/** Shotgun : AMMO critique sur un NME à moins de cette distance */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Combat", meta=(ClampMin="1", Units="Centimeters", EditCondition="bCriticalsFromStart"))
+	float StartShotgunCriticalMaxDistance = 200.0f;
+
+	/** Sniper : balle critique sur un NME à plus de cette distance */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Combat", meta=(ClampMin="1", Units="Centimeters", EditCondition="bCriticalsFromStart"))
+	float StartSniperCriticalMinDistance = 1000.0f;
 
 	/** Composant qui reçoit la couleur choisie à l'écran de sélection (avec tous ses sous-composants) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Customization")
@@ -666,8 +702,25 @@ public:
 	/** Reprend la progression d'upgrades d'un autre personnage (OldPool = son pool) et la réapplique (serveur) */
 	void RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& OldPool, const TArray<FYSUpgradeProgress>& OldProgress);
 
-	/** Ajoute le bonus proposé à la progression et applique l'upgrade (serveur) */
+	/** Ajoute le bonus proposé à la progression et applique l'upgrade (serveur) ; système de shards : +1 niveau par shard donnée */
 	void ApplyUpgrade(const FYSUpgradeOffer& Offer);
+
+	/** Niveau d'une shard (0 = jamais obtenue) */
+	int32 GetShardLevel(const UYSUpShard* Shard) const;
+
+	const TArray<FYSShardLevel>& GetShardLevels() const { return ShardLevels; }
+
+	/** Ajoute des niveaux à une shard (au plus son maximum) et applique son effet (serveur) */
+	void AddShardLevels(UYSUpShard* Shard, int32 Levels);
+
+	/** Reprend les shards d'un autre personnage (changement de classe ; jumelles converties) et applique leurs effets (serveur) */
+	void RestoreShards(const TArray<FYSShardLevel>& OldLevels);
+
+	/** Shard Luck : points de % ajoutés aux chances de chaque rareté (serveur) */
+	void SetRarityChanceOffsets(float Bronze, float Silver, float Gold, float Mythic);
+
+	/** Ligne de DT_Chara_Upgrades de ce personnage */
+	FName GetUpgradeTableRow() const { return UpgradeTableRow.IsNone() ? FName(*GetCharacterName().ToString()) : UpgradeTableRow; }
 
 	/** Index des multiplicateurs pour un type d'action */
 	static int32 GetSlotIndex(EYSActionSlot Slot) { return Slot == EYSActionSlot::AutoAtk ? 1 : 0; }

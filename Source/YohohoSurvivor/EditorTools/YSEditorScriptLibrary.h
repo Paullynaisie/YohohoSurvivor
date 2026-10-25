@@ -52,6 +52,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static bool AddCustomizationFaceRow(class UDataTable* Table, FName RowName, class UTexture2D* Face);
 
+	/** Remplace (ou ajoute) une ligne de DT_Chara_Upgrades avec cette liste d'upgrades */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static bool SetCharaUpgradesRow(class UDataTable* Table, FName RowName, const TArray<class UYSUpStats*>& Upgrades);
+
 	/**
 	 *  Copie toutes les propriétés éditables (EditAnywhere / EditDefaultsOnly) de Source vers Target, pour celles que Target
 	 *  possède aussi (même classe ou classe parente commune) ; retourne le nombre de propriétés copiées.

@@ -16,6 +16,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Player/YSPlayerController.h"
+#include "Upgrades/YSShardUpgrade.h"
 #include "Weapons/YSWeapon.h"
 
 AYSGameMode::AYSGameMode()
@@ -289,7 +290,7 @@ void AYSGameMode::StartUpgradeSelection()
 				Offers = bClassSelection ? Character->PickClassOffers() : TArray<FYSUpgradeOffer>();
 				if (Offers.Num() == 0)
 				{
-					Offers = Character->PickUpgradeOffers(UpgradeChoiceCount);
+					Offers = PickRandomUpgradeOffers(Character, UpgradeChoiceCount);
 				}
 			}
 			PlayerState->SetUpgradeOffers(Offers);
@@ -312,6 +313,58 @@ void AYSGameMode::StartUpgradeSelection()
 	}
 
 	TryFinishUpgradeSelection();
+}
+
+TArray<FYSUpgradeOffer> AYSGameMode::PickRandomUpgradeOffers(const AYSPlayerCharacter* Character, int32 Count) const
+{
+	if (!Character)
+	{
+		return TArray<FYSUpgradeOffer>();
+	}
+	if (!bShardUpgrades)
+	{
+		return Character->PickUpgradeOffers(Count);
+	}
+	TArray<UYSUpStats*> Replacements;
+	for (const TObjectPtr<UYSUpStats>& Replacement : ReplacementUpStats)
+	{
+		Replacements.Add(Replacement);
+	}
+	return YSShardUpgrades::PickOffers(Character, CharaUpgradesTable, Replacements, Count);
+}
+
+UYSUpShard* AYSGameMode::FindShard(const AYSPlayerCharacter* Character, uint8 Stat) const
+{
+	TArray<UYSUpStats*> Replacements;
+	for (const TObjectPtr<UYSUpStats>& Replacement : ReplacementUpStats)
+	{
+		Replacements.Add(Replacement);
+	}
+	for (UYSUpShard* Shard : YSShardUpgrades::GetCandidateShards(Character, CharaUpgradesTable, Replacements))
+	{
+		if (static_cast<uint8>(Shard->Stat) == Stat)
+		{
+			return Shard;
+		}
+	}
+	return nullptr;
+}
+
+UYSUpShard* AYSGameMode::FindShardByName(const AYSPlayerCharacter* Character, const FString& Name) const
+{
+	TArray<UYSUpStats*> Replacements;
+	for (const TObjectPtr<UYSUpStats>& Replacement : ReplacementUpStats)
+	{
+		Replacements.Add(Replacement);
+	}
+	for (UYSUpShard* Shard : YSShardUpgrades::GetCandidateShards(Character, CharaUpgradesTable, Replacements))
+	{
+		if (Shard->GetName().Equals(Name, ESearchCase::IgnoreCase) || Shard->GetName().Equals(TEXT("DA_Up_Shard_") + Name, ESearchCase::IgnoreCase))
+		{
+			return Shard;
+		}
+	}
+	return nullptr;
 }
 
 void AYSGameMode::PlayerChoseUpgrade(APlayerController* Player, int32 OfferIndex)
@@ -346,12 +399,12 @@ void AYSGameMode::PlayerRerolledUpgrades(APlayerController* Player)
 	// jamais pour un choix de classe
 	const FYSUpgradeOffer& FirstOffer = PlayerState->GetUpgradeOffers()[0];
 	const UYSUpgrade* FirstUpgrade = Character->GetUpgradePool().IsValidIndex(FirstOffer.PoolIndex) ? Character->GetUpgradePool()[FirstOffer.PoolIndex].Get() : nullptr;
-	if (!FirstUpgrade || FirstUpgrade->GetUpgradeType() == EYSUpgradeType::Class)
+	if (!FirstOffer.UpStats && (!FirstUpgrade || FirstUpgrade->GetUpgradeType() == EYSUpgradeType::Class))
 	{
 		return;
 	}
 
-	const TArray<FYSUpgradeOffer> Offers = Character->PickUpgradeOffers(UpgradeChoiceCount);
+	const TArray<FYSUpgradeOffer> Offers = PickRandomUpgradeOffers(Character, UpgradeChoiceCount);
 	if (Offers.Num() > 0)
 	{
 		PlayerState->SetUpgradeOffers(Offers);

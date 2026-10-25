@@ -10,6 +10,9 @@ class UYSEnemySpawnRule;
 class AYSFoeCharacter;
 class AYSTreasureMap;
 class UTexture2D;
+class UYSUpStats;
+class UYSUpShard;
+struct FYSUpgradeOffer;
 
 /** Overtime : circle spawn lancé Delay secondes après le début de l'overtime, NME au niveau jour en cours + Level Offset */
 USTRUCT(BlueprintType)
@@ -122,6 +125,21 @@ protected:
 	/** À chaque level up, chaque joueur vivant récupère tous ses PV et la recharge de son Ability */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level")
 	bool bRestoreOnLevelUp = true;
+
+	/**
+	 *  Upgrades du système de shards (DT_Chara_Upgrades) à la place des anciennes upgrades de l'Upgrade Pool des personnages
+	 *  (dont seules les upgrades de classe restent proposées, au niveau de classe)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Shards")
+	bool bShardUpgrades = true;
+
+	/** Upgrades proposables : ligne AllChara (tous les personnages) + ligne de chaque personnage (exclusives) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Shards", meta=(RowType="/Script/YohohoSurvivor.YSCharaUpgradesRow", EditCondition="bShardUpgrades"))
+	TObjectPtr<UDataTable> CharaUpgradesTable;
+
+	/** Upgrade interdite (sa Blocking Shard au maximum) : une de celles-ci à la place (DA_Up_Stats_Roadmap, CatchUp, FullRandom) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Shards", meta=(EditCondition="bShardUpgrades"))
+	TArray<TObjectPtr<UYSUpStats>> ReplacementUpStats;
 
 	/**
 	 *  Scaling selon le nombre de joueurs de la partie (morts compris) : ligne 1 = 1 joueur, ligne 2 = 2 joueurs...
@@ -297,6 +315,19 @@ public:
 	void AddTeamExperience(float Amount);
 
 	bool IsUpgradeRerollAllowed() const { return bAllowUpgradeReroll; }
+
+	/** Propositions d'un level up (pas de classe) : système de shards (bShardUpgrades) ou anciennes upgrades du pool */
+	TArray<FYSUpgradeOffer> PickRandomUpgradeOffers(const AYSPlayerCharacter* Character, int32 Count) const;
+
+	/** Shard d'un type parmi les upgrades disponibles pour ce personnage (cheats, debug) ; nullptr si aucune */
+	UYSUpShard* FindShard(const AYSPlayerCharacter* Character, uint8 Stat) const;
+
+	/** Shard par nom d'asset (avec ou sans le préfixe DA_Up_Shard_) parmi les upgrades disponibles (debug) */
+	UYSUpShard* FindShardByName(const AYSPlayerCharacter* Character, const FString& Name) const;
+
+	int32 GetUpgradeChoiceCount() const { return UpgradeChoiceCount; }
+
+	bool IsShardUpgrades() const { return bShardUpgrades; }
 
 	/** Choix d'upgrade d'un joueur (reçu par RPC du PlayerController ; index dans ses propositions) */
 	void PlayerChoseUpgrade(APlayerController* Player, int32 OfferIndex);

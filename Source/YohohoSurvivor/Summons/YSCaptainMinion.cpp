@@ -18,6 +18,9 @@ AYSCaptainMinion::AYSCaptainMinion()
 
 	// le corps entier (et les mains) prend la couleur du Captain
 	CustomizationColorComponentName = TEXT("BodyPivot");
+
+	// critiques : seulement ceux donnés par le Captain (marque du Corsaire)
+	bCriticalsFromStart = false;
 }
 
 void AYSCaptainMinion::BeginPlay()

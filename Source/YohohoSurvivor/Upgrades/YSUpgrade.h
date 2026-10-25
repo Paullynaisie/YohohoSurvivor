@@ -10,6 +10,8 @@ class AYSWeapon;
 class UYSAbilityComponent;
 class UYSWeaponSet;
 class UTexture2D;
+class UYSUpShard;
+class UYSUpStats;
 enum class EYSShootSystem : uint8;
 
 /** Catégorie d'upgrade : définit son comportement */
@@ -31,7 +33,18 @@ enum class EYSUpgradeRarity : uint8
 	Bronze,
 	Silver,
 	Gold,
+	Mythic		UMETA(DisplayName="Mythique"),
 };
+
+/** Textes des cartes d'upgrade (YSUpgrade.cpp) */
+namespace YSUpgradeText
+{
+	/** Valeur affichée avec 3 décimales au plus */
+	FText FormatStat(float Value);
+
+	/** « Bronze », « Silver », « Gold », « Mythique » */
+	FText RarityName(EYSUpgradeRarity Rarity);
+}
 
 UENUM(BlueprintType)
 enum class EYSHand : uint8
@@ -57,7 +70,18 @@ struct FYSUpgradeOffer
 	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
 	EYSUpgradeRarity Rarity = EYSUpgradeRarity::None;
 
-	bool operator==(const FYSUpgradeOffer& Other) const { return PoolIndex == Other.PoolIndex && Variant == Other.Variant && Rarity == Other.Rarity; }
+	/** Système de shards : upgrade proposée (PoolIndex = INDEX_NONE) */
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	TObjectPtr<UYSUpStats> UpStats;
+
+	/** Système de shards : shards données, résolues au tirage (spéciales remplacées) */
+	UPROPERTY(BlueprintReadOnly, Category="Upgrades")
+	TArray<TObjectPtr<UYSUpShard>> Shards;
+
+	bool operator==(const FYSUpgradeOffer& Other) const
+	{
+		return PoolIndex == Other.PoolIndex && Variant == Other.Variant && Rarity == Other.Rarity && UpStats == Other.UpStats && Shards == Other.Shards;
+	}
 };
 
 /** Une valeur modifiée par une proposition (carte d'upgrade : actuelle rayée à gauche, nouvelle plus grosse à droite) */

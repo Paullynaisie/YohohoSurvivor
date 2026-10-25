@@ -26,6 +26,7 @@ namespace YSUpgradeText
 		case EYSUpgradeRarity::Bronze:	return NSLOCTEXT("YS", "RarityBronze", "Bronze");
 		case EYSUpgradeRarity::Silver:	return NSLOCTEXT("YS", "RaritySilver", "Silver");
 		case EYSUpgradeRarity::Gold:	return NSLOCTEXT("YS", "RarityGold", "Gold");
+		case EYSUpgradeRarity::Mythic:	return NSLOCTEXT("YS", "RarityMythic", "Mythique");
 		default:						return FText::GetEmpty();
 		}
 	}

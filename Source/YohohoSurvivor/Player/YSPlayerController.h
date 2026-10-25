@@ -199,6 +199,14 @@ public:
 	UFUNCTION(Exec)
 	void YSGiveUpgrade(int32 PoolIndex, int32 Variant = 0, int32 Rarity = 1);
 
+	/** Debug (console) : ajoute des niveaux à une shard (nom d'asset, avec ou sans DA_Up_Shard_).  Ex : YSGiveShard AtkSpeed 5 */
+	UFUNCTION(Exec)
+	void YSGiveShard(const FString& ShardName, int32 Levels = 1);
+
+	/** Debug (console) : log des niveaux de shards du personnage et des chances de rareté (log [YSShard]) */
+	UFUNCTION(Exec)
+	void YSShards();
+
 	/** Debug (console) : déclenche l'action de clic de l'arme d'une main (0 droite, 1 gauche) vers le NME le plus proche.  Ex : YSFireAtFoe 0 */
 	UFUNCTION(Exec)
 	void YSFireAtFoe(int32 Hand = 0);
@@ -441,6 +449,9 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerGiveUpgrade(int32 PoolIndex, int32 Variant, int32 Rarity);
+
+	UFUNCTION(Server, Reliable)
+	void ServerGiveShard(const FString& ShardName, int32 Levels);
 
 	UFUNCTION(Server, Reliable)
 	void ServerDamageFoes(float Amount);

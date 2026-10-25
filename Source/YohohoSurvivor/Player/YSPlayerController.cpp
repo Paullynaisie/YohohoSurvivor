@@ -324,6 +324,23 @@ void AYSPlayerController::ServerCheatAtkSpeed_Implementation()
 		return;
 	}
 
+	// système de shards : 10 niveaux de la shard Atk speed (Shoot system pour une attaque auto de Gun)
+	const AYSGameMode* ShardGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	if (ShardGameMode && ShardGameMode->IsShardUpgrades())
+	{
+		UYSUpShard* Shard = ShardGameMode->FindShard(PlayerCharacter, static_cast<uint8>(EYSShardStat::AtkSpeed));
+		if (!Shard)
+		{
+			Shard = ShardGameMode->FindShard(PlayerCharacter, static_cast<uint8>(EYSShardStat::ShootSystem));
+		}
+		if (Shard)
+		{
+			PlayerCharacter->AddShardLevels(Shard, 10);
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSCheat] Atk speed : %s (%d / %d)"), Shard ? *Shard->GetName() : TEXT("aucune shard"), PlayerCharacter->GetShardLevel(Shard), Shard ? Shard->MaxLevel : 0);
+		return;
+	}
+
 	// Atk speed = upgrade de recharge de l'Auto atk (DA_Upgrade_AtkSpeed) ; 10 bonus Silver, sans dépasser le maximum de l'upgrade
 	const TArray<TObjectPtr<UYSUpgrade>>& Pool = PlayerCharacter->GetUpgradePool();
 	const int32 PoolIndex = Pool.IndexOfByPredicate([](const TObjectPtr<UYSUpgrade>& Upgrade)
@@ -1035,7 +1052,11 @@ void AYSPlayerController::UpdateUpgradeMenu()
 		{
 			FYSUpgradeCard& Card = Cards.AddDefaulted_GetRef();
 			const UYSUpgrade* Upgrade = PlayerCharacter->GetUpgradePool().IsValidIndex(Offer.PoolIndex) ? PlayerCharacter->GetUpgradePool()[Offer.PoolIndex].Get() : nullptr;
-			if (Upgrade)
+			if (Offer.UpStats)
+			{
+				Offer.UpStats->GetOfferCard(PlayerCharacter, Offer, Card);
+			}
+			else if (Upgrade)
 			{
 				Upgrade->GetOfferCard(PlayerCharacter, Offer.Variant, PlayerCharacter->GetUpgradeProgress(Offer.PoolIndex, Offer.Variant), Offer.Rarity, Card);
 			}
@@ -1159,6 +1180,40 @@ void AYSPlayerController::ServerGiveUpgrade_Implementation(int32 PoolIndex, int3
 	}
 }
 
+void AYSPlayerController::YSGiveShard(const FString& ShardName, int32 Levels)
+{
+	ServerGiveShard(ShardName, Levels);
+}
+
+void AYSPlayerController::ServerGiveShard_Implementation(const FString& ShardName, int32 Levels)
+{
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	UYSUpShard* Shard = PlayerCharacter && GameMode ? GameMode->FindShardByName(PlayerCharacter, ShardName) : nullptr;
+	if (!Shard)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSShard] YSGiveShard : shard « %s » introuvable dans les upgrades du personnage"), *ShardName);
+		return;
+	}
+	PlayerCharacter->AddShardLevels(Shard, Levels);
+}
+
+void AYSPlayerController::YSShards()
+{
+	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	if (!PlayerCharacter)
+	{
+		return;
+	}
+	for (const FYSShardLevel& Entry : PlayerCharacter->GetShardLevels())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSShard] %s : %s %d / %d"), *PlayerCharacter->GetName(), Entry.Shard ? *Entry.Shard->GetName() : TEXT("?"), Entry.Level, Entry.Shard ? Entry.Shard->MaxLevel : 0);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSShard] %s : chances Bronze %.2f / Silver %.2f / Gold %.2f / Mythique %.2f, dégâts critiques x%.2f"), *PlayerCharacter->GetName(),
+		PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Bronze), PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Silver), PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Gold),
+		PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Mythic), PlayerCharacter->GetCriticalDamageMultiplier());
+}
+
 void AYSPlayerController::YSFireAtFoe(int32 Hand)
 {
 	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
@@ -1212,39 +1267,49 @@ void AYSPlayerController::YSBombLanding(float X, float Y)
 
 void AYSPlayerController::YSUpgradeOdds(int32 Draws)
 {
-	// local : le pool et la progression sont connus du client
+	// hôte : tirage du GameMode (système de shards) ; client : anciennes upgrades du pool, connues localement
 	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSGameMode* AuthGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
 	if (!PlayerCharacter || Draws <= 0)
 	{
 		return;
 	}
 
+	// [0..2] position, [3..6] Bronze / Silver / Gold / Mythique
 	TMap<FString, TArray<int32>> Counts;
-	int32 RarityCounts[4] = { 0, 0, 0, 0 };
+	int32 RarityCounts[5] = { 0, 0, 0, 0, 0 };
 	int32 TotalOffers = 0;
 	for (int32 Draw = 0; Draw < Draws; ++Draw)
 	{
-		const TArray<FYSUpgradeOffer> Offers = PlayerCharacter->PickUpgradeOffers(3);
-		for (int32 Slot = 0; Slot < Offers.Num(); ++Slot)
+		const TArray<FYSUpgradeOffer> Offers = AuthGameMode ? AuthGameMode->PickRandomUpgradeOffers(PlayerCharacter, 3) : PlayerCharacter->PickUpgradeOffers(3);
+		for (int32 Slot = 0; Slot < Offers.Num() && Slot < 3; ++Slot)
 		{
-			const FString Name = PlayerCharacter->GetUpgradePool()[Offers[Slot].PoolIndex]->GetVariantNameFor(PlayerCharacter, Offers[Slot].Variant).ToString();
+			const FYSUpgradeOffer& Offer = Offers[Slot];
+			const int32 RarityIndex = FMath::Clamp(static_cast<int32>(Offer.Rarity), 0, 4);
+			const FString Name = Offer.UpStats ? Offer.UpStats->GetName()
+				: PlayerCharacter->GetUpgradePool().IsValidIndex(Offer.PoolIndex) ? PlayerCharacter->GetUpgradePool()[Offer.PoolIndex]->GetVariantNameFor(PlayerCharacter, Offer.Variant).ToString() : TEXT("?");
 			TArray<int32>& SlotCounts = Counts.FindOrAdd(Name);
-			SlotCounts.SetNumZeroed(6);
+			SlotCounts.SetNumZeroed(7);
 			++SlotCounts[Slot];
-			++SlotCounts[2 + static_cast<int32>(Offers[Slot].Rarity)];
-			++RarityCounts[static_cast<int32>(Offers[Slot].Rarity)];
+			if (RarityIndex > 0)
+			{
+				++SlotCounts[2 + RarityIndex];
+			}
+			++RarityCounts[RarityIndex];
 			++TotalOffers;
 		}
 	}
 
 	for (const TPair<FString, TArray<int32>>& Entry : Counts)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[YSUpgradeOdds] %-22s proposition 1 : %5.1f %%  2 : %5.1f %%  3 : %5.1f %%  (Bronze %d / Silver %d / Gold %d)"), *Entry.Key,
-			100.0f * Entry.Value[0] / Draws, 100.0f * Entry.Value[1] / Draws, 100.0f * Entry.Value[2] / Draws, Entry.Value[3], Entry.Value[4], Entry.Value[5]);
+		UE_LOG(LogTemp, Log, TEXT("[YSUpgradeOdds] %-28s proposition 1 : %5.1f %%  2 : %5.1f %%  3 : %5.1f %%  (Bronze %d / Silver %d / Gold %d / Mythique %d)"), *Entry.Key,
+			100.0f * Entry.Value[0] / Draws, 100.0f * Entry.Value[1] / Draws, 100.0f * Entry.Value[2] / Draws, Entry.Value[3], Entry.Value[4], Entry.Value[5], Entry.Value[6]);
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSUpgradeOdds] Raretés (toutes propositions) : Bronze %.1f %%  Silver %.1f %%  Gold %.1f %%  (chances : %.0f / %.0f / %.0f, Luck %.0f)"),
-		100.0f * RarityCounts[1] / FMath::Max(1, TotalOffers), 100.0f * RarityCounts[2] / FMath::Max(1, TotalOffers), 100.0f * RarityCounts[3] / FMath::Max(1, TotalOffers),
-		PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Bronze), PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Silver), PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Gold), PlayerCharacter->GetLuck());
+	const float Total = FMath::Max(1, TotalOffers);
+	UE_LOG(LogTemp, Log, TEXT("[YSUpgradeOdds] Raretés (toutes propositions) : Bronze %.1f %%  Silver %.1f %%  Gold %.1f %%  Mythique %.1f %%  (chances : %.2f / %.2f / %.2f / %.2f)"),
+		100.0f * RarityCounts[1] / Total, 100.0f * RarityCounts[2] / Total, 100.0f * RarityCounts[3] / Total, 100.0f * RarityCounts[4] / Total,
+		PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Bronze), PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Silver), PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Gold),
+		PlayerCharacter->GetRarityChance(EYSUpgradeRarity::Mythic));
 }
 
 void AYSPlayerController::ServerAddXP_Implementation(float Amount)
