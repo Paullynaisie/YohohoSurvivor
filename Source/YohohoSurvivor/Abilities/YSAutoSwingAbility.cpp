@@ -366,11 +366,12 @@ void UYSAutoSwingAbility::ApplySwingHits(float SwingElapsed, bool bMainHit)
 		}
 	}
 
+	TArray<AActor*> Targets;
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		AActor* Target = Overlap.GetActor();
 		const IGameplayTagAssetInterface* TagInterface = Cast<IGameplayTagAssetInterface>(Target);
-		if (!Target || !TagInterface || !TagInterface->HasAnyMatchingGameplayTags(HitTags))
+		if (!Target || !TagInterface || !TagInterface->HasAnyMatchingGameplayTags(HitTags) || Targets.Contains(Target))
 		{
 			continue;
 		}
@@ -379,6 +380,20 @@ void UYSAutoSwingAbility::ApplySwingHits(float SwingElapsed, bool bMainHit)
 		{
 			continue;
 		}
+		Targets.Add(Target);
+	}
+	// plusieurs NME touchés par une même attaque : le plus proche du porteur d'abord, les suivants perdent des dégâts
+	if (Holder && Targets.Num() > 1)
+	{
+		const FVector HolderLocation = Holder->GetActorLocation();
+		Targets.Sort([&HolderLocation](const AActor& A, const AActor& B) { return FVector::DistSquared2D(A.GetActorLocation(), HolderLocation) < FVector::DistSquared2D(B.GetActorLocation(), HolderLocation); });
+	}
+
+	for (int32 TargetIndex = 0; TargetIndex < Targets.Num(); ++TargetIndex)
+	{
+		AActor* Target = Targets[TargetIndex];
+		// rang du NME dans l'attaque (NME déjà touchés par cette coupe / ces dégâts secondaires ; hors attaque : dans cette image)
+		const int32 MultiHitIndex = bInAttack ? AttackHits.Num() : TargetIndex;
 
 		// 1er coup de la COUPE de l'attaque (pas les dégâts secondaires) : une BL stack (attaque auto), l'attaque compte pour
 		// l'Atk critique et la rage qui la rend critique est consommée ; une seule fois par attaque, même sur plusieurs NME
@@ -406,9 +421,10 @@ void UYSAutoSwingAbility::ApplySwingHits(float SwingElapsed, bool bMainHit)
 		LastHitTimes.Add(Target, Now);
 		// coupe critique, ou minion du Captain sur le NME marqué par la Captain Sword
 		const bool bCritical = bMainHit && Character && (bCriticalSwing || Character->HasForcedCriticalAgainst(Target));
-		const float FinalDamage = Damage * DamageFactor * GetDamageMultiplier() * (bCritical ? Character->GetCriticalDamageMultiplier() : 1.0f);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.2f x %.3f%s%s)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
-			FinalDamage, Damage, DamageFactor, GetDamageMultiplier(), !bInAttack ? TEXT(", secondaires hors attaque") : DamageFactor < 1.0f ? TEXT(", secondaires") : TEXT(""), bCritical ? TEXT(", critique") : TEXT(""));
+		const float MultiHitFactor = Character ? Character->GetMultiHitDamageMultiplier(MultiHitIndex) : 1.0f;
+		const float FinalDamage = Damage * DamageFactor * MultiHitFactor * GetDamageMultiplier() * (bCritical ? Character->GetCriticalDamageMultiplier() : 1.0f);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.2f x multi-cibles %.2f x %.3f%s%s)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
+			FinalDamage, Damage, DamageFactor, MultiHitFactor, GetDamageMultiplier(), !bInAttack ? TEXT(", secondaires hors attaque") : DamageFactor < 1.0f ? TEXT(", secondaires") : TEXT(""), bCritical ? TEXT(", critique") : TEXT(""));
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible ; critique : type de dégât qui grossit le chiffre ;
 		// direction du coup (pushback) = du porteur vers la cible : le NME recule, il n'est pas balayé sur le côté par la lame
 		const FVector ShotDirection = Holder ? (Target->GetActorLocation() - Holder->GetActorLocation()).GetSafeNormal2D() : FVector::ZeroVector;

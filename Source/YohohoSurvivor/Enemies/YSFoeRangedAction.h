@@ -236,7 +236,7 @@ public:
 
 	/** Imprécision : la direction de visée est décalée au hasard de +/- cet angle (ligne de visée comprise) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Shot", meta=(ClampMin="0", ClampMax="90", Units="Degrees"))
-	float AimSpread = 5.0f;
+	float AimSpread = 30.0f;
 
 	/** Recul après le tir (mêmes réglages et même animation que le pistolet du joueur, catégorie Recoil) : cabrage de la main */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Recoil", meta=(Units="Degrees"))

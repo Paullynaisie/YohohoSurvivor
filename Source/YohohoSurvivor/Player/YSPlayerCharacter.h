@@ -369,6 +369,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Combat", meta=(ClampMin="1"))
 	float CriticalDamageMultiplier = 1.5f;
 
+	/** Attaque qui touche plusieurs NME (swing, balle qui traverse, explosion) : chaque NME au-delà du premier prend cette part
+	 *  de dégâts en moins (cumulé : 2e x 0.9, 3e x 0.8...), le plus proche en premier */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Combat", meta=(ClampMin="0", ClampMax="1"))
+	float MultiHitDamageFalloff = 0.1f;
+
+	/** Attaque qui touche plusieurs NME : multiplicateur de dégâts minimal (atteint au 6e NME avec 0.1 par NME) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Combat", meta=(ClampMin="0", ClampMax="1"))
+	float MultiHitMinDamageMultiplier = 0.5f;
+
 	/** Somme des bonus aux dégâts critiques des upgrades (Atk speed / Shoot system ; serveur, répliquée pour l'affichage des upgrades) */
 	UPROPERTY(Transient, Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Combat")
 	float CriticalDamageBonus = 0.0f;
@@ -980,6 +989,9 @@ public:
 	void DebugSetBloodRageStacks(int32 Stacks);
 
 	/** Dégâts des coups critiques : (Critical Damage Multiplier + Dégât critique) x (1 + bonus critiques des upgrades Atk speed / Shoot system) */
+	/** Multiplicateur de dégâts du HitIndex-ième NME touché par une même attaque (0 = le premier : x1) */
+	float GetMultiHitDamageMultiplier(int32 HitIndex) const { return FMath::Max(MultiHitMinDamageMultiplier, 1.0f - MultiHitDamageFalloff * FMath::Max(0, HitIndex)); }
+
 	virtual float GetCriticalDamageMultiplier() const { return (GetBaseCriticalDamageMultiplier() + CriticalDamageAdd) * (1.0f + CriticalDamageBonus); }
 
 	/** Upgrade Dégât critique : somme de ses bonus (serveur) */

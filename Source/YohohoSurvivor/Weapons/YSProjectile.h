@@ -143,6 +143,9 @@ private:
 	/** NME déjà touchés (traversée du Sniper) */
 	int32 HitCount = 0;
 
+	/** NME touchés depuis le tir ou le dernier ricochet (perte de dégâts multi-cibles du tireur) */
+	int32 PierceHitIndex = 0;
+
 	/** Atk critique à la distance (0 = non ; fixé au tir) : critique sur un NME à moins de Within (Shotgun) / à plus de Beyond (Sniper) du tireur */
 	float CriticalWithinDistance = 0.0f;
 	float CriticalBeyondDistance = 0.0f;

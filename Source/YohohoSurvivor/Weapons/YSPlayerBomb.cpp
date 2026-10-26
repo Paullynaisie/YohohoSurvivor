@@ -253,19 +253,23 @@ void AYSPlayerBomb::Explode()
 	// dégâts aux NME dont la hurtbox (le corps) touche la sphère ; jamais aux joueurs
 	const FVector Center = GetExplosionCenter();
 	SetActorLocation(Center);
-	const TArray<AYSFoeCharacter*> Foes = FindFoesInRadius(Center);
-	for (AYSFoeCharacter* Foe : Foes)
+	TArray<AYSFoeCharacter*> Foes = FindFoesInRadius(Center);
+	// plusieurs NME touchés : le plus proche prend tous les dégâts, les suivants de moins en moins (perte multi-cibles du poseur)
+	Foes.Sort([&Center](const AYSFoeCharacter& A, const AYSFoeCharacter& B) { return FVector::DistSquared(A.GetActorLocation(), Center) < FVector::DistSquared(B.GetActorLocation(), Center); });
+	for (int32 Index = 0; Index < Foes.Num(); ++Index)
 	{
+		AYSFoeCharacter* Foe = Foes[Index];
+		const float FoeDamage = BombOwner ? HitDamage * BombOwner->GetMultiHitDamageMultiplier(Index) : HitDamage;
 		// direction du coup = depuis la bombe (pushback vers l'extérieur, + Extra Pushback de la Mine repulsante) ;
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur le NME
 		const FVector ShotDirection = (Foe->GetActorLocation() - Center).GetSafeNormal2D();
 		FHitResult Hit(Foe, Foe->GetHurtbox(), Foe->GetActorLocation(), -ShotDirection);
-		FYSPushbackDamageEvent DamageEvent(HitDamage, Hit, ShotDirection, ExtraPushback);
+		FYSPushbackDamageEvent DamageEvent(FoeDamage, Hit, ShotDirection, ExtraPushback);
 		if (bCriticalExplosion)
 		{
 			DamageEvent.DamageTypeClass = UYSCriticalDamageType::StaticClass();
 		}
-		Foe->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), nullptr);
+		Foe->TakeDamage(FoeDamage, DamageEvent, GetInstigatorController(), nullptr);
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s %s%s en (%.0f, %.0f) : %d NME touché(s), %.0f dégâts, pushback en plus %.0f"), *GetName(), bMine ? TEXT("(mine) explose") : TEXT("explose"),
 		bCriticalExplosion ? TEXT(" (CRITIQUE)") : TEXT(""), Center.X, Center.Y, Foes.Num(), HitDamage, ExtraPushback);

@@ -9,6 +9,7 @@ class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class USplineComponent;
 class UStaticMesh;
+class UTexture2D;
 
 /**
  *  Carte au trésor : objet porté comme le coffre (touche E, armes cachées, plus lent, NME attirés), invendable.
@@ -128,6 +129,22 @@ protected:
 	UPROPERTY(EditAnywhere, Category="TreasureMap|Dashes")
 	FName DashColorParameterName = TEXT("Color");
 
+	/** Aucun pointillé affiché (porteur trop loin du chemin) : une bulle guide le porteur vers le début du chemin restant
+	 *  (dessus s'il est à l'écran, sinon au bord de l'écran dans sa direction) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Guide")
+	bool bShowGuideIndicator = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Guide", meta=(EditCondition="bShowGuideIndicator"))
+	FLinearColor GuideIndicatorColor = FLinearColor(1.0f, 0.85f, 0.2f);
+
+	/** Icône dans la bulle (vide = rond de couleur seul) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Guide", meta=(EditCondition="bShowGuideIndicator"))
+	TObjectPtr<UTexture2D> GuideIndicatorIcon;
+
+	/** Hauteur de la bulle au-dessus du début du chemin */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Guide", meta=(Units="Centimeters", EditCondition="bShowGuideIndicator"))
+	float GuideIndicatorHeight = 50.0f;
+
 	/** Points du chemin (le premier = position d'apparition de la carte), fixés par le serveur */
 	UPROPERTY(ReplicatedUsing=OnRep_PathPoints, VisibleInstanceOnly, BlueprintReadOnly, Category="TreasureMap")
 	TArray<FVector> PathPoints;
@@ -166,6 +183,13 @@ public:
 	int32 GetReachedPointIndex() const { return ReachedPointIndex; }
 
 	float GetMaxHeightDifference() const { return MaxHeightDifference; }
+
+	/** Bulle de guidage (joueur local qui porte la carte, aucun pointillé affiché) : position du début du chemin restant ; faux sinon */
+	bool GetGuideIndicatorLocation(FVector& OutLocation) const;
+
+	FLinearColor GetGuideIndicatorColor() const { return GuideIndicatorColor; }
+
+	UTexture2D* GetGuideIndicatorIcon() const { return GuideIndicatorIcon; }
 
 	/** Point au sol (WorldStatic) sous XY, à moins de MaxHeight de ReferenceZ ; faux sinon (vide, dessus d'un obstacle) */
 	static bool FindPathGround(const UWorld* World, const FVector& Location, float ReferenceZ, float MaxHeight, FVector& OutGround);

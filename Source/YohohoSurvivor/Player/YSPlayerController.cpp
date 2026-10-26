@@ -929,13 +929,26 @@ void AYSPlayerController::UpdatePlayerHUD()
 	// icône pour un point du monde : à sa place s'il est à l'écran (si bShowOnScreen), sinon au bord dans sa direction
 	auto AddIndicator = [this, &Indicators, &Screen, EdgeMargin, ViewportScale](const FVector& WorldLocation, const FLinearColor& Color, UTexture2D* Face, bool bShowOnScreen)
 	{
+		// point derrière la caméra (caméra inclinée : loin vers le bas de l'écran) : pas de projection, toujours hors écran ;
+		// direction à l'écran = sa direction vue de la caméra (droite / haut), ce qui ne limite pas la portée
 		FVector2D ScreenPosition;
-		if (!ProjectWorldLocationToScreen(WorldLocation, ScreenPosition))
+		FVector CameraLocation = FVector::ZeroVector;
+		FRotator CameraRotation = FRotator::ZeroRotator;
+		GetPlayerViewPoint(CameraLocation, CameraRotation);
+		const FVector Local = CameraRotation.UnrotateVector(WorldLocation - CameraLocation);
+		const bool bBehind = Local.X <= 1.0f || !ProjectWorldLocationToScreen(WorldLocation, ScreenPosition);
+		FVector2D Position = ScreenPosition / ViewportScale;
+		if (bBehind)
 		{
-			return;
+			const FVector2D Direction = FVector2D(Local.Y, -Local.Z).GetSafeNormal();
+			if (Direction.IsNearlyZero())
+			{
+				return;
+			}
+			// loin hors de l'écran dans cette direction : ramené au bord ci-dessous
+			Position = Screen * 0.5f + Direction * (Screen.X + Screen.Y) * 10.0f;
 		}
-		const FVector2D Position = ScreenPosition / ViewportScale;
-		const bool bOnScreen = Position.X >= 0.0f && Position.Y >= 0.0f && Position.X <= Screen.X && Position.Y <= Screen.Y;
+		const bool bOnScreen = !bBehind && Position.X >= 0.0f && Position.Y >= 0.0f && Position.X <= Screen.X && Position.Y <= Screen.Y;
 		if (bOnScreen && !bShowOnScreen)
 		{
 			return;
@@ -1009,6 +1022,16 @@ void AYSPlayerController::UpdatePlayerHUD()
 		if (const AYSBrookerNPC* Brooker = AYSBrookerNPC::FindNearest(GetWorld(), PlayerCharacter->GetActorLocation()))
 		{
 			AddIndicator(Brooker->GetIndicatorLocation(), Brooker->GetIndicatorColor(), Brooker->GetIndicatorIcon(), true);
+		}
+	}
+
+	// carte au trésor portée, porteur trop loin du chemin pour en voir les pointillés : bulle sur le début du chemin restant (ou au bord)
+	if (const AYSTreasureMap* TreasureMap = PlayerCharacter ? Cast<AYSTreasureMap>(PlayerCharacter->GetCarriedObject()) : nullptr)
+	{
+		FVector GuideLocation;
+		if (TreasureMap->GetGuideIndicatorLocation(GuideLocation))
+		{
+			AddIndicator(GuideLocation, TreasureMap->GetGuideIndicatorColor(), TreasureMap->GetGuideIndicatorIcon(), true);
 		}
 	}
 

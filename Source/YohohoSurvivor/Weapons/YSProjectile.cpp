@@ -256,6 +256,11 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 		bCritical = true;
 		HitDamage *= DistanceShooter->GetCriticalDamageMultiplier();
 	}
+	// balle qui traverse plusieurs NME (Sniper, Roll bomb shot) : moins de dégâts à chaque NME après le premier (pas après un ricochet)
+	if (DistanceShooter && Cast<AYSFoeCharacter>(OtherActor))
+	{
+		HitDamage *= DistanceShooter->GetMultiHitDamageMultiplier(PierceHitIndex++);
+	}
 	const FPointDamageEvent DamageEvent(HitDamage, SweepResult, ShotDirection, bCritical ? UYSCriticalDamageType::StaticClass() : nullptr);
 	OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);
 
@@ -284,6 +289,7 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 	if (RemainingRicochets > 0 && Ricochet())
 	{
 		--RemainingRicochets;
+		PierceHitIndex = 0;
 		Damage *= RicochetDamageMultiplier;
 		return;
 	}

@@ -349,6 +349,20 @@ void AYSTreasureMap::Complete()
 	Destroy();
 }
 
+bool AYSTreasureMap::GetGuideIndicatorLocation(FVector& OutLocation) const
+{
+	// joueur local qui porte la carte, trop loin du chemin pour en voir un seul pointillé
+	const AYSPlayerCharacter* Character = GetCarrier();
+	if (!bShowGuideIndicator || !Character || !Character->IsLocallyControlled() || VisibleDashCount > 0 || PathSpline->GetNumberOfSplinePoints() < 2)
+	{
+		return false;
+	}
+	// début du chemin restant = dernier point atteint
+	const int32 StartPoint = FMath::Clamp(ReachedPointIndex, 0, PathSpline->GetNumberOfSplinePoints() - 1);
+	OutLocation = PathSpline->GetLocationAtSplinePoint(StartPoint, ESplineCoordinateSpace::World) + FVector(0.0f, 0.0f, GuideIndicatorHeight);
+	return true;
+}
+
 void AYSTreasureMap::UpdateDashes()
 {
 	// seul le joueur local qui porte la carte voit le chemin
