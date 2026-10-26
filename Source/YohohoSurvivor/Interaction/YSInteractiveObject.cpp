@@ -116,6 +116,7 @@ void AYSInteractiveObject::ApplyCarryState()
 	{
 		SetPromptVisible(false);
 	}
+	OnCarrierChanged();
 }
 
 void AYSInteractiveObject::SetPromptVisible(bool bVisible)

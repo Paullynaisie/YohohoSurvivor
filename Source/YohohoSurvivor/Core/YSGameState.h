@@ -60,7 +60,7 @@ protected:
 
 	/** XP nécessaire pour passer au niveau suivant (calculée par le GameMode) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")
-	float ExperienceToNextLevel = 10.0f;
+	float ExperienceToNextLevel = 50.0f;
 
 	/** Sélection d'upgrade en cours (partie en pause) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")

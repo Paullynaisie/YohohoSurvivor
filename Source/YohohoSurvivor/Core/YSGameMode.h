@@ -104,11 +104,11 @@ protected:
 
 	/** XP nécessaire pour passer du niveau 0 au niveau 1 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))
-	float LevelUpBaseExperience = 5.0f;
+	float LevelUpBaseExperience = 50.0f;
 
 	/** XP supplémentaire nécessaire par niveau déjà atteint (XP requise = Base + ParNiveau × niveau) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="0"))
-	float LevelUpExperiencePerLevel = 7.0f;
+	float LevelUpExperiencePerLevel = 70.0f;
 
 	/** Nombre d'upgrades proposées à chaque montée de niveau */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))

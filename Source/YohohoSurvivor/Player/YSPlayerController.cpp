@@ -25,6 +25,7 @@
 #include "UI/YSObjectiveWidget.h"
 #include "UI/YSShipBoardingWidget.h"
 #include "Interaction/YSInteractiveObject.h"
+#include "Interaction/YSPlayerCorpse.h"
 #include "Interaction/YSTreasureMap.h"
 #include "NPC/YSBrookerNPC.h"
 #include "UI/YSDayBannerWidget.h"
@@ -1446,18 +1447,28 @@ bool AYSPlayerController::IsSpectating() const
 	return MyState && MyState->IsDead() && !Cast<AYSPlayerCharacter>(GetPawn());
 }
 
-TArray<AYSPlayerCharacter*> AYSPlayerController::GetSpectateTargets() const
+TArray<AActor*> AYSPlayerController::GetSpectateTargets() const
 {
-	TArray<AYSPlayerCharacter*> Targets;
+	TArray<AYSPlayerCharacter*> Players;
 	for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
 	{
 		// joueurs seulement (les minions n'ont pas de PlayerState), vivants
 		if (It->GetPlayerState() && It->IsAlive() && !It->IsDying() && !It->IsActorBeingDestroyed())
 		{
+			Players.Add(*It);
+		}
+	}
+	Players.Sort([](const AYSPlayerCharacter& A, const AYSPlayerCharacter& B) { return A.GetPlayerState()->GetPlayerId() < B.GetPlayerState()->GetPlayerId(); });
+	TArray<AActor*> Targets(Players);
+
+	// puis son propre cadavre
+	for (TActorIterator<AYSPlayerCorpse> It(GetWorld()); It; ++It)
+	{
+		if (PlayerState && It->GetOwnerPlayerState() == PlayerState && !It->IsActorBeingDestroyed())
+		{
 			Targets.Add(*It);
 		}
 	}
-	Targets.Sort([](const AYSPlayerCharacter& A, const AYSPlayerCharacter& B) { return A.GetPlayerState()->GetPlayerId() < B.GetPlayerState()->GetPlayerId(); });
 	return Targets;
 }
 
@@ -1474,7 +1485,7 @@ void AYSPlayerController::UpdateSpectating()
 	}
 
 	// cible perdue (morte, partie) : le premier joueur vivant ; plus personne : caméra de secours là où on est mort
-	const TArray<AYSPlayerCharacter*> Targets = GetSpectateTargets();
+	const TArray<AActor*> Targets = GetSpectateTargets();
 	if (!SpectateTarget.IsValid() || !Targets.Contains(SpectateTarget.Get()))
 	{
 		SpectateTarget = Targets.Num() > 0 ? Targets[0] : nullptr;
@@ -1483,7 +1494,14 @@ void AYSPlayerController::UpdateSpectating()
 			UE_LOG(LogTemp, Log, TEXT("[YSSpectate] %s regarde %s"), *GetName(), *SpectateTarget->GetName());
 		}
 	}
-	AActor* View = SpectateTarget.IsValid() ? static_cast<AActor*>(SpectateTarget.Get()) : static_cast<AActor*>(DeathCamera.Get());
+
+	// son cadavre : la caméra de secours le suit, à la place de la caméra de son personnage au moment de la mort
+	const AYSPlayerCorpse* Corpse = Cast<AYSPlayerCorpse>(SpectateTarget.Get());
+	if (Corpse && DeathCamera)
+	{
+		DeathCamera->SetActorLocation(Corpse->GetViewLocation());
+	}
+	AActor* View = SpectateTarget.IsValid() && !Corpse ? SpectateTarget.Get() : static_cast<AActor*>(DeathCamera.Get());
 	if (View && GetViewTarget() != View)
 	{
 		SetViewTarget(View);
@@ -1491,8 +1509,15 @@ void AYSPlayerController::UpdateSpectating()
 
 	if (DeathScreen)
 	{
-		const AYSPlayerState* TargetState = SpectateTarget.IsValid() ? SpectateTarget->GetPlayerState<AYSPlayerState>() : nullptr;
-		DeathScreen->SetSpectating(true, TargetState ? FText::FromString(TargetState->GetDisplayName()) : FText::GetEmpty());
+		const APawn* TargetPawn = Cast<APawn>(SpectateTarget.Get());
+		const AYSPlayerState* TargetState = TargetPawn ? TargetPawn->GetPlayerState<AYSPlayerState>() : nullptr;
+		FText TargetName = TargetState ? FText::FromString(TargetState->GetDisplayName()) : FText::GetEmpty();
+		if (Corpse)
+		{
+			const AYSPlayerState* OwnerState = Cast<AYSPlayerState>(Corpse->GetOwnerPlayerState());
+			TargetName = FText::Format(NSLOCTEXT("YS", "SpectateCorpse", "{0} (ton cadavre)"), OwnerState ? FText::FromString(OwnerState->GetDisplayName()) : FText::GetEmpty());
+		}
+		DeathScreen->SetSpectating(true, TargetName);
 	}
 }
 
@@ -1502,7 +1527,7 @@ void AYSPlayerController::SpectateStep(int32 Step)
 	{
 		return;
 	}
-	const TArray<AYSPlayerCharacter*> Targets = GetSpectateTargets();
+	const TArray<AActor*> Targets = GetSpectateTargets();
 	if (Targets.Num() == 0)
 	{
 		return;
@@ -1786,4 +1811,25 @@ void AYSPlayerController::YSGoToBrooker(float Distance)
 	const FVector Location = Brooker->GetActorLocation() + (FromBrooker.IsNearlyZero() ? FVector::ForwardVector : FromBrooker) * Distance + FVector(0.0f, 0.0f, 100.0f);
 	MyPawn->TeleportTo(Location, (-FromBrooker).Rotation());
 	UE_LOG(LogTemp, Log, TEXT("[YSGoToBrooker] %s à %.0f cm de %s"), *MyPawn->GetName(), Distance, *Brooker->GetName());
+}
+
+void AYSPlayerController::YSGoToCorpse()
+{
+	APawn* MyPawn = GetPawn();
+	const AYSPlayerCorpse* Nearest = nullptr;
+	for (TActorIterator<AYSPlayerCorpse> It(GetWorld()); It && MyPawn; ++It)
+	{
+		if (!It->GetCarrier() && (!Nearest || FVector::DistSquared(It->GetActorLocation(), MyPawn->GetActorLocation()) < FVector::DistSquared(Nearest->GetActorLocation(), MyPawn->GetActorLocation())))
+		{
+			Nearest = *It;
+		}
+	}
+	if (!Nearest || !HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSGoToCorpse] impossible (cadavre trouvé %d, hôte %d)"), Nearest != nullptr, HasAuthority());
+		return;
+	}
+	// juste au-dessus : collé au personnage, le cadavre compte toujours comme « devant » pour E
+	MyPawn->TeleportTo(Nearest->GetActorLocation() + FVector(0.0f, 0.0f, 100.0f), MyPawn->GetActorRotation());
+	UE_LOG(LogTemp, Log, TEXT("[YSGoToCorpse] %s sur %s"), *MyPawn->GetName(), *Nearest->GetName());
 }

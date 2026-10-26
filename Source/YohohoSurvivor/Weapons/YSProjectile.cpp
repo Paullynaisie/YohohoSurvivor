@@ -409,6 +409,11 @@ void AYSProjectile::OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* Ot
 
 bool AYSProjectile::CanHit(const AActor* Target) const
 {
+	// joueur qui traverse les NME (roulade, dash, saut) : la balle passe à travers sans disparaître
+	if (const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Target); Character && Character->IsPassingThroughPawns())
+	{
+		return false;
+	}
 	const IGameplayTagAssetInterface* TagInterface = Cast<IGameplayTagAssetInterface>(Target);
 	return TagInterface && TagInterface->HasAnyMatchingGameplayTags(HitTags);
 }

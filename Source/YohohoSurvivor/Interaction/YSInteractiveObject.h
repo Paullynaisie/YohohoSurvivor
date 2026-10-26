@@ -107,6 +107,9 @@ protected:
 	UFUNCTION()
 	void OnRep_Carrier();
 
+	/** Pris ou reposé (toutes machines, après la mise à jour des collisions) ; ex. cadavre : pose du corps */
+	virtual void OnCarrierChanged() {}
+
 public:
 
 	AYSInteractiveObject();

@@ -163,11 +163,11 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<ACameraActor> DeathCamera;
 
-	/** Spectateur (mort, corps disparu) : joueur vivant dont on regarde la caméra */
-	TWeakObjectPtr<AYSPlayerCharacter> SpectateTarget;
+	/** Spectateur (mort, corps disparu) : joueur vivant dont on regarde la caméra, ou son propre cadavre (AYSPlayerCorpse) */
+	TWeakObjectPtr<AActor> SpectateTarget;
 
-	/** Joueurs vivants regardables (pas les minions), dans l'ordre des PlayerState */
-	TArray<AYSPlayerCharacter*> GetSpectateTargets() const;
+	/** Regardables : joueurs vivants (pas les minions) dans l'ordre des PlayerState, puis son propre cadavre */
+	TArray<AActor*> GetSpectateTargets() const;
 
 	/** Vue du spectateur et écran de mort (local, chaque image) */
 	void UpdateSpectating();
@@ -266,6 +266,10 @@ public:
 	/** Debug (hôte) : téléporte le personnage à côté du Brooker le plus proche */
 	UFUNCTION(Exec)
 	void YSGoToBrooker(float Distance = 300.0f);
+
+	/** Debug (hôte) : téléporte le personnage sur le cadavre de joueur le plus proche (E le prend alors à coup sûr) */
+	UFUNCTION(Exec)
+	void YSGoToCorpse();
 
 	/** Debug (hôte) : carte au trésor devant le personnage (Distance > 0) ou au hasard dans la zone du GameMode (0) */
 	UFUNCTION(Exec)

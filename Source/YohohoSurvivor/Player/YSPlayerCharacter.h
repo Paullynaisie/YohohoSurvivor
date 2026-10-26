@@ -22,6 +22,7 @@ class AYSWeapon;
 class UYSWeaponSet;
 class UYSPassive;
 class AYSInteractiveObject;
+class AYSPlayerCorpse;
 class UTexture2D;
 class UWidgetComponent;
 class UMaterialInterface;
@@ -614,8 +615,23 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(ClampMin="0", Units="s", EditCondition="bDeathRagdoll"))
 	float DeathScaleDelay = 4.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(ClampMin="0.01", Units="s", EditCondition="bDeathRagdoll"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(ClampMin="0.01", Units="s", EditCondition="bDeathRagdoll && !bKeepCorpse"))
 	float DeathScaleDuration = 1.0f;
+
+	/**
+	 *  Joueurs : le corps reste en jeu (pas de rétrécissement) ; après Death Scale Delay il devient un cadavre (Corpse Class) que
+	 *  les joueurs peuvent porter et poser comme un coffre. Faux pour les minions (ils rétrécissent et disparaissent)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(EditCondition="bDeathRagdoll"))
+	bool bKeepCorpse = true;
+
+	/** Cadavre : objet portable qui porte le corps (Blueprint enfant de YSPlayerCorpse possible) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(EditCondition="bDeathRagdoll && bKeepCorpse"))
+	TSubclassOf<AYSPlayerCorpse> CorpseClass;
+
+	/** Cadavre plus lourd : masse du ragdoll x ce multiplicateur, donc même poussée = vitesse divisée d'autant (va moins loin) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(ClampMin="0.1", EditCondition="bDeathRagdoll && bKeepCorpse"))
+	float CorpseMassMultiplier = 2.0f;
 
 private:
 
@@ -683,8 +699,17 @@ private:
 	/** Rétrécissement après Death Scale Delay ; à 0 : FinishDeath (serveur) */
 	void UpdateDeath();
 
-	/** Corps disparu (serveur) : caméra de secours du joueur, personnage détruit (le joueur passe en spectateur) */
-	void FinishDeath();
+	/**
+	 *  Corps disparu ou devenu cadavre (serveur) : caméra de secours du joueur, puis personnage détruit, ou seulement
+	 *  dépossédé s'il reste en cadavre (le joueur passe en spectateur)
+	 */
+	void FinishDeath(bool bKeepActor = false);
+
+	/** Fait du corps immobile un cadavre portable posé au sol sous lui (serveur) ; faux si impossible (dans l'eau, pas de sol) */
+	bool SpawnCorpse();
+
+	/** Le cadavre a été créé, ou il n'y en aura pas (serveur) */
+	bool bCorpseHandled = false;
 
 	/** Vitesse du ragdoll : pushback maximal du NME tueur dans la direction du coup, + vertical */
 	FVector ComputeDeathImpulse(const FDamageEvent& DamageEvent, const AController* EventInstigator, const AActor* DamageCauser) const;
@@ -700,8 +725,11 @@ public:
 	/** En train de sortir du sol (pas d'attaque ni de déplacement) */
 	bool IsRising() const { return bLocalRiseActive; }
 
-	/** Mort, corps en ragdoll en attendant sa disparition */
+	/** Mort, corps en ragdoll en attendant sa disparition (joueur : ou resté en cadavre) */
 	bool IsDying() const { return Death.bDead; }
+
+	/** Cadavre (toutes machines) : le corps (et tout ce qui le suit) arrête la physique et suit Parent avec cette pose relative */
+	void AttachBodyTo(USceneComponent* Parent, const FVector& RelativeLocation, const FRotator& RelativeRotation);
 
 	/** Sortie du sol terminée tout de suite (coup qui pousse ; serveur) */
 	void FinishRiseNow();
@@ -1046,6 +1074,9 @@ public:
 
 	/** Invulnérable en ce moment (action en cours : roulade du Rolling shot…) */
 	bool IsInvulnerable() const;
+
+	/** Traverse les pawns en ce moment (capsule qui ignore les Pawns : roulade, dash, saut, apparition d'un minion) : les projectiles NME le traversent aussi */
+	bool IsPassingThroughPawns() const;
 
 	/** Vitesse de marche sans les multiplicateurs des actions (MoveSpeed x Move speed bonus x objet porté) */
 	float GetUnmodifiedWalkSpeed() const;

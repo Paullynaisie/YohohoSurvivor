@@ -162,6 +162,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Foe|Level", meta=(ClampMin="0"))
 	int32 Level = 0;
 
+	/** PV x ce multiplicateur pour le nombre de joueurs de la partie (fixé à l'apparition, serveur) ; l'XP donnée est divisée par lui */
+	float PlayerCountHealthMultiplier = 1.0f;
+
 	/** PV au niveau 0 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="1"))
 	float BaseHealth = 100.0f;
@@ -180,11 +183,11 @@ protected:
 
 	/** XP donnée à l'équipe à sa mort, au niveau 0 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0"))
-	float BaseExperience = 1.0f;
+	float BaseExperience = 10.0f;
 
 	/** XP ajoutée par niveau (XP donnée = Base + ParNiveau × niveau) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0"))
-	float ExperiencePerLevel = 1.0f;
+	float ExperiencePerLevel = 10.0f;
 
 	/** Mort dans l'eau = pas d'XP : pieds à plus de cette profondeur sous la surface de la mer (ou tombé dans la deadzone) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0", Units="Centimeters"))
@@ -482,9 +485,12 @@ public:
 	/** Nom affiché (repli sur le nom de la classe) */
 	FText GetFoeName() const { return FoeName.IsEmpty() ? FText::FromString(GetClass()->GetName().Replace(TEXT("_C"), TEXT(""))) : FoeName; }
 
-	/** XP donnée à l'équipe quand ce NME meurt */
+	/**
+	 *  XP donnée à l'équipe quand ce NME meurt : divisée par son multiplicateur de PV pour le nombre de joueurs (Health / Elite Health
+	 *  Multiplier du GameMode) : plus de joueurs = NME plus solides mais autant de niveaux gagnés
+	 */
 	UFUNCTION(BlueprintPure, Category="Foe|Level")
-	float GetExperienceReward() const { return BaseExperience + ExperiencePerLevel * Level; }
+	float GetExperienceReward() const { return (BaseExperience + ExperiencePerLevel * Level) / FMath::Max(PlayerCountHealthMultiplier, 0.01f); }
 
 	/** Hurtbox : le corps */
 	UPrimitiveComponent* GetHurtbox() const;

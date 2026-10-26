@@ -43,6 +43,7 @@
 #include "Abilities/YSAbilityComponent.h"
 #include "EngineUtils.h"
 #include "Interaction/YSInteractiveObject.h"
+#include "Interaction/YSPlayerCorpse.h"
 #include "NPC/YSBrookerNPC.h"
 #include "Map/YSOcean.h"
 #include "Engine/StaticMesh.h"
@@ -75,6 +76,8 @@ namespace YSPlayerHands
 AYSPlayerCharacter::AYSPlayerCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
+
+	CorpseClass = AYSPlayerCorpse::StaticClass();
 
 	GetCapsuleComponent()->InitCapsuleSize(42.0f, 96.0f);
 
@@ -374,25 +377,91 @@ void AYSPlayerCharacter::Die()
 	Death.bDead = true;
 	// mort sans coup (minion qui meurt avec son Captain) : juste la poussée vers le haut
 	Death.Impulse = PendingDeathImpulse.IsNearlyZero() ? FVector(0.0f, 0.0f, DeathExtraUpImpulse * DeathImpulseMultiplier) : PendingDeathImpulse;
+	// cadavre gardé : le corps reste visible de tous les clients, même loin d'eux
+	if (bKeepCorpse)
+	{
+		bAlwaysRelevant = true;
+	}
 	ForceNetUpdate();
 	BeginDeathLocal();
 }
 
-void AYSPlayerCharacter::FinishDeath()
+void AYSPlayerCharacter::FinishDeath(bool bKeepActor)
 {
 	if (!HasAuthority() || IsActorBeingDestroyed())
 	{
 		return;
 	}
+	bCorpseHandled = true;
 	// caméra de secours là où il est mort (s'il n'y a plus aucun joueur vivant à regarder)
-	if (AYSPlayerController* PlayerController = Cast<AYSPlayerController>(GetController()))
+	AYSPlayerController* PlayerController = Cast<AYSPlayerController>(GetController());
+	if (PlayerController)
 	{
 		PlayerController->ClientPlayerDied(TopDownCamera->GetComponentLocation(), TopDownCamera->GetComponentRotation(), TopDownCamera->FieldOfView);
 	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s : corps disparu, détruit"), *GetName());
 
+	// cadavre : le personnage reste (son corps, ses armes) mais le joueur le quitte et passe en spectateur
+	if (bKeepActor)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s : reste en cadavre"), *GetName());
+		if (PlayerController)
+		{
+			PlayerController->UnPossess();
+		}
+		return;
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s : corps disparu, détruit"), *GetName());
 	// les armes (acteurs enfants) disparaissent avec le personnage
 	Destroy();
+}
+
+bool AYSPlayerCharacter::SpawnCorpse()
+{
+	UWorld* World = GetWorld();
+	if (!World || !CorpseClass)
+	{
+		return false;
+	}
+	// au sol sous le corps (le corps ne bloque plus les traces), jamais dans l'eau ni sous la deadzone
+	const FVector BodyLocation = BodyMesh->GetComponentLocation();
+	const FVector Ground = AYSInteractiveObject::FindGround(World, BodyLocation, this);
+	if (Ground.Equals(BodyLocation) || !AYSInteractiveObject::IsSafeDropLocation(World, Ground))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSCorpse] %s : pas de cadavre (corps dans l'eau ou sans sol)"), *GetName());
+		return false;
+	}
+
+	const FTransform CorpseTransform(FRotator::ZeroRotator, Ground);
+	AYSPlayerCorpse* Corpse = World->SpawnActorDeferred<AYSPlayerCorpse>(CorpseClass, CorpseTransform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!Corpse)
+	{
+		return false;
+	}
+	// pose actuelle du corps par rapport au cadavre (identique sur toutes les machines), vue du spectateur = caméra du joueur au moment de sa mort
+	const FTransform BodyRelative = BodyMesh->GetComponentTransform().GetRelativeTransform(CorpseTransform);
+	Corpse->InitCorpse(this, BodyRelative.GetLocation(), BodyRelative.Rotator(), GetPlayerState(), TopDownCamera->GetComponentLocation() - GetActorLocation());
+	Corpse->FinishSpawning(CorpseTransform);
+	UE_LOG(LogTemp, Log, TEXT("[YSCorpse] %s : cadavre %s posé à (%.0f, %.0f, %.0f)"), *GetName(), *Corpse->GetName(), Ground.X, Ground.Y, Ground.Z);
+	return true;
+}
+
+void AYSPlayerCharacter::AttachBodyTo(USceneComponent* Parent, const FVector& RelativeLocation, const FRotator& RelativeRotation)
+{
+	if (!Parent)
+	{
+		return;
+	}
+	// corps répliqué avant sa mort sur cette machine : ragdoll mis en place d'abord (visuel qui suit le corps)
+	BeginDeathLocal();
+	BodyMesh->SetSimulatePhysics(false);
+	BodyMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (BodyMesh->GetAttachParent() != Parent)
+	{
+		BodyMesh->AttachToComponent(Parent, FAttachmentTransformRules::KeepWorldTransform);
+	}
+	BodyMesh->SetRelativeLocationAndRotation(RelativeLocation, RelativeRotation);
+	BodyMesh->SetVisibility(true, true);
 }
 
 void AYSPlayerCharacter::OnRep_Death()
@@ -415,6 +484,21 @@ void AYSPlayerCharacter::BeginDeathLocal()
 
 	// plus de gameplay : sans tag il n'est plus ciblé ni touché, plus de mouvement (la caméra reste où il est tombé)
 	GameplayTags.Reset();
+	// le personnage peut rester (cadavre) : son invite « E » et l'affichage de sa marque disparaissent maintenant
+	if (FocusedInteractable.IsValid())
+	{
+		FocusedInteractable->SetPromptVisible(false);
+	}
+	FocusedInteractable.Reset();
+	if (DisplayedMarkedFoe.IsValid())
+	{
+		DisplayedMarkedFoe->SetMarked(false);
+	}
+	DisplayedMarkedFoe.Reset();
+	if (HasAuthority())
+	{
+		SetMarkedFoe(nullptr);
+	}
 	Nameplate->SetVisibility(false);
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	Movement->StopMovementImmediately();
@@ -460,7 +544,10 @@ void AYSPlayerCharacter::BeginDeathLocal()
 	BodyMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
 	BodyMesh->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
 	BodyMesh->SetSimulatePhysics(true);
-	BodyMesh->SetPhysicsLinearVelocity(Death.Impulse);
+	// cadavre plus lourd : masse x Corpse Mass Multiplier, la même poussée le lance d'autant moins vite
+	const float MassMultiplier = bKeepCorpse ? FMath::Max(CorpseMassMultiplier, 0.1f) : 1.0f;
+	BodyMesh->SetMassScale(NAME_None, MassMultiplier);
+	BodyMesh->SetPhysicsLinearVelocity(Death.Impulse / MassMultiplier);
 	BodyMesh->SetPhysicsAngularVelocityInDegrees(FMath::VRand() * DeathAngularImpulse);
 	DeathBodyScale = BodyMesh->GetComponentScale();
 	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s (%s) meurt : ragdoll à (%.0f, %.0f, %.0f) cm/s"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"),
@@ -471,6 +558,17 @@ void AYSPlayerCharacter::UpdateDeath()
 {
 	// après Death Scale Delay, le corps (et tout ce qui le suit) rétrécit jusqu'à 0, puis le personnage disparaît
 	const float Elapsed = static_cast<float>(GetWorld()->GetTimeSeconds() - DeathStartTime);
+
+	// joueur : le corps immobile devient un cadavre portable (serveur ; les clients le reçoivent avec le cadavre) ;
+	// pas de cadavre possible (dans l'eau) : le personnage disparaît
+	if (bKeepCorpse)
+	{
+		if (HasAuthority() && !bCorpseHandled && Elapsed >= DeathScaleDelay)
+		{
+			FinishDeath(SpawnCorpse());
+		}
+		return;
+	}
 	const float Alpha = FMath::Clamp((Elapsed - DeathScaleDelay) / FMath::Max(DeathScaleDuration, 0.01f), 0.0f, 1.0f);
 	if (Alpha > 0.0f)
 	{
@@ -2684,6 +2782,11 @@ bool AYSPlayerCharacter::IsInvulnerable() const
 	bool bInvulnerable = false;
 	ForEachHeldAction([&bInvulnerable](const UYSAbilityComponent* Action) { bInvulnerable = bInvulnerable || Action->IsGrantingInvulnerability(); });
 	return bInvulnerable;
+}
+
+bool AYSPlayerCharacter::IsPassingThroughPawns() const
+{
+	return GetCapsuleComponent()->GetCollisionResponseToChannel(ECC_Pawn) == ECR_Ignore;
 }
 
 void AYSPlayerCharacter::SetCriticalDamageAdd(float Value)

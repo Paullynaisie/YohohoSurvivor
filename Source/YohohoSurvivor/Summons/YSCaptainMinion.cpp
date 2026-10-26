@@ -28,6 +28,8 @@ AYSCaptainMinion::AYSCaptainMinion()
 	SpawnRiseDuration = 0.5f;
 	DeathScaleDelay = 1.0f;
 	DeathScaleDuration = 1.0f;
+	// pas de cadavre : le minion disparaît
+	bKeepCorpse = false;
 }
 
 void AYSCaptainMinion::BeginPlay()
