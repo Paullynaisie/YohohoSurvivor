@@ -457,3 +457,15 @@ void UYSAbilityComponent::MulticastCancelled_Implementation()
 {
 	LastActivationTime = -1.0e6;
 }
+
+#if WITH_EDITOR
+void UYSAbilityComponent::GetUnusedProperties(TArray<FName>& OutNames) const
+{
+	// l'icône de l'UI est celle de l'Ability (action du clic), jamais celle d'une attaque auto
+	if (IsAutomatic())
+	{
+		OutNames.Add(GET_MEMBER_NAME_CHECKED(UYSAbilityComponent, Icon));
+		OutNames.Add(GET_MEMBER_NAME_CHECKED(UYSAbilityComponent, IconTint));
+	}
+}
+#endif

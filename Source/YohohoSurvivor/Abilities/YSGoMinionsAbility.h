@@ -37,6 +37,10 @@ public:
 	/** Personnages dont l'Ability est forcée : minions du Captain, + joueurs vivants à portée avec You're all my minions */
 	void GetForcedCharacters(TArray<AYSPlayerCharacter*>& OutCharacters) const;
 
+#if WITH_EDITOR
+	virtual void GetUnusedProperties(TArray<FName>& OutNames) const override;
+#endif
+
 protected:
 
 	/** Sommet du crochet (serveur) : Abilities forcées */

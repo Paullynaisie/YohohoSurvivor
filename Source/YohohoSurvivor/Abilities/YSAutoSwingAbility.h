@@ -249,6 +249,10 @@ public:
 
 	virtual float GetBaseDamage() const override { return Damage; }
 
+#if WITH_EDITOR
+	virtual void GetUnusedProperties(TArray<FName>& OutNames) const override;
+#endif
+
 
 	/** Durée totale de l'animation (préparation + coupe + retour) */
 	float GetAttackDuration() const { return GetWindupTime() + GetSwingTime() + GetRecoverTime(); }

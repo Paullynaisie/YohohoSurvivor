@@ -78,3 +78,15 @@ void UYSGoMinionsAbility::OnHookStrike()
 		Character->ForceAbility(Forced);
 	}
 }
+
+#if WITH_EDITOR
+void UYSGoMinionsAbility::GetUnusedProperties(TArray<FName>& OutNames) const
+{
+	Super::GetUnusedProperties(OutNames);
+	// le clic n'invoque pas (seulement l'invocation passive et SpawnMinionAt)
+	OutNames.Append({
+		GET_MEMBER_NAME_CHECKED(UYSGoMinionsAbility, bSummonUpToMax),
+		GET_MEMBER_NAME_CHECKED(UYSGoMinionsAbility, MinionsPerSummon),
+	});
+}
+#endif

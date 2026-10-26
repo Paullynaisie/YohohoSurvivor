@@ -94,3 +94,35 @@ void UYSRollAndBombAbility::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 	Super::EndPlay(EndPlayReason);
 }
+
+#if WITH_EDITOR
+void UYSRollAndBombAbility::GetUnusedProperties(TArray<FName>& OutNames) const
+{
+	Super::GetUnusedProperties(OutNames);
+	// pas de tir : réglages de balle, visée assistée, shoot system, recul et rechargement du Coup d'Petoir
+	OutNames.Append({
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ProjectileClass),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, Damage),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, AssistAimDistance),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, AssistAimAngle),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ShootSystem),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, BulletsPerBurst),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, BurstDuration),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ShotgunAmmoPerShot),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ShotgunSpread),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, SniperMaxHits),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, RecoilPitch),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, RecoilKickBack),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, RecoilKickDuration),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, RecoilRecoverDuration),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, RecoilKickEaseExponent),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, RecoilRecoverEaseExponent),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, bFitRecoilToFireRate),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, bPlayReloadAnim),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ReloadSpinDuration),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ReloadSpinTurns),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ReloadSpinAxis),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ReloadSpinEaseExponent),
+	});
+}
+#endif

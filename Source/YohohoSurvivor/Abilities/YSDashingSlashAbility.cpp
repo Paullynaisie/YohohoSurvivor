@@ -222,3 +222,26 @@ UYSDashingSlashAbility* UYSDashingSlashAbility::GetDashPartner() const
 	const AYSWeapon* OffWeapon = Character->GetOffHandWeapon();
 	return OffWeapon ? Cast<UYSDashingSlashAbility>(OffWeapon->GetActiveAction()) : nullptr;
 }
+
+#if WITH_EDITOR
+void UYSDashingSlashAbility::GetUnusedProperties(TArray<FName>& OutNames) const
+{
+	Super::GetUnusedProperties(OutNames);
+	// Ability : pas de recharge d'attaque auto, de ralentissement, de détection, de second swing, d'estoc critique ni de Yolo ;
+	// préparation et coupe calées sur le pas en arrière et le dash (Windup / Swing Duration ignorés)
+	OutNames.Append({
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, AutoAtkCooldown),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, AutoAtkMoveSpeedMultiplier),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, MeleeSystem),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, DetectionDistance),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, DetectionAngle),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, IdleRehitInterval),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, WindupDuration),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, SwingDuration),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, bAlternateSecondSwing),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, SecondSwing),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, bCriticalThrust),
+		GET_MEMBER_NAME_CHECKED(UYSDashingSlashAbility, CriticalThrust),
+	});
+}
+#endif

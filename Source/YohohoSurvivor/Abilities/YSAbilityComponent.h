@@ -236,6 +236,14 @@ public:
 	/** La dernière activation était forcée et l'action est encore en cours : le clic ne la relance pas */
 	bool IsForcedActionInProgress() const { return bLastActivationForced && IsActionInProgress(); }
 
+#if WITH_EDITOR
+	/**
+	 *  Éditeur : propriétés (héritées) que cette classe n'utilise pas, cachées dans le panneau Details (FYSAbilityDetails).
+	 *  Les sous-classes appellent Super puis ajoutent / retirent des noms. Base : pas d'icône pour une attaque auto (l'UI montre l'Ability).
+	 */
+	virtual void GetUnusedProperties(TArray<FName>& OutNames) const;
+#endif
+
 protected:
 
 	/** Effets visuels de l'activation sur toutes les machines (le client qui tire les a déjà joués par prédiction) */

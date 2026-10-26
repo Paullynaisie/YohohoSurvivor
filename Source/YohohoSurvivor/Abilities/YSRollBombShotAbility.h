@@ -31,6 +31,10 @@ public:
 	/** Priorités : roulade + visée + recul du tir (comme le Rolling shot) */
 	virtual float GetActionDuration() const override { return UYSRollingShotAbility::GetActionDuration(); }
 
+#if WITH_EDITOR
+	virtual void GetUnusedProperties(TArray<FName>& OutNames) const override;
+#endif
+
 protected:
 
 	/** Serveur : bombe aux pieds, puis roulade, visée et tir (Rolling shot) */

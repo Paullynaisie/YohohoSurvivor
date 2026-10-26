@@ -10,6 +10,8 @@
 UYSMeteorJumpAbility::UYSMeteorJumpAbility()
 {
 	DisplayName = NSLOCTEXT("YS", "MeteorJump", "MeteorJump");
+	// toujours invulnérable (IsGrantingInvulnerability) : la case, cachée, reste cochée pour ne pas griser Extra Invulnerability
+	bDashInvulnerable = true;
 }
 
 void UYSMeteorJumpAbility::LockDirection(const FVector& TargetLocation)
@@ -174,3 +176,20 @@ bool UYSMeteorJumpAbility::GetForcedMoveDirection(FVector& OutDirection) const
 	float Alpha;
 	return GetPhase(Alpha) != 1 && Super::GetForcedMoveDirection(OutDirection);
 }
+
+#if WITH_EDITOR
+void UYSMeteorJumpAbility::GetUnusedProperties(TArray<FName>& OutNames) const
+{
+	Super::GetUnusedProperties(OutNames);
+	// le saut remplace le dash (durée, vitesse, traversée, invulnérabilité) et sa courbe de coupe (Jump Swing Ease Exponent)
+	OutNames.Append({
+		GET_MEMBER_NAME_CHECKED(UYSMeteorJumpAbility, DashDuration),
+		GET_MEMBER_NAME_CHECKED(UYSMeteorJumpAbility, DashSpeedMultiplier),
+		GET_MEMBER_NAME_CHECKED(UYSMeteorJumpAbility, DashEndSpeedMultiplier),
+		GET_MEMBER_NAME_CHECKED(UYSMeteorJumpAbility, DashDecayExponent),
+		GET_MEMBER_NAME_CHECKED(UYSMeteorJumpAbility, bDashThroughFoes),
+		GET_MEMBER_NAME_CHECKED(UYSMeteorJumpAbility, bDashInvulnerable),
+		GET_MEMBER_NAME_CHECKED(UYSMeteorJumpAbility, SwingEaseExponent),
+	});
+}
+#endif

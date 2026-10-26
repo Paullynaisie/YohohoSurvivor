@@ -25,3 +25,11 @@ void UYSRollBombShotAbility::ConfigureProjectile(AYSProjectile* Projectile) cons
 		Projectile->SetMaxHits(MAX_int32);
 	}
 }
+
+#if WITH_EDITOR
+void UYSRollBombShotAbility::GetUnusedProperties(TArray<FName>& OutNames) const
+{
+	// tire comme le Rolling shot : tous les réglages de tir servent (pas ceux cachés par la Roll and Bomb)
+	UYSRollingShotAbility::GetUnusedProperties(OutNames);
+}
+#endif

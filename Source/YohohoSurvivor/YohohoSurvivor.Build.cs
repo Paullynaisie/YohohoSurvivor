@@ -39,6 +39,8 @@ public class YohohoSurvivor : ModuleRules
 		{
 			// LandscapeEdit.h (édition des hauteurs d'un landscape existant) inclut InstancedFoliageActor.h
 			PrivateDependencyModuleNames.Add("Foliage");
+			// panneau Details : propriétés héritées inutilisées des actions d'arme cachées (EditorTools/YSAbilityDetails)
+			PrivateDependencyModuleNames.Add("PropertyEditor");
 		}
 
 		PublicIncludePaths.AddRange(new string[] {

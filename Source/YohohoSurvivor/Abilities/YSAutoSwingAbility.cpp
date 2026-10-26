@@ -445,3 +445,15 @@ UYSAutoSwingAbility* UYSAutoSwingAbility::GetAkimboPartner() const
 	const AYSWeapon* OffWeapon = Character->GetOffHandWeapon();
 	return OffWeapon ? Cast<UYSAutoSwingAbility>(OffWeapon->GetAutoAction()) : nullptr;
 }
+
+#if WITH_EDITOR
+void UYSAutoSwingAbility::GetUnusedProperties(TArray<FName>& OutNames) const
+{
+	Super::GetUnusedProperties(OutNames);
+	// recharge = animation + Auto Atk CD (Cooldown ne sert qu'aux sous-classes en Ability)
+	if (IsAutomatic())
+	{
+		OutNames.Add(GET_MEMBER_NAME_CHECKED(UYSAutoSwingAbility, Cooldown));
+	}
+}
+#endif

@@ -101,6 +101,10 @@ public:
 
 	virtual bool GetLockedAimDirection(FVector& OutDirection) const override;
 
+#if WITH_EDITOR
+	virtual void GetUnusedProperties(TArray<FName>& OutNames) const override;
+#endif
+
 protected:
 
 	/** Machine qui active (client local ou hôte) : direction figée sur le curseur */

@@ -66,6 +66,10 @@ public:
 	/** Pas de déplacement forcé pendant le saut (la trajectoire est celle de la chute) */
 	virtual bool GetForcedMoveDirection(FVector& OutDirection) const override;
 
+#if WITH_EDITOR
+	virtual void GetUnusedProperties(TArray<FName>& OutNames) const override;
+#endif
+
 protected:
 
 	virtual float GetDashPhaseDuration() const override { return JumpDuration; }
