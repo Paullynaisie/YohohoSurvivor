@@ -8,6 +8,8 @@ AYSPlayerCorpse::AYSPlayerCorpse()
 	DisplayName = NSLOCTEXT("YS", "PlayerCorpse", "Cadavre");
 	// visible de tous, même loin (le corps du personnage mort l'est aussi)
 	bAlwaysRelevant = true;
+	// lâché dans la mer : il flotte
+	bFloatsOnWater = true;
 }
 
 void AYSPlayerCorpse::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

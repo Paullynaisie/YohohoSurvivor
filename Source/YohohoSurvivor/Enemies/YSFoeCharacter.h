@@ -140,6 +140,9 @@ protected:
 	/** Niveau imposé par l'apparition (SetForcedLevel ; INDEX_NONE = niveau normal) */
 	int32 ForcedLevel = INDEX_NONE;
 
+	/** Niveaux ajoutés au niveau normal par l'apparition (SetLevelBonus ; circle spawns répétés de la nuit) */
+	int32 LevelBonus = 0;
+
 	/** Élite : apparaît la nuit, sa mort fait passer au jour suivant ; barre de vie dans le HUD (haut droite) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite")
 	bool bIsElite = false;
@@ -450,6 +453,9 @@ public:
 	/** Niveau imposé à l'apparition, à la place de celui du jour (serveur, avant FinishSpawning ; overtime) */
 	void SetForcedLevel(int32 NewLevel) { ForcedLevel = NewLevel; }
 
+	/** Niveaux en plus du niveau normal (serveur, avant FinishSpawning ; circle spawns répétés de la nuit) */
+	void SetLevelBonus(int32 Bonus) { LevelBonus = Bonus; }
+
 	bool IsElite() const { return bIsElite; }
 
 	float GetMaxHealth() const { return MaxHealth; }
@@ -562,8 +568,11 @@ protected:
 	UFUNCTION()
 	void OnRep_Bump();
 
-	/** Début du vol sur cette machine : mouvement du personnage coupé (la position est calculée par UpdateBump) */
+	/** Début du vol sur cette machine : mouvement du personnage coupé (la position est calculée par UpdateBump), attaque en cours arrêtée */
 	void BeginBumpLocal();
+
+	/** Attaques des armes en cours arrêtées sur cette machine (coup d'épée, lancer de bombe ; la visée du Skull Gun est arrêtée par StartBump) */
+	void CancelWeaponAttacks();
 
 	/** Position et rotation du vol (toutes machines) ; fin du vol à la durée écoulée */
 	void UpdateBump();

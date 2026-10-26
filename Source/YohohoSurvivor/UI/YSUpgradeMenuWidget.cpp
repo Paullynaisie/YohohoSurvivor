@@ -86,7 +86,25 @@ void UYSUpgradeMenuWidget::BuildWidgetTree()
 	StatusSlot->SetHorizontalAlignment(HAlign_Center);
 	StatusSlot->SetPadding(StatusPadding);
 
-	// « Relance » en bas au centre
+	// « Valider » puis « Relance » en bas, centrés ensemble
+	UHorizontalBox* BottomRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("BottomButtons"));
+	UVerticalBoxSlot* BottomSlot = Page->AddChildToVerticalBox(BottomRow);
+	BottomSlot->SetHorizontalAlignment(HAlign_Center);
+	BottomSlot->SetPadding(RerollPadding);
+
+	USizeBox* ValidateSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ValidateBox"));
+	ValidateSize->SetWidthOverride(ValidateButtonSize.X);
+	ValidateSize->SetHeightOverride(ValidateButtonSize.Y);
+	ValidateButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Validate"));
+	ValidateButton->SetBackgroundColor(ValidateDisabledColor);
+	ValidateButton->AddChild(MakeText(NSLOCTEXT("YS", "UpgradeValidate", "Valider"), ValidateFontSize, FLinearColor::White, true, false));
+	ValidateSize->AddChild(ValidateButton);
+	ValidateProxy = NewObject<UYSUpgradeMenuButtonProxy>(this);
+	ValidateProxy->Index = ValidateButtonIndex;
+	ValidateProxy->Menu = this;
+	ValidateButton->OnClicked.AddDynamic(ValidateProxy, &UYSUpgradeMenuButtonProxy::HandleClicked);
+	BottomRow->AddChildToHorizontalBox(ValidateSize);
+
 	USizeBox* RerollSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("RerollRow"));
 	RerollSize->SetWidthOverride(RerollButtonSize.X);
 	RerollSize->SetHeightOverride(RerollButtonSize.Y);
@@ -98,9 +116,8 @@ void UYSUpgradeMenuWidget::BuildWidgetTree()
 	RerollProxy = NewObject<UYSUpgradeMenuButtonProxy>(this);
 	RerollProxy->Menu = this;
 	RerollButton->OnClicked.AddDynamic(RerollProxy, &UYSUpgradeMenuButtonProxy::HandleClicked);
-	UVerticalBoxSlot* RerollSlot = Page->AddChildToVerticalBox(RerollSize);
-	RerollSlot->SetHorizontalAlignment(HAlign_Center);
-	RerollSlot->SetPadding(RerollPadding);
+	UHorizontalBoxSlot* RerollSlot = BottomRow->AddChildToHorizontalBox(RerollSize);
+	RerollSlot->SetPadding(FMargin(BottomButtonSpacing, 0.0f, 0.0f, 0.0f));
 }
 
 UWidget* UYSUpgradeMenuWidget::MakeCardContent(const FYSUpgradeCard& Card)
@@ -226,7 +243,8 @@ void UYSUpgradeMenuWidget::SetCards(const TArray<FYSUpgradeCard>& Cards)
 		ButtonProxies.Add(Proxy);
 	}
 	SelectedIndex = INDEX_NONE;
-	SetSelectedIndex(INDEX_NONE);
+	ValidatedIndex = INDEX_NONE;
+	RefreshSelection();
 }
 
 void UYSUpgradeMenuWidget::SetTitle(const FText& Title)
@@ -240,9 +258,33 @@ void UYSUpgradeMenuWidget::SetTitle(const FText& Title)
 void UYSUpgradeMenuWidget::SetSelectedIndex(int32 Index)
 {
 	SelectedIndex = Index;
+	RefreshSelection();
+}
+
+void UYSUpgradeMenuWidget::SetValidatedIndex(int32 Index)
+{
+	if (ValidatedIndex == Index)
+	{
+		return;
+	}
+	ValidatedIndex = Index;
+	RefreshSelection();
+}
+
+void UYSUpgradeMenuWidget::RefreshSelection()
+{
+	// carte validée en vert, carte sélectionnée (pas encore validée) en orange
 	for (int32 CardIndex = 0; CardIndex < CardButtons.Num(); ++CardIndex)
 	{
-		CardButtons[CardIndex]->SetBackgroundColor(CardIndex == Index ? SelectedCardColor : CardColor);
+		const FLinearColor Color = CardIndex == ValidatedIndex ? ValidatedCardColor : CardIndex == SelectedIndex ? SelectedCardColor : CardColor;
+		CardButtons[CardIndex]->SetBackgroundColor(Color);
+	}
+	// « Valider » actif seulement avec une carte sélectionnée qui n'est pas déjà celle validée
+	if (ValidateButton)
+	{
+		const bool bCanValidate = SelectedIndex != INDEX_NONE && SelectedIndex != ValidatedIndex;
+		ValidateButton->SetBackgroundColor(bCanValidate ? ValidateButtonColor : ValidateDisabledColor);
+		ValidateButton->SetIsEnabled(bCanValidate);
 	}
 }
 
@@ -258,8 +300,8 @@ void UYSUpgradeMenuWidget::SetRerollVisible(bool bVisible)
 {
 	if (RerollRow)
 	{
-		// caché sans libérer sa place : les cartes ne bougent pas quand il disparaît
-		RerollRow->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+		// retiré de la ligne : « Valider » reste seul, centré (la hauteur de la ligne ne change pas, les cartes ne bougent pas)
+		RerollRow->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }
 
@@ -270,6 +312,14 @@ void UYSUpgradeMenuWidget::NotifyButtonClicked(int32 Index)
 		OnRerollClicked.ExecuteIfBound();
 		return;
 	}
+	if (Index == ValidateButtonIndex)
+	{
+		if (SelectedIndex != INDEX_NONE && SelectedIndex != ValidatedIndex)
+		{
+			OnOfferChosen.ExecuteIfBound(SelectedIndex);
+		}
+		return;
+	}
+	// carte : sélectionnée seulement, envoyée par « Valider »
 	SetSelectedIndex(Index);
-	OnOfferChosen.ExecuteIfBound(Index);
 }

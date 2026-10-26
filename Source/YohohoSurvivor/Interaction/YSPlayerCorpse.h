@@ -41,6 +41,9 @@ public:
 	/** Joueur dont c'est le cadavre */
 	APlayerState* GetOwnerPlayerState() const { return OwnerPlayerState; }
 
+	/** Personnage mort dont le corps suit le cadavre (garde son set d'arme et ses upgrades : résurrection par le Medic) */
+	AYSPlayerCharacter* GetBody() const { return Body; }
+
 	/** Point de vue du spectateur qui regarde ce cadavre */
 	FVector GetViewLocation() const { return GetActorLocation() + ViewOffset; }
 

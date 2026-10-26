@@ -169,6 +169,18 @@ public:
 	/** Interrompt l'action (serveur) : animation arrêtée sur toutes les machines, recharge rendue, main suivante de l'akimbo annulée */
 	void CancelAction();
 
+	/**
+	 *  Arrête l'action en cours sur cette machine seulement, recharge inchangée (ex. arme locale d'un NME bumpé : chaque machine
+	 *  arrête la sienne) : plus d'animation ni de coups, main suivante de l'akimbo annulée
+	 */
+	void StopActionLocally();
+
+	/**
+	 *  Le clic ne peut pas lancer l'action maintenant alors que sa recharge est finie (action plus prioritaire en cours, armes rangées,
+	 *  action forcée en cours, activation sans effet comme Summon the crew au maximum de minions) : icône grisée
+	 */
+	bool IsActivationBlocked() const;
+
 	/** Recharge terminée tout de suite (serveur, ex. level up) */
 	void ResetCooldown();
 
@@ -268,8 +280,8 @@ protected:
 	/** Vrai sur le client qui contrôle le tireur (hors serveur) : il joue les effets sans attendre le serveur */
 	bool IsLocallyPredicted() const;
 
-	/** Activation forcée exécutée par le serveur (accord vérifié) */
-	void ActivateForcedOnServer(const FVector& TargetLocation);
+	/** Activation forcée exécutée par le serveur (accord vérifié) ; faux si refusée */
+	bool ActivateForcedOnServer(const FVector& TargetLocation);
 
 	UFUNCTION(Server, Reliable)
 	void ServerForcedActivate(FVector_NetQuantize TargetLocation);
@@ -306,8 +318,15 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerActivate(FVector_NetQuantize TargetLocation);
 
-	/** Vérifie la recharge, la relance et exécute la capacité (serveur) */
-	void ActivateOnServer(const FVector& TargetLocation);
+	/** Vérifie la recharge, la relance et exécute la capacité (serveur) ; faux si refusée */
+	bool ActivateOnServer(const FVector& TargetLocation);
+
+	/**
+	 *  Activation prédite par le client mais refusée par le serveur : recharge du serveur reprise et effets prédits arrêtés
+	 *  (sinon le client garde sa prédiction, la recharge du serveur n'ayant pas changé elle n'est pas répliquée à nouveau)
+	 */
+	UFUNCTION(Client, Reliable)
+	void ClientActivationRejected(double ServerReadyTime);
 
 	/** Temps du monde synchronisé avec le serveur */
 	double GetServerTime() const;

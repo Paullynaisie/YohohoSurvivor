@@ -48,6 +48,14 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	float AbilityIconBottomMargin = 40.0f;
 
+	/** Widget de l'icône de l'attaque auto (à gauche de celle de l'Ability, même défilement de recharge) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<UYSAbilityIconWidget> AutoAttackIconClass;
+
+	/** Espace entre l'icône de l'attaque auto et celle de l'Ability */
+	UPROPERTY(EditAnywhere, Category="UI")
+	float AutoAttackIconSpacing = 16.0f;
+
 	/** Distance entre les icônes des joueurs hors écran et le bord de l'écran */
 	UPROPERTY(EditAnywhere, Category="UI")
 	float OffscreenIndicatorMargin = 12.0f;
@@ -90,6 +98,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UYSAbilityIconWidget> AbilityIcon;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UYSAbilityIconWidget> AutoAttackIcon;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UYSBloodlustStacksWidget> BloodlustStacks;
@@ -266,6 +277,13 @@ public:
 	/** Debug (hôte) : téléporte le personnage à côté du Brooker le plus proche */
 	UFUNCTION(Exec)
 	void YSGoToBrooker(float Distance = 300.0f);
+
+	/** Debug (hôte) : téléporte le personnage à côté du Medic le plus proche */
+	UFUNCTION(Exec)
+	void YSGoToMedic(float Distance = 300.0f);
+
+	/** Téléporte le personnage à Distance du Brooker (ou du Medic) le plus proche */
+	void GoToNPC(float Distance, bool bMedic);
 
 	/** Debug (hôte) : téléporte le personnage sur le cadavre de joueur le plus proche (E le prend alors à coup sûr) */
 	UFUNCTION(Exec)

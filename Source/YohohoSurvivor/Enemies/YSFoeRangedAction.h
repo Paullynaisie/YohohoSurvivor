@@ -76,6 +76,9 @@ public:
 	/** Animation de l'attaque en cours sur cette machine (les mains du serveur ne sont alors jamais figées) */
 	virtual bool IsAnimating() const { return false; }
 
+	/** Attaque en cours arrêtée sur cette machine (NME bumpé) : plus d'animation, rien ne part (ex. bombe pas encore lâchée) */
+	virtual void CancelAttack();
+
 private:
 
 	/** Instant (temps local) du dernier PlayAttackLocally */
@@ -195,6 +198,8 @@ public:
 	virtual bool IsWeaponHidden() const override;
 
 	virtual bool IsAnimating() const override { return GetTimeSinceAttack() < ThrowWindupDuration + ThrowDuration + ThrowRecoverDuration; }
+
+	virtual void CancelAttack() override;
 
 private:
 

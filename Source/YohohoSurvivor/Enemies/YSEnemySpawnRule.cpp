@@ -240,8 +240,12 @@ void UYSTimedWaveSpawnRule::OnPhaseChanged(bool bNight)
 	bElitePending = bNight;
 	NextEliteAttemptTime = 0.0f;
 	bEliteFailureLogged = false;
-	NightElite.Reset();
-	bEliteHealthCircleDone = false;
+	// circle spawns de la nuit comptés depuis maintenant (overtime : nuit pas notifiée, pas d'events)
+	bNightEventsActive = bNight;
+	NightStartTime = GetMatchElapsedTime();
+	NextNightCircleEvent = 0;
+	LastNightCircleTime = NightStartTime;
+	NightCircleRepeats = 0;
 }
 
 bool UYSTimedWaveSpawnRule::IsNight() const
@@ -311,13 +315,11 @@ bool UYSTimedWaveSpawnRule::SpawnElite()
 	}
 
 	// en même temps que l'élite : immense vague sur le contour de la plage
-	NightElite = Elite;
-	bEliteHealthCircleDone = false;
 	SpawnCircle(NightStartCircleSpawn, TEXT("début de la nuit"));
 	return true;
 }
 
-int32 UYSTimedWaveSpawnRule::SpawnCircle(const FYSCircleSpawn& Circle, const FString& Reason)
+int32 UYSTimedWaveSpawnRule::SpawnCircle(const FYSCircleSpawn& Circle, const FString& Reason, int32 LevelBonus)
 {
 	if (!Circle.bEnabled || !GameMode)
 	{
@@ -325,7 +327,39 @@ int32 UYSTimedWaveSpawnRule::SpawnCircle(const FYSCircleSpawn& Circle, const FSt
 	}
 	// 25 NME pour 1 joueur (Enemies Per Player), selon le nombre de joueurs ; sinon le nombre fixe
 	const int32 Count = Circle.EnemiesPerPlayer > 0 ? GameMode->ScaleEnemyCount(Circle.EnemiesPerPlayer) : Circle.MaxEnemies;
-	return GameMode->SpawnCircle(Circle.EnemyClasses, Count, FString::Printf(TEXT("nuit %d, %s, %d joueur(s)"), GetDayNumber(), *Reason, GetPlayersInMatchCount()));
+	return GameMode->SpawnCircle(Circle.EnemyClasses, Count, FString::Printf(TEXT("nuit %d, %s, %d joueur(s)"), GetDayNumber(), *Reason, GetPlayersInMatchCount()), INDEX_NONE, LevelBonus);
+}
+
+void UYSTimedWaveSpawnRule::TickNightCircles()
+{
+	if (!bNightEventsActive || !IsNight())
+	{
+		return;
+	}
+	const float Elapsed = GetMatchElapsedTime();
+
+	// events à leur délai depuis le début de la nuit (30 s : Skull Gun, 60 s : Skull Nemesis)
+	if (NightCircleEvents.IsValidIndex(NextNightCircleEvent))
+	{
+		const FYSNightCircleEvent& Event = NightCircleEvents[NextNightCircleEvent];
+		if (Elapsed - NightStartTime >= Event.Delay)
+		{
+			SpawnCircle(Event.Circle, FString::Printf(TEXT("%.0f s de nuit"), Event.Delay));
+			++NextNightCircleEvent;
+			LastNightCircleTime = Elapsed;
+		}
+		return;
+	}
+
+	// puis le dernier, répété, chaque fois quelques niveaux plus haut que le précédent
+	if (!bRepeatLastNightCircle || NightCircleEvents.Num() == 0 || Elapsed - LastNightCircleTime < NightCircleRepeatInterval)
+	{
+		return;
+	}
+	++NightCircleRepeats;
+	LastNightCircleTime = Elapsed;
+	const int32 LevelBonus = NightCircleRepeats * NightCircleRepeatLevelStep;
+	SpawnCircle(NightCircleEvents.Last().Circle, FString::Printf(TEXT("%.0f s de nuit, répétition %d, niveau +%d"), Elapsed - NightStartTime, NightCircleRepeats, LevelBonus), LevelBonus);
 }
 
 void UYSTimedWaveSpawnRule::TickRule(float DeltaSeconds)
@@ -336,13 +370,8 @@ void UYSTimedWaveSpawnRule::TickRule(float DeltaSeconds)
 		bElitePending = !SpawnElite();
 	}
 
-	// l'élite passe sous le seuil de PV : second circle spawn (une fois par nuit)
-	const AYSFoeCharacter* Elite = NightElite.Get();
-	if (Elite && !bEliteHealthCircleDone && Elite->GetMaxHealth() > 0.0f && Elite->GetHealth() < Elite->GetMaxHealth() * EliteHealthCircleThreshold)
-	{
-		bEliteHealthCircleDone = true;
-		SpawnCircle(EliteHealthCircleSpawn, FString::Printf(TEXT("élite à %.0f / %.0f PV"), Elite->GetHealth(), Elite->GetMaxHealth()));
-	}
+	// circle spawns de la nuit (Skull Gun, Skull Nemesis, puis Nemesis de plus en plus forts)
+	TickNightCircles();
 
 	// la nuit, seuls les events font apparaître des NME (sauf si les vagues de nuit sont cochées)
 	if (IsNight() && !bNightTimedWaves)

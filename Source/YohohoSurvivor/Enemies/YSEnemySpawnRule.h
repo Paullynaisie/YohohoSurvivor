@@ -30,6 +30,20 @@ struct FYSCircleSpawn
 	int32 MaxEnemies = 50;
 };
 
+/** Circle spawn de la nuit à un moment donné, compté depuis le début de la nuit */
+USTRUCT(BlueprintType)
+struct FYSNightCircleEvent
+{
+	GENERATED_BODY()
+
+	/** Secondes après le début de la nuit */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn", meta=(ClampMin="0", Units="s"))
+	float Delay = 30.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn")
+	FYSCircleSpawn Circle;
+};
+
 /**
  *  Règle de spawn des NME (serveur uniquement), instanciée dans le GameMode (liste SpawnRules, catégorie Spawn) :
  *  on choisit le type de règle dans la liste déroulante et on règle ses paramètres directement dans le BP du GameMode.
@@ -123,8 +137,9 @@ protected:
  *  Vagues jour / nuit : toutes les WaveInterval secondes (NightWaveInterval la nuit), X NME apparaissent,
  *  X = EnemiesPerPlayer (NightEnemiesPerPlayer la nuit, valeurs pour 1 joueur) × jour en cours × Spawn Multiplier du nombre de joueurs (AYSGameMode::PlayerCountScaling).
  *  Au début de chaque nuit, un élite (EliteClasses) apparaît au centre de l'île ; sa mort fait passer au jour suivant (AYSGameMode).
- *  La nuit, pas de vagues par timer (bNightTimedWaves) : seuls les events font apparaître des NME (circle spawn sur la plage
- *  avec l'élite, second circle spawn quand l'élite passe sous EliteHealthCircleThreshold de ses PV).
+ *  La nuit, pas de vagues par timer (bNightTimedWaves) : seuls les events font apparaître des NME : circle spawn sur la plage
+ *  avec l'élite, puis les circle spawns de Night Circle Events à leur délai (30 s : Skull Gun, 60 s : Skull Nemesis), puis le
+ *  dernier répété toutes les Night Circle Repeat Interval secondes, chaque fois Night Circle Repeat Level Step niveaux plus haut.
  *  La première vague d'une phase arrive FirstWaveDelay secondes après son début.
  */
 UCLASS(meta=(DisplayName="Vagues jour / nuit (par joueur et par jour)"))
@@ -170,13 +185,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events")
 	FYSCircleSpawn NightStartCircleSpawn;
 
-	/** Circle spawn lancé une fois par nuit quand l'élite passe sous EliteHealthCircleThreshold de ses PV max */
+	/** Circle spawns de la nuit à leur délai (depuis le début de la nuit), dans l'ordre */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events")
-	FYSCircleSpawn EliteHealthCircleSpawn;
+	TArray<FYSNightCircleEvent> NightCircleEvents;
 
-	/** Part des PV max de l'élite sous laquelle EliteHealthCircleSpawn se déclenche */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events", meta=(ClampMin="0", ClampMax="1"))
-	float EliteHealthCircleThreshold = 0.5f;
+	/** Après le dernier circle spawn de Night Circle Events : il est relancé toutes les Night Circle Repeat Interval secondes jusqu'à la fin de la nuit */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events")
+	bool bRepeatLastNightCircle = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events", meta=(ClampMin="1", Units="s", EditCondition="bRepeatLastNightCircle"))
+	float NightCircleRepeatInterval = 30.0f;
+
+	/** Chaque répétition : NME de ce nombre de niveaux de plus que le circle spawn précédent */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events", meta=(ClampMin="0", EditCondition="bRepeatLastNightCircle"))
+	int32 NightCircleRepeatLevelStep = 2;
 
 	/** Taille de vague calculée maintenant (nb de joueurs × NME par joueur (jour ou nuit) × jour en cours) */
 	int32 GetWaveSize() const;
@@ -192,8 +214,11 @@ protected:
 	/** Fait apparaître l'élite ; faux si aucun emplacement trouvé (réessayé au tick suivant) */
 	bool SpawnElite();
 
-	/** Circle spawn (AYSGameMode::SpawnCircle, réglages de l'île sur le GameMode) ; renvoie le nombre apparus */
-	int32 SpawnCircle(const FYSCircleSpawn& Circle, const FString& Reason);
+	/** Circle spawn (AYSGameMode::SpawnCircle, réglages de l'île sur le GameMode), LevelBonus niveaux en plus ; renvoie le nombre apparus */
+	int32 SpawnCircle(const FYSCircleSpawn& Circle, const FString& Reason, int32 LevelBonus = 0);
+
+	/** Circle spawns de Night Circle Events puis répétition du dernier (nuit notifiée par le GameMode) */
+	void TickNightCircles();
 
 	bool IsNight() const;
 
@@ -209,7 +234,10 @@ protected:
 	float NextEliteAttemptTime = 0.0f;
 	bool bEliteFailureLogged = false;
 
-	/** Élite de la nuit en cours, et circle spawn de ses PV déjà lancé */
-	TWeakObjectPtr<AYSFoeCharacter> NightElite;
-	bool bEliteHealthCircleDone = false;
+	/** Nuit avec ses events en cours (pas l'overtime), son début (temps de partie), prochain event et répétitions faites */
+	bool bNightEventsActive = false;
+	float NightStartTime = 0.0f;
+	int32 NextNightCircleEvent = 0;
+	float LastNightCircleTime = 0.0f;
+	int32 NightCircleRepeats = 0;
 };

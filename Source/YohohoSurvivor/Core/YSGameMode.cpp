@@ -7,6 +7,7 @@
 #include "Enemies/YSFoeCharacter.h"
 #include "Interaction/YSTreasureMap.h"
 #include "Interaction/YSInteractiveObject.h"
+#include "Interaction/YSPlayerCorpse.h"
 #include "LandscapeProxy.h"
 #include "Map/YSOcean.h"
 #include "Ship/YSPirateShip.h"
@@ -741,6 +742,30 @@ APawn* AYSGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewP
 	return Pawn;
 }
 
+bool AYSGameMode::RevivePlayer(AYSPlayerCorpse* Corpse, const FVector& Ground, float HealthRatio)
+{
+	AYSPlayerState* PlayerState = Corpse ? Cast<AYSPlayerState>(Corpse->GetOwnerPlayerState()) : nullptr;
+	AController* Controller = PlayerState ? PlayerState->GetOwningController() : nullptr;
+	AYSPlayerCharacter* Body = Corpse ? Corpse->GetBody() : nullptr;
+	// joueur parti, ou déjà revenu avec un autre personnage : le cadavre reste
+	if (!PlayerState || !Controller || !IsValid(Body) || Cast<AYSPlayerCharacter>(Controller->GetPawn()))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSMedic] %s : personne à ressusciter (joueur %d, contrôleur %d, corps %d)"), Corpse ? *Corpse->GetName() : TEXT("?"),
+			PlayerState != nullptr, Controller != nullptr, IsValid(Body));
+		return false;
+	}
+
+	// vivant avant la possession (HUD, écran de mort, spectateur)
+	PlayerState->SetAlive();
+	if (!Body->Revive(Controller, Ground, HealthRatio))
+	{
+		PlayerState->SetDead();
+		return false;
+	}
+	Corpse->Destroy();
+	return true;
+}
+
 void AYSGameMode::AddDoubloons(int32 Amount)
 {
 	AYSGameState* YSGameState = GetGameState<AYSGameState>();
@@ -939,7 +964,7 @@ int32 AYSGameMode::SpawnNumpadCircle(int32 Key)
 	return 0;
 }
 
-int32 AYSGameMode::SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason, int32 ForcedLevel)
+int32 AYSGameMode::SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason, int32 ForcedLevel, int32 LevelBonus)
 {
 	TArray<TSubclassOf<AYSFoeCharacter>> ValidClasses = Classes;
 	ValidClasses.RemoveAll([](const TSubclassOf<AYSFoeCharacter>& Class) { return !Class; });
@@ -957,7 +982,7 @@ int32 AYSGameMode::SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Class
 		FVector Ground;
 		if (FindShorePoint(StartAngle + 2.0f * PI * Index / Count, Ground))
 		{
-			Spawned += SpawnFoeOnGround(UYSEnemySpawnRule::PickEnemyClass(ValidClasses), Ground, IslandCenter, ForcedLevel) ? 1 : 0;
+			Spawned += SpawnFoeOnGround(UYSEnemySpawnRule::PickEnemyClass(ValidClasses), Ground, IslandCenter, ForcedLevel, LevelBonus) ? 1 : 0;
 		}
 	}
 
@@ -965,7 +990,7 @@ int32 AYSGameMode::SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Class
 	return Spawned;
 }
 
-AYSFoeCharacter* AYSGameMode::SpawnFoeOnGround(UClass* FoeClass, const FVector& Ground, const FVector& FacingTarget, int32 ForcedLevel)
+AYSFoeCharacter* AYSGameMode::SpawnFoeOnGround(UClass* FoeClass, const FVector& Ground, const FVector& FacingTarget, int32 ForcedLevel, int32 LevelBonus)
 {
 	if (!FoeClass || !FoeClass->IsChildOf(AYSFoeCharacter::StaticClass()))
 	{
@@ -984,6 +1009,7 @@ AYSFoeCharacter* AYSGameMode::SpawnFoeOnGround(UClass* FoeClass, const FVector& 
 	if (Foe)
 	{
 		Foe->SetForcedLevel(ForcedLevel);
+		Foe->SetLevelBonus(LevelBonus);
 		Foe->FinishSpawning(SpawnTransform);
 	}
 	return Foe;

@@ -165,19 +165,22 @@ float UYSAbilityComponent::GetCooldownRemaining() const
 
 void UYSAbilityComponent::ServerActivate_Implementation(FVector_NetQuantize TargetLocation)
 {
-	ActivateOnServer(TargetLocation);
+	if (!ActivateOnServer(TargetLocation))
+	{
+		ClientActivationRejected(ReadyServerTime);
+	}
 }
 
-void UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
+bool UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
 {
 	const double Now = GetServerTime();
 	if (Now + CooldownTolerance < ReadyServerTime)
 	{
-		return;
+		return false;
 	}
 	if (IsForcedActionInProgress() || !CanStartByPriority() || !CanActivateNow())
 	{
-		return;
+		return false;
 	}
 	CancelLowerPriorityActions();
 
@@ -186,6 +189,15 @@ void UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s activée à %.2f, prête à %.2f"), *GetOwner()->GetName(), *GetName(), Now, ReadyServerTime);
 	ExecuteAbility(TargetLocation);
 	MulticastActivated();
+	return true;
+}
+
+void UYSAbilityComponent::ClientActivationRejected_Implementation(double ServerReadyTime)
+{
+	UE_LOG(LogTemp, Log, TEXT("[YSAbility] %s.%s refusée par le serveur : prête à %.2f (prédiction %.2f)"), *GetOwner()->GetName(), *GetName(), ServerReadyTime, ReadyServerTime);
+	ReadyServerTime = ServerReadyTime;
+	bLastActivationForced = false;
+	StopActionLocally();
 }
 
 void UYSAbilityComponent::GrantForcedActivation(const FYSForcedActivation& Forced)
@@ -226,17 +238,20 @@ void UYSAbilityComponent::TryForcedActivate(const FVector& TargetLocation)
 
 void UYSAbilityComponent::ServerForcedActivate_Implementation(FVector_NetQuantize TargetLocation)
 {
-	ActivateForcedOnServer(TargetLocation);
+	if (!ActivateForcedOnServer(TargetLocation))
+	{
+		ClientActivationRejected(ReadyServerTime);
+	}
 }
 
-void UYSAbilityComponent::ActivateForcedOnServer(const FVector& TargetLocation)
+bool UYSAbilityComponent::ActivateForcedOnServer(const FVector& TargetLocation)
 {
 	// accord du serveur obligatoire (une seule fois, pendant un court délai)
 	const bool bGranted = bForcedGranted && GetWorld() && GetWorld()->GetTimeSeconds() - ForcedGrantTime <= ForcedGrantLifetime;
 	bForcedGranted = false;
 	if (!bGranted || !CanActivateNow())
 	{
-		return;
+		return false;
 	}
 
 	// priorité Forced : l'action en cours de cette capacité s'arrête (sans effacer son animation chez le client qui a prédit),
@@ -262,6 +277,7 @@ void UYSAbilityComponent::ActivateForcedOnServer(const FVector& TargetLocation)
 	ExecuteAbility(TargetLocation);
 	ReadyServerTime = ReadyTime;
 	MulticastForcedActivated();
+	return true;
 }
 
 void UYSAbilityComponent::MulticastForcedActivated_Implementation()
@@ -433,6 +449,21 @@ void UYSAbilityComponent::CancelAction()
 	MulticastCancelled();
 }
 
+void UYSAbilityComponent::StopActionLocally()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(AkimboTimer);
+	}
+	OnActionCancelled();
+	LastActivationTime = -1.0e6;
+}
+
+bool UYSAbilityComponent::IsActivationBlocked() const
+{
+	return IsForcedActionInProgress() || !CanStartByPriority() || !CanActivateNow();
+}
+
 void UYSAbilityComponent::ResetCooldown()
 {
 	ReadyServerTime = FMath::Min(ReadyServerTime, GetServerTime());
@@ -461,11 +492,6 @@ void UYSAbilityComponent::MulticastCancelled_Implementation()
 #if WITH_EDITOR
 void UYSAbilityComponent::GetUnusedProperties(TArray<FName>& OutNames) const
 {
-	// l'icône de l'UI est celle de l'Ability (action du clic), jamais celle d'une attaque auto
-	if (IsAutomatic())
-	{
-		OutNames.Add(GET_MEMBER_NAME_CHECKED(UYSAbilityComponent, Icon));
-		OutNames.Add(GET_MEMBER_NAME_CHECKED(UYSAbilityComponent, IconTint));
-	}
+	// toutes les actions ont leur icône dans l'UI (Ability et attaque auto) : rien de caché ici
 }
 #endif

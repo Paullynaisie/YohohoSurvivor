@@ -157,9 +157,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0.05", Units="s"))
 	float HealthRegenInterval = 1.0f;
 
-	/** Armor : dégâts minimum d'un coup après réduction par l'armure */
+	/** Armor : dégâts minimum d'un coup après réduction par l'armure (l'armure ne ramène jamais un coup à 0) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0"))
-	float MinDamageAfterArmor = 0.0f;
+	float MinDamageAfterArmor = 1.0f;
+
+	/**
+	 *  Armor : part minimum du coup gardée après l'armure (0.1 : 100 d'armure contre un coup de 60 -> 6, contre 108 -> 10.8 arrondi à 11) ;
+	 *  comptée sur le coup qui arrive à l'armure (après le %Armor du passif)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0", ClampMax="1"))
+	float MinDamageRatioAfterArmor = 0.1f;
 
 	/**
 	 *  BlendSpace 2D de strafe (X = direction -180..180 relative au regard, Y = vitesse).
@@ -642,6 +649,33 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(ClampMin="0.1", EditCondition="bDeathRagdoll && bKeepCorpse"))
 	float CorpseMassMultiplier = 2.0f;
 
+	/**
+	 *  Ragdoll simulé par le serveur seulement, pose répliquée : les clients la suivent (le corps est au même endroit sur tous les PC).
+	 *  Faux : chaque machine simule le sien (minions)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(EditCondition="bDeathRagdoll && bKeepCorpse"))
+	bool bReplicateRagdoll = true;
+
+	/** Clients : vitesse de rattrapage de la pose répliquée du ragdoll (lissage entre deux mises à jour) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death", meta=(ClampMin="1", EditCondition="bDeathRagdoll && bKeepCorpse && bReplicateRagdoll"))
+	float RagdollFollowSpeed = 15.0f;
+
+	/** Le corps flotte sur la mer (ragdoll poussé vers la surface) et le cadavre reste à la surface, au lieu de couler */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death|Float", meta=(EditCondition="bDeathRagdoll && bKeepCorpse"))
+	bool bCorpseFloats = true;
+
+	/** Profondeur du centre du corps sous la surface quand il flotte (équilibre) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death|Float", meta=(ClampMin="0", Units="cm", EditCondition="bCorpseFloats"))
+	float CorpseFloatDepth = 20.0f;
+
+	/** Poussée de l'eau : accélération vers le haut par cm d'enfoncement au-delà de Corpse Float Depth (en plus de compenser la gravité) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death|Float", meta=(ClampMin="0", EditCondition="bCorpseFloats"))
+	float CorpseBuoyancy = 40.0f;
+
+	/** Freinage du corps dans l'eau (amortissement linéaire et angulaire) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Death|Float", meta=(ClampMin="0", EditCondition="bCorpseFloats"))
+	float CorpseWaterDamping = 3.0f;
+
 private:
 
 	/** Position actuelle (lissée) dans le BlendSpace : X = direction, Y = vitesse */
@@ -705,8 +739,8 @@ private:
 
 	void BeginDeathLocal();
 
-	/** Rétrécissement après Death Scale Delay ; à 0 : FinishDeath (serveur) */
-	void UpdateDeath();
+	/** Rétrécissement après Death Scale Delay ; à 0 : FinishDeath (serveur) ; cadavre : ragdoll (flottaison, pose répliquée) puis cadavre */
+	void UpdateDeath(float DeltaSeconds);
 
 	/**
 	 *  Corps disparu ou devenu cadavre (serveur) : caméra de secours du joueur, puis personnage détruit, ou seulement
@@ -719,6 +753,25 @@ private:
 
 	/** Le cadavre a été créé, ou il n'y en aura pas (serveur) */
 	bool bCorpseHandled = false;
+
+	/** Pose du ragdoll simulé par le serveur (bReplicateRagdoll), suivie par les clients tant que le corps n'est pas sur son cadavre */
+	UPROPERTY(Replicated)
+	FYSRagdollPose RagdollPose;
+
+	/** Ce ragdoll suit la pose du serveur au lieu d'être simulé sur cette machine */
+	bool UsesReplicatedRagdoll() const { return bKeepCorpse && bReplicateRagdoll && !HasAuthority(); }
+
+	/** Le corps suit son cadavre (AttachBodyTo) : plus de ragdoll */
+	bool bBodyOnCorpse = false;
+
+	/** Serveur : poussée de la mer sur le ragdoll (bCorpseFloats) */
+	void ApplyCorpseBuoyancy(float DeltaSeconds);
+
+	/** Client : le corps rejoint la pose répliquée du ragdoll */
+	void FollowRagdollPose(float DeltaSeconds);
+
+	/** Joueur mort (cadavre gardé) : armes cachées (local, toutes machines) */
+	void HideCorpseWeapons();
 
 	/** Vitesse du ragdoll : pushback maximal du NME tueur dans la direction du coup, + vertical */
 	FVector ComputeDeathImpulse(const FDamageEvent& DamageEvent, const AController* EventInstigator, const AActor* DamageCauser) const;
@@ -846,6 +899,13 @@ public:
 
 	/** Upgrade de classe : même personnage avec un autre set d'arme (serveur ; respawn comme ChangeClass, upgrades et PV gardés) */
 	void ChangeWeaponSet(UYSWeaponSet* NewWeaponSet) { ChangeClass(GetClass(), NewWeaponSet); }
+
+	/**
+	 *  Résurrection (serveur, personnage mort resté en cadavre) : un personnage de la même classe, avec le même set d'arme, passif,
+	 *  main, upgrades et shards, apparaît debout sur le sol Ground, possédé par NewController, à HealthRatio de ses PV max ;
+	 *  ce corps disparaît. Renvoie le nouveau personnage.
+	 */
+	AYSPlayerCharacter* Revive(AController* NewController, const FVector& Ground, float HealthRatio);
 
 	/** Applique la personnalisation de son joueur (couleur, visage ; AYSPlayerState) ; minion : couleur de son Captain */
 	virtual void RefreshCustomization();

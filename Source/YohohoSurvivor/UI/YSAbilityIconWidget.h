@@ -34,10 +34,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ability Icon")
 	int32 FontSize = 28;
 
+	/** Voile quand l'action est rechargée mais ne peut pas partir (ex. Summon the crew au maximum de minions, objet porté) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ability Icon")
+	FLinearColor BlockedColor = FLinearColor(0.0f, 0.0f, 0.0f, 0.6f);
+
 	virtual bool Initialize() override;
 
-	/** Met à jour l'icône et la recharge à partir de la capacité (nullptr = caché) */
-	void Refresh(const UYSAbilityComponent* Ability);
+	/** Met à jour l'icône et la recharge à partir de la capacité (nullptr = caché) ; bBlocked = grisée bien que rechargée */
+	void Refresh(const UYSAbilityComponent* Ability, bool bBlocked = false);
 
 private:
 

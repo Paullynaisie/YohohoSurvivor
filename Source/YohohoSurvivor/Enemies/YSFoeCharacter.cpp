@@ -530,6 +530,9 @@ void AYSFoeCharacter::BeginBumpLocal()
 	bLocalBumpActive = true;
 	LocalBumpCounter = Bump.Counter;
 
+	// attaque en cours arrêtée (élites compris) : coup d'épée, lancer de bombe ; armes locales, chaque machine arrête la sienne
+	CancelWeaponAttacks();
+
 	// position et rotation calculées par UpdateBump sur chaque machine : plus de mouvement du personnage ni de réplication
 	// du mouvement pendant le vol (le serveur renvoie la position à l'atterrissage)
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
@@ -540,6 +543,24 @@ void AYSFoeCharacter::BeginBumpLocal()
 		SetReplicateMovement(false);
 	}
 	UpdateBump();
+}
+
+void AYSFoeCharacter::CancelWeaponAttacks()
+{
+	TArray<UYSAutoSwingAbility*> MeleeActions;
+	GetMeleeActions(MeleeActions);
+	for (UYSAutoSwingAbility* Swing : MeleeActions)
+	{
+		Swing->StopActionLocally();
+	}
+	for (const AYSWeapon* Weapon : { GetLeftHandWeapon(), GetRightHandWeapon() })
+	{
+		if (UYSFoeRangedAction* Ranged = Weapon ? Weapon->FindComponentByClass<UYSFoeRangedAction>() : nullptr)
+		{
+			Ranged->CancelAttack();
+		}
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBump] %s (%s) : attaques arrêtées"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"));
 }
 
 void AYSFoeCharacter::UpdateBump()
@@ -919,6 +940,11 @@ void AYSFoeCharacter::BeginPlay()
 		else if (bLevelFromDay && YSGameState)
 		{
 			Level = FMath::Max(0, YSGameState->GetDayNumber() + LevelFromDayOffset);
+		}
+		if (LevelBonus != 0)
+		{
+			Level = FMath::Max(0, Level + LevelBonus);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau +%d -> %d"), *GetName(), LevelBonus, Level);
 		}
 
 		// statistiques du niveau (MaxHealth est répliqué pour les barres de vie) ; PV selon le nombre de joueurs de la partie

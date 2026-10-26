@@ -97,13 +97,19 @@ public:
 	/** Après un déplacement (port placé au hasard) : reposé au sol, zone de rachat reconstruite sur le relief */
 	void Resettle();
 
-	/** Rachète l'objet s'il a une valeur et qu'il est à portée (serveur) : doublons à l'équipe, objet détruit */
+	/** Prend l'objet s'il l'accepte et qu'il est à portée (serveur) : Brooker = doublons à l'équipe, objet détruit (Medic : résurrection) */
 	bool TryBuy(AYSInteractiveObject* Object);
 
-	/** Brooker le plus proche de Location (nullptr si aucun) */
-	static AYSBrookerNPC* FindNearest(const UWorld* World, const FVector& Location);
+	/** Ce PNJ prend cet objet reposé dans sa zone (Brooker : objet avec une valeur en doublons ; Medic : cadavre) */
+	virtual bool AcceptsObject(const AYSInteractiveObject* Object) const;
 
-	/** Fait racheter l'objet par le Brooker le plus proche s'il est à portée (serveur) */
+	/**
+	 *  PNJ le plus proche de Location (nullptr si aucun) : sans objet, un Brooker (bMedic faux) ou un Medic (bMedic vrai) ;
+	 *  avec AcceptedObject, le plus proche qui accepte cet objet (Brooker pour un coffre, Medic pour un cadavre)
+	 */
+	static AYSBrookerNPC* FindNearest(const UWorld* World, const FVector& Location, const AYSInteractiveObject* AcceptedObject = nullptr, bool bMedic = false);
+
+	/** Fait prendre l'objet par le PNJ le plus proche qui l'accepte, s'il est à portée (serveur) */
 	static bool TrySell(AYSInteractiveObject* Object);
 
 	float GetAcceptRange() const { return AcceptRange; }
@@ -113,4 +119,12 @@ public:
 	UTexture2D* GetIndicatorIcon() const { return IndicatorIcon; }
 
 	FVector GetIndicatorLocation() const { return GetActorLocation() + FVector(0.0f, 0.0f, IndicatorHeight); }
+
+protected:
+
+	/** Objet accepté et à portée reçu (serveur) : Brooker = doublons à l'équipe, objet détruit */
+	virtual void ReceiveObject(AYSInteractiveObject* Object);
+
+	/** Préfixe des logs ([YSBrooker], [YSMedic]) */
+	virtual const TCHAR* GetLogTag() const { return TEXT("[YSBrooker]"); }
 };

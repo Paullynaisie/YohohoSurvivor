@@ -31,6 +31,21 @@ float UYSFoeRangedAction::GetTimeSinceAttack() const
 	return World ? static_cast<float>(World->GetTimeSeconds() - LastAttackTime) : TNumericLimits<float>::Max();
 }
 
+void UYSFoeRangedAction::CancelAttack()
+{
+	LastAttackTime = -1.0e6;
+}
+
+void UYSFoeBombAction::CancelAttack()
+{
+	Super::CancelAttack();
+	// bombe pas encore lâchée : elle ne part pas
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ReleaseTimer);
+	}
+}
+
 UYSFoeBombAction::UYSFoeBombAction()
 {
 	BombClass = AYSFoeBomb::StaticClass();

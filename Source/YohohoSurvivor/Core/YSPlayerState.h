@@ -80,6 +80,9 @@ public:
 	/** Serveur uniquement */
 	void SetDead() { bIsDead = true; }
 
+	/** Serveur uniquement : ressuscité (Medic) */
+	void SetAlive() { bIsDead = false; ForceNetUpdate(); }
+
 	const TArray<FYSUpgradeOffer>& GetUpgradeOffers() const { return UpgradeOffers; }
 
 	int32 GetChosenUpgradeOffer() const { return ChosenUpgradeOffer; }

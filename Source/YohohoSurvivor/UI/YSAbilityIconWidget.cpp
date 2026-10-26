@@ -63,7 +63,7 @@ void UYSAbilityIconWidget::BuildWidgetTree()
 	AddLayer(CooldownText, HAlign_Center, VAlign_Center);
 }
 
-void UYSAbilityIconWidget::Refresh(const UYSAbilityComponent* Ability)
+void UYSAbilityIconWidget::Refresh(const UYSAbilityComponent* Ability, bool bBlocked)
 {
 	if (!IconImage)
 	{
@@ -86,6 +86,9 @@ void UYSAbilityIconWidget::Refresh(const UYSAbilityComponent* Ability)
 
 	const float Remaining = Ability->GetCooldownRemaining();
 	const float Duration = Ability->GetActivationLockDuration();
-	CooldownBar->SetPercent(Duration > 0.0f ? Remaining / Duration : 0.0f);
+	// rechargée mais impossible à lancer : voile plein (Blocked Color)
+	const bool bShowBlocked = bBlocked && Remaining <= 0.0f;
+	CooldownBar->SetFillColorAndOpacity(bShowBlocked ? BlockedColor : CooldownColor);
+	CooldownBar->SetPercent(bShowBlocked ? 1.0f : Duration > 0.0f ? Remaining / Duration : 0.0f);
 	CooldownText->SetText(Remaining > 0.0f ? FText::AsNumber(FMath::CeilToInt(Remaining)) : FText::GetEmpty());
 }

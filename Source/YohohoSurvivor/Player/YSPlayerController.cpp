@@ -52,6 +52,7 @@ AYSPlayerController::AYSPlayerController()
 	bShowMouseCursor = true;
 	DefaultMouseCursor = EMouseCursor::Crosshairs;
 	AbilityIconClass = UYSAbilityIconWidget::StaticClass();
+	AutoAttackIconClass = UYSAbilityIconWidget::StaticClass();
 }
 
 void AYSPlayerController::BeginPlay()
@@ -77,6 +78,17 @@ void AYSPlayerController::BeginPlay()
 			ViewportSlot.Alignment = FVector2D(0.5f, 1.0f);
 			ViewportSlot.Offsets = FMargin(0.0f, -AbilityIconBottomMargin, AbilityIcon->IconSize, AbilityIcon->IconSize);
 			ViewportSubsystem->AddWidgetForPlayer(AbilityIcon, GetLocalPlayer(), ViewportSlot);
+
+			// attaque auto : à gauche de l'icône d'Ability (bord droit à Auto Attack Icon Spacing de son bord gauche)
+			if (AutoAttackIconClass)
+			{
+				AutoAttackIcon = CreateWidget<UYSAbilityIconWidget>(this, AutoAttackIconClass);
+				FGameViewportWidgetSlot AutoSlot;
+				AutoSlot.Anchors = FAnchors(0.5f, 1.0f);
+				AutoSlot.Alignment = FVector2D(1.0f, 1.0f);
+				AutoSlot.Offsets = FMargin(-(AbilityIcon->IconSize * 0.5f + AutoAttackIconSpacing), -AbilityIconBottomMargin, AutoAttackIcon->IconSize, AutoAttackIcon->IconSize);
+				ViewportSubsystem->AddWidgetForPlayer(AutoAttackIcon, GetLocalPlayer(), AutoSlot);
+			}
 		}
 
 		// BL stacks : bas de l'écran, à droite de l'icône (placement réglé dans le Widget Blueprint)
@@ -1016,10 +1028,10 @@ void AYSPlayerController::UpdatePlayerHUD()
 	}
 	PlayerHUD->SetMinions(Minions);
 
-	// objet porté vendable : bulle du Brooker le plus proche (au-dessus de lui, ou au bord de l'écran)
-	if (PlayerCharacter && PlayerCharacter->IsCarrying() && PlayerCharacter->GetCarriedObject()->GetDoubloonValue() > 0)
+	// objet porté qu'un PNJ prend (coffre : Brooker ; cadavre : Medic) : bulle du plus proche (au-dessus de lui, ou au bord de l'écran)
+	if (PlayerCharacter && PlayerCharacter->IsCarrying())
 	{
-		if (const AYSBrookerNPC* Brooker = AYSBrookerNPC::FindNearest(GetWorld(), PlayerCharacter->GetActorLocation()))
+		if (const AYSBrookerNPC* Brooker = AYSBrookerNPC::FindNearest(GetWorld(), PlayerCharacter->GetActorLocation(), PlayerCharacter->GetCarriedObject()))
 		{
 			AddIndicator(Brooker->GetIndicatorLocation(), Brooker->GetIndicatorColor(), Brooker->GetIndicatorIcon(), true);
 		}
@@ -1110,7 +1122,8 @@ void AYSPlayerController::UpdateUpgradeMenu()
 		UpgradeMenu->SetCards(Cards);
 	}
 
-	UpgradeMenu->SetSelectedIndex(MyState->GetChosenUpgradeOffer());
+	// carte validée (choix reçu du serveur) ; la sélection en cours reste locale jusqu'à « Valider »
+	UpgradeMenu->SetValidatedIndex(MyState->GetChosenUpgradeOffer());
 	// relance (et changement de choix) : tant que la sélection dure, jamais pour un choix de classe
 	const AYSGameMode* AuthGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
 	UpgradeMenu->SetRerollVisible(MyState->HasUpgradeOffers() && !bClassChoice && (!AuthGameMode || AuthGameMode->IsUpgradeRerollAllowed()));
@@ -1391,7 +1404,19 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 		{
 			Action = OffWeapon->GetActiveAction();
 		}
-		AbilityIcon->Refresh(Action);
+		// rechargée mais impossible à lancer (minions au maximum, objet porté, action plus prioritaire) : grisée
+		AbilityIcon->Refresh(Action, Action && Action->IsActivationBlocked());
+
+		// attaque auto : même choix de main
+		if (AutoAttackIcon)
+		{
+			UYSAbilityComponent* AutoAction = MainWeapon ? MainWeapon->GetAutoAction() : nullptr;
+			if (!AutoAction && OffWeapon)
+			{
+				AutoAction = OffWeapon->GetAutoAction();
+			}
+			AutoAttackIcon->Refresh(AutoAction, AutoAction && AutoAction->IsActivationBlocked());
+		}
 	}
 
 	if (BloodlustStacks)
@@ -1822,11 +1847,21 @@ void AYSPlayerController::YSTreasureNextPoint(int32 Skip)
 
 void AYSPlayerController::YSGoToBrooker(float Distance)
 {
+	GoToNPC(Distance, false);
+}
+
+void AYSPlayerController::YSGoToMedic(float Distance)
+{
+	GoToNPC(Distance, true);
+}
+
+void AYSPlayerController::GoToNPC(float Distance, bool bMedic)
+{
 	APawn* MyPawn = GetPawn();
-	const AYSBrookerNPC* Brooker = MyPawn ? AYSBrookerNPC::FindNearest(GetWorld(), MyPawn->GetActorLocation()) : nullptr;
+	const AYSBrookerNPC* Brooker = MyPawn ? AYSBrookerNPC::FindNearest(GetWorld(), MyPawn->GetActorLocation(), nullptr, bMedic) : nullptr;
 	if (!Brooker || !HasAuthority())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[YSGoToBrooker] impossible (Brooker trouvé %d, hôte %d)"), Brooker != nullptr, HasAuthority());
+		UE_LOG(LogTemp, Warning, TEXT("[YSGoToBrooker] impossible (%s trouvé %d, hôte %d)"), bMedic ? TEXT("Medic") : TEXT("Brooker"), Brooker != nullptr, HasAuthority());
 		return;
 	}
 	// à Distance du Brooker, du côté du personnage, tourné vers lui

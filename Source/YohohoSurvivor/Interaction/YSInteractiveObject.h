@@ -77,6 +77,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Carry", meta=(ClampMin="0", Units="Centimeters"))
 	float DropDistance = 100.0f;
 
+	/** Lâché dans la mer, l'objet flotte à la surface (cadavre) ; sinon il revient au dernier sol sûr de son porteur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Carry")
+	bool bFloatsOnWater = false;
+
 	/** Valeur de rachat par un Brooker, en doublons (0 = ne s'achète pas) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Brooker", meta=(ClampMin="0"))
 	int32 DoubloonValue = 0;
@@ -139,6 +143,8 @@ public:
 	float GetFoeAttractionMultiplier() const { return FoeAttractionMultiplier; }
 
 	float GetDropDistance() const { return DropDistance; }
+
+	bool FloatsOnWater() const { return bFloatsOnWater; }
 
 	int32 GetDoubloonValue() const { return DoubloonValue; }
 

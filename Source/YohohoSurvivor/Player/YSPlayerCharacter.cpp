@@ -228,6 +228,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, BloodRageDuration);
 	DOREPLIFETIME(AYSPlayerCharacter, bGoldenBloodRage);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodRageExpireServerTime);
+	DOREPLIFETIME(AYSPlayerCharacter, RagdollPose);
 }
 
 UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
@@ -258,20 +259,26 @@ float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Dam
 		Damage *= FMath::Max(0.0f, 1.0f - ArmorPercent);
 	}
 
-	// Armor : chaque coup est réduit de l'armure (jusqu'à MinDamageAfterArmor) ; BloodRage ++ : armure en plus par stack de rage
+	// Armor : chaque coup est réduit de l'armure, mais en garde au moins Min Damage Ratio After Armor (10 %) et Min Damage After Armor (1) ;
+	// BloodRage ++ : armure en plus par stack de rage
 	const float TotalArmor = Armor + BloodRageStacks * BloodRageArmorPerStack;
-	if (TotalArmor > 0.0f)
+	const bool bArmorApplied = TotalArmor > 0.0f;
+	if (bArmorApplied)
 	{
-		Damage = FMath::Max(FMath::Min(Damage, MinDamageAfterArmor), Damage - TotalArmor);
+		Damage = FMath::Max3(Damage - TotalArmor, Damage * MinDamageRatioAfterArmor, FMath::Min(Damage, MinDamageAfterArmor));
 	}
 
-	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s subit %.1f -> %.1f (%%Armor %.0f %%, armure %.1f)"), *GetName(), IncomingDamage, Damage, ArmorPercent * 100.0f, TotalArmor);
+	// dégâts toujours entiers (arrondis à l'entier le plus proche, après l'armure) ; l'armure ne ramène jamais un coup à 0
+	Damage = FMath::RoundToFloat(Damage);
+	if (bArmorApplied && IncomingDamage > 0.0f)
+	{
+		Damage = FMath::Max(Damage, MinDamageAfterArmor);
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s subit %.1f -> %.0f (%%Armor %.0f %%, armure %.1f)"), *GetName(), IncomingDamage, Damage, ArmorPercent * 100.0f, TotalArmor);
 
 	// BloodRage : chaque coup reçu donne une stack de rage (après l'armure du coup)
 	AddBloodRageStack();
-
-	// dégâts toujours entiers (arrondis à l'entier le plus proche, après l'armure)
-	Damage = FMath::RoundToFloat(Damage);
 	LastDamageTime = GetWorld()->GetTimeSeconds();
 	HealthRegenTimer = 0.0f;
 	if (Damage <= 0.0f)
@@ -423,10 +430,17 @@ bool AYSPlayerCharacter::SpawnCorpse()
 	{
 		return false;
 	}
-	// au sol sous le corps (le corps ne bloque plus les traces), jamais dans l'eau ni sous la deadzone
+	// au sol sous le corps (le corps ne bloque plus les traces), jamais sous la deadzone ; dans la mer : il flotte à la surface
 	const FVector BodyLocation = BodyMesh->GetComponentLocation();
-	const FVector Ground = AYSInteractiveObject::FindGround(World, BodyLocation, this);
-	if (Ground.Equals(BodyLocation) || !AYSInteractiveObject::IsSafeDropLocation(World, Ground))
+	FVector Ground = AYSInteractiveObject::FindGround(World, BodyLocation, this);
+	const bool bHasGround = !Ground.Equals(BodyLocation);
+	const AYSOcean* Ocean = AYSOcean::Find(World);
+	if (bCorpseFloats && Ocean && (!bHasGround || AYSOcean::IsUnderwater(World, Ground)))
+	{
+		Ground = FVector(BodyLocation.X, BodyLocation.Y, Ocean->GetSeaLevel());
+		UE_LOG(LogTemp, Log, TEXT("[YSCorpse] %s : corps dans la mer, cadavre à la surface"), *GetName());
+	}
+	else if (!bHasGround || !AYSInteractiveObject::IsSafeDropLocation(World, Ground))
 	{
 		UE_LOG(LogTemp, Log, TEXT("[YSCorpse] %s : pas de cadavre (corps dans l'eau ou sans sol)"), *GetName());
 		return false;
@@ -454,6 +468,7 @@ void AYSPlayerCharacter::AttachBodyTo(USceneComponent* Parent, const FVector& Re
 	}
 	// corps répliqué avant sa mort sur cette machine : ragdoll mis en place d'abord (visuel qui suit le corps)
 	BeginDeathLocal();
+	bBodyOnCorpse = true;
 	BodyMesh->SetSimulatePhysics(false);
 	BodyMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	if (BodyMesh->GetAttachParent() != Parent)
@@ -462,6 +477,63 @@ void AYSPlayerCharacter::AttachBodyTo(USceneComponent* Parent, const FVector& Re
 	}
 	BodyMesh->SetRelativeLocationAndRotation(RelativeLocation, RelativeRotation);
 	BodyMesh->SetVisibility(true, true);
+	HideCorpseWeapons();
+	UE_LOG(LogTemp, Log, TEXT("[YSCorpse] %s (%s) : corps sur son cadavre en %s"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"),
+		*BodyMesh->GetComponentLocation().ToCompactString());
+}
+
+void AYSPlayerCharacter::HideCorpseWeapons()
+{
+	if (!bKeepCorpse)
+	{
+		return;
+	}
+	for (AYSWeapon* Weapon : GetHeldWeapons())
+	{
+		if (!Weapon->IsHidden())
+		{
+			Weapon->SetActorHiddenInGame(true);
+		}
+	}
+}
+
+void AYSPlayerCharacter::ApplyCorpseBuoyancy(float DeltaSeconds)
+{
+	const AYSOcean* Ocean = bCorpseFloats ? AYSOcean::Find(GetWorld()) : nullptr;
+	if (!Ocean || !BodyMesh->IsSimulatingPhysics())
+	{
+		return;
+	}
+	// sous la surface : la gravité est compensée, plus une poussée qui grandit avec l'enfoncement (équilibre à Corpse Float Depth), et freinage
+	const float Depth = Ocean->GetSeaLevel() - BodyMesh->GetComponentLocation().Z;
+	const bool bInWater = Depth > 0.0f;
+	const float Damping = bInWater ? CorpseWaterDamping : 0.01f;
+	if (!FMath::IsNearlyEqual(BodyMesh->GetLinearDamping(), Damping))
+	{
+		BodyMesh->SetLinearDamping(Damping);
+		BodyMesh->SetAngularDamping(bInWater ? CorpseWaterDamping : 0.0f);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSCorpse] %s : corps %s"), *GetName(), bInWater ? TEXT("dans la mer, flotte") : TEXT("hors de l'eau"));
+	}
+	if (bInWater)
+	{
+		const float Lift = FMath::Max(0.0f, -GetWorld()->GetGravityZ() + CorpseBuoyancy * (Depth - CorpseFloatDepth));
+		BodyMesh->AddForce(FVector(0.0f, 0.0f, Lift), NAME_None, true);
+	}
+}
+
+void AYSPlayerCharacter::FollowRagdollPose(float DeltaSeconds)
+{
+	if (!RagdollPose.bValid)
+	{
+		return;
+	}
+	// rattrape la pose du serveur (lissage entre deux mises à jour réseau) ; trop loin (première pose reçue) : placé directement
+	const FVector Target = RagdollPose.Location;
+	const FVector Current = BodyMesh->GetComponentLocation();
+	const bool bSnap = FVector::DistSquared(Current, Target) > FMath::Square(500.0f);
+	const FVector NewLocation = bSnap ? Target : FMath::VInterpTo(Current, Target, DeltaSeconds, RagdollFollowSpeed);
+	const FRotator NewRotation = bSnap ? RagdollPose.Rotation : FMath::RInterpTo(BodyMesh->GetComponentRotation(), RagdollPose.Rotation, DeltaSeconds, RagdollFollowSpeed);
+	BodyMesh->SetWorldLocationAndRotation(NewLocation, NewRotation);
 }
 
 void AYSPlayerCharacter::OnRep_Death()
@@ -510,7 +582,7 @@ void AYSPlayerCharacter::BeginDeathLocal()
 		SetReplicateMovement(false);
 	}
 
-	// armes : actions arrêtées (pas de tir ni de coup après la mort)
+	// armes : actions arrêtées (pas de tir ni de coup après la mort) ; un joueur mort (cadavre) ne les montre plus
 	for (AYSWeapon* Weapon : GetHeldWeapons())
 	{
 		for (UActorComponent* Component : Weapon->GetComponents())
@@ -519,6 +591,7 @@ void AYSPlayerCharacter::BeginDeathLocal()
 			Component->SetComponentTickEnabled(false);
 		}
 	}
+	HideCorpseWeapons();
 
 	// tout le visuel suit le corps (tête, visage, mains et armes), qui part en physique : ne bloque que le décor
 	TArray<USceneComponent*> Followers;
@@ -539,6 +612,16 @@ void AYSPlayerCharacter::BeginDeathLocal()
 		Component->AttachToComponent(BodyMesh, FAttachmentTransformRules::KeepWorldTransform);
 	}
 	BodyMesh->SetGenerateOverlapEvents(false);
+	DeathBodyScale = BodyMesh->GetComponentScale();
+
+	// joueur : seul le serveur simule le ragdoll, les clients suivent sa pose répliquée (même corps, même cadavre partout)
+	if (UsesReplicatedRagdoll())
+	{
+		BodyMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s (client) meurt : ragdoll du serveur suivi"), *GetName());
+		return;
+	}
+
 	BodyMesh->SetCollisionObjectType(ECC_PhysicsBody);
 	BodyMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 	BodyMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
@@ -549,23 +632,49 @@ void AYSPlayerCharacter::BeginDeathLocal()
 	BodyMesh->SetMassScale(NAME_None, MassMultiplier);
 	BodyMesh->SetPhysicsLinearVelocity(Death.Impulse / MassMultiplier);
 	BodyMesh->SetPhysicsAngularVelocityInDegrees(FMath::VRand() * DeathAngularImpulse);
-	DeathBodyScale = BodyMesh->GetComponentScale();
+	if (HasAuthority() && bKeepCorpse && bReplicateRagdoll)
+	{
+		RagdollPose.bValid = true;
+		RagdollPose.Location = BodyMesh->GetComponentLocation();
+		RagdollPose.Rotation = BodyMesh->GetComponentRotation();
+	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s (%s) meurt : ragdoll à (%.0f, %.0f, %.0f) cm/s"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"),
 		Death.Impulse.X, Death.Impulse.Y, Death.Impulse.Z);
 }
 
-void AYSPlayerCharacter::UpdateDeath()
+void AYSPlayerCharacter::UpdateDeath(float DeltaSeconds)
 {
 	// après Death Scale Delay, le corps (et tout ce qui le suit) rétrécit jusqu'à 0, puis le personnage disparaît
 	const float Elapsed = static_cast<float>(GetWorld()->GetTimeSeconds() - DeathStartTime);
 
 	// joueur : le corps immobile devient un cadavre portable (serveur ; les clients le reçoivent avec le cadavre) ;
-	// pas de cadavre possible (dans l'eau) : le personnage disparaît
+	// pas de cadavre possible (pas de sol, deadzone) : le personnage disparaît
 	if (bKeepCorpse)
 	{
-		if (HasAuthority() && !bCorpseHandled && Elapsed >= DeathScaleDelay)
+		// armes répliquées arrivées après la mort chez un client : cachées elles aussi
+		HideCorpseWeapons();
+		if (bBodyOnCorpse)
 		{
-			FinishDeath(SpawnCorpse());
+			return;
+		}
+		if (HasAuthority())
+		{
+			// ragdoll du serveur : flotte sur la mer, sa pose part aux clients
+			ApplyCorpseBuoyancy(DeltaSeconds);
+			if (bReplicateRagdoll)
+			{
+				RagdollPose.bValid = true;
+				RagdollPose.Location = BodyMesh->GetComponentLocation();
+				RagdollPose.Rotation = BodyMesh->GetComponentRotation();
+			}
+			if (!bCorpseHandled && Elapsed >= DeathScaleDelay)
+			{
+				FinishDeath(SpawnCorpse());
+			}
+		}
+		else if (UsesReplicatedRagdoll())
+		{
+			FollowRagdollPose(DeltaSeconds);
 		}
 		return;
 	}
@@ -1099,7 +1208,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	// mort : corps en ragdoll qui rétrécit, plus rien d'autre
 	if (bLocalDeathStarted)
 	{
-		UpdateDeath();
+		UpdateDeath(DeltaSeconds);
 		return;
 	}
 	if (bLocalRiseActive)
@@ -1931,6 +2040,43 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, U
 		*OldName, *NewCharacter->GetName(), NewCharacter->WeaponSet ? *NewCharacter->WeaponSet->GetName() : TEXT("aucun"), NewCharacter->UpgradeProgress.Num(), NewCharacter->Health, NewCharacter->GetMaxHealth());
 }
 
+AYSPlayerCharacter* AYSPlayerCharacter::Revive(AController* NewController, const FVector& Ground, float HealthRatio)
+{
+	UWorld* World = GetWorld();
+	if (!HasAuthority() || !World || !NewController || IsAlive())
+	{
+		return nullptr;
+	}
+
+	// debout sur le sol (capsule de ce corps : même classe, même taille), tourné comme le corps à sa mort
+	const FTransform SpawnTransform(FRotator(0.0f, GetActorRotation().Yaw, 0.0f), Ground + FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.0f));
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	// main, set d'arme et passif réglés avant la construction (armes des mains)
+	Params.bDeferConstruction = true;
+	AYSPlayerCharacter* NewCharacter = World->SpawnActor<AYSPlayerCharacter>(GetClass(), SpawnTransform, Params);
+	if (!NewCharacter)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[YSMedic] Résurrection impossible : %s n'a pas pu apparaître"), *GetClass()->GetName());
+		return nullptr;
+	}
+	NewCharacter->SetLeftHanded(bLeftHanded);
+	NewCharacter->WeaponSet = WeaponSet;
+	NewCharacter->Passive = Passive;
+	NewCharacter->FinishSpawning(SpawnTransform);
+
+	NewController->Possess(NewCharacter);
+	NewCharacter->RestoreUpgrades(UpgradePool, UpgradeProgress);
+	NewCharacter->RestoreShards(ShardLevels);
+	NewCharacter->Health = FMath::Max(1.0f, FMath::RoundToFloat(HealthRatio * NewCharacter->GetMaxHealth()));
+	UE_LOG(LogTemp, Log, TEXT("[YSMedic] %s ressuscité en %s : %s, set %s (%d upgrade(s), PV %.0f / %.0f)"), *GetName(), *Ground.ToCompactString(), *NewCharacter->GetName(),
+		NewCharacter->WeaponSet ? *NewCharacter->WeaponSet->GetName() : TEXT("aucun"), NewCharacter->UpgradeProgress.Num(), NewCharacter->Health, NewCharacter->GetMaxHealth());
+
+	// l'ancien corps (et ses armes) disparaît
+	Destroy();
+	return NewCharacter;
+}
+
 void AYSPlayerCharacter::RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& OldPool, const TArray<FYSUpgradeProgress>& OldProgress)
 {
 	if (!HasAuthority())
@@ -2618,8 +2764,16 @@ void AYSPlayerCharacter::DropCarriedObject(const TCHAR* Reason)
 	// reposé au sol devant le personnage
 	const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
 	FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), GetActorLocation() + Forward * Object->GetDropDistance(), this);
-	// lâché dans la mer (porteur tombé à l'eau, mort au bord) : sinon perdu pour de bon -> dernier sol sûr du porteur
-	if (!AYSInteractiveObject::IsSafeDropLocation(GetWorld(), Ground))
+	// lâché dans la mer (porteur tombé à l'eau, mort au bord) : sinon perdu pour de bon -> dernier sol sûr du porteur ;
+	// un objet qui flotte (cadavre) reste à la surface
+	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+	const FVector DropPoint = GetActorLocation() + Forward * Object->GetDropDistance();
+	if (Object->FloatsOnWater() && Ocean && (Ground.Equals(DropPoint) || AYSOcean::IsUnderwater(GetWorld(), Ground)))
+	{
+		Ground = FVector(DropPoint.X, DropPoint.Y, Ocean->GetSeaLevel());
+		UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s : %s lâché dans la mer, flotte en %s"), *GetName(), *Object->GetName(), *Ground.ToCompactString());
+	}
+	else if (!AYSInteractiveObject::IsSafeDropLocation(GetWorld(), Ground))
 	{
 		UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s : %s lâché hors du sol (%s), reposé au dernier sol sûr %s"), *GetName(), *Object->GetName(),
 			*Ground.ToCompactString(), *Object->GetLastSafeLocation().ToCompactString());

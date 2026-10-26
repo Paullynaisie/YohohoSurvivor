@@ -40,3 +40,19 @@ struct FYSFoeDeath
 	UPROPERTY()
 	FVector_NetQuantize Impulse = FVector::ZeroVector;
 };
+
+/** Pose du corps en ragdoll simulé par le serveur (joueurs : même cadavre partout), suivie par les clients */
+USTRUCT()
+struct FYSRagdollPose
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	bool bValid = false;
+
+	UPROPERTY()
+	FVector_NetQuantize10 Location = FVector::ZeroVector;
+
+	UPROPERTY()
+	FRotator Rotation = FRotator::ZeroRotator;
+};

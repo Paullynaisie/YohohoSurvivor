@@ -9,6 +9,7 @@ class AYSPlayerCharacter;
 class UYSEnemySpawnRule;
 class AYSFoeCharacter;
 class AYSTreasureMap;
+class AYSPlayerCorpse;
 class UTexture2D;
 class UYSUpStats;
 class UYSUpShard;
@@ -355,10 +356,13 @@ public:
 	int32 SpawnNumpadCircle(int32 Key);
 
 	/** Circle spawn : Count NME (tirés dans Classes selon leur Spawn Weight) répartis à intervalles réguliers sur le contour de la plage, tournés vers le centre */
-	int32 SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason, int32 ForcedLevel = INDEX_NONE);
+	int32 SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason, int32 ForcedLevel = INDEX_NONE, int32 LevelBonus = 0);
 
-	/** NME de la classe posé sur le sol Ground (taille de l'élite comprise), tourné vers FacingTarget ; nullptr si la place est prise ; ForcedLevel = niveau imposé */
-	AYSFoeCharacter* SpawnFoeOnGround(UClass* FoeClass, const FVector& Ground, const FVector& FacingTarget, int32 ForcedLevel = INDEX_NONE);
+	/**
+	 *  NME de la classe posé sur le sol Ground (taille de l'élite comprise), tourné vers FacingTarget ; nullptr si la place est prise ;
+	 *  ForcedLevel = niveau imposé, LevelBonus = niveaux en plus du niveau normal
+	 */
+	AYSFoeCharacter* SpawnFoeOnGround(UClass* FoeClass, const FVector& Ground, const FVector& FacingTarget, int32 ForcedLevel = INDEX_NONE, int32 LevelBonus = 0);
 
 	/** Le bateau apparaît (objectif de doublons atteint, debug) */
 	void ShipArrives(const TCHAR* Reason);
@@ -382,6 +386,12 @@ public:
 
 	/** Doublons gagnés par l'équipe (vente au Brooker ; serveur) */
 	void AddDoubloons(int32 Amount);
+
+	/**
+	 *  Cadavre reposé chez le Medic (serveur) : son joueur (encore dans la partie) ressuscite debout sur Ground, même personnage,
+	 *  set d'arme et upgrades, à HealthRatio de ses PV ; le cadavre disparaît. Faux si personne à ressusciter.
+	 */
+	bool RevivePlayer(AYSPlayerCorpse* Corpse, const FVector& Ground, float HealthRatio);
 
 	/** Vague supplémentaire hors écran : EnemiesPerPlayer (1 joueur) × Spawn Multiplier du nombre de joueurs (NME de la première règle de spawn active) */
 	int32 SpawnBonusWave(int32 EnemiesPerPlayer, const TCHAR* Reason);
