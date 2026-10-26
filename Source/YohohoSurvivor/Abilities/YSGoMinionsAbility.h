@@ -25,6 +25,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Allez-y mes minions", meta=(ClampMin="0", Units="Centimeters"))
 	float AllMyMinionsRange = 2500.0f;
 
+	/** You're all my minions : nombre de joueurs forcés, les plus proches du Captain d'abord (0 = tous ceux à portée) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Allez-y mes minions", meta=(ClampMin="0"))
+	int32 AllMyMinionsMaxPlayers = 1;
+
 	UYSGoMinionsAbility();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

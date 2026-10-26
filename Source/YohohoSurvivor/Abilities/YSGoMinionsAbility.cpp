@@ -37,6 +37,7 @@ void UYSGoMinionsAbility::GetForcedCharacters(TArray<AYSPlayerCharacter*>& OutCh
 	{
 		return;
 	}
+	TArray<AYSPlayerCharacter*> PlayersInRange;
 	for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
 	{
 		AYSPlayerCharacter* Character = *It;
@@ -45,15 +46,29 @@ void UYSGoMinionsAbility::GetForcedCharacters(TArray<AYSPlayerCharacter*>& OutCh
 			continue;
 		}
 		const AYSCaptainMinion* Minion = Cast<AYSCaptainMinion>(Character);
-		const bool bOwnMinion = Minion && Minion->GetCaptain() == Captain;
-		// joueur (pas un minion) à portée, avec You're all my minions
-		const bool bPlayerInRange = !Minion && bForcesPlayers && Character->GetPlayerState()
-			&& FVector::Dist2D(Character->GetActorLocation(), Captain->GetActorLocation()) <= AllMyMinionsRange;
-		if (bOwnMinion || bPlayerInRange)
+		if (Minion && Minion->GetCaptain() == Captain)
 		{
 			OutCharacters.Add(Character);
 		}
+		// joueur (pas un minion) à portée, avec You're all my minions
+		else if (!Minion && bForcesPlayers && Character->GetPlayerState()
+			&& FVector::Dist2D(Character->GetActorLocation(), Captain->GetActorLocation()) <= AllMyMinionsRange)
+		{
+			PlayersInRange.Add(Character);
+		}
 	}
+
+	// seulement les joueurs les plus proches du Captain (All My Minions Max Players)
+	const FVector CaptainLocation = Captain->GetActorLocation();
+	PlayersInRange.Sort([&CaptainLocation](const AYSPlayerCharacter& A, const AYSPlayerCharacter& B)
+	{
+		return FVector::DistSquared2D(A.GetActorLocation(), CaptainLocation) < FVector::DistSquared2D(B.GetActorLocation(), CaptainLocation);
+	});
+	if (AllMyMinionsMaxPlayers > 0 && PlayersInRange.Num() > AllMyMinionsMaxPlayers)
+	{
+		PlayersInRange.SetNum(AllMyMinionsMaxPlayers);
+	}
+	OutCharacters.Append(PlayersInRange);
 }
 
 bool UYSGoMinionsAbility::CanActivateNow() const

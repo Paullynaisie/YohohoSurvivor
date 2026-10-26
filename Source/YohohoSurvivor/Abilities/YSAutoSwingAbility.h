@@ -237,7 +237,7 @@ public:
 	bool IsRecoverReducedByCooldown() const { return IsAutomatic() && MeleeSystem == EYSMeleeSystem::Swing; }
 
 	/** Durée effective du retour (Recover Duration x CD reduction en Swing) */
-	float GetRecoverTime() const { return (CurrentAnim == EYSSwingAnim::Second ? SecondSwing.RecoverDuration : RecoverDuration) * (IsRecoverReducedByCooldown() ? GetCooldownMultiplier() : 1.0f); }
+	virtual float GetRecoverTime() const { return (CurrentAnim == EYSSwingAnim::Second ? SecondSwing.RecoverDuration : RecoverDuration) * (IsRecoverReducedByCooldown() ? GetCooldownMultiplier() : 1.0f); }
 
 	/** Priorités : l'attaque est « en cours » pendant toute son animation */
 	virtual float GetActionDuration() const override { return GetAttackDuration(); }
