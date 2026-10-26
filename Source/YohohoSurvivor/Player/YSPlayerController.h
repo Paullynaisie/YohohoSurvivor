@@ -238,9 +238,22 @@ public:
 	UFUNCTION(Exec)
 	void YSBombLanding(float X, float Y);
 
-	/** Debug (console) : comme un clic gauche (akimbo compris) */
+	/** Debug (console) : comme un clic droit = Ability (akimbo compris) */
 	UFUNCTION(Exec)
 	void YSFire();
+
+	/** Debug (console) : clic gauche considéré comme maintenu (1) ou non (0) : attaque auto.  Ex : YSHoldAutoAttack 1 */
+	UFUNCTION(Exec)
+	void YSHoldAutoAttack(int32 bHeld = 1);
+
+	/** Debug (console) : Camera Lock (1 = caméra centrée sur le PJ, 0 = décalée vers le curseur) */
+	UFUNCTION(Exec)
+	void YSCameraLock(int32 bLocked = 1);
+
+	/** Camera Lock (réglage local du joueur, décoché par défaut ; case de l'écran de sélection, touche TAB en jeu) : caméra centrée sur le PJ */
+	bool IsCameraLocked() const { return bCameraLock; }
+	void SetCameraLock(bool bLocked);
+	void ToggleCameraLock() { SetCameraLock(!bCameraLock); }
 
 	/** Debug : comme la touche E (prendre / reposer un objet) */
 	UFUNCTION(Exec)
@@ -414,6 +427,9 @@ protected:
 	void ChooseColor(int32 ColorIndex);
 	void ChooseFace(int32 FaceIndex);
 	void ChooseHandedness(int32 Handedness);
+
+	/** Camera Lock (local, non répliqué) */
+	bool bCameraLock = false;
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetLeftHanded(bool bLeftHanded);

@@ -20,7 +20,13 @@ class UYSAutoShotAbility : public UYSCoupDPetoirAbility
 
 public:
 
+	/** Vitesse du PJ x ce multiplicateur pendant la rafale de l'attaque auto (joueurs seulement ; 0.7 = ralenti de 30 %) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto Atk", meta=(ClampMin="0"))
+	float AutoAtkMoveSpeedMultiplier = 0.7f;
+
 	UYSAutoShotAbility();
+
+	virtual bool GetAutoAttackSlowdown(float& OutMultiplier) const override;
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 

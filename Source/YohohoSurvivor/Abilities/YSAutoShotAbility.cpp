@@ -19,8 +19,9 @@ void UYSAutoShotAbility::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	// tir automatique : serveur uniquement ; en akimbo l'autre main tire dans la rafale de la principale
+	// joueur : seulement en maintenant le clic gauche (une rafale commencée va jusqu'au bout)
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !Character || !IsReady() || !CanStartByPriority())
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !Character || !IsAutoAttackAllowedByHolder() || !IsReady() || !CanStartByPriority())
 	{
 		return;
 	}
@@ -33,6 +34,21 @@ void UYSAutoShotAbility::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	{
 		ActivateOnServer(Target->GetActorLocation());
 	}
+	else if (IsAutoAttackTargetOptional())
+	{
+		// clic gauche maintenu sans cible : droit devant (le PJ regarde le curseur)
+		ActivateOnServer(Character->GetActorLocation() + Character->GetActorForwardVector() * 1000.0f);
+	}
+}
+
+bool UYSAutoShotAbility::GetAutoAttackSlowdown(float& OutMultiplier) const
+{
+	if (!IsBurstInProgressLocally())
+	{
+		return false;
+	}
+	OutMultiplier = AutoAtkMoveSpeedMultiplier;
+	return true;
 }
 
 AActor* UYSAutoShotAbility::FindAutoTarget() const

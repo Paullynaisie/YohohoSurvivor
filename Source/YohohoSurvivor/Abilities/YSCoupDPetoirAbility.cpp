@@ -89,7 +89,7 @@ void UYSCoupDPetoirAbility::FireShotgun(const FVector& TargetLocation)
 		BurstBulletCount, ShotgunSpread, GetWorld()->GetTimeSeconds());
 
 	// recul sur toutes les machines, puis l'animation de rechargement
-	MulticastBulletFired(0, 0.0f);
+	MulticastBulletFired(0, 0.0f, 0.0f);
 	BurstShooters.AddUnique(this);
 	PlayReloadAnims();
 }
@@ -99,7 +99,8 @@ void UYSCoupDPetoirAbility::FireNextBullet()
 	const int32 BulletCount = FMath::Max(1, BurstBulletCount);
 	if (UYSCoupDPetoirAbility* Shooter = GetBulletShooter(BulletsFired))
 	{
-		Shooter->FireBullet(GetBurstTargetLocation(BulletsFired), BulletsFired, GetTimeToNextShot(BulletsFired, BulletCount));
+		const float BurstRemaining = BulletCount > 1 ? BurstDuration * (BulletCount - 1 - BulletsFired) / (BulletCount - 1) : 0.0f;
+		Shooter->FireBullet(GetBurstTargetLocation(BulletsFired), BulletsFired, GetTimeToNextShot(BulletsFired, BulletCount), BurstRemaining);
 		BurstShooters.AddUnique(Shooter);
 	}
 	++BulletsFired;
@@ -167,6 +168,7 @@ void UYSCoupDPetoirAbility::OnActionCancelled()
 		World->GetTimerManager().ClearTimer(BurstTimer);
 	}
 	BurstShooters.Reset();
+	BurstEndTime = -1.0e6;
 }
 
 bool UYSCoupDPetoirAbility::IsActionInProgress() const
@@ -243,7 +245,7 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 	Projectile->FinishSpawning(SpawnTransform);
 }
 
-void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 BulletIndex, float TimeToNextShot)
+void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 BulletIndex, float TimeToNextShot, float BurstRemaining)
 {
 	FVector Muzzle;
 	FVector Direction;
@@ -254,11 +256,20 @@ void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 Bull
 
 	SpawnProjectile(Muzzle, Direction);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s balle %d à %.2f"), *GetOwner()->GetName(), *GetName(), BulletIndex + 1, GetWorld()->GetTimeSeconds());
-	MulticastBulletFired(BulletIndex, TimeToNextShot);
+	MulticastBulletFired(BulletIndex, TimeToNextShot, BurstRemaining);
 }
 
-void UYSCoupDPetoirAbility::MulticastBulletFired_Implementation(int32 BulletIndex, float TimeToNextShot)
+bool UYSCoupDPetoirAbility::IsBurstInProgressLocally() const
 {
+	const UWorld* World = GetWorld();
+	return World && World->GetTimeSeconds() < BurstEndTime;
+}
+
+void UYSCoupDPetoirAbility::MulticastBulletFired_Implementation(int32 BulletIndex, float TimeToNextShot, float BurstRemaining)
+{
+	// fin de la rafale (ralentissement de l'attaque auto, toutes les machines)
+	BurstEndTime = GetWorld()->GetTimeSeconds() + BurstRemaining;
+
 	// recul de chaque balle ; le tireur a déjà joué celui de la première par prédiction (Ability tirée dès l'activation)
 	if (BulletIndex > 0 || IsAutomatic() || !PredictsFirstBullet() || !IsLocallyPredicted())
 	{

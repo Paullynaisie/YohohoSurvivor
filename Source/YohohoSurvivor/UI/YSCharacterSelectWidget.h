@@ -12,12 +12,14 @@ class UHorizontalBox;
 class UBorder;
 class UImage;
 class UEditableTextBox;
+class UCheckBox;
 class UTexture;
 class UTexture2D;
 class UYSCharacterSelectWidget;
 
 DECLARE_DELEGATE_OneParam(FYSOnCharacterChosen, int32 /*CharacterIndex*/);
 DECLARE_DELEGATE_OneParam(FYSOnNicknameCommitted, const FString& /*Nickname*/);
+DECLARE_DELEGATE_OneParam(FYSOnCameraLockChanged, bool /*bLocked*/);
 
 /** Fiche du personnage affichée à côté des choix (colonne « infos ») */
 USTRUCT(BlueprintType)
@@ -278,6 +280,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
 	float HandednessSpacing = 16.0f;
 
+	/** Case « Camera Lock » (sous Droitier / Gaucher) : espace au-dessus, taille du texte, espace entre la case et le texte */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	float CameraLockSpacing = 24.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	int32 CameraLockFontSize = 20;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Customization")
+	float CameraLockLabelSpacing = 10.0f;
+
 	// ---- colonne droite : aperçu ----
 
 	/** Taille de l'aperçu du personnage (l'image capturée a la même proportion : AYSPlayerController) */
@@ -326,6 +338,9 @@ public:
 	/** Appelé quand le joueur choisit sa main (0 = droitier, 1 = gaucher) */
 	FYSOnCharacterChosen OnHandednessChosen;
 
+	/** Appelé quand le joueur coche / décoche « Camera Lock » */
+	FYSOnCameraLockChanged OnCameraLockChanged;
+
 	/** Appelé quand le joueur clique sur « Prêt » */
 	FSimpleDelegate OnReadyClicked;
 
@@ -365,6 +380,9 @@ public:
 	/** Illumine Droitier ou Gaucher */
 	void SetSelectedHandedness(bool bLeftHanded);
 
+	/** Case « Camera Lock » cochée ou non (sans rappeler OnCameraLockChanged) */
+	void SetCameraLock(bool bLocked);
+
 	/** Pseudo affiché (ignoré pendant que le joueur l'édite) */
 	void SetNickname(const FText& Nickname);
 
@@ -396,6 +414,13 @@ private:
 
 	UFUNCTION()
 	void HandleNicknameCommitted(const FText& Text, ETextCommit::Type CommitMethod);
+
+	UFUNCTION()
+	void HandleCameraLockChanged(bool bIsChecked);
+
+	/** Case « Camera Lock » */
+	UPROPERTY(Transient)
+	TObjectPtr<UCheckBox> CameraLockBox;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UVerticalBox> ButtonList;

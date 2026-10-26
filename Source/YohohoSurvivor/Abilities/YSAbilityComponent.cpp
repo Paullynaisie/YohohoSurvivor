@@ -109,6 +109,18 @@ APawn* UYSAbilityComponent::GetHolderPawn() const
 	return Holder;
 }
 
+bool UYSAbilityComponent::IsAutoAttackAllowedByHolder() const
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	return !Character || Character->WantsAutoAttack();
+}
+
+bool UYSAbilityComponent::IsAutoAttackTargetOptional() const
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	return Character && Character->UsesHeldAutoAttack() && Character->WantsAutoAttack();
+}
+
 AActor* UYSAbilityComponent::FindTargetInCone(const UWorld* World, const FVector& Origin, const FVector& Direction, float MaxDistance, float MaxAngle, const FGameplayTagContainer& Tags, const AActor* IgnoredActor)
 {
 	const FVector FlatDirection = FVector(Direction.X, Direction.Y, 0.0f).GetSafeNormal();

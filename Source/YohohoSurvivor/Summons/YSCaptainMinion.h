@@ -80,6 +80,9 @@ public:
 	/** Dégâts : Damage bonus de l'Ability de son Captain */
 	virtual float GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const override;
 
+	/** Attaque auto toujours active (pas de clic gauche), sans ralentissement */
+	virtual bool UsesHeldAutoAttack() const override { return false; }
+
 	/** Toujours critique sur le NME marqué par la Captain Sword de son Captain */
 	virtual bool HasForcedCriticalAgainst(const AActor* Target) const override;
 

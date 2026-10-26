@@ -97,6 +97,8 @@ void AYSPlayerController::BeginPlay()
 			CharacterSelectMenu->OnColorChosen.BindUObject(this, &AYSPlayerController::ChooseColor);
 			CharacterSelectMenu->OnFaceChosen.BindUObject(this, &AYSPlayerController::ChooseFace);
 			CharacterSelectMenu->OnHandednessChosen.BindUObject(this, &AYSPlayerController::ChooseHandedness);
+			CharacterSelectMenu->OnCameraLockChanged.BindUObject(this, &AYSPlayerController::SetCameraLock);
+			CharacterSelectMenu->SetCameraLock(bCameraLock);
 			CharacterSelectMenu->OnNicknameCommitted.BindUObject(this, &AYSPlayerController::CommitNickname);
 			CharacterSelectMenu->OnReadyClicked.BindUObject(this, &AYSPlayerController::ToggleReady);
 			CharacterSelectMenu->OnInviteClicked.BindUObject(this, &AYSPlayerController::YSInviteFriends);
@@ -205,6 +207,9 @@ void AYSPlayerController::SetupInputComponent()
 	Super::SetupInputComponent();
 
 	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AYSPlayerController::YSLeaveGame);
+
+	// TAB : Camera Lock (caméra centrée sur le PJ ou décalée vers le curseur)
+	InputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &AYSPlayerController::ToggleCameraLock);
 
 	// spectateur : Q / A (gauche) et D (droite) passent d'un joueur vivant à l'autre ; sans consommer la touche (déplacement du vivant)
 	for (const TPair<FKey, int32>& Spectate : { TPair<FKey, int32>(EKeys::Q, -1), TPair<FKey, int32>(EKeys::A, -1), TPair<FKey, int32>(EKeys::D, 1) })
@@ -1620,6 +1625,29 @@ void AYSPlayerController::YSFire()
 	{
 		PlayerCharacter->TriggerFire();
 	}
+}
+
+void AYSPlayerController::YSHoldAutoAttack(int32 bHeld)
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->SetDebugAutoAttack(bHeld != 0);
+	}
+}
+
+void AYSPlayerController::YSCameraLock(int32 bLocked)
+{
+	SetCameraLock(bLocked != 0);
+}
+
+void AYSPlayerController::SetCameraLock(bool bLocked)
+{
+	bCameraLock = bLocked;
+	if (CharacterSelectMenu)
+	{
+		CharacterSelectMenu->SetCameraLock(bCameraLock);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSCamera] Camera Lock %s"), bCameraLock ? TEXT("activé") : TEXT("désactivé"));
 }
 
 void AYSPlayerController::ChooseHandedness(int32 Handedness)

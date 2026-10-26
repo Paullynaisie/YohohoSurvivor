@@ -187,6 +187,18 @@ public:
 	/** Multiplicateur de la vitesse de déplacement du personnage en ce moment (ex. 0 pendant la visée du Rolling shot) */
 	virtual float GetMoveSpeedMultiplier() const { return 1.0f; }
 
+	/**
+	 *  Attaque auto d'un joueur en train de frapper (Melee : préparation + coupe ; Gun : rafale) : ralentissement du PJ
+	 *  (OutMultiplier, Auto Atk Move Speed Multiplier) ; faux hors attaque. Le personnage applique le plus fort, une seule fois.
+	 */
+	virtual bool GetAutoAttackSlowdown(float& OutMultiplier) const { return false; }
+
+	/** Attaque auto autorisée par le porteur : un joueur maintient le clic gauche ; NME et minions : toujours */
+	bool IsAutoAttackAllowedByHolder() const;
+
+	/** Joueur qui maintient le clic gauche : l'attaque auto part même sans cible (NME et minions : il leur faut une cible) */
+	bool IsAutoAttackTargetOptional() const;
+
 	/** Déplacement forcé en cours quand le joueur n'appuie sur aucune direction (ex. roulade : à l'opposé du curseur) */
 	virtual bool GetForcedMoveDirection(FVector& OutDirection) const { return false; }
 

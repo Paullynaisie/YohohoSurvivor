@@ -188,7 +188,10 @@ public:
 	 *  Tire une balle vers TargetLocation (serveur) : projectile + recul sur toutes les machines ;
 	 *  TimeToNextShot = délai avant la balle suivante de cette arme (0 = aucune : recul complet)
 	 */
-	void FireBullet(const FVector& TargetLocation, int32 BulletIndex, float TimeToNextShot = 0.0f);
+	void FireBullet(const FVector& TargetLocation, int32 BulletIndex, float TimeToNextShot = 0.0f, float BurstRemaining = 0.0f);
+
+	/** Rafale en cours d'après la dernière balle vue par cette machine (toutes les machines ; ralentissement de l'attaque auto) */
+	bool IsBurstInProgressLocally() const;
 
 protected:
 
@@ -212,9 +215,9 @@ protected:
 	/** Arme qui tire la balle BulletIndex : en akimbo (attaque auto), alternance main principale / autre main */
 	virtual UYSCoupDPetoirAbility* GetBulletShooter(int32 BulletIndex) const { return const_cast<UYSCoupDPetoirAbility*>(this); }
 
-	/** Recul d'une balle sur toutes les machines (le tireur qui a prédit la première ne la rejoue pas) */
+	/** Recul d'une balle sur toutes les machines (le tireur qui a prédit la première ne la rejoue pas) ; BurstRemaining = temps avant la dernière balle de la rafale */
 	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastBulletFired(int32 BulletIndex, float TimeToNextShot);
+	void MulticastBulletFired(int32 BulletIndex, float TimeToNextShot, float BurstRemaining);
 
 	/** Animation de rechargement sur toutes les machines */
 	UFUNCTION(NetMulticast, Unreliable)
@@ -268,4 +271,7 @@ private:
 
 	/** Dernière balle vue par cette machine (temps local ; recul) */
 	double LastBulletTime = -1.0e6;
+
+	/** Fin de la rafale en cours vue par cette machine (temps local) */
+	double BurstEndTime = -1.0e6;
 };

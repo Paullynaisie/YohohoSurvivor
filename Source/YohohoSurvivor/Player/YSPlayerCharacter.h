@@ -98,9 +98,13 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UInputAction> MoveAction;
 
-	/** Action de tir (clic gauche), créée à l'exécution */
+	/** Action de clic (Ability, clic droit), créée à l'exécution */
 	UPROPERTY(Transient)
 	TObjectPtr<UInputAction> FireAction;
+
+	/** Attaque auto (clic gauche maintenu), créée à l'exécution */
+	UPROPERTY(Transient)
+	TObjectPtr<UInputAction> AutoAttackAction;
 
 	/** Action d'interaction (touche E), créée à l'exécution */
 	UPROPERTY(Transient)
@@ -1069,8 +1073,17 @@ public:
 	AYSWeapon* GetMainHandWeapon() const { return bLeftHanded ? GetLeftHandWeapon() : GetRightHandWeapon(); }
 	AYSWeapon* GetOffHandWeapon() const { return bLeftHanded ? GetRightHandWeapon() : GetLeftHandWeapon(); }
 
-	/** Déclenche les actions de clic des deux mains (comme le clic gauche ; debug YSFire) */
+	/** Déclenche les actions de clic des deux mains (comme le clic droit ; debug YSFire) */
 	void TriggerFire() { Fire(); }
+
+	/** Attaque auto autorisée : joueur = clic gauche maintenu (serveur : dernier état reçu) ; minions : toujours */
+	bool WantsAutoAttack() const { return !UsesHeldAutoAttack() || bAutoAttackHeld || bDebugAutoAttack; }
+
+	/** Le personnage n'attaque automatiquement qu'en maintenant le clic gauche, et l'attaque auto le ralentit (joueurs ; pas les minions) */
+	virtual bool UsesHeldAutoAttack() const { return true; }
+
+	/** Debug (YSHoldAutoAttack) : clic gauche considéré comme maintenu */
+	void SetDebugAutoAttack(bool bHeld);
 
 	/** Comme la touche E (debug YSInteract) */
 	void TriggerInteract() { Interact(); }
@@ -1113,10 +1126,25 @@ protected:
 	void Move(const FInputActionValue& Value);
 
 	/**
-	 *  Clic gauche : déclenche l'action des armes des deux mains vers le curseur.
+	 *  Clic droit : déclenche l'action des armes des deux mains vers le curseur.
 	 *  Akimbo (même arme dans les deux mains) : la gauche tout de suite, la droite après son AkimboFireDelay.
 	 */
 	void Fire();
+
+	/** Clic gauche maintenu (machine qui contrôle, Tick) : envoyé au serveur quand il change */
+	void UpdateAutoAttackInput();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetAutoAttackHeld(bool bHeld);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetDebugAutoAttack(bool bHeld);
+
+	/** Clic gauche maintenu (machine qui contrôle ; serveur : dernier état reçu) */
+	bool bAutoAttackHeld = false;
+
+	/** Debug : clic gauche considéré comme maintenu */
+	bool bDebugAutoAttack = false;
 
 	/** Comme Fire, mais en activation forcée accordée par ForceAbility (machine qui contrôle le personnage) */
 	void ForceFire();

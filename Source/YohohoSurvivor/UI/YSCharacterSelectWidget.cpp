@@ -2,6 +2,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
+#include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
@@ -176,6 +177,19 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 		UHorizontalBoxSlot* HandSlot = HandRow->AddChildToHorizontalBox(HandSize);
 		HandSlot->SetPadding(FMargin(HandednessSpacing * 0.5f, 0.0f));
 	}
+
+	// Camera Lock : caméra centrée sur le PJ (décoché par défaut ; TAB en jeu)
+	UHorizontalBox* CameraLockRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("CameraLock"));
+	UVerticalBoxSlot* CameraLockRowSlot = Customization->AddChildToVerticalBox(CameraLockRow);
+	CameraLockRowSlot->SetHorizontalAlignment(HAlign_Center);
+	CameraLockRowSlot->SetPadding(FMargin(0.0f, CameraLockSpacing, 0.0f, 0.0f));
+	CameraLockBox = WidgetTree->ConstructWidget<UCheckBox>(UCheckBox::StaticClass(), TEXT("CameraLockBox"));
+	CameraLockBox->SetIsChecked(false);
+	CameraLockBox->OnCheckStateChanged.AddDynamic(this, &UYSCharacterSelectWidget::HandleCameraLockChanged);
+	CameraLockRow->AddChildToHorizontalBox(CameraLockBox)->SetVerticalAlignment(VAlign_Center);
+	UHorizontalBoxSlot* CameraLockLabelSlot = CameraLockRow->AddChildToHorizontalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "CameraLock", "Camera Lock"), CameraLockFontSize));
+	CameraLockLabelSlot->SetVerticalAlignment(VAlign_Center);
+	CameraLockLabelSlot->SetPadding(FMargin(CameraLockLabelSpacing, 0.0f, 0.0f, 0.0f));
 
 	// droite : aperçu du personnage
 	USizeBox* Preview = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("Preview"));
@@ -553,6 +567,19 @@ void UYSCharacterSelectWidget::NotifyButtonClicked(int32 Group, int32 Index)
 		SetSelectedIndex(Index);
 		OnCharacterChosen.ExecuteIfBound(Index);
 		break;
+	}
+}
+
+void UYSCharacterSelectWidget::HandleCameraLockChanged(bool bIsChecked)
+{
+	OnCameraLockChanged.ExecuteIfBound(bIsChecked);
+}
+
+void UYSCharacterSelectWidget::SetCameraLock(bool bLocked)
+{
+	if (CameraLockBox && CameraLockBox->IsChecked() != bLocked)
+	{
+		CameraLockBox->SetIsChecked(bLocked);
 	}
 }
 

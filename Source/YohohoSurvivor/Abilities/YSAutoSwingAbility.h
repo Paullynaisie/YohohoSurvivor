@@ -98,6 +98,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Auto swing", meta=(DisplayName="Auto Atk CD", ClampMin="0", Units="Seconds"))
 	float AutoAtkCooldown = 0.8f;
 
+	/** Vitesse du PJ x ce multiplicateur pendant la préparation et la coupe de l'attaque auto (joueurs seulement ; 0.7 = ralenti de 30 %) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto Atk", meta=(ClampMin="0"))
+	float AutoAtkMoveSpeedMultiplier = 0.7f;
+
 	/** Catégorie de l'attaque (Swing pour l'instant ; Bonk à venir) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Melee System")
 	EYSMeleeSystem MeleeSystem = EYSMeleeSystem::Swing;
@@ -239,6 +243,9 @@ public:
 	virtual float GetActionDuration() const override { return GetAttackDuration(); }
 
 	virtual bool IsAutomatic() const override { return true; }
+
+	/** Attaque auto : ralentit le PJ pendant la préparation et la coupe */
+	virtual bool GetAutoAttackSlowdown(float& OutMultiplier) const override;
 
 	virtual float GetBaseDamage() const override { return Damage; }
 

@@ -10,6 +10,7 @@
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "EnhancedPlayerInput.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
@@ -1016,6 +1017,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateWeaponColoration();
 	UpdateDayNight(DeltaSeconds);
 	UpdateCursorCamera(DeltaSeconds);
+	UpdateAutoAttackInput();
 	UpdateNameplate();
 	UpdateInteractPrompt();
 	// vitesse : peut dépendre d'une action en cours (visée du Rolling shot) ; serveur et client propriétaire
@@ -1429,7 +1431,7 @@ void AYSPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 
 void AYSPlayerCharacter::CreateDefaultInput()
 {
-	if (MoveAction && FireAction && InteractAction && DefaultMappingContext)
+	if (MoveAction && FireAction && AutoAttackAction && InteractAction && DefaultMappingContext)
 	{
 		return;
 	}
@@ -1440,11 +1442,16 @@ void AYSPlayerCharacter::CreateDefaultInput()
 	FireAction = NewObject<UInputAction>(this, TEXT("IA_Fire"));
 	FireAction->ValueType = EInputActionValueType::Boolean;
 
+	AutoAttackAction = NewObject<UInputAction>(this, TEXT("IA_AutoAttack"));
+	AutoAttackAction->ValueType = EInputActionValueType::Boolean;
+
 	InteractAction = NewObject<UInputAction>(this, TEXT("IA_Interact"));
 	InteractAction->ValueType = EInputActionValueType::Boolean;
 
+	// clic droit = Ability ; clic gauche maintenu = attaque auto (lu à chaque image : UpdateAutoAttackInput)
 	DefaultMappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Default"));
-	DefaultMappingContext->MapKey(FireAction, EKeys::LeftMouseButton);
+	DefaultMappingContext->MapKey(FireAction, EKeys::RightMouseButton);
+	DefaultMappingContext->MapKey(AutoAttackAction, EKeys::LeftMouseButton);
 	DefaultMappingContext->MapKey(InteractAction, EKeys::E);
 
 	// une touche renvoie (1,0) : Swizzle la passe sur Y, Negate l'inverse
@@ -1547,6 +1554,54 @@ void AYSPlayerCharacter::Fire()
 			Action->TryActivate(GetAimLocation());
 		}
 	}
+}
+
+void AYSPlayerCharacter::UpdateAutoAttackInput()
+{
+	if (!IsLocallyControlled() || !UsesHeldAutoAttack())
+	{
+		return;
+	}
+
+	// état lu à chaque image (pas d'événement perdu pendant une pause, un menu ou un changement de classe)
+	bool bHeld = false;
+	const APlayerController* PC = Cast<APlayerController>(GetController());
+	const UEnhancedInputLocalPlayerSubsystem* Subsystem = PC ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()) : nullptr;
+	if (const UEnhancedPlayerInput* PlayerInput = Subsystem ? Subsystem->GetPlayerInput() : nullptr)
+	{
+		bHeld = AutoAttackAction && PlayerInput->GetActionValue(AutoAttackAction).Get<bool>();
+	}
+	if (bHeld == bAutoAttackHeld)
+	{
+		return;
+	}
+
+	bAutoAttackHeld = bHeld;
+	UE_LOG(LogTemp, Verbose, TEXT("[YSAutoAttack] %s : clic gauche %s"), *GetName(), bHeld ? TEXT("maintenu") : TEXT("relâché"));
+	if (!HasAuthority())
+	{
+		ServerSetAutoAttackHeld(bHeld);
+	}
+}
+
+void AYSPlayerCharacter::ServerSetAutoAttackHeld_Implementation(bool bHeld)
+{
+	bAutoAttackHeld = bHeld;
+}
+
+void AYSPlayerCharacter::SetDebugAutoAttack(bool bHeld)
+{
+	bDebugAutoAttack = bHeld;
+	UE_LOG(LogTemp, Log, TEXT("[YSAutoAttack] %s : clic gauche (debug) %s"), *GetName(), bHeld ? TEXT("maintenu") : TEXT("relâché"));
+	if (!HasAuthority())
+	{
+		ServerSetDebugAutoAttack(bHeld);
+	}
+}
+
+void AYSPlayerCharacter::ServerSetDebugAutoAttack_Implementation(bool bHeld)
+{
+	bDebugAutoAttack = bHeld;
 }
 
 FVector AYSPlayerCharacter::GetAimLocation() const
@@ -1665,7 +1720,10 @@ void AYSPlayerCharacter::UpdateCursorCamera(float DeltaSeconds)
 	const APlayerController* PlayerController = Cast<APlayerController>(GetController());
 	float MouseX = 0.0f, MouseY = 0.0f;
 	int32 ViewportX = 0, ViewportY = 0;
-	if (bCursorCameraOffset && PlayerController && PlayerController->GetMousePosition(MouseX, MouseY))
+	// Camera Lock (réglage du joueur, TAB) : caméra centrée sur le PJ
+	const AYSPlayerController* YSController = Cast<AYSPlayerController>(PlayerController);
+	const bool bCameraLocked = YSController && YSController->IsCameraLocked();
+	if (bCursorCameraOffset && !bCameraLocked && PlayerController && PlayerController->GetMousePosition(MouseX, MouseY))
 	{
 		PlayerController->GetViewportSize(ViewportX, ViewportY);
 		if (ViewportX > 0 && ViewportY > 0)
@@ -2308,6 +2366,20 @@ void AYSPlayerCharacter::UpdateMaxWalkSpeed()
 	// serveur et client propriétaire doivent avoir la même vitesse (prédiction de mouvement)
 	float ActionMultiplier = 1.0f;
 	ForEachHeldAction([&ActionMultiplier](const UYSAbilityComponent* Action) { ActionMultiplier *= Action->GetMoveSpeedMultiplier(); });
+	// attaque auto en train de frapper (joueurs) : ralentissement le plus fort des armes, appliqué une seule fois (akimbo)
+	if (UsesHeldAutoAttack())
+	{
+		float AutoAttackMultiplier = 1.0f;
+		ForEachHeldAction([&AutoAttackMultiplier](const UYSAbilityComponent* Action)
+		{
+			float Multiplier = 1.0f;
+			if (Action->GetAutoAttackSlowdown(Multiplier))
+			{
+				AutoAttackMultiplier = FMath::Min(AutoAttackMultiplier, Multiplier);
+			}
+		});
+		ActionMultiplier *= AutoAttackMultiplier;
+	}
 	// nage : Swim Speed Multiplier, ou celui du passif (Larbin : nage moins ralentie)
 	const float PassiveSwim = Passive ? Passive->GetSwimSpeedMultiplierOverride() : 0.0f;
 	const float SwimMultiplier = bSwimming ? (PassiveSwim > 0.0f ? PassiveSwim : SwimSpeedMultiplier) : 1.0f;

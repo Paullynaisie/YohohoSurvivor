@@ -91,8 +91,9 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	// déclenchement automatique : seulement pour l'attaque auto (une sous-classe en Ability est lancée par le clic)
 	// ; en akimbo, la main gauche est déclenchée par la droite ; NME : déclenchée par sa hitbox (AYSFoeCharacter)
 	// ; Golden Yoloooooo : en continu, même sans cible
-	const bool bContinuous = GetWeaponStat(UYSYoloUpgrade::YoloContinuousStat, 0.0f) > 0.0f;
-	if (!IsAutomatic() || IsTriggeredByHolder() || IsOffHandOfAkimbo() || !IsReady() || !CanStartByPriority() || (!bContinuous && !FindAutoTarget()))
+	// ; joueur : seulement en maintenant le clic gauche, alors même sans cible (une attaque commencée va jusqu'au bout)
+	const bool bContinuous = GetWeaponStat(UYSYoloUpgrade::YoloContinuousStat, 0.0f) > 0.0f || IsAutoAttackTargetOptional();
+	if (!IsAutomatic() || IsTriggeredByHolder() || IsOffHandOfAkimbo() || !IsAutoAttackAllowedByHolder() || !IsReady() || !CanStartByPriority() || (!bContinuous && !FindAutoTarget()))
 	{
 		return;
 	}
@@ -110,6 +111,17 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 			}
 		}), FMath::Max(AkimboFireDelay, KINDA_SMALL_NUMBER), false);
 	}
+}
+
+bool UYSAutoSwingAbility::GetAutoAttackSlowdown(float& OutMultiplier) const
+{
+	// seulement l'attaque auto (pas une sous-classe en Ability), pendant la préparation et la coupe
+	if (!IsAutomatic() || GetSwingElapsed() >= GetWindupTime() + GetSwingTime())
+	{
+		return false;
+	}
+	OutMultiplier = AutoAtkMoveSpeedMultiplier;
+	return true;
 }
 
 AActor* UYSAutoSwingAbility::FindAutoTarget() const
