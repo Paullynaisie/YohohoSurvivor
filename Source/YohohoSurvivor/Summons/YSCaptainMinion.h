@@ -67,6 +67,9 @@ public:
 
 	AYSPlayerCharacter* GetCaptain() const { return Captain; }
 
+	/** Nouveau Captain (serveur) : changement de classe du joueur, ses minions le suivent au lieu de mourir avec l'ancien personnage */
+	void SetCaptain(AYSPlayerCharacter* NewCaptain);
+
 	/** Visage (index dans les visages de personnalisation ; icône du HUD de son Captain) */
 	int32 GetFaceIndex() const { return FaceIndex; }
 

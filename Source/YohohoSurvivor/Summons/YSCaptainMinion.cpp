@@ -84,6 +84,18 @@ void AYSCaptainMinion::InitMinion(AYSPlayerCharacter* InCaptain, UYSWeaponSet* I
 	}
 }
 
+void AYSCaptainMinion::SetCaptain(AYSPlayerCharacter* NewCaptain)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	Captain = NewCaptain;
+	SetOwner(NewCaptain);
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSMinion] %s suit son nouveau Captain %s"), *GetName(), NewCaptain ? *NewCaptain->GetName() : TEXT("(aucun)"));
+}
+
 void AYSCaptainMinion::RefreshCustomization()
 {
 	const AYSPlayerState* CaptainState = Captain ? Captain->GetPlayerState<AYSPlayerState>() : nullptr;

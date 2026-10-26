@@ -4,6 +4,7 @@
 #include "Enemies/YSFoeBomb.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Interaction/YSInteractiveObject.h"
+#include "Map/YSOcean.h"
 #include "Weapons/YSProjectile.h"
 
 UYSFoeRangedAction::UYSFoeRangedAction()
@@ -47,7 +48,9 @@ bool UYSFoeBombAction::StartAttack(AYSFoeCharacter* Foe, const APawn* Target, co
 	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
 	const float Distance = TargetScatterRadius * FMath::Sqrt(FMath::FRand());
 	const FVector Aim = Target->GetActorLocation() + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Distance;
-	const FVector Point = AYSInteractiveObject::FindGround(World, Aim, Target);
+	// cible qui nage : la bombe tombe à la surface de la mer, pas au fond
+	FVector Point = AYSInteractiveObject::FindGround(World, Aim, Target);
+	Point.Z = AYSOcean::ClampAboveSea(World, Point.Z);
 
 	// animation de lancer sur toutes les machines ; la bombe part au lâcher
 	Foe->NotifyRangedAttack(this);

@@ -1027,7 +1027,8 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
-	Target = FindNearestPlayer();
+	// NME à distance : les joueurs qui nagent restent des cibles
+	Target = FindNearestPlayer(Ranged != nullptr);
 	if (!Target)
 	{
 		return;
@@ -1060,14 +1061,32 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	}
 	else
 	{
-		AddMovementInput(ToTarget.GetSafeNormal());
+		// cible qui nage : le NME s'arrête au bord de l'eau (il attend qu'elle revienne à portée)
+		const AYSPlayerCharacter* TargetCharacter = Cast<AYSPlayerCharacter>(Target);
+		if (!(TargetCharacter && TargetCharacter->IsSwimming() && IsWaterAhead(ToTarget, WaterStopDistance)))
+		{
+			AddMovementInput(ToTarget.GetSafeNormal());
+		}
 	}
 
 	const FRotator Desired(0.0f, ToTarget.Rotation().Yaw, 0.0f);
 	SetActorRotation(TurnSpeed > 0.0f ? FMath::RInterpTo(GetActorRotation(), Desired, DeltaSeconds, TurnSpeed) : Desired);
 }
 
-APawn* AYSFoeCharacter::FindNearestPlayer() const
+bool AYSFoeCharacter::IsWaterAhead(const FVector& Direction, float Distance) const
+{
+	const UWorld* World = GetWorld();
+	const FVector Ahead = GetActorLocation() + Direction.GetSafeNormal2D() * Distance;
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSFoeWaterAhead), false, this);
+	if (!World->LineTraceSingleByObjectType(Hit, Ahead + FVector(0.0f, 0.0f, 200.0f), Ahead - FVector(0.0f, 0.0f, 3000.0f), FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+	{
+		return true;
+	}
+	return AYSOcean::IsUnderwater(World, Hit.ImpactPoint);
+}
+
+APawn* AYSFoeCharacter::FindNearestPlayer(bool bIncludeSwimmers) const
 {
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	if (!GameState)
@@ -1082,8 +1101,8 @@ APawn* AYSFoeCharacter::FindNearestPlayer() const
 	{
 		APawn* Pawn = Player ? Player->GetPawn() : nullptr;
 		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(Pawn);
-		// corps en ragdoll d'un joueur mort, joueur qui nage : pas une cible
-		if (!Pawn || (PlayerCharacter && (!PlayerCharacter->IsAlive() || PlayerCharacter->IsSwimming())))
+		// corps en ragdoll d'un joueur mort, joueur qui nage (sauf pour un NME à distance) : pas une cible
+		if (!Pawn || (PlayerCharacter && (!PlayerCharacter->IsAlive() || (PlayerCharacter->IsSwimming() && !bIncludeSwimmers))))
 		{
 			continue;
 		}
@@ -1102,7 +1121,7 @@ APawn* AYSFoeCharacter::FindNearestPlayer() const
 	for (TActorIterator<AYSCaptainMinion> It(GetWorld()); It; ++It)
 	{
 		AYSCaptainMinion* Minion = *It;
-		if (!Minion->IsAlive() || Minion->IsActorBeingDestroyed() || Minion->IsSwimming())
+		if (!Minion->IsAlive() || Minion->IsActorBeingDestroyed() || (Minion->IsSwimming() && !bIncludeSwimmers))
 		{
 			continue;
 		}

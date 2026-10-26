@@ -1782,6 +1782,16 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, U
 	// l'objet porté reste au sol (le nouveau personnage a les mains libres)
 	DropCarriedObject(TEXT("changement de classe"));
 
+	// minions (Captain) : ils suivent le nouveau personnage (sinon ils mourraient avec celui-ci)
+	TArray<AYSCaptainMinion*> Minions;
+	for (TActorIterator<AYSCaptainMinion> It(World); It; ++It)
+	{
+		if (It->GetCaptain() == this && It->IsAlive() && !It->IsActorBeingDestroyed())
+		{
+			Minions.Add(*It);
+		}
+	}
+
 	OwningController->UnPossess();
 	Destroy();
 
@@ -1812,6 +1822,10 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, U
 	}
 
 	OwningController->Possess(NewCharacter);
+	for (AYSCaptainMinion* Minion : Minions)
+	{
+		Minion->SetCaptain(NewCharacter);
+	}
 	NewCharacter->RestoreUpgrades(OldPool, OldProgress);
 	NewCharacter->RestoreShards(OldShards);
 	NewCharacter->Health = FMath::Max(1.0f, HealthRatio * NewCharacter->GetMaxHealth());

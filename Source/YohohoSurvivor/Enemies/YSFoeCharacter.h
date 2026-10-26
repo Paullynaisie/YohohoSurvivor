@@ -254,6 +254,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement", meta=(ClampMin="0"))
 	float TurnSpeed = 10.0f;
 
+	/** NME à distance qui vise un joueur en train de nager : s'arrête quand la mer est à cette distance devant lui (pas dans l'eau) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement", meta=(ClampMin="0", Units="Centimeters"))
+	float WaterStopDistance = 50.0f;
+
 	/**
 	 *  Position par défaut de la main droite, par rapport au corps (centre de la capsule) ; la gauche est symétrique (Y inversé).
 	 *  Une arme peut la remplacer (Weapon > Hand Location). Mêmes réglages que le joueur (3C|Hands).
@@ -506,8 +510,11 @@ protected:
 	/** Rafraîchit la barre de vie avec Health / MaxHealth (élite : pas de barre, seulement le point critique) et le point critique du joueur local */
 	void UpdateHealthBar();
 
-	/** Retourne le pawn joueur le plus proche (sur le plan horizontal), ou nullptr */
-	APawn* FindNearestPlayer() const;
+	/** Retourne le pawn joueur le plus proche (sur le plan horizontal), ou nullptr ; ceux qui nagent seulement si bIncludeSwimmers (NME à distance) */
+	APawn* FindNearestPlayer(bool bIncludeSwimmers = false) const;
+
+	/** Le sol devant le NME (Distance dans Direction) est la mer : il s'arrête au bord au lieu d'y entrer (cible qui nage) */
+	bool IsWaterAhead(const FVector& Direction, float Distance) const;
 
 	/** Blesse les joueurs dont la hurtbox touche la Hitbox (serveur) */
 	void ApplyContactDamage();
