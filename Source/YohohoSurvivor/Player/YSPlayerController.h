@@ -278,6 +278,18 @@ public:
 	UFUNCTION(Exec)
 	void YSHelmInput(float Throttle = 0.0f, float Steer = 0.0f);
 
+	/** Debug : utilise le poste de bateau libre le plus proche de ce type (Helm, Nest, Cannon, Longboat = chalouperie, Seat = passager de la chaloupe).  Ex : YSUseStation Cannon */
+	UFUNCTION(Exec)
+	void YSUseStation(const FString& Kind, int32 Skip = 0);
+
+	/** Debug : action au poste vers un point du monde (0 = clic droit : tir de canon, 1 = clic gauche : ping du nid d'pie).  Ex : YSStationAction 0 2000 500 */
+	UFUNCTION(Exec)
+	void YSStationAction(int32 Action, float X, float Y, float Z = 0.0f);
+
+	/** Debug : quitte le poste (comme E) */
+	UFUNCTION(Exec)
+	void YSLeaveStation();
+
 	/** Debug (hôte) : fait apparaître un coffre (BP_InteractiveObject_Chest) devant le personnage */
 	UFUNCTION(Exec)
 	void YSSpawnChest(float Distance = 150.0f);

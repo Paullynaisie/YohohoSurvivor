@@ -7,6 +7,10 @@
 #include "GameFramework/GameStateBase.h"
 #include "Map/YSOcean.h"
 #include "Net/UnrealNetwork.h"
+#include "Ship/YSCrowsNest.h"
+#include "Ship/YSLongboatLauncher.h"
+#include "Ship/YSShipCannon.h"
+#include "Ship/YSShipCore.h"
 #include "Ship/YSShipHelm.h"
 
 namespace YSPirateShip
@@ -17,9 +21,26 @@ namespace YSPirateShip
 
 	/** Pas de simulation max (une grosse image est découpée) */
 	constexpr float MaxStep = 1.0f / 30.0f;
+
+	/** Autres bateaux traversés par la recherche du fond (chaloupe sous la coque) */
+	constexpr int32 MaxIgnoredShips = 4;
+
+	/** Poste créé par un composant optionnel (absent sur une chaloupe) */
+	UChildActorComponent* CreateStation(AYSPirateShip* Ship, const FObjectInitializer& ObjectInitializer, USceneComponent* Parent, const TCHAR* Name, UClass* StationClass, const FVector& Location, float Yaw)
+	{
+		UChildActorComponent* Component = ObjectInitializer.CreateOptionalDefaultSubobject<UChildActorComponent>(Ship, Name);
+		if (Component)
+		{
+			Component->SetupAttachment(Parent);
+			Component->SetChildActorClass(StationClass);
+			Component->SetRelativeLocationAndRotation(Location, FRotator(0.0f, Yaw, 0.0f));
+		}
+		return Component;
+	}
 }
 
-AYSPirateShip::AYSPirateShip()
+AYSPirateShip::AYSPirateShip(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
 {
 	// présence (cachée tant que l'objectif de doublons n'est pas atteint dans GameMap) et pilotage : à chaque image, sur toutes les machines
 	PrimaryActorTick.bCanEverTick = true;
@@ -39,6 +60,14 @@ AYSPirateShip::AYSPirateShip()
 	HelmStation->SetChildActorClass(AYSShipHelm::StaticClass());
 	HelmStation->SetRelativeLocation(FVector(-1020.0f, 0.0f, 582.0f));
 
+	// postes du grand bateau (pont à +210) ; placés sur les formes du BP par setup_ship_stations.py
+	CoreStation = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CoreStation"), AYSShipCore::StaticClass(), FVector(-250.0f, 0.0f, 210.0f), 0.0f);
+	CrowsNestStation = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CrowsNestStation"), AYSCrowsNest::StaticClass(), FVector(100.0f, 0.0f, 210.0f), 0.0f);
+	LongboatStation = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("LongboatStation"), AYSLongboatLauncher::StaticClass(), FVector(-660.0f, -180.0f, 210.0f), 180.0f);
+	CannonFront = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonFront"), AYSShipCannon::StaticClass(), FVector(1450.0f, 0.0f, 210.0f), 0.0f);
+	CannonLeft = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonLeft"), AYSShipCannon::StaticClass(), FVector(450.0f, -380.0f, 210.0f), -90.0f);
+	CannonRight = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonRight"), AYSShipCannon::StaticClass(), FVector(450.0f, 380.0f, 210.0f), 90.0f);
+
 	ShipName = NSLOCTEXT("YS", "PirateShipName", "Bateau pirate");
 
 	// coque de BP_PirateShip : partie droite de -1200 à 1200, proue arrondie jusqu'à 1700, largeur 1000
@@ -54,6 +83,7 @@ void AYSPirateShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AYSPirateShip, Motion);
+	DOREPLIFETIME(AYSPirateShip, Health);
 }
 
 void AYSPirateShip::BeginPlay()
@@ -70,11 +100,49 @@ void AYSPirateShip::BeginPlay()
 			Motion.Yaw = GetActorRotation().Yaw;
 		}
 	}
+
+	// PV du bateau : donnés par le core
+	if (HasAuthority())
+	{
+		Health = GetMaxHealth();
+	}
+
+	FString StationNames;
+	for (const AYSShipStation* Station : GetStations())
+	{
+		StationNames += FString::Printf(TEXT(" %s"), *Station->GetClass()->GetName());
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : PV %.0f, core %s, postes :%s"), *GetName(), GetMaxHealth(), GetCore() ? *GetCore()->GetClass()->GetName() : TEXT("aucun"), *StationNames);
 }
 
 AYSShipHelm* AYSPirateShip::GetHelm() const
 {
 	return HelmStation ? Cast<AYSShipHelm>(HelmStation->GetChildActor()) : nullptr;
+}
+
+AYSShipCore* AYSPirateShip::GetCore() const
+{
+	return CoreStation ? Cast<AYSShipCore>(CoreStation->GetChildActor()) : nullptr;
+}
+
+TArray<AYSShipStation*> AYSPirateShip::GetStations() const
+{
+	TArray<AYSShipStation*> Stations;
+	TInlineComponentArray<UChildActorComponent*> Components(this);
+	for (const UChildActorComponent* Component : Components)
+	{
+		if (AYSShipStation* Station = Cast<AYSShipStation>(Component->GetChildActor()))
+		{
+			Stations.Add(Station);
+		}
+	}
+	return Stations;
+}
+
+float AYSPirateShip::GetMaxHealth() const
+{
+	const AYSShipCore* Core = GetCore();
+	return Core ? Core->GetShipMaxHealth() : 0.0f;
 }
 
 void AYSPirateShip::SetPilotInput(float Throttle, float Steer)
@@ -106,8 +174,7 @@ void AYSPirateShip::Tick(float DeltaSeconds)
 		if (Presence != AppliedPresence)
 		{
 			AppliedPresence = Presence;
-			SetActorHiddenInGame(Presence == 0);
-			SetActorEnableCollision(Presence == 1);
+			ApplyPresence(Presence == 1);
 			UE_LOG(LogTemp, Log, TEXT("[YSShip] %s %s"), *GetName(), Presence ? TEXT("présent") : TEXT("absent (caché, sans collision)"));
 		}
 	}
@@ -125,18 +192,45 @@ void AYSPirateShip::Tick(float DeltaSeconds)
 	}
 }
 
+void AYSPirateShip::ApplyPresence(bool bPresent)
+{
+	SetActorHiddenInGame(!bPresent);
+	SetActorEnableCollision(bPresent);
+	// postes (acteurs enfants) et ce qui est accroché au bateau : cachés avec lui
+	TArray<AActor*> Attached;
+	GetAttachedActors(Attached, true, true);
+	for (AActor* Actor : Attached)
+	{
+		if (Actor->IsA<AYSShipStation>() || Actor->IsA<AYSShipCore>())
+		{
+			Actor->SetActorHiddenInGame(!bPresent);
+			Actor->SetActorEnableCollision(bPresent);
+		}
+	}
+}
+
 void AYSPirateShip::StepMotion(FYSShipMotion& State, float DeltaSeconds) const
 {
+	// stats du core (multiplicateurs, mêmes valeurs sur toutes les machines : acteur local créé depuis le Blueprint)
+	const AYSShipCore* Core = GetCore();
+	const float SpeedMultiplier = Core ? Core->GetSpeedMultiplier() : 1.0f;
+	const float AccelerationMultiplier = Core ? Core->GetAccelerationMultiplier() : 1.0f;
+	const float TurnMultiplier = Core ? Core->GetTurnRateMultiplier() : 1.0f;
+	const float MaxForward = MaxForwardSpeed * SpeedMultiplier;
+	const float MaxReverse = MaxReverseSpeed * SpeedMultiplier;
+	const float ForwardRate = ForwardAcceleration * AccelerationMultiplier;
+	const float ReverseRate = ReverseAcceleration * AccelerationMultiplier;
+
 	// vitesse : Z accélère vers l'avant, S freine puis recule, sans commande le bateau glisse et ralentit (inertie)
 	if (State.Throttle > 0.0f)
 	{
-		const float Rate = State.Speed < 0.0f ? FMath::Max(ForwardAcceleration, Deceleration) : ForwardAcceleration;
-		State.Speed = FMath::Min(State.Speed + Rate * State.Throttle * DeltaSeconds, MaxForwardSpeed);
+		const float Rate = State.Speed < 0.0f ? FMath::Max(ForwardRate, Deceleration) : ForwardRate;
+		State.Speed = FMath::Min(State.Speed + Rate * State.Throttle * DeltaSeconds, MaxForward);
 	}
 	else if (State.Throttle < 0.0f)
 	{
-		const float Rate = State.Speed > 0.0f ? FMath::Max(ReverseAcceleration, Deceleration) : ReverseAcceleration;
-		State.Speed = FMath::Max(State.Speed + Rate * State.Throttle * DeltaSeconds, -MaxReverseSpeed);
+		const float Rate = State.Speed > 0.0f ? FMath::Max(ReverseRate, Deceleration) : ReverseRate;
+		State.Speed = FMath::Max(State.Speed + Rate * State.Throttle * DeltaSeconds, -MaxReverse);
 	}
 	else
 	{
@@ -147,7 +241,7 @@ void AYSPirateShip::StepMotion(FYSShipMotion& State, float DeltaSeconds) const
 	// suivie avec inertie
 	const float SpeedRatio = FMath::Clamp(FMath::Abs(State.Speed) / FullTurnSpeed, 0.0f, 1.0f);
 	const float TurnRatio = FMath::Lerp(StandstillTurnRatio, 1.0f, SpeedRatio);
-	const float TargetYawRate = State.Steer * MaxTurnRate * TurnRatio * (State.Speed < -1.0f ? -1.0f : 1.0f);
+	const float TargetYawRate = State.Steer * MaxTurnRate * TurnMultiplier * TurnRatio * (State.Speed < -1.0f ? -1.0f : 1.0f);
 	State.YawRate = TurnResponsiveness > 0.0f ? FMath::FInterpTo(State.YawRate, TargetYawRate, DeltaSeconds, TurnResponsiveness) : TargetYawRate;
 
 	State.Yaw = FRotator::NormalizeAxis(State.Yaw + State.YawRate * DeltaSeconds);
@@ -165,20 +259,34 @@ float AYSPirateShip::GetHullMinDepth(const FVector& Location, float Yaw) const
 	}
 
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSShipDepth), false, this);
-	if (const AActor* Helm = GetHelm())
-	{
-		Params.AddIgnoredActor(Helm);
-	}
+	TArray<AActor*> OwnActors;
+	GetAttachedActors(OwnActors, true, true);
+	Params.AddIgnoredActors(OwnActors);
 	const float Sea = Ocean->GetSeaLevel();
 	const FRotator Rotation(0.0f, Yaw, 0.0f);
 	for (const FVector2D& Probe : HullProbePoints)
 	{
 		const FVector Point = Location + Rotation.RotateVector(FVector(Probe.X, Probe.Y, 0.0f));
-		FHitResult Hit;
-		if (World->LineTraceSingleByObjectType(Hit, FVector(Point.X, Point.Y, Sea + YSPirateShip::DepthTraceUp),
-			FVector(Point.X, Point.Y, Sea - YSPirateShip::DepthTraceDown), FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+		// les autres bateaux (chaloupe le long de la coque, leurs postes) ne sont pas le fond : traversés
+		FCollisionQueryParams ProbeParams = Params;
+		for (int32 Attempt = 0; Attempt <= YSPirateShip::MaxIgnoredShips; ++Attempt)
 		{
+			FHitResult Hit;
+			if (!World->LineTraceSingleByObjectType(Hit, FVector(Point.X, Point.Y, Sea + YSPirateShip::DepthTraceUp),
+				FVector(Point.X, Point.Y, Sea - YSPirateShip::DepthTraceDown), FCollisionObjectQueryParams(ECC_WorldStatic), ProbeParams))
+			{
+				break;
+			}
+			if (AYSPirateShip* OtherShip = GetShipOf(Hit.GetActor()))
+			{
+				TArray<AActor*> OtherActors;
+				OtherShip->GetAttachedActors(OtherActors, true, true);
+				ProbeParams.AddIgnoredActor(OtherShip);
+				ProbeParams.AddIgnoredActors(OtherActors);
+				continue;
+			}
 			MinDepth = FMath::Min(MinDepth, Sea - Hit.ImpactPoint.Z);
+			break;
 		}
 	}
 	return MinDepth;
@@ -195,7 +303,7 @@ void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 {
 	// le pilote parti, la barre ne commande plus
 	const AYSShipHelm* Helm = GetHelm();
-	if (!Helm || !Helm->GetPilot())
+	if (!Helm || !Helm->GetOccupant())
 	{
 		SetPilotInput(0.0f, 0.0f);
 	}
@@ -227,6 +335,11 @@ void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 				bGrounded = true;
 				UE_LOG(LogTemp, Log, TEXT("[YSShip] %s s'arrête : eau trop peu profonde devant (%s)"), *GetName(), *Motion.Location.ToCompactString());
 				ForceNetUpdate();
+				OnHullBlocked();
+				if (!IsValid(this) || IsActorBeingDestroyed())
+				{
+					return;
+				}
 			}
 		}
 		else
@@ -324,5 +437,64 @@ AYSPirateShip* AYSPirateShip::FindShipBelow(const UWorld* World, const FVector& 
 	{
 		return nullptr;
 	}
-	return Cast<AYSPirateShip>(Hit.GetActor());
+	return GetShipOf(Hit.GetActor());
+}
+
+AYSPirateShip* AYSPirateShip::GetShipOf(const AActor* Actor)
+{
+	// postes = acteurs enfants (parent actor), objets posés = accrochés au bateau
+	for (int32 Depth = 0; Actor && Depth < 8; ++Depth)
+	{
+		if (const AYSPirateShip* Ship = Cast<AYSPirateShip>(Actor))
+		{
+			return const_cast<AYSPirateShip*>(Ship);
+		}
+		Actor = Actor->GetParentActor() ? Actor->GetParentActor() : Actor->GetAttachParentActor();
+	}
+	return nullptr;
+}
+
+FBox2D AYSPirateShip::GetHullBounds() const
+{
+	FBox2D Bounds(ForceInit);
+	for (const FVector2D& Probe : HullProbePoints)
+	{
+		Bounds += Probe;
+	}
+	return Bounds;
+}
+
+bool AYSPirateShip::IsInsideHull(const FVector& WorldLocation, float Margin) const
+{
+	const FBox2D Bounds = GetHullBounds();
+	if (!Bounds.bIsValid)
+	{
+		return false;
+	}
+	const FVector Local = GetActorTransform().InverseTransformPositionNoScale(WorldLocation);
+	return Local.X >= Bounds.Min.X - Margin && Local.X <= Bounds.Max.X + Margin && Local.Y >= Bounds.Min.Y - Margin && Local.Y <= Bounds.Max.Y + Margin;
+}
+
+FVector AYSPirateShip::GetClosestHullPoint(const FVector& WorldLocation, float Inset) const
+{
+	const FBox2D Bounds = GetHullBounds();
+	if (!Bounds.bIsValid)
+	{
+		return GetActorLocation();
+	}
+	const FVector Local = GetActorTransform().InverseTransformPositionNoScale(WorldLocation);
+	const float InsetX = FMath::Min(Inset, Bounds.GetExtent().X);
+	const float InsetY = FMath::Min(Inset, Bounds.GetExtent().Y);
+	const FVector Clamped(FMath::Clamp(Local.X, Bounds.Min.X + InsetX, Bounds.Max.X - InsetX), FMath::Clamp(Local.Y, Bounds.Min.Y + InsetY, Bounds.Max.Y - InsetY), 0.0f);
+	return GetActorTransform().TransformPositionNoScale(Clamped);
+}
+
+void AYSPirateShip::GetWorldHullPoints(TArray<FVector>& OutPoints) const
+{
+	OutPoints.Reset();
+	const FTransform& Transform = GetActorTransform();
+	for (const FVector2D& Probe : HullProbePoints)
+	{
+		OutPoints.Add(Transform.TransformPositionNoScale(FVector(Probe.X, Probe.Y, 0.0f)));
+	}
 }

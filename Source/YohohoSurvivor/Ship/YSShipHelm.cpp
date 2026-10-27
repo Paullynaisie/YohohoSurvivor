@@ -1,89 +1,45 @@
 #include "Ship/YSShipHelm.h"
 #include "Components/SceneComponent.h"
-#include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Ship/YSPirateShip.h"
 
 AYSShipHelm::AYSShipHelm()
 {
-	// vérifie que le pilote est toujours là (serveur)
-	PrimaryActorTick.bCanEverTick = true;
-	bCarriable = false;
 	DisplayName = NSLOCTEXT("YS", "ShipHelmName", "Barre");
 
 	// pilote derrière la roue (pieds sur le pont du gaillard), mains sur la jante de chaque côté
-	PilotPoint = CreateDefaultSubobject<USceneComponent>(TEXT("PilotPoint"));
-	PilotPoint->SetupAttachment(GetRootComponent());
-	PilotPoint->SetRelativeLocation(FVector(-90.0f, 0.0f, -120.0f));
+	GetOccupantPoint()->SetRelativeLocation(FVector(-90.0f, 0.0f, -120.0f));
 	GetHandPoint(true)->SetRelativeLocation(FVector(-15.0f, -40.0f, 10.0f));
 	GetHandPoint(false)->SetRelativeLocation(FVector(-15.0f, 40.0f, 10.0f));
-}
 
-void AYSShipHelm::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-	DOREPLIFETIME(AYSShipHelm, Pilot);
-}
-
-void AYSShipHelm::Tick(float DeltaSeconds)
-{
-	Super::Tick(DeltaSeconds);
-
-	// pilote parti (déconnexion, changement de classe, mort) : la barre est libre
-	if (HasAuthority() && Pilot && (!IsValid(Pilot) || !Pilot->IsAlive() || Pilot->GetPilotedHelm() != this))
-	{
-		UE_LOG(LogTemp, Log, TEXT("[YSHelm] %s : pilote parti, barre libre"), *GetName());
-		SetPilot(nullptr);
-	}
+	// caméra du pilote : centrée sur le bateau, dézoomée
+	CameraArmLength = 3600.0f;
+	bCameraOnShip = true;
+	CameraOffsetMode = EYSStationCameraOffset::None;
 }
 
 bool AYSShipHelm::CanInteract(const AYSPlayerCharacter* Character) const
 {
 	const AYSPirateShip* Ship = GetShip();
-	return Ship && Ship->IsDrivable() && !Pilot && Character && Character->IsAlive() && !Character->IsCarrying() && !Character->IsSwimming() && !Character->IsPiloting();
+	return Ship && Ship->IsDrivable() && Ship->GetHelm() == this && Super::CanInteract(Character);
 }
 
-void AYSShipHelm::Interact(AYSPlayerCharacter* Character)
+void AYSShipHelm::ApplyPilotInput(AYSPlayerCharacter* Character, const FVector2D& Input)
 {
-	if (HasAuthority() && CanInteract(Character))
+	AYSPirateShip* Ship = GetShip();
+	if (Ship && Ship->GetHelm() == this && Character == GetOccupant())
 	{
-		Character->StartPiloting(this);
+		Ship->SetPilotInput(Input.Y, Input.X);
 	}
 }
 
-void AYSShipHelm::SetPilot(AYSPlayerCharacter* NewPilot)
+void AYSShipHelm::OnOccupantChanged(AYSPlayerCharacter* Previous)
 {
-	if (!HasAuthority() || Pilot == NewPilot)
+	if (HasAuthority())
 	{
-		return;
+		if (AYSPirateShip* Ship = GetShip())
+		{
+			Ship->SetPilotInput(0.0f, 0.0f);
+		}
 	}
-	Pilot = NewPilot;
-	SetPromptVisible(false);
-	if (AYSPirateShip* Ship = GetShip())
-	{
-		// personne à la barre : le bateau garde son élan et ralentit seul
-		Ship->SetPilotInput(0.0f, 0.0f);
-	}
-	ForceNetUpdate();
-}
-
-AYSPirateShip* AYSShipHelm::GetShip() const
-{
-	// acteur enfant (HelmStation) : le parent est le bateau ; sinon le bateau auquel la barre est accrochée
-	if (AYSPirateShip* Ship = Cast<AYSPirateShip>(GetParentActor()))
-	{
-		return Ship;
-	}
-	return Cast<AYSPirateShip>(GetAttachParentActor());
-}
-
-FVector AYSShipHelm::GetPilotFeetLocation() const
-{
-	return PilotPoint->GetComponentLocation();
-}
-
-FVector AYSShipHelm::GetPilotForward() const
-{
-	return PilotPoint->GetForwardVector().GetSafeNormal2D();
 }

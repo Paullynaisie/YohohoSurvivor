@@ -32,6 +32,8 @@ public:
 
 	virtual bool AcceptsObject(const AYSInteractiveObject* Object) const override;
 
+	virtual bool IsBrooker() const override { return false; }
+
 protected:
 
 	virtual void ReceiveObject(AYSInteractiveObject* Object) override;

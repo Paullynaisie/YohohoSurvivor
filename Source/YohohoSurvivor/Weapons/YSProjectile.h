@@ -157,6 +157,14 @@ private:
 	float HeightAboveGround = -1.0f;
 	float LastGroundZ = 0.0f;
 
+	/** Traversé en vol (canon : le bateau qui tire et ses postes) ; répliqué à l'apparition */
+	UPROPERTY(Replicated)
+	TObjectPtr<AActor> FlightIgnoredActor;
+
+	/** Hauteur au-dessus du sol imposée (canon) ; négatif = prise au tir ; répliquée à l'apparition */
+	UPROPERTY(Replicated)
+	float ForcedHeightAboveGround = -1.0f;
+
 public:
 
 	AYSProjectile();
@@ -165,11 +173,16 @@ public:
 
 	virtual void PostInitializeComponents() override;
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 	virtual void BeginPlay() override;
 
 	virtual void Tick(float DeltaSeconds) override;
 
 	virtual void LifeSpanExpired() override;
+
+	/** Avant FinishSpawning : acteur traversé (et ce qui y est accroché), hauteur au-dessus du sol imposée (négatif = prise au tir) */
+	void SetFlightOverrides(AActor* IgnoredActor, float HeightAboveGroundOverride) { FlightIgnoredActor = IgnoredActor; ForcedHeightAboveGround = HeightAboveGroundOverride; }
 
 	void SetDamage(float NewDamage) { Damage = NewDamage; }
 

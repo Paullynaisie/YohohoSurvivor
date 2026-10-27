@@ -6,6 +6,8 @@
 
 class UChildActorComponent;
 class AYSShipHelm;
+class AYSShipCore;
+class AYSShipStation;
 
 /** État du déplacement d'un bateau pilotable, répliqué par le serveur (les clients l'extrapolent) */
 USTRUCT()
@@ -47,7 +49,10 @@ struct FYSShipMotion
  *  et bateau PILOTABLE (barre : E pour la prendre, ZQSD = avancer / reculer avec inertie, tourner).
  *  Pilotage : simulé par le serveur (FYSShipMotion répliqué), extrapolé par les clients ; le bateau s'arrête en eau trop peu
  *  profonde (Hull Probe Points). Origine de l'acteur = ligne de flottaison (à poser au niveau de la mer), +X = proue.
- *  Visuel (primitives) dans le Blueprint enfant /Game/Placeable/Ship/BP_PirateShip (Tools/EditorScripts/setup_pirate_ship.py).
+ *  Postes (acteurs enfants, réglages dans leur Blueprint) : barre, core (stats du bateau, zone Brooker + Medic), nid d'pie,
+ *  chalouperie (chaloupe), 3 modules de combat (canonneries avant / bâbord / tribord).
+ *  Visuel (primitives) dans le Blueprint enfant /Game/Placeable/Ship/BP_PirateShip (Tools/EditorScripts/setup_pirate_ship.py,
+ *  postes placés par Tools/EditorScripts/setup_ship_stations.py).
  */
 UCLASS(meta=(PrioritizeCategories="Ship"))
 class AYSPirateShip : public AActor
@@ -63,6 +68,28 @@ private:
 	/** Barre (acteur AYSShipHelm répliqué, créé par le serveur) : placer ce composant au centre de la roue */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UChildActorComponent> HelmStation;
+
+	/** Core (AYSShipCore, local sur chaque machine) : stats du bateau, zone Brooker + Medic ; au milieu du pont */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> CoreStation;
+
+	/** Nid d'pie (AYSCrowsNest) : placer ce composant au pied du grand mât */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> CrowsNestStation;
+
+	/** Chalouperie (AYSLongboatLauncher) : placer ce composant devant la porte de la cabine */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> LongboatStation;
+
+	/** Modules de combat (AYSShipCannon) : avant (vers la proue), bâbord (gauche), tribord (droite) ; +X du composant = direction de tir */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> CannonFront;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> CannonLeft;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> CannonRight;
 
 protected:
 
@@ -81,7 +108,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm")
 	bool bDrivable = false;
 
-	/** Vitesse max en marche avant (cm/s ; les joueurs marchent à 600) */
+	/** Vitesse max en marche avant (cm/s ; les joueurs marchent à 600) ; x Speed Multiplier du core */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Speed", meta=(ClampMin="0", Units="CentimetersPerSecond"))
 	float MaxForwardSpeed = 900.0f;
 
@@ -125,21 +152,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Hull", meta=(ClampMin="0", Units="Centimeters"))
 	float MinWaterDepth = 200.0f;
 
-	/** Caméra du pilote : longueur du bras (le joueur à pied : 1680) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Camera", meta=(ClampMin="0", Units="Centimeters"))
-	float HelmCameraArmLength = 3600.0f;
-
-	/** Caméra du pilote centrée sur le bateau (sinon sur le pilote) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Camera")
-	bool bHelmCameraOnShip = true;
-
-	/** Vitesse du dézoom / zoom et du recentrage en prenant / quittant la barre */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Camera", meta=(ClampMin="0"))
-	float HelmCameraInterpSpeed = 2.0f;
-
 	/** Clients : vitesse de rattrapage d'un écart avec l'état reçu du serveur */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Network", meta=(ClampMin="0"))
 	float ClientCorrectionSpeed = 6.0f;
+
+	/** PV du bateau (max = Ship Max Health du core) ; pas encore de dégâts */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Ship")
+	float Health = 0.0f;
 
 	/** Déplacement du bateau pilotable (serveur -> clients) */
 	UPROPERTY(ReplicatedUsing=OnRep_Motion)
@@ -148,9 +167,14 @@ protected:
 	UFUNCTION()
 	void OnRep_Motion();
 
+	/** Serveur : la coque touche le fond (eau trop peu profonde), une fois par arrêt ; ex. chaloupe : éjection sur l'île */
+	virtual void OnHullBlocked() {}
+
+	UChildActorComponent* GetHelmStationComponent() const { return HelmStation; }
+
 public:
 
-	AYSPirateShip();
+	AYSPirateShip(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -162,23 +186,43 @@ public:
 
 	bool IsDrivable() const { return bDrivable; }
 
+	/** Bateau présent (le bateau objectif est caché avant l'objectif de doublons) */
+	bool IsPresent() const { return AppliedPresence != 0; }
+
 	AYSShipHelm* GetHelm() const;
+
+	/** Core : stats du bateau (nullptr = valeurs du bateau seules) */
+	AYSShipCore* GetCore() const;
+
+	/** Postes du bateau (barre, nid d'pie, chalouperie, canonneries ; pas le core), acteurs enfants existants */
+	TArray<AYSShipStation*> GetStations() const;
 
 	/** Commandes du pilote (serveur) : Throttle Z / S, Steer D / Q, de -1 à 1 */
 	void SetPilotInput(float Throttle, float Steer);
 
-	float GetHelmCameraArmLength() const { return HelmCameraArmLength; }
-	bool IsHelmCameraOnShip() const { return bHelmCameraOnShip; }
-	float GetHelmCameraInterpSpeed() const { return HelmCameraInterpSpeed; }
-
 	/** Vitesse actuelle le long de la proue (cm/s) */
 	float GetSpeed() const { return Motion.Speed; }
+
+	float GetHealth() const { return Health; }
+	float GetMaxHealth() const;
 
 	/** Bateau objectif : présence (AYSGameState::IsShipPresent), absent = caché, sans collision. Pilotable : déplacement */
 	virtual void Tick(float DeltaSeconds) override;
 
-	/** Bateau dont fait partie le sol sous Location (pont, gaillard...), ou nullptr */
+	/** Bateau dont fait partie le sol sous Location (pont, gaillard, poste...), ou nullptr */
 	static AYSPirateShip* FindShipBelow(const UWorld* World, const FVector& Location, const AActor* IgnoredActor = nullptr);
+
+	/** Bateau auquel appartient cet acteur (lui-même, ou un de ses postes / acteurs accrochés), ou nullptr */
+	static AYSPirateShip* GetShipOf(const AActor* Actor);
+
+	/** Le point (monde) est dans l'emprise de la coque (rectangle des Hull Probe Points, agrandi de Margin), à plat */
+	bool IsInsideHull(const FVector& WorldLocation, float Margin = 0.0f) const;
+
+	/** Point (monde, à plat) de la coque le plus proche de WorldLocation, Inset vers l'intérieur */
+	FVector GetClosestHullPoint(const FVector& WorldLocation, float Inset = 0.0f) const;
+
+	/** Points de la coque en coordonnées monde (à la hauteur de l'acteur) */
+	void GetWorldHullPoints(TArray<FVector>& OutPoints) const;
 
 private:
 
@@ -199,6 +243,12 @@ private:
 
 	/** Clients : état reçu extrapolé jusqu'à maintenant, écart rattrapé en douceur */
 	void TickClientMotion(float DeltaSeconds);
+
+	/** Bateau et postes cachés / montrés (présence du bateau objectif) */
+	void ApplyPresence(bool bPresent);
+
+	/** Rectangle local (X / Y) des Hull Probe Points */
+	FBox2D GetHullBounds() const;
 
 	/** Dernier état reçu (clients), extrapolé à chaque image */
 	FYSShipMotion ClientPredicted;

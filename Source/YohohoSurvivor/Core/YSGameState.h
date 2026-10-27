@@ -86,9 +86,13 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="DayNight")
 	TObjectPtr<AYSFoeCharacter> CurrentElite;
 
-	/** Objectif commun : doublons gagnés par l'équipe et objectif à atteindre */
+	/** Objectif commun : doublons gagnés par l'équipe = XP du bateau, dans son niveau actuel, et seuil du niveau suivant */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Objective")
 	int32 Doubloons = 0;
+
+	/** Niveau du bateau (0 = pas encore arrivé ; 1 = arrivé au premier objectif de doublons) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Objective")
+	int32 ShipLevel = 0;
 
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Objective")
 	int32 DoubloonGoal = 100;
@@ -206,6 +210,9 @@ public:
 
 	/** Serveur uniquement (AYSGameMode) */
 	void SetDoubloons(int32 Amount, int32 Goal) { Doubloons = Amount; DoubloonGoal = Goal; ForceNetUpdate(); }
+	void SetShipLevel(int32 Level) { ShipLevel = Level; ForceNetUpdate(); }
+
+	int32 GetShipLevel() const { return ShipLevel; }
 
 	bool IsShipPresent() const { return bShipPresent; }
 	int32 GetShipAboardPlayers() const { return ShipAboardPlayers; }

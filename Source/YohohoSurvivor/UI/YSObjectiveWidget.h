@@ -28,6 +28,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
 	FText Title = NSLOCTEXT("YS", "ObjectiveTitle", "Doublons");
 
+	/** Titre une fois le bateau arrivé ({0} = niveau du bateau) : les doublons sont l'XP du bateau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
+	FText ShipLevelTitleFormat = NSLOCTEXT("YS", "ObjectiveShipLevelTitle", "Doublons - Bateau niv. {0}");
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout", meta=(ClampMin="1"))
 	int32 TitleFontSize = 18;
 
@@ -55,6 +59,9 @@ public:
 
 	void SetProgress(int32 Doubloons, int32 Goal);
 
+	/** Niveau du bateau (0 = pas encore arrivé : titre Title) */
+	void SetShipLevel(int32 Level);
+
 private:
 
 	void BuildWidgetTree();
@@ -64,6 +71,11 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> ValueLabel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> TitleLabel;
+
+	int32 DisplayedShipLevel = INDEX_NONE;
 
 	int32 DisplayedDoubloons = INDEX_NONE;
 	int32 DisplayedGoal = INDEX_NONE;

@@ -76,16 +76,25 @@ void UYSAbilityIconWidget::Refresh(const UYSAbilityComponent* Ability, bool bBlo
 		return;
 	}
 
+	RefreshCooldown(Ability->Icon, Ability->IconTint, Ability->GetCooldownRemaining(), Ability->GetActivationLockDuration(), bBlocked);
+}
+
+void UYSAbilityIconWidget::RefreshCooldown(UTexture2D* Icon, const FLinearColor& Tint, float Remaining, float Duration, bool bBlocked)
+{
+	if (!IconImage)
+	{
+		return;
+	}
+
 	SetVisibility(ESlateVisibility::HitTestInvisible);
 
-	if (Ability->Icon && IconImage->GetBrush().GetResourceObject() != Ability->Icon)
+	// sans icône (canon) : pas l'image de l'action précédente
+	if (IconImage->GetBrush().GetResourceObject() != Icon)
 	{
-		IconImage->SetBrushFromTexture(Ability->Icon);
+		IconImage->SetBrushFromTexture(Icon);
 	}
-	IconImage->SetColorAndOpacity(Ability->IconTint);
+	IconImage->SetColorAndOpacity(Tint);
 
-	const float Remaining = Ability->GetCooldownRemaining();
-	const float Duration = Ability->GetActivationLockDuration();
 	// rechargée mais impossible à lancer : voile plein (Blocked Color)
 	const bool bShowBlocked = bBlocked && Remaining <= 0.0f;
 	CooldownBar->SetFillColorAndOpacity(bShowBlocked ? BlockedColor : CooldownColor);

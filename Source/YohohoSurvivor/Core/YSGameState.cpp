@@ -61,6 +61,7 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, CurrentElite);
 	DOREPLIFETIME(AYSGameState, Doubloons);
 	DOREPLIFETIME(AYSGameState, DoubloonGoal);
+	DOREPLIFETIME(AYSGameState, ShipLevel);
 	DOREPLIFETIME(AYSGameState, bShipPresent);
 	DOREPLIFETIME(AYSGameState, ShipAboardPlayers);
 	DOREPLIFETIME(AYSGameState, ShipTotalPlayers);

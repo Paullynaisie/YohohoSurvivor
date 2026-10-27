@@ -75,7 +75,7 @@ void AYSBrookerNPC::Resettle()
 bool AYSBrookerNPC::TryBuy(AYSInteractiveObject* Object)
 {
 	// serveur seulement (PNJ non répliqué : il a l'autorité sur toutes les machines, le GameMode n'existe que sur le serveur)
-	if (!GetWorld()->GetAuthGameMode() || !IsValid(Object) || Object->GetCarrier())
+	if (!GetWorld()->GetAuthGameMode() || !IsValid(Object) || Object->GetCarrier() || !IsAvailable())
 	{
 		return false;
 	}
@@ -94,6 +94,11 @@ bool AYSBrookerNPC::TryBuy(AYSInteractiveObject* Object)
 
 	ReceiveObject(Object);
 	return true;
+}
+
+bool AYSBrookerNPC::IsMedic() const
+{
+	return IsA<AYSMedicNPC>();
 }
 
 bool AYSBrookerNPC::AcceptsObject(const AYSInteractiveObject* Object) const
@@ -119,8 +124,8 @@ AYSBrookerNPC* AYSBrookerNPC::FindNearest(const UWorld* World, const FVector& Lo
 	float NearestDistSq = TNumericLimits<float>::Max();
 	for (TActorIterator<AYSBrookerNPC> It(World); It; ++It)
 	{
-		// avec un objet : seulement ceux qui le prennent ; sans : Brookers ou Medics
-		if (AcceptedObject ? !It->AcceptsObject(AcceptedObject) : It->IsA<AYSMedicNPC>() != bMedic)
+		// avec un objet : seulement ceux qui le prennent ; sans : Brookers ou Medics (le core d'un bateau est les deux)
+		if (!It->IsAvailable() || (AcceptedObject ? !It->AcceptsObject(AcceptedObject) : (bMedic ? !It->IsMedic() : !It->IsBrooker())))
 		{
 			continue;
 		}

@@ -49,6 +49,11 @@
 #include "Engine/StaticMesh.h"
 #include "Ship/YSPirateShip.h"
 #include "Ship/YSShipHelm.h"
+#include "Ship/YSShipStation.h"
+#include "Ship/YSLongboatLauncher.h"
+#include "Ship/YSLongboat.h"
+#include "Ship/YSCrowsNest.h"
+#include "Ship/YSShipCannon.h"
 
 namespace
 {
@@ -217,7 +222,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, WeaponSet);
 	DOREPLIFETIME(AYSPlayerCharacter, Passive);
 	DOREPLIFETIME(AYSPlayerCharacter, CarriedObject);
-	DOREPLIFETIME(AYSPlayerCharacter, PilotedHelm);
+	DOREPLIFETIME(AYSPlayerCharacter, CurrentStation);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustStacks);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustMaxStacks);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustDuration);
@@ -369,9 +374,9 @@ void AYSPlayerCharacter::Die()
 	}
 	Health = 0.0f;
 
-	// l'objet porté tombe au sol, la barre est lâchée
+	// l'objet porté tombe au sol, le poste (barre...) est lâché
 	DropCarriedObject(TEXT("mort"));
-	StopPiloting(TEXT("mort"));
+	LeaveStation(TEXT("mort"), true);
 
 	// le joueur reste mort (pas de réapparition) mais compte toujours pour la taille des vagues
 	if (AYSPlayerState* YSPlayerState = GetPlayerState<AYSPlayerState>())
@@ -1225,7 +1230,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	}
 
 	UpdateSwimming(DeltaSeconds);
-	UpdatePiloting();
+	UpdateStation();
 	UpdateStrafeAnimation(DeltaSeconds);
 	UpdateBodyPivot(DeltaSeconds);
 	UpdateHands(DeltaSeconds);
@@ -1368,8 +1373,9 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 
 	auto UpdateHand = [this, DeltaSeconds, &PivotTransform](USceneComponent* Hand, FVector& WorldLocation, float& CurrentYaw, bool bLeft, float NoiseSeed)
 	{
-		// objet porté, barre : la main est sur son point de placement, sans retard (l'objet suit déjà le corps)
-		const AYSInteractiveObject* HandObject = IsValid(CarriedObject) ? CarriedObject.Get() : IsValid(PilotedHelm) ? static_cast<const AYSInteractiveObject*>(PilotedHelm.Get()) : nullptr;
+		// objet porté, barre / canon : la main est sur son point de placement, sans retard (l'objet suit déjà le corps)
+		const AYSInteractiveObject* HandObject = IsValid(CarriedObject) ? CarriedObject.Get()
+			: IsValid(CurrentStation) && CurrentStation->PutsHandsOnStation() ? static_cast<const AYSInteractiveObject*>(CurrentStation.Get()) : nullptr;
 		if (const USceneComponent* HandPoint = HandObject ? HandObject->GetHandPoint(bLeft) : nullptr)
 		{
 			WorldLocation = HandPoint->GetComponentLocation();
@@ -1480,7 +1486,7 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 
 	// arme à deux mains (ex. Shotgun) : l'autre main toujours sur le socket de l'arme, sans retard, même pendant le recul
 	// (après la main qui la tient : l'arme, attachée à cette main, l'a déjà suivie) ; pas pendant le port d'un objet, la nage ni à la barre
-	if (!IsValid(CarriedObject) && !bSwimming && !IsPiloting())
+	if (!IsValid(CarriedObject) && !bSwimming && !IsAtStation())
 	{
 		for (const bool bWeaponInLeft : { false, true })
 		{
@@ -1721,11 +1727,14 @@ void AYSPlayerCharacter::Move(const FInputActionValue& Value)
 
 	const FVector2D Input = Value.Get<FVector2D>();
 
-	// à la barre : ZQSD pilote le bateau (Z / S = avancer / reculer, Q / D = tourner), le personnage ne bouge pas
-	if (IsPiloting())
+	// à un poste : le personnage ne bouge pas ; à la barre, ZQSD pilote le bateau (Z / S = avancer / reculer, Q / D = tourner)
+	if (IsAtStation())
 	{
-		HelmInput = FVector2D(FMath::Clamp(Input.X, -1.0f, 1.0f), FMath::Clamp(Input.Y, -1.0f, 1.0f));
-		LastHelmInputFrame = GFrameCounter;
+		if (IsValid(CurrentStation) && CurrentStation->UsesPilotInput())
+		{
+			HelmInput = FVector2D(FMath::Clamp(Input.X, -1.0f, 1.0f), FMath::Clamp(Input.Y, -1.0f, 1.0f));
+			LastHelmInputFrame = GFrameCounter;
+		}
 		return;
 	}
 
@@ -1744,8 +1753,15 @@ void AYSPlayerCharacter::Move(const FInputActionValue& Value)
 
 void AYSPlayerCharacter::Fire()
 {
-	// objet porté à deux mains, barre : armes désactivées
-	if (IsCarrying() || IsPiloting())
+	// poste de bateau : le clic droit va au poste (tir de canon)
+	if (IsAtStation())
+	{
+		SendStationAction(static_cast<uint8>(EYSStationAction::Fire));
+		return;
+	}
+
+	// objet porté à deux mains : armes désactivées
+	if (IsCarrying())
 	{
 		return;
 	}
@@ -1805,6 +1821,11 @@ void AYSPlayerCharacter::UpdateAutoAttackInput()
 	if (const UEnhancedPlayerInput* PlayerInput = Subsystem ? Subsystem->GetPlayerInput() : nullptr)
 	{
 		bHeld = AutoAttackAction && PlayerInput->GetActionValue(AutoAttackAction).Get<bool>();
+	}
+	// poste de bateau : le clic gauche (à l'appui) va au poste (ping du nid d'pie)
+	if (bHeld && !bAutoAttackHeld && IsAtStation())
+	{
+		SendStationAction(static_cast<uint8>(EYSStationAction::Primary));
 	}
 	if (bHeld == bAutoAttackHeld)
 	{
@@ -1958,7 +1979,11 @@ void AYSPlayerCharacter::UpdateCursorCamera(float DeltaSeconds)
 	// Camera Lock (réglage du joueur, TAB) : caméra centrée sur le PJ
 	const AYSPlayerController* YSController = Cast<AYSPlayerController>(PlayerController);
 	const bool bCameraLocked = YSController && YSController->IsCameraLocked();
-	if (bCursorCameraOffset && !bCameraLocked && PlayerController && PlayerController->GetMousePosition(MouseX, MouseY))
+	// poste de bateau : réglages de caméra du poste (Station|Camera)
+	const AYSShipStation* Station = IsValid(CurrentStation) ? CurrentStation.Get() : nullptr;
+	const bool bStationCursor = Station && Station->GetCameraOffsetMode() == EYSStationCameraOffset::Cursor;
+	const float CursorMaxOffset = bStationCursor ? Station->GetCameraOffsetDistance() : CursorCameraMaxOffset;
+	if (((bCursorCameraOffset && !Station) || bStationCursor) && !bCameraLocked && PlayerController && PlayerController->GetMousePosition(MouseX, MouseY))
 	{
 		PlayerController->GetViewportSize(ViewportX, ViewportY);
 		if (ViewportX > 0 && ViewportY > 0)
@@ -1968,24 +1993,25 @@ void AYSPlayerCharacter::UpdateCursorCamera(float DeltaSeconds)
 
 			// haut de l'écran = devant la caméra (à plat), droite de l'écran = sa droite
 			const FRotationMatrix CameraYaw(FRotator(0.0f, CameraBoom->GetComponentRotation().Yaw, 0.0f));
-			Target = (CameraYaw.GetUnitAxis(EAxis::X) * -Clamped.Y + CameraYaw.GetUnitAxis(EAxis::Y) * Clamped.X) * CursorCameraMaxOffset;
+			Target = (CameraYaw.GetUnitAxis(EAxis::X) * -Clamped.Y + CameraYaw.GetUnitAxis(EAxis::Y) * Clamped.X) * CursorMaxOffset;
 		}
 	}
 
-	// à la barre : caméra centrée (sur le bateau ou le pilote), plus de décalage vers le curseur, dézoomée
-	const AYSPirateShip* Ship = IsValid(PilotedHelm) ? PilotedHelm->GetShip() : nullptr;
-	if (Ship)
+	// à un poste : caméra dézoomée, centrée (sur le bateau ou le joueur), vers le curseur ou au maximum vers la visée (canon)
+	if (Station)
 	{
-		Target = FVector::ZeroVector;
-		HelmCameraOffset = Ship->IsHelmCameraOnShip() ? Ship->GetActorLocation() - GetActorLocation() : FVector::ZeroVector;
+		FVector AimDirection;
+		if (Station->GetCameraOffsetMode() == EYSStationCameraOffset::Aim && Station->GetCameraAimDirection(AimDirection))
+		{
+			Target = AimDirection.GetSafeNormal2D() * Station->GetCameraOffsetDistance();
+		}
+		const AYSPirateShip* Ship = Station->IsCameraOnShip() ? Station->GetShip() : nullptr;
+		HelmCameraOffset = Ship ? Ship->GetActorLocation() - GetActorLocation() : FVector::ZeroVector;
 		HelmCameraOffset.Z = 0.0f;
+		HelmCameraArmLength = Station->GetCameraArmLength();
+		HelmCameraInterpSpeed = Station->GetCameraInterpSpeed();
 	}
-	const float HelmInterpSpeed = Ship ? Ship->GetHelmCameraInterpSpeed() : 2.0f;
-	HelmCameraBlend = HelmInterpSpeed > 0.0f ? FMath::FInterpTo(HelmCameraBlend, Ship ? 1.0f : 0.0f, DeltaSeconds, HelmInterpSpeed) : (Ship ? 1.0f : 0.0f);
-	if (Ship)
-	{
-		HelmCameraArmLength = Ship->GetHelmCameraArmLength();
-	}
+	HelmCameraBlend = HelmCameraInterpSpeed > 0.0f ? FMath::FInterpTo(HelmCameraBlend, Station ? 1.0f : 0.0f, DeltaSeconds, HelmCameraInterpSpeed) : (Station ? 1.0f : 0.0f);
 	CameraBoom->TargetArmLength = FMath::Lerp(DefaultCameraArmLength, HelmCameraArmLength, HelmCameraBlend);
 
 	// lissé : les tours de curseur ne secouent pas la caméra
@@ -2311,7 +2337,7 @@ void AYSPlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	// serveur : un personnage qui disparaît (déconnexion…) ne garde pas l'objet
 	DropCarriedObject(TEXT("fin de jeu du personnage"));
-	StopPiloting(TEXT("fin de jeu du personnage"));
+	LeaveStation(TEXT("fin de jeu du personnage"), true);
 
 	// sa marque (Captain AMMO) disparaît avec lui
 	if (DisplayedMarkedFoe.IsValid())
@@ -2698,10 +2724,10 @@ bool AYSPlayerCharacter::IsMoveInputOverridden() const
 
 bool AYSPlayerCharacter::GetLockedAimDirection(FVector& OutDirection) const
 {
-	// à la barre : tourné vers la roue
-	if (IsValid(PilotedHelm))
+	// à la barre : tourné vers la roue (canon, nid d'pie : regard libre vers le curseur)
+	if (IsValid(CurrentStation) && CurrentStation->LocksAim())
 	{
-		OutDirection = PilotedHelm->GetPilotForward();
+		OutDirection = CurrentStation->GetOccupantForward();
 		return true;
 	}
 
@@ -2718,7 +2744,7 @@ float AYSPlayerCharacter::GetFoeAttractionMultiplier() const
 AYSInteractiveObject* AYSPlayerCharacter::FindInteractTarget() const
 {
 	const UWorld* World = GetWorld();
-	if (!World || !IsAlive() || IsCarrying() || IsPiloting())
+	if (!World || !IsAlive() || IsCarrying() || IsAtStation())
 	{
 		return nullptr;
 	}
@@ -2779,9 +2805,10 @@ void AYSPlayerCharacter::InteractOnServer()
 		DropCarriedObject(TEXT("touche E"));
 		return;
 	}
-	if (IsPiloting())
+	// à un poste : E le quitte (sauf chaloupe)
+	if (IsAtStation())
 	{
-		StopPiloting(TEXT("touche E"));
+		LeaveStation(TEXT("touche E"));
 		return;
 	}
 
@@ -2880,74 +2907,143 @@ void AYSPlayerCharacter::CancelAllActions()
 	}
 }
 
-void AYSPlayerCharacter::StartPiloting(AYSShipHelm* Helm)
+void AYSPlayerCharacter::EnterStation(AYSShipStation* Station)
 {
-	if (!HasAuthority() || IsPiloting() || IsCarrying() || !IsValid(Helm))
+	if (!HasAuthority() || IsAtStation() || IsCarrying() || !IsValid(Station) || Station->GetOccupant())
 	{
 		return;
 	}
 
 	// armes rangées : actions en cours interrompues
 	CancelAllActions();
-	PilotedHelm = Helm;
-	Helm->SetPilot(this);
+	CurrentStation = Station;
+	Station->SetOccupant(this);
 	ApplyCarryVisuals();
-	UpdatePiloting();
+	UpdateStation();
 	ForceNetUpdate();
-	UE_LOG(LogTemp, Log, TEXT("[YSHelm] %s prend la barre de %s"), *GetName(), Helm->GetShip() ? *Helm->GetShip()->GetName() : TEXT("?"));
+	UE_LOG(LogTemp, Log, TEXT("[YSStation] %s s'installe à %s (%s) de %s"), *GetName(), *Station->GetDisplayName().ToString(), *Station->GetName(),
+		Station->GetShip() ? *Station->GetShip()->GetName() : TEXT("?"));
 }
 
-void AYSPlayerCharacter::StopPiloting(const TCHAR* Reason)
+void AYSPlayerCharacter::LeaveStation(const TCHAR* Reason, bool bForce)
 {
-	AYSShipHelm* Helm = PilotedHelm;
-	if (!HasAuthority() || !Helm)
+	AYSShipStation* Station = CurrentStation;
+	if (!HasAuthority() || !Station)
 	{
 		return;
 	}
-
-	PilotedHelm = nullptr;
-	if (IsValid(Helm) && Helm->GetPilot() == this)
+	// chaloupe : on n'en descend pas avec E
+	if (!bForce && IsValid(Station) && !Station->CanLeave())
 	{
-		Helm->SetPilot(nullptr);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSStation] %s ne peut pas quitter %s (%s)"), *GetName(), *Station->GetName(), Reason);
+		return;
+	}
+
+	CurrentStation = nullptr;
+	if (IsValid(Station) && Station->GetOccupant() == this)
+	{
+		Station->SetOccupant(nullptr);
 	}
 	HelmInput = LastSentHelmInput = FVector2D::ZeroVector;
 	ApplyCarryVisuals();
 	ForceNetUpdate();
-	UE_LOG(LogTemp, Log, TEXT("[YSHelm] %s quitte la barre (%s)"), *GetName(), Reason);
+	UE_LOG(LogTemp, Log, TEXT("[YSStation] %s quitte %s (%s)"), *GetName(), IsValid(Station) ? *Station->GetName() : TEXT("?"), Reason);
+
+	// nid d'pie : redescendu au pied du mât
+	if (IsValid(Station) && Station->TeleportsOnLeave() && IsAlive())
+	{
+		TeleportToFeetLocation(Station->GetExitFeetLocation(), GetActorForwardVector());
+	}
+}
+
+void AYSPlayerCharacter::TeleportToFeetLocation(const FVector& FeetLocation, const FVector& Facing)
+{
+	const FVector Target = FeetLocation + FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.0f);
+	const FRotator Rotation = Facing.IsNearlyZero() ? GetActorRotation() : FRotator(0.0f, Facing.Rotation().Yaw, 0.0f);
+	SetActorLocationAndRotation(Target, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+	GetCharacterMovement()->Velocity = FVector::ZeroVector;
+	// le client qui le contrôle aussi (sinon sa prédiction le ramène)
+	if (HasAuthority() && !IsLocallyControlled())
+	{
+		ClientTeleportToFeet(FeetLocation, Facing.GetSafeNormal());
+	}
+}
+
+void AYSPlayerCharacter::ClientTeleportToFeet_Implementation(FVector_NetQuantize FeetLocation, FVector_NetQuantizeNormal Facing)
+{
+	TeleportToFeetLocation(FeetLocation, Facing);
 }
 
 void AYSPlayerCharacter::DebugTakeHelm(int32 Skip)
 {
-	if (!HasAuthority())
-	{
-		ServerDebugTakeHelm(Skip);
-		return;
-	}
-	ServerDebugTakeHelm_Implementation(Skip);
+	DebugUseStation(TEXT("Helm"), Skip);
 }
 
-void AYSPlayerCharacter::ServerDebugTakeHelm_Implementation(int32 Skip)
+void AYSPlayerCharacter::DebugUseStation(const FString& Kind, int32 Skip)
 {
-	TArray<AYSShipHelm*> Helms;
-	for (TActorIterator<AYSShipHelm> It(GetWorld()); It; ++It)
+	if (!HasAuthority())
 	{
-		if (It->CanInteract(this))
+		ServerDebugUseStation(Kind, Skip);
+		return;
+	}
+	ServerDebugUseStation_Implementation(Kind, Skip);
+}
+
+void AYSPlayerCharacter::ServerDebugUseStation_Implementation(const FString& Kind, int32 Skip)
+{
+	// Helm, Nest, Cannon, Longboat (chalouperie), Seat (passager de la chaloupe)
+	UClass* StationClass = AYSShipStation::StaticClass();
+	if (Kind.Equals(TEXT("Helm"), ESearchCase::IgnoreCase))			{ StationClass = AYSShipHelm::StaticClass(); }
+	else if (Kind.Equals(TEXT("Nest"), ESearchCase::IgnoreCase))	{ StationClass = AYSCrowsNest::StaticClass(); }
+	else if (Kind.Equals(TEXT("Cannon"), ESearchCase::IgnoreCase))	{ StationClass = AYSShipCannon::StaticClass(); }
+	else if (Kind.Equals(TEXT("Longboat"), ESearchCase::IgnoreCase))	{ StationClass = AYSLongboatLauncher::StaticClass(); }
+	else if (Kind.Equals(TEXT("Seat"), ESearchCase::IgnoreCase))	{ StationClass = AYSLongboatSeat::StaticClass(); }
+
+	TArray<AYSShipStation*> Stations;
+	for (TActorIterator<AYSShipStation> It(GetWorld()); It; ++It)
+	{
+		if (It->IsA(StationClass) && It->CanInteract(this))
 		{
-			Helms.Add(*It);
+			Stations.Add(*It);
 		}
 	}
 	const FVector Location = GetActorLocation();
-	Helms.Sort([&Location](const AYSShipHelm& A, const AYSShipHelm& B) { return FVector::DistSquared(A.GetActorLocation(), Location) < FVector::DistSquared(B.GetActorLocation(), Location); });
-	AYSShipHelm* Best = Helms.IsValidIndex(Skip) ? Helms[Skip] : nullptr;
+	Stations.Sort([&Location](const AYSShipStation& A, const AYSShipStation& B) { return FVector::DistSquared(A.GetActorLocation(), Location) < FVector::DistSquared(B.GetActorLocation(), Location); });
+	AYSShipStation* Best = Stations.IsValidIndex(Skip) ? Stations[Skip] : nullptr;
 	if (!Best)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[YSHelm] %s : aucune barre libre de bateau pilotable"), *GetName());
+		UE_LOG(LogTemp, Log, TEXT("[YSStation] %s : aucun poste libre « %s »"), *GetName(), *Kind);
 		return;
 	}
-	StartPiloting(Best);
+	// téléporté à côté du poste puis interaction (la chalouperie lance la chaloupe, les autres installent le joueur)
+	UE_LOG(LogTemp, Log, TEXT("[YSStation] (debug) %s utilise %s"), *GetName(), *Best->GetName());
+	Best->Interact(this);
 }
 
-void AYSPlayerCharacter::OnRep_PilotedHelm()
+void AYSPlayerCharacter::DebugStationAction(uint8 Action, const FVector& AimLocation)
+{
+	// (0, 0) : 2000 cm droit devant le poste
+	FVector Aim = AimLocation;
+	if (FMath::IsNearlyZero(Aim.X) && FMath::IsNearlyZero(Aim.Y) && IsValid(CurrentStation))
+	{
+		Aim = CurrentStation->GetActorLocation() + CurrentStation->GetActorForwardVector().GetSafeNormal2D() * 2000.0f;
+	}
+	if (HasAuthority())
+	{
+		ServerStationAction_Implementation(Action, Aim);
+	}
+	else
+	{
+		ServerStationAction(Action, Aim);
+	}
+}
+
+void AYSPlayerCharacter::DebugLeaveStation()
+{
+	Interact();
+}
+
+void AYSPlayerCharacter::OnRep_CurrentStation(AYSShipStation* PreviousStation)
 {
 	HelmInput = LastSentHelmInput = FVector2D::ZeroVector;
 	ApplyCarryVisuals();
@@ -2956,39 +3052,106 @@ void AYSPlayerCharacter::OnRep_PilotedHelm()
 
 void AYSPlayerCharacter::ServerSetHelmInput_Implementation(FVector2D Input)
 {
-	AYSPirateShip* Ship = IsValid(PilotedHelm) ? PilotedHelm->GetShip() : nullptr;
-	if (Ship && Ship->GetHelm() == PilotedHelm)
+	// Z / S = avancer / reculer, D / Q = tourner à droite / à gauche
+	if (IsValid(CurrentStation) && CurrentStation->UsesPilotInput())
 	{
-		// Z / S = avancer / reculer, D / Q = tourner à droite / à gauche
-		Ship->SetPilotInput(Input.Y, Input.X);
+		CurrentStation->ApplyPilotInput(this, Input);
 	}
 }
 
-void AYSPlayerCharacter::UpdatePiloting()
+bool AYSPlayerCharacter::SendStationAction(uint8 Action)
 {
-	AYSShipHelm* Helm = PilotedHelm;
-	if (!IsValid(Helm))
+	const AYSShipStation* Station = CurrentStation;
+	if (!IsValid(Station) || !Station->HandlesAction(static_cast<EYSStationAction>(Action)) || !IsLocallyControlled())
+	{
+		return false;
+	}
+	// ping : point du sol sous le curseur ; tir : visée (plan du personnage)
+	const FVector Aim = static_cast<EYSStationAction>(Action) == EYSStationAction::Primary ? GetCursorGroundLocation() : GetAimLocation();
+	if (HasAuthority())
+	{
+		ServerStationAction_Implementation(Action, Aim);
+	}
+	else
+	{
+		ServerStationAction(Action, Aim);
+	}
+	return true;
+}
+
+void AYSPlayerCharacter::ServerStationAction_Implementation(uint8 Action, FVector_NetQuantize AimLocation)
+{
+	if (IsValid(CurrentStation) && CurrentStation->GetOccupant() == this && IsAlive())
+	{
+		CurrentStation->ServerHandleAction(this, static_cast<EYSStationAction>(Action), AimLocation);
+	}
+}
+
+FVector AYSPlayerCharacter::GetCursorGroundLocation() const
+{
+	const APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	FVector Origin;
+	FVector Direction;
+	if (!PlayerController || !PlayerController->DeprojectMousePositionToWorld(Origin, Direction))
+	{
+		return GetAimLocation();
+	}
+
+	// premier sol (île, pont, décor) sous le curseur, sinon la surface de la mer
+	const FVector End = Origin + Direction * 100000.0f;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSCursorGround), false, this);
+	if (IsValid(CurrentStation))
+	{
+		Params.AddIgnoredActor(CurrentStation);
+	}
+	FHitResult Hit;
+	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+	if (GetWorld()->LineTraceSingleByObjectType(Hit, Origin, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+	{
+		// sous la mer (fond de la plage) : la surface
+		if (Ocean && Hit.ImpactPoint.Z < Ocean->GetSeaLevel() && !FMath::IsNearlyZero(Direction.Z))
+		{
+			return FMath::LinePlaneIntersection(Origin, End, FPlane(FVector(0.0f, 0.0f, Ocean->GetSeaLevel()), FVector::UpVector));
+		}
+		return Hit.ImpactPoint;
+	}
+	if (Ocean && !FMath::IsNearlyZero(Direction.Z))
+	{
+		return FMath::LinePlaneIntersection(Origin, End, FPlane(FVector(0.0f, 0.0f, Ocean->GetSeaLevel()), FVector::UpVector));
+	}
+	return GetAimLocation();
+}
+
+void AYSPlayerCharacter::UpdateStation()
+{
+	AYSShipStation* Station = CurrentStation;
+	if (!IsValid(Station))
 	{
 		return;
 	}
 
-	// tombé à l'eau, mort : la barre est lâchée
-	if (HasAuthority() && (bSwimming || !IsAlive()))
+	// tombé à l'eau (sauf place de la chaloupe prise en nageant), mort : le poste est lâché
+	if (HasAuthority() && ((bSwimming && !Station->AllowsSwimming()) || !IsAlive()))
 	{
-		StopPiloting(bSwimming ? TEXT("dans l'eau") : TEXT("mort"));
+		LeaveStation(bSwimming ? TEXT("dans l'eau") : TEXT("mort"), true);
 		return;
 	}
 
-	// gardé derrière la roue (le pont l'emporte déjà : seulement pour le placer et corriger une dérive) ; serveur et machine qui
+	// gardé sur le poste (le pont l'emporte déjà : seulement pour le placer et corriger une dérive) ; serveur et machine qui
 	// le contrôle, les autres reçoivent sa position
 	if (HasAuthority() || IsLocallyControlled())
 	{
-		const FVector Target = Helm->GetPilotFeetLocation() + FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+		const FVector Target = Station->GetOccupantFeetLocation() + FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 		if (!GetActorLocation().Equals(Target, 5.0f))
 		{
 			SetActorLocation(Target, false, nullptr, ETeleportType::TeleportPhysics);
 			GetCharacterMovement()->Velocity = FVector::ZeroVector;
 		}
+	}
+
+	if (!Station->UsesPilotInput())
+	{
+		return;
 	}
 
 	// commandes (Move ne reçoit rien quand aucune touche n'est enfoncée) envoyées au changement

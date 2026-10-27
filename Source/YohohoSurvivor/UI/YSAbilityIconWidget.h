@@ -7,6 +7,7 @@
 class UImage;
 class UProgressBar;
 class UTextBlock;
+class UTexture2D;
 class UYSAbilityComponent;
 
 /**
@@ -42,6 +43,9 @@ public:
 
 	/** Met à jour l'icône et la recharge à partir de la capacité (nullptr = caché) ; bBlocked = grisée bien que rechargée */
 	void Refresh(const UYSAbilityComponent* Ability, bool bBlocked = false);
+
+	/** Même affichage sans capacité (poste de bateau : tir de canon) : icône, teinte, secondes restantes / durée de la recharge */
+	void RefreshCooldown(UTexture2D* Icon, const FLinearColor& Tint, float Remaining, float Duration, bool bBlocked = false);
 
 private:
 

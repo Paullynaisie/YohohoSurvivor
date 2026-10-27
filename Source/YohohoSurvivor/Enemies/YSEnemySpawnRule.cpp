@@ -204,7 +204,7 @@ bool UYSEnemySpawnRule::FindSpawnLocation(const TArray<APawn*>& Players, float C
 	}
 
 	// jamais sur le bateau pirate (son pont est un sol WorldStatic au-dessus de l'eau)
-	if (Hit.GetActor() && Hit.GetActor()->IsA<AYSPirateShip>())
+	if (AYSPirateShip::GetShipOf(Hit.GetActor()))
 	{
 		return false;
 	}

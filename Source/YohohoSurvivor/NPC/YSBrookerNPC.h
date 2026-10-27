@@ -103,6 +103,13 @@ public:
 	/** Ce PNJ prend cet objet reposé dans sa zone (Brooker : objet avec une valeur en doublons ; Medic : cadavre) */
 	virtual bool AcceptsObject(const AYSInteractiveObject* Object) const;
 
+	/** Le PNJ prend des objets en ce moment (core d'un bateau absent : non) */
+	virtual bool IsAvailable() const { return true; }
+
+	/** Rôles (bulle sans objet porté) : Brooker (rachète les coffres), Medic (ressuscite) ; le core d'un bateau a les deux */
+	virtual bool IsBrooker() const { return true; }
+	bool IsMedic() const;
+
 	/**
 	 *  PNJ le plus proche de Location (nullptr si aucun) : sans objet, un Brooker (bMedic faux) ou un Medic (bMedic vrai) ;
 	 *  avec AcceptedObject, le plus proche qui accepte cet objet (Brooker pour un coffre, Medic pour un cadavre)

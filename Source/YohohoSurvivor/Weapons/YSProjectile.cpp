@@ -13,6 +13,7 @@
 #include "Enemies/YSFoeCharacter.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -94,18 +95,38 @@ void AYSProjectile::PostInitializeComponents()
 	ProjectileMovement->OnProjectileStop.AddDynamic(this, &AYSProjectile::OnProjectileStopped);
 }
 
+void AYSProjectile::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME_CONDITION(AYSProjectile, FlightIgnoredActor, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSProjectile, ForcedHeightAboveGround, COND_InitialOnly);
+}
+
 void AYSProjectile::BeginPlay()
 {
 	Super::BeginPlay();
 
 	SetLifeSpan(LifeTime);
 
+	// canon : le bateau qui tire (bastingage, postes) ne l'arrête pas
+	if (FlightIgnoredActor)
+	{
+		Collision->IgnoreActorWhenMoving(FlightIgnoredActor, true);
+		TArray<AActor*> Attached;
+		FlightIgnoredActor->GetAttachedActors(Attached, true, true);
+		for (AActor* Actor : Attached)
+		{
+			Collision->IgnoreActorWhenMoving(Actor, true);
+		}
+	}
+
 	// relief : hauteur au-dessus du sol prise au tir, gardée pendant tout le vol (même calcul sur toutes les machines)
 	float GroundZ = 0.0f;
 	if (bFollowGround && FindGroundZ(FVector2D(GetActorLocation().X, GetActorLocation().Y), GetActorLocation().Z, 0.0f, YSProjectile::InitialGroundSearch, GroundZ))
 	{
-		// au moins un peu plus que le rayon de la balle, pour ne pas frotter le sol
-		HeightAboveGround = FMath::Max(GetActorLocation().Z - GroundZ, Collision->GetScaledSphereRadius() + YSProjectile::MinGroundClearance);
+		// au moins un peu plus que le rayon de la balle, pour ne pas frotter le sol ; canon : hauteur imposée
+		HeightAboveGround = FMath::Max(ForcedHeightAboveGround >= 0.0f ? ForcedHeightAboveGround : GetActorLocation().Z - GroundZ, Collision->GetScaledSphereRadius() + YSProjectile::MinGroundClearance);
 		LastGroundZ = GroundZ;
 
 		// vol à plat : la hauteur ne vient que du sol

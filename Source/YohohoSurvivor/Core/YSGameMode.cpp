@@ -143,6 +143,12 @@ void AYSGameMode::ShipArrives(const TCHAR* Reason)
 	if (YSGameState && !YSGameState->IsShipPresent())
 	{
 		YSGameState->SetShipPresent(true);
+		// arrivé sans l'objectif (debug) : niveau 1, seuil du niveau suivant
+		if (YSGameState->GetShipLevel() == 0)
+		{
+			YSGameState->SetShipLevel(1);
+			YSGameState->SetDoubloons(0, GetDoubloonGoalForShipLevel(1));
+		}
 		UE_LOG(LogTemp, Log, TEXT("[YSShip] Le bateau arrive (%s)"), Reason);
 	}
 }
@@ -167,7 +173,7 @@ void AYSGameMode::TickShipBoarding()
 		}
 		++Total;
 		const UPrimitiveComponent* Base = Cast<UPrimitiveComponent>(Character->GetCharacterMovement()->GetMovementBaseObject());
-		const AYSPirateShip* Ship = Base ? Cast<AYSPirateShip>(Base->GetOwner()) : nullptr;
+		const AYSPirateShip* Ship = Base ? AYSPirateShip::GetShipOf(Base->GetOwner()) : nullptr;
 		const bool bOnShip = Ship && Ship->IsObjectiveShip() && !Base->GetName().Contains(TEXT("Gangplank"));
 		Aboard += bOnShip ? 1 : 0;
 	}
@@ -230,6 +236,12 @@ void AYSGameMode::InitGameState()
 		YSGameState->SetDoubloons(0, DoubloonGoal);
 		// bateau : là dès le début, ou seulement à l'objectif de doublons (GameMap)
 		YSGameState->SetShipPresent(!bShipArrivesAtDoubloonGoal);
+		// bateau là dès le début : niveau 1
+		if (!bShipArrivesAtDoubloonGoal)
+		{
+			YSGameState->SetShipLevel(1);
+			YSGameState->SetDoubloons(0, GetDoubloonGoalForShipLevel(1));
+		}
 	}
 }
 
@@ -775,14 +787,26 @@ void AYSGameMode::AddDoubloons(int32 Amount)
 		return;
 	}
 
-	const bool bWasReached = YSGameState->GetDoubloons() >= YSGameState->GetDoubloonGoal();
-	YSGameState->SetDoubloons(YSGameState->GetDoubloons() + Amount, DoubloonGoal);
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Doublons +%d -> %d / %d"), Amount, YSGameState->GetDoubloons(), DoubloonGoal);
-	if (!bWasReached && YSGameState->GetDoubloons() >= DoubloonGoal)
+	// XP du bateau : chaque seuil franchi = un niveau (le premier le fait arriver), la jauge repart de 0 avec le surplus
+	int32 Level = YSGameState->GetShipLevel();
+	int32 Total = YSGameState->GetDoubloons() + Amount;
+	while (Total >= GetDoubloonGoalForShipLevel(Level))
 	{
-		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Objectif atteint : %d doublons"), YSGameState->GetDoubloons());
-		ShipArrives(TEXT("objectif de doublons atteint"));
+		Total -= GetDoubloonGoalForShipLevel(Level);
+		++Level;
+		YSGameState->SetShipLevel(Level);
+		if (Level == 1)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Objectif atteint : bateau niveau 1"));
+			ShipArrives(TEXT("objectif de doublons atteint"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("[YSShip] Le bateau monte au niveau %d"), Level);
+		}
 	}
+	YSGameState->SetDoubloons(Total, GetDoubloonGoalForShipLevel(Level));
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Doublons +%d -> %d / %d (bateau niveau %d)"), Amount, Total, GetDoubloonGoalForShipLevel(Level), Level);
 }
 
 int32 AYSGameMode::GetPlayersInMatchCount() const

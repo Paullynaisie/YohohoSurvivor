@@ -41,7 +41,7 @@ void UYSObjectiveWidget::BuildWidgetTree()
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
 	WidgetTree->RootWidget = Column;
 
-	UTextBlock* TitleLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
+	TitleLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
 	YSObjective::StyleText(TitleLabel, TitleFontSize);
 	TitleLabel->SetText(Title);
 	UVerticalBoxSlot* TitleSlot = Column->AddChildToVerticalBox(TitleLabel);
@@ -89,4 +89,14 @@ void UYSObjectiveWidget::SetProgress(int32 Doubloons, int32 Goal)
 	Bar->SetPercent(Goal > 0 ? FMath::Clamp(static_cast<float>(Doubloons) / Goal, 0.0f, 1.0f) : 0.0f);
 	Bar->SetFillColorAndOpacity(Goal > 0 && Doubloons >= Goal ? CompletedBarColor : BarColor);
 	ValueLabel->SetText(FText::Format(NSLOCTEXT("YS", "ObjectiveValue", "{0} / {1}"), FText::AsNumber(Doubloons), FText::AsNumber(Goal)));
+}
+
+void UYSObjectiveWidget::SetShipLevel(int32 Level)
+{
+	if (!TitleLabel || Level == DisplayedShipLevel)
+	{
+		return;
+	}
+	DisplayedShipLevel = Level;
+	TitleLabel->SetText(Level > 0 ? FText::Format(ShipLevelTitleFormat, FText::AsNumber(Level)) : Title);
 }

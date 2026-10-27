@@ -22,7 +22,7 @@ class AYSWeapon;
 class UYSWeaponSet;
 class UYSPassive;
 class AYSInteractiveObject;
-class AYSShipHelm;
+class AYSShipStation;
 class AYSPlayerCorpse;
 class UTexture2D;
 class UWidgetComponent;
@@ -590,12 +590,15 @@ protected:
 	UFUNCTION()
 	void OnRep_CarriedObject();
 
-	/** Barre de bateau tenue (pilotage) : placé derrière la roue, mains dessus, armes rangées, ZQSD pilote le bateau */
-	UPROPERTY(ReplicatedUsing=OnRep_PilotedHelm, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Interaction")
-	TObjectPtr<AYSShipHelm> PilotedHelm;
+	/**
+	 *  Poste de bateau occupé (barre, nid d'pie, canonnerie, chaloupe) : gardé sur le poste, armes rangées ; barre : ZQSD pilote le
+	 *  bateau ; clics envoyés au poste (tir de canon, ping)
+	 */
+	UPROPERTY(ReplicatedUsing=OnRep_CurrentStation, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Interaction")
+	TObjectPtr<AYSShipStation> CurrentStation;
 
 	UFUNCTION()
-	void OnRep_PilotedHelm();
+	void OnRep_CurrentStation(AYSShipStation* PreviousStation);
 
 	/** Tags portés par le personnage (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Tags")
@@ -1209,22 +1212,34 @@ public:
 	/** Nage (eau profonde) : calculé sur chaque machine depuis la position (pieds sous la surface) ; plus ciblé par les NME */
 	bool IsSwimming() const { return bSwimming; }
 
-	/** Armes rangées (objet porté, nage, barre) : cachées, ni Ability ni attaque auto */
-	bool AreWeaponsStowed() const { return IsCarrying() || bSwimming || IsPiloting(); }
+	/** Armes rangées (objet porté, nage, poste de bateau) : cachées, ni Ability ni attaque auto */
+	bool AreWeaponsStowed() const { return IsCarrying() || bSwimming || IsAtStation(); }
 
-	/** À la barre d'un bateau */
-	bool IsPiloting() const { return PilotedHelm != nullptr; }
+	/** À un poste de bateau (barre, nid d'pie, canonnerie, chaloupe) */
+	bool IsAtStation() const { return CurrentStation != nullptr; }
 
-	AYSShipHelm* GetPilotedHelm() const { return PilotedHelm; }
+	AYSShipStation* GetCurrentStation() const { return CurrentStation; }
 
-	/** Prend la barre (serveur) : actions interrompues, armes rangées, placé derrière la roue */
-	void StartPiloting(AYSShipHelm* Helm);
+	/** S'installe au poste (serveur) : actions interrompues, armes rangées, placé sur le poste */
+	void EnterStation(AYSShipStation* Station);
 
-	/** Quitte la barre (serveur) ; le bateau garde son élan */
-	void StopPiloting(const TCHAR* Reason = TEXT(""));
+	/** Quitte le poste (serveur) ; bForce : même un poste qu'on ne quitte pas avec E (chaloupe éjectée, mort) */
+	void LeaveStation(const TCHAR* Reason = TEXT(""), bool bForce = false);
+
+	/** Téléporte le personnage (pieds sur FeetLocation, tourné vers Facing) : serveur et machine qui le contrôle */
+	void TeleportToFeetLocation(const FVector& FeetLocation, const FVector& Facing);
 
 	/** Debug (YSTakeHelm) : prend la barre du bateau pilotable le plus proche (Skip : le suivant par distance) */
 	void DebugTakeHelm(int32 Skip = 0);
+
+	/** Debug (YSUseStation) : utilise le poste libre le plus proche de ce type (Helm, Nest, Cannon, Longboat, Seat), où qu'il soit */
+	void DebugUseStation(const FString& Kind, int32 Skip = 0);
+
+	/** Debug (YSStationAction) : action au poste (0 = clic droit / tir, 1 = clic gauche / ping) vers un point du monde */
+	void DebugStationAction(uint8 Action, const FVector& AimLocation);
+
+	/** Debug (YSLeaveStation) : quitte le poste comme avec E */
+	void DebugLeaveStation();
 
 	/** Debug (YSHelmInput) : commandes de la barre tenues (X = Q / D, Y = Z / S) quand aucune touche n'est enfoncée */
 	void SetDebugHelmInput(const FVector2D& Input) { DebugHelmInput = Input; }
@@ -1297,20 +1312,35 @@ protected:
 	FVector2D DebugHelmInput = FVector2D::ZeroVector;
 
 	UFUNCTION(Server, Reliable)
-	void ServerDebugTakeHelm(int32 Skip);
+	void ServerDebugUseStation(const FString& Kind, int32 Skip);
 
 	/** Commandes de la barre envoyées au bateau (au changement) */
 	UFUNCTION(Server, Reliable)
 	void ServerSetHelmInput(FVector2D Input);
 
-	/** À la barre : commandes envoyées, pilote gardé derrière la roue (serveur et machine qui contrôle) */
-	void UpdatePiloting();
+	/** À un poste : commandes de la barre envoyées, joueur gardé sur le poste (serveur et machine qui contrôle) */
+	void UpdateStation();
 
-	/** Caméra : longueur du bras du Blueprint (à pied), part de la caméra du pilote (0 à 1, lissée) */
+	/** Clic au poste (machine qui contrôle) : vrai = pris par le poste (envoyé au serveur), les armes ne font rien */
+	bool SendStationAction(uint8 Action);
+
+	/** Action au poste (EYSStationAction) vers un point du monde */
+	UFUNCTION(Server, Reliable)
+	void ServerStationAction(uint8 Action, FVector_NetQuantize AimLocation);
+
+	/** Téléportation (sortie d'un poste, éjection de la chaloupe) sur la machine qui contrôle */
+	UFUNCTION(Client, Reliable)
+	void ClientTeleportToFeet(FVector_NetQuantize FeetLocation, FVector_NetQuantizeNormal Facing);
+
+	/** Point du monde sous le curseur (sol, pont, mer), pour le ping du nid d'pie ; sinon la visée */
+	FVector GetCursorGroundLocation() const;
+
+	/** Caméra : longueur du bras du Blueprint (à pied), part de la caméra du poste (0 à 1, lissée) */
 	float DefaultCameraArmLength = 0.0f;
 	float HelmCameraBlend = 0.0f;
 	float HelmCameraArmLength = 0.0f;
 	FVector HelmCameraOffset = FVector::ZeroVector;
+	float HelmCameraInterpSpeed = 2.0f;
 
 	/** MaxWalkSpeed = MoveSpeed x Move speed bonus x objet porté (serveur et client : prédiction) */
 	void UpdateMaxWalkSpeed();

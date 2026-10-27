@@ -245,9 +245,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime", meta=(ClampMin="0", Units="s", EditCondition="bOvertime"))
 	float IslandSinkDelayAfterLastWave = 30.0f;
 
-	/** Objectif commun : doublons à réunir en revendant des coffres au Brooker (jauge d'objectif du HUD) */
+	/**
+	 *  Objectif commun : doublons à réunir en revendant des coffres au Brooker (jauge d'objectif du HUD) = XP du BATEAU : le premier
+	 *  seuil le fait arriver (niveau 1), puis chaque seuil le fait monter d'un niveau (la jauge repart de 0, le surplus est gardé).
+	 *  Seuil du niveau N -> N + 1 = Doubloon Goal + Doubloon Goal Per Ship Level x N (comme l'XP des joueurs)
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="1"))
 	int32 DoubloonGoal = 100;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="0"))
+	int32 DoubloonGoalPerShipLevel = 50;
 
 	/** Carte au trésor qui apparaît au hasard au début de chaque jour (vide = aucune) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap")
@@ -386,6 +393,9 @@ public:
 
 	/** Doublons gagnés par l'équipe (vente au Brooker ; serveur) */
 	void AddDoubloons(int32 Amount);
+
+	/** Doublons pour passer du niveau de bateau Level au suivant */
+	int32 GetDoubloonGoalForShipLevel(int32 Level) const { return DoubloonGoal + DoubloonGoalPerShipLevel * FMath::Max(0, Level); }
 
 	/**
 	 *  Cadavre reposé chez le Medic (serveur) : son joueur (encore dans la partie) ressuscite debout sur Ground, même personnage,

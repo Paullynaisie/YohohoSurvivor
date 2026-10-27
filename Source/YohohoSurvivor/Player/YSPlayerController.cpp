@@ -15,6 +15,8 @@
 #include "Containers/Ticker.h"
 #include "GameFramework/Pawn.h"
 #include "UI/YSAbilityIconWidget.h"
+#include "Ship/YSCrowsNest.h"
+#include "Ship/YSShipStation.h"
 #include "UI/YSBloodlustStacksWidget.h"
 #include "UI/YSCharacterSelectWidget.h"
 #include "UI/YSUpgradeMenuWidget.h"
@@ -867,6 +869,7 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 	if (Objective)
 	{
 		Objective->SetProgress(YSGameState->GetDoubloons(), YSGameState->GetDoubloonGoal());
+		Objective->SetShipLevel(YSGameState->GetShipLevel());
 		Objective->SetVisibility(YSGameState->IsMatchStarted() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 }
@@ -1044,6 +1047,21 @@ void AYSPlayerController::UpdatePlayerHUD()
 		if (TreasureMap->GetGuideIndicatorLocation(GuideLocation))
 		{
 			AddIndicator(GuideLocation, TreasureMap->GetGuideIndicatorColor(), TreasureMap->GetGuideIndicatorIcon(), true);
+		}
+	}
+
+	// pings du nid d'pie : icône du joueur qui a pingé (couleur + visage), qui clignote ; au bord de l'écran hors écran
+	for (TActorIterator<AYSCrowsNest> It(GetWorld()); It && bInMatch; ++It)
+	{
+		FVector PingLocation;
+		APlayerState* Pinger = nullptr;
+		const AYSPlayerState* PingerState = It->GetActivePing(PingLocation, Pinger) ? Cast<AYSPlayerState>(Pinger) : nullptr;
+		if (PingerState && (PingerState != MyState || It->ShowsPingToPinger()) && It->IsPingBlinkVisible())
+		{
+			FLinearColor PingColor;
+			UTexture2D* PingFace = nullptr;
+			GetIcon(PingerState, PingColor, PingFace);
+			AddIndicator(PingLocation, PingColor, PingFace, true);
 		}
 	}
 
@@ -1393,7 +1411,22 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 		}
 	}
 
-	if (AbilityIcon)
+	// poste de bateau avec action (canonnerie : tir de canon) : une seule icône, à la place de celles des armes
+	const AYSPlayerCharacter* StationCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSShipStation* Station = StationCharacter ? StationCharacter->GetCurrentStation() : nullptr;
+	UTexture2D* StationIcon = nullptr;
+	FLinearColor StationIconTint = FLinearColor::White;
+	float StationRemaining = 0.0f;
+	float StationDuration = 0.0f;
+	if (AbilityIcon && IsValid(Station) && Station->GetActionIcon(StationIcon, StationIconTint, StationRemaining, StationDuration))
+	{
+		AbilityIcon->RefreshCooldown(StationIcon, StationIconTint, StationRemaining, StationDuration);
+		if (AutoAttackIcon)
+		{
+			AutoAttackIcon->Refresh(nullptr);
+		}
+	}
+	else if (AbilityIcon)
 	{
 		// icône de l'action de la main principale (droite), sinon de la main gauche
 		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
@@ -1790,6 +1823,31 @@ void AYSPlayerController::YSTakeHelm(int32 Skip)
 	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
 	{
 		PlayerCharacter->DebugTakeHelm(Skip);
+	}
+}
+
+void AYSPlayerController::YSUseStation(const FString& Kind, int32 Skip)
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->DebugUseStation(Kind, Skip);
+	}
+}
+
+void AYSPlayerController::YSStationAction(int32 Action, float X, float Y, float Z)
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->DebugStationAction(static_cast<uint8>(Action), FVector(X, Y, Z));
+		UE_LOG(LogTemp, Log, TEXT("[YSStation] action (debug) %d vers (%.0f, %.0f, %.0f)"), Action, X, Y, Z);
+	}
+}
+
+void AYSPlayerController::YSLeaveStation()
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->DebugLeaveStation();
 	}
 }
 
