@@ -344,6 +344,18 @@ bool UYSAbilityComponent::IsActionInProgress() const
 	return Elapsed >= 0.0f && Elapsed < Duration;
 }
 
+bool UYSAbilityComponent::IsBlockingLowerPriority() const
+{
+	// action forcée : bloque pendant toute sa durée (le clic ne la relance pas tant qu'elle est en cours)
+	if (IsForcedActionInProgress())
+	{
+		return true;
+	}
+	const float Elapsed = GetTimeSinceActivation();
+	const float Duration = GetPriorityBlockDuration() + (IsAkimboMainHand() ? AkimboFireDelay : 0.0f);
+	return Elapsed >= 0.0f && Elapsed < Duration;
+}
+
 int32 UYSAbilityComponent::GetPriorityRank() const
 {
 	const EYSActionPriority Priority = IsForcedActionInProgress() ? EYSActionPriority::Forced
@@ -409,7 +421,7 @@ bool UYSAbilityComponent::CanStartByPriority() const
 	GetPriorityGroup(Group);
 	for (const UYSAbilityComponent* Other : Group)
 	{
-		if (Other != this && Other->GetPriorityRank() < Rank && Other->IsActionInProgress())
+		if (Other != this && Other->GetPriorityRank() < Rank && Other->IsBlockingLowerPriority())
 		{
 			return false;
 		}

@@ -22,6 +22,7 @@ class AYSWeapon;
 class UYSWeaponSet;
 class UYSPassive;
 class AYSInteractiveObject;
+class AYSShipHelm;
 class AYSPlayerCorpse;
 class UTexture2D;
 class UWidgetComponent;
@@ -588,6 +589,13 @@ protected:
 
 	UFUNCTION()
 	void OnRep_CarriedObject();
+
+	/** Barre de bateau tenue (pilotage) : placé derrière la roue, mains dessus, armes rangées, ZQSD pilote le bateau */
+	UPROPERTY(ReplicatedUsing=OnRep_PilotedHelm, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Interaction")
+	TObjectPtr<AYSShipHelm> PilotedHelm;
+
+	UFUNCTION()
+	void OnRep_PilotedHelm();
 
 	/** Tags portés par le personnage (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Tags")
@@ -1201,8 +1209,25 @@ public:
 	/** Nage (eau profonde) : calculé sur chaque machine depuis la position (pieds sous la surface) ; plus ciblé par les NME */
 	bool IsSwimming() const { return bSwimming; }
 
-	/** Armes rangées (objet porté, nage) : cachées, ni Ability ni attaque auto */
-	bool AreWeaponsStowed() const { return IsCarrying() || bSwimming; }
+	/** Armes rangées (objet porté, nage, barre) : cachées, ni Ability ni attaque auto */
+	bool AreWeaponsStowed() const { return IsCarrying() || bSwimming || IsPiloting(); }
+
+	/** À la barre d'un bateau */
+	bool IsPiloting() const { return PilotedHelm != nullptr; }
+
+	AYSShipHelm* GetPilotedHelm() const { return PilotedHelm; }
+
+	/** Prend la barre (serveur) : actions interrompues, armes rangées, placé derrière la roue */
+	void StartPiloting(AYSShipHelm* Helm);
+
+	/** Quitte la barre (serveur) ; le bateau garde son élan */
+	void StopPiloting(const TCHAR* Reason = TEXT(""));
+
+	/** Debug (YSTakeHelm) : prend la barre du bateau pilotable le plus proche (Skip : le suivant par distance) */
+	void DebugTakeHelm(int32 Skip = 0);
+
+	/** Debug (YSHelmInput) : commandes de la barre tenues (X = Q / D, Y = Z / S) quand aucune touche n'est enfoncée */
+	void SetDebugHelmInput(const FVector2D& Input) { DebugHelmInput = Input; }
 
 	/** Prend l'objet dans ses mains (serveur) : actions en cours interrompues, armes cachées, plus lent */
 	void StartCarrying(AYSInteractiveObject* Object);
@@ -1264,6 +1289,28 @@ protected:
 
 	/** Interaction côté serveur */
 	void InteractOnServer();
+
+	/** Commandes de la barre (machine qui contrôle) : Z / S et D / Q reçus par Move cette image */
+	FVector2D HelmInput = FVector2D::ZeroVector;
+	uint64 LastHelmInputFrame = 0;
+	FVector2D LastSentHelmInput = FVector2D::ZeroVector;
+	FVector2D DebugHelmInput = FVector2D::ZeroVector;
+
+	UFUNCTION(Server, Reliable)
+	void ServerDebugTakeHelm(int32 Skip);
+
+	/** Commandes de la barre envoyées au bateau (au changement) */
+	UFUNCTION(Server, Reliable)
+	void ServerSetHelmInput(FVector2D Input);
+
+	/** À la barre : commandes envoyées, pilote gardé derrière la roue (serveur et machine qui contrôle) */
+	void UpdatePiloting();
+
+	/** Caméra : longueur du bras du Blueprint (à pied), part de la caméra du pilote (0 à 1, lissée) */
+	float DefaultCameraArmLength = 0.0f;
+	float HelmCameraBlend = 0.0f;
+	float HelmCameraArmLength = 0.0f;
+	FVector HelmCameraOffset = FVector::ZeroVector;
 
 	/** MaxWalkSpeed = MoveSpeed x Move speed bonus x objet porté (serveur et client : prédiction) */
 	void UpdateMaxWalkSpeed();

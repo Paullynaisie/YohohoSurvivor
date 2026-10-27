@@ -537,6 +537,12 @@ protected:
 	/** NME armé : un joueur touche la hitbox -> l'attaque de l'arme part si elle est prête (serveur) */
 	void TriggerMeleeAttack();
 
+	/**
+	 *  Joueur qui a déclenché l'attaque de mêlée en cours (serveur) : le NME reste tourné vers lui pendant l'attaque, même si sa
+	 *  cible de déplacement est un autre joueur (porteur d'objet attiré, joueur plus petit dont le centre est plus proche)
+	 */
+	TWeakObjectPtr<APawn> MeleeVictim;
+
 	/** Une attaque de mêlée est en cours sur cette machine (animation) */
 	bool IsMeleeAttacking() const;
 

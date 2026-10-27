@@ -5,6 +5,7 @@
 #include "Map/YSOcean.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Ship/YSPirateShip.h"
 #include "UI/YSInteractPromptWidget.h"
 
 namespace YSInteractiveObject
@@ -98,6 +99,7 @@ void AYSInteractiveObject::SetCarrier(AYSPlayerCharacter* NewCarrier, const FVec
 		DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 		SetActorLocationAndRotation(DropLocation, FRotator(0.0f, DropYaw, 0.0f));
 		SetActorScale3D(OriginalScale);
+		AttachToShipBelow();
 	}
 	ApplyCarryState();
 	ForceNetUpdate();
@@ -156,5 +158,20 @@ AYSInteractiveObject* AYSInteractiveObject::SpawnOnGround(UWorld* World, TSubcla
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	return World->SpawnActor<AYSInteractiveObject>(ObjectClass, FindGround(World, Location, nullptr), FRotator(0.0f, Yaw, 0.0f), Params);
+	AYSInteractiveObject* Object = World->SpawnActor<AYSInteractiveObject>(ObjectClass, FindGround(World, Location, nullptr), FRotator(0.0f, Yaw, 0.0f), Params);
+	if (Object)
+	{
+		Object->AttachToShipBelow();
+	}
+	return Object;
+}
+
+void AYSInteractiveObject::AttachToShipBelow()
+{
+	// posé sur le pont d'un bateau : il voyage avec lui (attachement répliqué)
+	if (AYSPirateShip* Ship = HasAuthority() ? AYSPirateShip::FindShipBelow(GetWorld(), GetActorLocation(), this) : nullptr)
+	{
+		AttachToActor(Ship, FAttachmentTransformRules::KeepWorldTransform);
+		UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s posé sur %s : voyage avec lui"), *GetName(), *Ship->GetName());
+	}
 }

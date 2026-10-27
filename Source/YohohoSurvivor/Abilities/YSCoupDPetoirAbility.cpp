@@ -177,6 +177,12 @@ bool UYSCoupDPetoirAbility::IsActionInProgress() const
 	return Super::IsActionInProgress() || (World && World->GetTimerManager().IsTimerActive(BurstTimer));
 }
 
+bool UYSCoupDPetoirAbility::IsBlockingLowerPriority() const
+{
+	const UWorld* World = GetWorld();
+	return Super::IsBlockingLowerPriority() || (World && World->GetTimerManager().IsTimerActive(BurstTimer));
+}
+
 bool UYSCoupDPetoirAbility::ComputeShot(const FVector& TargetLocation, FVector& OutMuzzle, FVector& OutDirection) const
 {
 	const AActor* Owner = GetOwner();

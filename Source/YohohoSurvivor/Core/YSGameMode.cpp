@@ -167,7 +167,8 @@ void AYSGameMode::TickShipBoarding()
 		}
 		++Total;
 		const UPrimitiveComponent* Base = Cast<UPrimitiveComponent>(Character->GetCharacterMovement()->GetMovementBaseObject());
-		const bool bOnShip = Base && Base->GetOwner() && Base->GetOwner()->IsA<AYSPirateShip>() && !Base->GetName().Contains(TEXT("Gangplank"));
+		const AYSPirateShip* Ship = Base ? Cast<AYSPirateShip>(Base->GetOwner()) : nullptr;
+		const bool bOnShip = Ship && Ship->IsObjectiveShip() && !Base->GetName().Contains(TEXT("Gangplank"));
 		Aboard += bOnShip ? 1 : 0;
 	}
 

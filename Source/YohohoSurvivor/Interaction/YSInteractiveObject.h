@@ -169,6 +169,9 @@ public:
 	/** Point de pose valable : au sol, hors de l'eau, au-dessus de la deadzone */
 	static bool IsSafeDropLocation(const UWorld* World, const FVector& Ground);
 
+	/** Posé sur le pont d'un bateau (serveur) : accroché à lui, il voyage avec lui */
+	void AttachToShipBelow();
+
 private:
 
 	FVector LastSafeLocation = FVector::ZeroVector;

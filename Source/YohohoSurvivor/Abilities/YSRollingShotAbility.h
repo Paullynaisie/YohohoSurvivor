@@ -80,6 +80,9 @@ public:
 	/** Priorités : en cours pendant la roulade, la visée et le recul des balles */
 	virtual float GetActionDuration() const override { return RollDuration + AimDuration + Super::GetActionDuration(); }
 
+	/** Bloque les actions moins prioritaires pendant la roulade, la visée et la rafale (pas pendant le recul) */
+	virtual float GetPriorityBlockDuration() const override { return RollDuration + AimDuration + Super::GetPriorityBlockDuration(); }
+
 	virtual bool BlocksAllWeapons() const override { return true; }
 
 	virtual bool IsGrantingInvulnerability() const override;

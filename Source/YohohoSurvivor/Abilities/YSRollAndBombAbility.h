@@ -51,6 +51,8 @@ public:
 	/** Priorités : en cours pendant la roulade (+ pause éventuelle), pas de recul */
 	virtual float GetActionDuration() const override { return RollDuration + AimDuration; }
 
+	virtual float GetPriorityBlockDuration() const override { return RollDuration + AimDuration; }
+
 #if WITH_EDITOR
 	virtual void GetUnusedProperties(TArray<FName>& OutNames) const override;
 #endif

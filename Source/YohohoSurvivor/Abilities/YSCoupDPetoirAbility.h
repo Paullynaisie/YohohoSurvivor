@@ -172,6 +172,11 @@ public:
 
 	virtual bool IsActionInProgress() const override;
 
+	/** Bloque les actions moins prioritaires pendant la rafale seulement (pas pendant le recul de la dernière balle) */
+	virtual float GetPriorityBlockDuration() const override { return GetBurstTime(); }
+
+	virtual bool IsBlockingLowerPriority() const override;
+
 	/**
 	 *  Balles par activation + upgrade Shoot system du type d'action :
 	 *  PewPew = Bullets Per Burst (balles de la rafale), Shotgun = Shotgun Ammo Per Shot (AMMO tirées d'un coup)

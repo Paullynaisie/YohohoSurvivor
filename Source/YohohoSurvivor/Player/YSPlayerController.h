@@ -270,6 +270,14 @@ public:
 	UFUNCTION(Exec)
 	void YSInteract();
 
+	/** Debug : prend la barre du bateau pilotable le plus proche (Skip : le suivant par distance), téléporté derrière la roue.  Ex : YSTakeHelm 1 */
+	UFUNCTION(Exec)
+	void YSTakeHelm(int32 Skip = 0);
+
+	/** Debug : commandes de la barre tenues comme des touches (Z / S = 1 / -1, D / Q = 1 / -1 ; 0 0 = relâchées).  Ex : YSHelmInput 1 0 */
+	UFUNCTION(Exec)
+	void YSHelmInput(float Throttle = 0.0f, float Steer = 0.0f);
+
 	/** Debug (hôte) : fait apparaître un coffre (BP_InteractiveObject_Chest) devant le personnage */
 	UFUNCTION(Exec)
 	void YSSpawnChest(float Distance = 150.0f);

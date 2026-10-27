@@ -242,6 +242,9 @@ public:
 	/** Priorités : l'attaque est « en cours » pendant toute son animation */
 	virtual float GetActionDuration() const override { return GetAttackDuration(); }
 
+	/** Bloque les actions moins prioritaires jusqu'à la fin de la coupe (pas pendant le retour à la pose) */
+	virtual float GetPriorityBlockDuration() const override { return FMath::Max(0.0f, GetActionDuration() - GetRecoverTime()); }
+
 	virtual bool IsAutomatic() const override { return true; }
 
 	/** Attaque auto : ralentit le PJ pendant la préparation et la coupe */

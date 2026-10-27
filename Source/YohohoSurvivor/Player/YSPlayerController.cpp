@@ -1785,6 +1785,23 @@ void AYSPlayerController::YSInteract()
 	}
 }
 
+void AYSPlayerController::YSTakeHelm(int32 Skip)
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->DebugTakeHelm(Skip);
+	}
+}
+
+void AYSPlayerController::YSHelmInput(float Throttle, float Steer)
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->SetDebugHelmInput(FVector2D(Steer, Throttle));
+		UE_LOG(LogTemp, Log, TEXT("[YSHelm] commandes (debug) Z/S %.0f, Q/D %.0f"), Throttle, Steer);
+	}
+}
+
 void AYSPlayerController::YSSpawnChest(float Distance)
 {
 	const APawn* MyPawn = GetPawn();

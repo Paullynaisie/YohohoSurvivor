@@ -1096,6 +1096,17 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		}
 	}
 
+	// attaque de mêlée en cours : reste tourné vers le joueur qui l'a déclenchée
+	const APawn* Victim = MeleeVictim.Get();
+	if (Victim && IsMeleeAttacking())
+	{
+		const FVector ToVictim = Victim->GetActorLocation() - GetActorLocation();
+		if (!ToVictim.IsNearlyZero())
+		{
+			ToTarget = FVector(ToVictim.X, ToVictim.Y, 0.0f);
+		}
+	}
+
 	const FRotator Desired(0.0f, ToTarget.Rotation().Yaw, 0.0f);
 	SetActorRotation(TurnSpeed > 0.0f ? FMath::RInterpTo(GetActorRotation(), Desired, DeltaSeconds, TurnSpeed) : Desired);
 }
@@ -1134,9 +1145,11 @@ APawn* AYSFoeCharacter::FindNearestPlayer(bool bIncludeSwimmers) const
 			continue;
 		}
 
-		// toujours le plus proche, mais un joueur qui porte un objet (coffre) compte comme N fois plus proche
+		// toujours le plus proche (distance au bord de sa capsule : un gros personnage collé au NME est bien le plus proche),
+		// mais un joueur qui porte un objet (coffre) compte comme N fois plus proche
 		const float Attraction = PlayerCharacter ? PlayerCharacter->GetFoeAttractionMultiplier() : 1.0f;
-		const float DistSq = FVector::DistSquared2D(Pawn->GetActorLocation(), GetActorLocation()) / FMath::Square(FMath::Max(Attraction, KINDA_SMALL_NUMBER));
+		const float EdgeDistance = FMath::Max(0.0f, FVector::Dist2D(Pawn->GetActorLocation(), GetActorLocation()) - Pawn->GetSimpleCollisionRadius());
+		const float DistSq = FMath::Square(EdgeDistance) / FMath::Square(FMath::Max(Attraction, KINDA_SMALL_NUMBER));
 		if (DistSq < NearestDistSq)
 		{
 			NearestDistSq = DistSq;
@@ -1226,14 +1239,24 @@ void AYSFoeCharacter::TriggerMeleeAttack()
 	}
 
 	// un joueur vivant (sa hurtbox, pas sa capsule) touche la hitbox de contact : déclencheur de l'attaque
+	// (le plus proche s'il y en a plusieurs : c'est vers lui que part le coup)
 	TArray<UPrimitiveComponent*> Touching;
 	Hitbox->GetOverlappingComponents(Touching);
-	const bool bPlayerInReach = Touching.ContainsByPredicate([this](const UPrimitiveComponent* Component)
+	AYSPlayerCharacter* Victim = nullptr;
+	for (UPrimitiveComponent* Component : Touching)
 	{
-		const AYSPlayerCharacter* Player = Component ? Cast<AYSPlayerCharacter>(Component->GetOwner()) : nullptr;
-		return Player && Component == Player->GetHurtbox() && Player->IsAlive() && Player->HasAnyMatchingGameplayTags(ContactHitTags);
-	});
-	if (!bPlayerInReach)
+		AYSPlayerCharacter* Player = Component ? Cast<AYSPlayerCharacter>(Component->GetOwner()) : nullptr;
+		if (Player && Component == Player->GetHurtbox() && Player->IsAlive() && Player->HasAnyMatchingGameplayTags(ContactHitTags)
+			&& (!Victim || FVector::DistSquared2D(Player->GetActorLocation(), GetActorLocation()) < FVector::DistSquared2D(Victim->GetActorLocation(), GetActorLocation())))
+		{
+			Victim = Player;
+		}
+	}
+	if (!Victim)
+	{
+		return;
+	}
+	if (IsMeleeAttacking())
 	{
 		return;
 	}
@@ -1241,6 +1264,18 @@ void AYSFoeCharacter::TriggerMeleeAttack()
 	// l'arme frappe avec les dégâts du NME (niveau, élite) ; pas d'upgrade pour les NME
 	TArray<UYSAutoSwingAbility*> MeleeActions;
 	GetMeleeActions(MeleeActions);
+	if (!MeleeActions.ContainsByPredicate([](const UYSAutoSwingAbility* Swing) { return Swing->IsReady(); }))
+	{
+		return;
+	}
+
+	// tourné tout de suite vers le joueur touché : le coup part vers lui (pas vers la cible de déplacement)
+	const FVector ToVictim = (Victim->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
+	if (!ToVictim.IsNearlyZero())
+	{
+		SetActorRotation(FRotator(0.0f, ToVictim.Rotation().Yaw, 0.0f));
+	}
+
 	bool bStarted = false;
 	EYSSwingAnim Anim = EYSSwingAnim::Main;
 	for (UYSAutoSwingAbility* Swing : MeleeActions)
@@ -1254,7 +1289,8 @@ void AYSFoeCharacter::TriggerMeleeAttack()
 	}
 	if (bStarted)
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s attaque (%.0f dégâts)"), *GetName(), ContactDamage);
+		MeleeVictim = Victim;
+		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s attaque %s (%.0f dégâts)"), *GetName(), *Victim->GetName(), ContactDamage);
 		MulticastMeleeAttack(Anim);
 	}
 }

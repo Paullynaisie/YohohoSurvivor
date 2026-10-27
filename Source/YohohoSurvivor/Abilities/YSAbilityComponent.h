@@ -160,6 +160,15 @@ public:
 	/** En cours sur cette machine, d'après la dernière activation vue ; en akimbo, la main principale l'est aussi pendant AkimboFireDelay */
 	virtual bool IsActionInProgress() const;
 
+	/**
+	 *  Partie de l'action qui bloque les actions moins prioritaires (CanStartByPriority) : par défaut toute l'action ; sans le recul
+	 *  des tirs ni le retour à la pose des coups (l'attaque auto peut repartir dès la dernière balle / la fin de la coupe)
+	 */
+	virtual float GetPriorityBlockDuration() const { return GetActionDuration(); }
+
+	/** Bloque les actions moins prioritaires sur cette machine (GetPriorityBlockDuration depuis l'activation, + AkimboFireDelay en akimbo) */
+	virtual bool IsBlockingLowerPriority() const;
+
 	/** Rang de priorité du type de cette action (0 = la plus prioritaire) */
 	int32 GetPriorityRank() const;
 
