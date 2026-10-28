@@ -45,6 +45,9 @@ private:
 	/** NME le plus proche dans le cône du regard, à portée de lancer */
 	AActor* FindAutoTarget() const;
 
+	/** Point visé : NME de FindAutoTarget, sinon droit devant à Max Throw Distance (clic maintenu sans cible, ou bForceWithoutFoe) */
+	bool FindAutoTargetLocation(FVector& OutTarget, bool bForceWithoutFoe = false) const;
+
 	/** En akimbo : la BombThrow de l'autre main si celle-ci est la principale */
 	UYSAutoBombThrowAbility* GetAkimboPartner() const;
 };

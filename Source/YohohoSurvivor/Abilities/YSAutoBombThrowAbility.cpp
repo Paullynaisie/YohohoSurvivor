@@ -31,35 +31,40 @@ void UYSAutoBombThrowAbility::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 
 	FVector Target;
-	if (const AActor* Foe = FindAutoTarget())
-	{
-		Target = Foe->GetActorLocation();
-	}
-	else if (IsAutoAttackTargetOptional())
-	{
-		// clic gauche maintenu sans cible : droit devant, à la distance max
-		Target = Character->GetActorLocation() + Character->GetActorForwardVector() * MaxThrowDistance;
-	}
-	else
-	{
-		return;
-	}
-
-	if (!ActivateOnServer(Target))
+	if (!FindAutoTargetLocation(Target) || !ActivateOnServer(Target))
 	{
 		return;
 	}
 	if (UYSAutoBombThrowAbility* Partner = GetAkimboPartner())
 	{
+		// cible recalculée au lancer de l'autre main : le regard (curseur) a pu bouger entre les deux bombes
 		TWeakObjectPtr<UYSAutoBombThrowAbility> WeakPartner = Partner;
-		GetWorld()->GetTimerManager().SetTimer(AkimboTimer, FTimerDelegate::CreateWeakLambda(this, [WeakPartner, Target]()
+		GetWorld()->GetTimerManager().SetTimer(AkimboTimer, FTimerDelegate::CreateWeakLambda(this, [WeakPartner]()
 		{
-			if (WeakPartner.IsValid())
+			FVector PartnerTarget;
+			if (WeakPartner.IsValid() && WeakPartner->FindAutoTargetLocation(PartnerTarget, true))
 			{
-				WeakPartner->ActivateOnServer(Target);
+				WeakPartner->ActivateOnServer(PartnerTarget);
 			}
 		}), FMath::Max(AkimboFireDelay, KINDA_SMALL_NUMBER), false);
 	}
+}
+
+bool UYSAutoBombThrowAbility::FindAutoTargetLocation(FVector& OutTarget, bool bForceWithoutFoe) const
+{
+	if (const AActor* Foe = FindAutoTarget())
+	{
+		OutTarget = Foe->GetActorLocation();
+		return true;
+	}
+	const APawn* Holder = GetHolderPawn();
+	if (Holder && (bForceWithoutFoe || IsAutoAttackTargetOptional()))
+	{
+		// clic gauche maintenu sans cible (ou 2e bombe de l'akimbo) : droit devant, à la distance max
+		OutTarget = Holder->GetActorLocation() + Holder->GetActorForwardVector() * MaxThrowDistance;
+		return true;
+	}
+	return false;
 }
 
 bool UYSAutoBombThrowAbility::GetAutoAttackSlowdown(float& OutMultiplier) const
