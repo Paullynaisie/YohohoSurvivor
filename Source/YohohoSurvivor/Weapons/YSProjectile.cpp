@@ -109,6 +109,12 @@ void AYSProjectile::BeginPlay()
 
 	SetLifeSpan(LifeTime);
 
+	// traverse tous les NME (DragonBreathAMMO, critique de Golden aiming)
+	if (bPierceAllTargets)
+	{
+		MaxHits = MAX_int32;
+	}
+
 	// canon : le bateau qui tire (bastingage, postes) ne l'arrête pas
 	if (FlightIgnoredActor)
 	{
@@ -136,7 +142,8 @@ void AYSProjectile::BeginPlay()
 			ProjectileMovement->Velocity = FlatDirection * Speed;
 		}
 	}
-	SetActorTickEnabled(HeightAboveGround >= 0.0f);
+	// Tick : suivi du relief ; serveur : NME bumpés et bombes touchés en passant
+	SetActorTickEnabled(HeightAboveGround >= 0.0f || HasAuthority());
 	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s tirée en (%.0f, %.0f, %.0f) : %.0f cm au-dessus du sol (suivi du relief %d), %d NME max"), *GetName(),
 		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, HeightAboveGround, HeightAboveGround >= 0.0f, MaxHits);
 }
@@ -202,6 +209,16 @@ void AYSProjectile::Tick(float DeltaSeconds)
 		}
 	}
 
+	// NME bumpés : en vol au-dessus de la balle, touchés en passant sous eux (serveur)
+	if (HasAuthority() && !bHasHit && !bRicochetPaused)
+	{
+		CheckBumpedFoeHits();
+		if (bHasHit || IsActorBeingDestroyed())
+		{
+			return;
+		}
+	}
+
 	if (HeightAboveGround < 0.0f || bRicochetPaused)
 	{
 		return;
@@ -242,6 +259,45 @@ void AYSProjectile::LifeSpanExpired()
 
 void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
+	HitTarget(OtherActor, SweepResult);
+}
+
+void AYSProjectile::CheckBumpedFoeHits()
+{
+	const FVector Location = GetActorLocation();
+	if (PreviousBumpCheckLocation.IsZero())
+	{
+		PreviousBumpCheckLocation = Location;
+	}
+	const FVector2D From(PreviousBumpCheckLocation.X, PreviousBumpCheckLocation.Y);
+	const FVector2D To(Location.X, Location.Y);
+	PreviousBumpCheckLocation = Location;
+
+	// NME bumpé (en vol, plus haut que la balle) : touché quand la balle passe sous lui, vu de dessus
+	const float Radius = Collision->GetScaledSphereRadius();
+	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
+	{
+		AYSFoeCharacter* Foe = *It;
+		if (!Foe->IsBumped() || Foe->IsDying() || HitActors.Contains(Foe) || !CanHit(Foe))
+		{
+			continue;
+		}
+		const FVector2D FoeLocation(Foe->GetActorLocation().X, Foe->GetActorLocation().Y);
+		const FVector2D Closest = FMath::ClosestPointOnSegment2D(FoeLocation, From, To);
+		if (FVector2D::Distance(Closest, FoeLocation) <= Foe->GetSimpleCollisionRadius() + Radius)
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s passe sous %s (bumpé)"), *GetName(), *Foe->GetName());
+			HitTarget(Foe, FHitResult(Foe, Foe->GetHurtbox(), Foe->GetActorLocation(), FVector::UpVector));
+			if (bHasHit || bRicochetPaused)
+			{
+				return;
+			}
+		}
+	}
+}
+
+void AYSProjectile::HitTarget(AActor* OtherActor, const FHitResult& SweepResult)
+{
 	// serveur autoritaire : la destruction est répliquée aux clients
 	if (!HasAuthority() || bHasHit || bRicochetPaused || !OtherActor || OtherActor == GetInstigator() || !CanHit(OtherActor) || HitActors.Contains(OtherActor))
 	{
@@ -277,13 +333,54 @@ void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent,
 		bCritical = true;
 		HitDamage *= DistanceShooter->GetCriticalDamageMultiplier();
 	}
+	AYSFoeCharacter* TargetFoe = Cast<AYSFoeCharacter>(OtherActor);
+	// Gros sel : la N-ième AMMO de l'éventail sur cette cible fait plus de dégâts (100 %, 110 %, 120 %...), critique à partir de N (Golden)
+	if (Volley.IsValid() && TargetFoe)
+	{
+		int32& VolleyHits = Volley->HitCounts.FindOrAdd(OtherActor);
+		HitDamage *= 1.0f + Volley->DamageBonusPerHit * VolleyHits;
+		++VolleyHits;
+		if (!bCritical && DistanceShooter && Volley->CriticalHitCount > 0 && VolleyHits >= Volley->CriticalHitCount)
+		{
+			bCritical = true;
+			HitDamage *= DistanceShooter->GetCriticalDamageMultiplier();
+		}
+	}
+	// Aiming : toutes les balles critiques ; Pierce : critique sur un NME en train d'être bumpé
+	if (!bCritical && DistanceShooter && TargetFoe && (bAlwaysCritical || (bCriticalOnBumped && TargetFoe->IsBumped())))
+	{
+		bCritical = true;
+		HitDamage *= DistanceShooter->GetCriticalDamageMultiplier();
+	}
 	// balle qui traverse plusieurs NME (Sniper, Roll bomb shot) : moins de dégâts à chaque NME après le premier (pas après un ricochet)
 	if (DistanceShooter && Cast<AYSFoeCharacter>(OtherActor))
 	{
 		HitDamage *= DistanceShooter->GetMultiHitDamageMultiplier(PierceHitIndex++);
 	}
-	const FPointDamageEvent DamageEvent(HitDamage, SweepResult, ShotDirection, bCritical ? UYSCriticalDamageType::StaticClass() : nullptr);
-	OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);
+	const TSubclassOf<UDamageType> DamageType = bCritical ? UYSCriticalDamageType::StaticClass() : nullptr;
+	if (bBumpsTargets)
+	{
+		// DragonBreathAMMO : le NME qui survit est bumpé dans le sens de vol
+		FYSBumpDamageEvent DamageEvent(HitDamage, ShotDirection, DamageType);
+		DamageEvent.HitInfo = SweepResult;
+		DamageEvent.Distance = BumpDistance;
+		DamageEvent.ApexHeight = BumpApexHeight;
+		DamageEvent.Duration = BumpDuration;
+		DamageEvent.SpinTurns = BumpSpinTurns;
+		DamageEvent.bBumpElites = bBumpElites;
+		OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);
+	}
+	else
+	{
+		const FPointDamageEvent DamageEvent(HitDamage, SweepResult, ShotDirection, DamageType);
+		OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);
+	}
+
+	// shoot system Explosif : explosion à l'impact (critique si l'impact l'est), ou mine collée au NME (MineShooter)
+	if (TargetFoe && (Explosion.ExplosionClass || Explosion.StickyMineClass))
+	{
+		SpawnExplosion(TargetFoe, bCritical);
+	}
 
 	// Captain AMMO : le dernier NME touché (encore en vie) devient le NME marqué du tireur
 	AYSFoeCharacter* HitFoe = bMarksTarget ? Cast<AYSFoeCharacter>(OtherActor) : nullptr;
@@ -430,8 +527,45 @@ void AYSProjectile::OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* Ot
 	{
 		UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s arrêtée par %s en (%.0f, %.0f, %.0f), sol %.0f"), *GetName(), OtherActor ? *OtherActor->GetName() : TEXT("?"),
 			Hit.ImpactPoint.X, Hit.ImpactPoint.Y, Hit.ImpactPoint.Z, LastGroundZ);
+		// shoot system Explosif : explose aussi contre le décor
+		if (!bHasHit && Explosion.ExplosionClass)
+		{
+			SpawnExplosion(nullptr, false);
+		}
+		bHasHit = true;
 		Destroy();
 	}
+}
+
+void AYSProjectile::SpawnExplosion(AActor* Target, bool bCritical)
+{
+	// MineShooter : sur un NME, une mine collée à la place de l'explosion
+	const bool bStick = Target && Explosion.StickyMineClass;
+	const TSubclassOf<AYSPlayerBomb> SpawnClass = bStick ? Explosion.StickyMineClass : Explosion.ExplosionClass;
+	if (!SpawnClass)
+	{
+		return;
+	}
+
+	const FTransform SpawnTransform(FRotator::ZeroRotator, GetActorLocation());
+	AYSPlayerBomb* Bomb = GetWorld()->SpawnActorDeferred<AYSPlayerBomb>(SpawnClass, SpawnTransform, GetOwner(), GetInstigator(), ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!Bomb)
+	{
+		return;
+	}
+	Bomb->SetDamage(Explosion.Damage);
+	Bomb->SetRadiusMultiplier(Explosion.RadiusMultiplier);
+	if (bStick)
+	{
+		Bomb->SetStuckTo(Target, Explosion.StickyFuse, Explosion.StickyBonusPerMine);
+	}
+	else
+	{
+		Bomb->SetInstant(bCritical);
+	}
+	Bomb->FinishSpawning(SpawnTransform);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s : %s %s en (%.0f, %.0f, %.0f), %.0f dégâts, rayon x%.2f%s"), *GetName(), bStick ? TEXT("mine collée sur") : TEXT("explosion"),
+		Target ? *Target->GetName() : TEXT("(décor)"), GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, Explosion.Damage, Explosion.RadiusMultiplier, bCritical ? TEXT(", critique") : TEXT(""));
 }
 
 bool AYSProjectile::CanHit(const AActor* Target) const

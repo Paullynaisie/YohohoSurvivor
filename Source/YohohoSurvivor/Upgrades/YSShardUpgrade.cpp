@@ -39,15 +39,19 @@ namespace YSShardUpgrades
 		return Action->WeaponType != EYSWeaponType::Gun || !Action->IsAutomatic();
 	}
 
-	/** Shoot system : attaque auto de Gun PewPew, Shotgun ou Sniper */
-	const UYSCoupDPetoirAbility* FindShootSystemGun(const AYSPlayerCharacter* Character)
+	/** Shoot system : attaque auto avec un shoot system (Gun PewPew / Pierce / Explosif, BombThrow du Saboteur) */
+	const UYSAbilityComponent* FindShootSystemGun(const AYSPlayerCharacter* Character, EYSShootSystem* OutSystem = nullptr)
 	{
-		return Cast<UYSCoupDPetoirAbility>(FindAction(Character, true, [](const UYSAbilityComponent* Action)
+		const UYSAbilityComponent* Found = FindAction(Character, true, [](const UYSAbilityComponent* Action)
 		{
-			const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(Action);
-			return Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->IsAutomatic()
-				&& (Gun->ShootSystem == EYSShootSystem::PewPew || Gun->ShootSystem == EYSShootSystem::Shotgun || Gun->ShootSystem == EYSShootSystem::Sniper);
-		}));
+			EYSShootSystem System;
+			return Action->GetShootSystem(System);
+		});
+		if (Found && OutSystem)
+		{
+			Found->GetShootSystem(*OutSystem);
+		}
+		return Found;
 	}
 
 	/** Summon system : Ability d'invocation (Summon the crew, Allez-y mes minions !) */
@@ -86,15 +90,15 @@ float UYSUpShard::GetIndexFor(const AYSPlayerCharacter* Character) const
 	{
 		return Index;
 	}
-	const UYSCoupDPetoirAbility* Gun = YSShardUpgrades::FindShootSystemGun(Character);
-	if (!Gun)
+	EYSShootSystem System = EYSShootSystem::PewPew;
+	if (!YSShardUpgrades::FindShootSystemGun(Character, &System))
 	{
 		return Index;
 	}
-	switch (Gun->ShootSystem)
+	switch (System)
 	{
-	case EYSShootSystem::Shotgun:	return ShotgunIndex;
-	case EYSShootSystem::Sniper:	return SniperIndex;
+	case EYSShootSystem::Pierce:	return SniperIndex;
+	case EYSShootSystem::Explosive:	return ExplosiveIndex;
 	default:						return Index;
 	}
 }
@@ -151,7 +155,14 @@ void UYSUpShard::Apply(AYSPlayerCharacter* Character, int32 Level) const
 	case EYSShardStat::Armor:			Character->SetArmor(YSShardUpgrades::Evaluate(this, 0.0f, Level, LevelIndex)); break;
 	case EYSShardStat::CdReduction:		Character->SetCooldownMultiplier(EYSActionSlot::Ability, YSShardUpgrades::Evaluate(this, 1.0f, Level, LevelIndex)); break;
 	case EYSShardStat::AtkSpeed:		Character->SetCooldownMultiplier(EYSActionSlot::AutoAtk, YSShardUpgrades::Evaluate(this, 1.0f, Level, LevelIndex)); break;
-	case EYSShardStat::ShootSystem:		Character->SetShootSystemBonus(EYSActionSlot::AutoAtk, YSShardUpgrades::Evaluate(this, 0.0f, Level, LevelIndex)); break;
+	case EYSShardStat::ShootSystem:
+	{
+		// Explosif : bonus de rayon continu (x (1 + Explosive Index x niveau)), pas l'équation tronquée des balles
+		EYSShootSystem System = EYSShootSystem::PewPew;
+		YSShardUpgrades::FindShootSystemGun(Character, &System);
+		Character->SetShootSystemBonus(EYSActionSlot::AutoAtk, System == EYSShootSystem::Explosive ? LevelIndex * Level : YSShardUpgrades::Evaluate(this, 0.0f, Level, LevelIndex));
+		break;
+	}
 	case EYSShardStat::SummonSystem:	Character->SetSummonSystemBonus(YSShardUpgrades::Evaluate(this, 0.0f, Level, LevelIndex)); break;
 	case EYSShardStat::CritDamage:
 		// multiplicateur de base du personnage (1.5, Marksman : 2) à la place de Base : dégâts critiques = base + Index x Lvl
@@ -224,24 +235,26 @@ bool UYSUpShard::GetDisplayValue(const AYSPlayerCharacter* Character, int32 Leve
 	}
 	case EYSShardStat::ShootSystem:
 	{
-		const UYSCoupDPetoirAbility* Gun = YSShardUpgrades::FindShootSystemGun(Character);
-		if (!Gun)
+		EYSShootSystem System = EYSShootSystem::PewPew;
+		const UYSAbilityComponent* Action = YSShardUpgrades::FindShootSystemGun(Character, &System);
+		const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(Action);
+		if (!Action)
 		{
 			return false;
 		}
-		switch (Gun->ShootSystem)
+		switch (System)
 		{
-		case EYSShootSystem::Shotgun:
-			OutLabel = NSLOCTEXT("YS", "ShardShotgunLabel", "Shotgun AMMO par tir");
-			OutValue = YSShardUpgrades::Evaluate(this, Gun->ShotgunAmmoPerShot, Level, LevelIndex);
+		case EYSShootSystem::Explosive:
+			OutLabel = NSLOCTEXT("YS", "ShardExplosiveLabel", "Rayon des explosions (x)");
+			OutValue = 1.0f + LevelIndex * Level;
 			break;
-		case EYSShootSystem::Sniper:
+		case EYSShootSystem::Pierce:
 			OutLabel = NSLOCTEXT("YS", "ShardSniperLabel", "NME touchés par balle");
-			OutValue = YSShardUpgrades::Evaluate(this, Gun->SniperMaxHits, Level, LevelIndex);
+			OutValue = YSShardUpgrades::Evaluate(this, Gun ? Gun->PierceMaxHits : 1, Level, LevelIndex);
 			break;
 		default:
 			OutLabel = NSLOCTEXT("YS", "ShardPewPewLabel", "Balles par rafale");
-			OutValue = YSShardUpgrades::Evaluate(this, Gun->BulletsPerBurst, Level, LevelIndex);
+			OutValue = YSShardUpgrades::Evaluate(this, Gun ? Gun->BulletsPerBurst : 1, Level, LevelIndex);
 			break;
 		}
 		return true;

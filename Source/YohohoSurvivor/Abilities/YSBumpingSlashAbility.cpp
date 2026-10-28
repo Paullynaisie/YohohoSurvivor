@@ -5,6 +5,8 @@ UYSBumpingSlashAbility::UYSBumpingSlashAbility()
 {
 	DisplayName = NSLOCTEXT("YS", "BumpingSlash", "Bumping Slash");
 	bDashInvulnerable = false;
+	// la recharge de l'attaque auto est rendue (Quartermaster, Pull du Harquebusier)
+	bResetAutoAttackOnUse = true;
 }
 
 void UYSBumpingSlashAbility::DealSwingDamage(AActor* Target, float FinalDamage, const FVector& ShotDirection, AController* InstigatorController, bool bCritical)

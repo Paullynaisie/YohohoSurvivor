@@ -157,10 +157,10 @@ void AYSShipCannon::ServerHandleAction(AYSPlayerCharacter* Character, EYSStation
 	const FVector MuzzleLocation = Muzzle->GetComponentLocation();
 	AYSPirateShip* Ship = GetShip();
 
-	// comme le Shotgun : toutes les AMMO d'un coup, chacune au hasard dans la dispersion
+	// comme le Shotgun : toutes les AMMO d'un coup, en éventail régulier de -Spread à +Spread
 	for (int32 Index = 0; Index < AmmoPerShot; ++Index)
 	{
-		const float Yaw = BaseYaw + FMath::FRandRange(-Spread, Spread);
+		const float Yaw = BaseYaw + (AmmoPerShot > 1 ? FMath::Lerp(-Spread, Spread, static_cast<float>(Index) / (AmmoPerShot - 1)) : 0.0f);
 		const FTransform SpawnTransform(FRotator(0.0f, Yaw, 0.0f), MuzzleLocation, FVector(ProjectileScale));
 		AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ProjectileClass, SpawnTransform, Character, Character, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 		if (!Projectile)

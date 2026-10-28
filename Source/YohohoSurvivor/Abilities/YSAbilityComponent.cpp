@@ -188,8 +188,46 @@ bool UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
 	bLastActivationForced = false;
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s activée à %.2f, prête à %.2f"), *GetOwner()->GetName(), *GetName(), Now, ReadyServerTime);
 	ExecuteAbility(TargetLocation);
+	ScheduleAutoAttackReset();
 	MulticastActivated();
 	return true;
+}
+
+void UYSAbilityComponent::ScheduleAutoAttackReset()
+{
+	if (!bResetAutoAttackOnUse || !GetWorld())
+	{
+		return;
+	}
+
+	auto ResetAutoAttacks = [this]()
+	{
+		const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+		for (const AYSWeapon* Weapon : Character ? Character->GetHeldWeapons() : TArray<AYSWeapon*>())
+		{
+			if (UYSAbilityComponent* AutoAction = Weapon ? Weapon->GetAutoAction() : nullptr)
+			{
+				AutoAction->ResetCooldown();
+			}
+		}
+	};
+	if (AutoAttackResetDelay <= 0.0f)
+	{
+		ResetAutoAttacks();
+		return;
+	}
+	GetWorld()->GetTimerManager().SetTimer(AutoAttackResetTimer, FTimerDelegate::CreateWeakLambda(this, ResetAutoAttacks), AutoAttackResetDelay, false);
+}
+
+float UYSAbilityComponent::GetExplosiveRadiusMultiplier() const
+{
+	EYSShootSystem System;
+	if (!GetShootSystem(System) || System != EYSShootSystem::Explosive)
+	{
+		return 1.0f;
+	}
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	return 1.0f + (Character ? FMath::Max(0.0f, Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot())) : 0.0f);
 }
 
 void UYSAbilityComponent::ClientActivationRejected_Implementation(double ServerReadyTime)
@@ -275,6 +313,7 @@ bool UYSAbilityComponent::ActivateForcedOnServer(const FVector& TargetLocation)
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s FORCÉE à %.2f (dégâts x %.2f%s), prête à %.2f"), *GetOwner()->GetName(), *GetName(), Now,
 		ForcedDamageMultiplier, PendingForced.bResetCooldown ? TEXT(", recharge rendue") : TEXT(""), ReadyTime);
 	ExecuteAbility(TargetLocation);
+	ScheduleAutoAttackReset();
 	ReadyServerTime = ReadyTime;
 	MulticastForcedActivated();
 	return true;
@@ -504,6 +543,13 @@ void UYSAbilityComponent::MulticastCancelled_Implementation()
 #if WITH_EDITOR
 void UYSAbilityComponent::GetUnusedProperties(TArray<FName>& OutNames) const
 {
-	// toutes les actions ont leur icône dans l'UI (Ability et attaque auto) : rien de caché ici
+	// toutes les actions ont leur icône dans l'UI (Ability et attaque auto) ; une attaque auto ne rend pas sa propre recharge
+	if (IsAutomatic())
+	{
+		OutNames.Append({
+			GET_MEMBER_NAME_CHECKED(UYSAbilityComponent, bResetAutoAttackOnUse),
+			GET_MEMBER_NAME_CHECKED(UYSAbilityComponent, AutoAttackResetDelay),
+		});
+	}
 }
 #endif

@@ -7,6 +7,7 @@
 #include "Engine/OverlapResult.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "GameFramework/GameStateBase.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Map/YSGroundZoneComponent.h"
@@ -68,6 +69,86 @@ void AYSPlayerBomb::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME_CONDITION(AYSPlayerBomb, Damage, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AYSPlayerBomb, Flight, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AYSPlayerBomb, RadiusMultiplier, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSPlayerBomb, bInstant, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSPlayerBomb, StuckActor, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSPlayerBomb, StuckOffset, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSPlayerBomb, StuckFuse, COND_InitialOnly);
+	DOREPLIFETIME(AYSPlayerBomb, StuckExplodeServerTime);
+}
+
+double AYSPlayerBomb::GetServerWorldTime() const
+{
+	const AGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	return GameState ? GameState->GetServerWorldTimeSeconds() : (GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0);
+}
+
+void AYSPlayerBomb::SetStuckTo(AActor* Target, float Fuse, float BonusPerMine)
+{
+	StuckActor = Target;
+	StuckFuse = FMath::Max(Fuse, 0.0f);
+	StuckBonusPerMine = BonusPerMine;
+
+	// endroit au hasard sur le corps : autour du cylindre de collision, entre le bas et le haut du torse
+	float Radius = 40.0f;
+	float HalfHeight = 80.0f;
+	if (Target)
+	{
+		Target->GetSimpleCollisionCylinder(Radius, HalfHeight);
+	}
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	StuckOffset = FVector(FMath::Cos(Angle) * Radius, FMath::Sin(Angle) * Radius, FMath::FRandRange(-0.3f, 0.6f) * HalfHeight);
+	if (Target)
+	{
+		StuckOffset = Target->GetActorQuat().UnrotateVector(StuckOffset);
+	}
+}
+
+void AYSPlayerBomb::AttachToStuckActor()
+{
+	if (!StuckActor || GetAttachParentActor() == StuckActor)
+	{
+		return;
+	}
+	// décalage dans le repère du porteur sans son échelle (élite x3), placé en coordonnées monde puis accroché tel quel
+	SetActorLocationAndRotation(StuckActor->GetActorLocation() + StuckActor->GetActorQuat().RotateVector(StuckOffset),
+		FRotator(FMath::FRandRange(-40.0f, 40.0f), FMath::FRandRange(0.0f, 360.0f), FMath::FRandRange(-40.0f, 40.0f)));
+	AttachToActor(StuckActor, FAttachmentTransformRules::KeepWorldTransform);
+}
+
+TArray<AYSPlayerBomb*> AYSPlayerBomb::GetStuckGroup() const
+{
+	TArray<AYSPlayerBomb*> Group;
+	if (!StuckActor)
+	{
+		return Group;
+	}
+	TArray<AActor*> Attached;
+	StuckActor->GetAttachedActors(Attached, true, false);
+	for (AActor* Actor : Attached)
+	{
+		AYSPlayerBomb* Mine = Cast<AYSPlayerBomb>(Actor);
+		if (Mine && Mine->IsStuckOn(StuckActor) && Mine->GetInstigator() == GetInstigator())
+		{
+			Group.AddUnique(Mine);
+		}
+	}
+	Group.AddUnique(const_cast<AYSPlayerBomb*>(this));
+	return Group;
+}
+
+void AYSPlayerBomb::ExplodeStuckGroup()
+{
+	TArray<AYSPlayerBomb*> Group = GetStuckGroup();
+	const float Multiplier = 1.0f + StuckBonusPerMine * Group.Num();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s : %d mine(s) collée(s) sur %s explosent, dégâts x%.2f"), *GetName(), Group.Num(),
+		StuckActor ? *StuckActor->GetName() : TEXT("?"), Multiplier);
+	for (AYSPlayerBomb* Mine : Group)
+	{
+		Mine->Damage *= Multiplier;
+		// le porteur peut être détruit pendant l'explosion : on décroche la mine d'abord
+		Mine->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+		Mine->Explode();
+	}
 }
 
 void AYSPlayerBomb::SetThrow(const FVector& Start, const FVector& Target, float Duration, float ApexHeight)
@@ -98,9 +179,36 @@ void AYSPlayerBomb::BeginPlay()
 	BombMaterialInstance = BombMaterial ? Mesh->CreateDynamicMaterialInstance(0, BombMaterial) : nullptr;
 	SetFuseAlpha(0.0f);
 
-	// rayon de l'explosion : disque posé sur le relief
-	ExplosionZone->SetVisibility(bShowZone);
-	if (bShowZone)
+	// mine collée : accrochée au NME (sur chaque machine) ; explosion à la fin du délai, repoussé à chaque mine collée sur lui
+	if (IsStuck())
+	{
+		AttachToStuckActor();
+		if (HasAuthority())
+		{
+			StuckExplodeServerTime = GetServerWorldTime() + StuckFuse;
+			for (AYSPlayerBomb* Mine : GetStuckGroup())
+			{
+				Mine->StuckExplodeServerTime = StuckExplodeServerTime;
+				Mine->StuckBonusPerMine = StuckBonusPerMine;
+				Mine->ForceNetUpdate();
+			}
+		}
+	}
+
+	// explosion immédiate (balle explosive, Rocket jump) : la bombe elle-même n'apparaît pas
+	if (bInstant)
+	{
+		TInlineComponentArray<UPrimitiveComponent*> Primitives(this);
+		for (UPrimitiveComponent* Primitive : Primitives)
+		{
+			Primitive->SetVisibility(false);
+		}
+	}
+
+	// rayon de l'explosion : disque posé sur le relief (pas pour une explosion immédiate ni une mine collée, qui bouge)
+	const bool bZone = bShowZone && !bInstant && !IsStuck();
+	ExplosionZone->SetVisibility(bZone);
+	if (bZone)
 	{
 		ExplosionZone->SetWorldLocation(GetExplosionCenter());
 		ExplosionZone->BuildZone(GetExplosionRadius(), YSPlayerBomb::ZoneHeight);
@@ -134,6 +242,23 @@ void AYSPlayerBomb::Tick(float DeltaSeconds)
 	if (ExplosionStartTime >= 0.0)
 	{
 		UpdateExplosion();
+		return;
+	}
+
+	// mine collée : lueur jusqu'à l'explosion ; le serveur fait exploser tout le groupe à la fin du délai ou à la mort du porteur
+	if (IsStuck() || (HasAuthority() && StuckFuse > 0.0f && StuckActor == nullptr && StuckExplodeServerTime > 0.0))
+	{
+		AttachToStuckActor();
+		const float Remaining = static_cast<float>(StuckExplodeServerTime - GetServerWorldTime());
+		SetFuseAlpha(StuckFuse > 0.0f ? 1.0f - Remaining / StuckFuse : 1.0f);
+		if (HasAuthority() && !bExploded)
+		{
+			const AYSFoeCharacter* Foe = Cast<AYSFoeCharacter>(StuckActor);
+			if (!IsValid(StuckActor) || (Foe && (Foe->IsDying() || Foe->GetHealth() <= 0.0f)) || Remaining <= 0.0f)
+			{
+				ExplodeStuckGroup();
+			}
+		}
 		return;
 	}
 

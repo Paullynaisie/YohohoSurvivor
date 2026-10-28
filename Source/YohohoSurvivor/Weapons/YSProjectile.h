@@ -3,11 +3,38 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GameplayTagContainer.h"
+#include "Weapons/YSPlayerBomb.h"
 #include "YSProjectile.generated.h"
 
 class UProjectileMovementComponent;
 class USphereComponent;
 class UStaticMeshComponent;
+
+/**
+ *  Éventail tiré d'un coup (Shotgun) avec l'upgrade Gros sel : partagé par ses AMMO (serveur). La N-ième AMMO qui touche une même
+ *  cible fait x (1 + Damage Bonus Per Hit x (N - 1)) ; à partir de Critical Hit Count AMMO sur la même cible (0 = jamais), critique.
+ */
+struct FYSShotVolley
+{
+	float DamageBonusPerHit = 0.0f;
+	int32 CriticalHitCount = 0;
+	TMap<TWeakObjectPtr<AActor>, int32> HitCounts;
+};
+
+/** Explosion d'une balle (shoot system Explosif), donnée par l'action au tir (serveur) */
+struct FYSProjectileExplosion
+{
+	/** Explosion à l'impact (NME ou décor) */
+	TSubclassOf<AYSPlayerBomb> ExplosionClass;
+	float Damage = 0.0f;
+	float RadiusMultiplier = 1.0f;
+
+	/** MineShooter : sur un NME, mine collée à la place de l'explosion (le décor : explosion normale) */
+	TSubclassOf<AYSPlayerBomb> StickyMineClass;
+	float StickyFuse = 5.0f;
+	/** Dégâts en plus par mine collée sur le NME au moment de l'explosion (MineShooter ++) */
+	float StickyBonusPerMine = 0.0f;
+};
 
 /**
  *  Projectile en ligne droite (à hauteur constante au-dessus du relief si bFollowGround). Touche uniquement les acteurs portant un des HitTags
@@ -115,7 +142,59 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="AMMO|Bomb")
 	bool bDetonatesBombs = false;
 
+	/** La balle traverse tous les NME (aucun maximum ; ex. DragonBreathAMMO) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Pierce")
+	bool bPierceAllTargets = false;
+
+	/** Chaque NME touché (qui survit) est bumpé : lancé en cloche, sans comportement pendant le vol (ex. DragonBreathAMMO) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Bump")
+	bool bBumpsTargets = false;
+
+	/** Bump : distance (à plat, dans le sens de vol de la balle) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Bump", meta=(ClampMin="0", Units="Centimeters", EditCondition="bBumpsTargets"))
+	float BumpDistance = 800.0f;
+
+	/** Bump : sommet de la cloche au-dessus du plus haut des deux points */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Bump", meta=(ClampMin="1", Units="Centimeters", EditCondition="bBumpsTargets"))
+	float BumpApexHeight = 300.0f;
+
+	/** Bump : durée du vol */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Bump", meta=(ClampMin="0.05", Units="Seconds", EditCondition="bBumpsTargets"))
+	float BumpDuration = 1.0f;
+
+	/** Bump : tours sur lui-même pendant le vol */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Bump", meta=(ClampMin="0", EditCondition="bBumpsTargets"))
+	float BumpSpinTurns = 1.0f;
+
+	/** Bump : les élites sont bumpés aussi (sinon pushback normal) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Bump", meta=(EditCondition="bBumpsTargets"))
+	bool bBumpElites = true;
+
 private:
+
+	/** Shoot system Pierce : critique sur un NME en train d'être bumpé (fixé au tir) */
+	bool bCriticalOnBumped = false;
+
+	/** Toujours critique (Aiming du Harquebusier ; fixé au tir) */
+	bool bAlwaysCritical = false;
+
+	/** Gros sel : éventail partagé avec les autres AMMO du même tir (serveur) */
+	TSharedPtr<FYSShotVolley> Volley;
+
+	/** Shoot system Explosif (serveur) */
+	FYSProjectileExplosion Explosion;
+
+	/** Explosion (ou mine collée) à la position de la balle : sur Target (NME touché) ou le décor (Target nul) ; serveur */
+	void SpawnExplosion(AActor* Target, bool bCritical);
+
+	/** Dégâts à une cible touchée (chevauchement, ou NME bumpé survolé ; serveur) */
+	void HitTarget(AActor* OtherActor, const FHitResult& SweepResult);
+
+	/** NME bumpés (en vol, au-dessus de la balle) sur le segment parcouru depuis la dernière image : touchés (serveur) */
+	void CheckBumpedFoeHits();
+
+	/** Position à la dernière recherche de NME bumpés */
+	FVector PreviousBumpCheckLocation = FVector::ZeroVector;
 
 	/** Position à la frame précédente (balles qui font exploser les bombes : segment parcouru) */
 	FVector PreviousLocation = FVector::ZeroVector;
@@ -200,6 +279,21 @@ public:
 
 	/** Atk critique à la distance : critique si le point d'impact est à moins de Within / à plus de Beyond du tireur (0 = non) */
 	void SetCriticalDistances(float Within, float Beyond) { CriticalWithinDistance = Within; CriticalBeyondDistance = Beyond; }
+
+	/** Shoot system Pierce : critique sur un NME en train d'être bumpé */
+	void SetCriticalOnBumped(bool bEnabled) { bCriticalOnBumped = bEnabled; }
+
+	/** Toujours critique (Aiming) */
+	void SetAlwaysCritical(bool bEnabled) { bAlwaysCritical = bEnabled; }
+
+	/** Traverse tous les NME */
+	void SetPierceAllTargets(bool bEnabled) { bPierceAllTargets = bEnabled; }
+
+	/** Gros sel : éventail partagé par les AMMO d'un même tir */
+	void SetVolley(const TSharedPtr<FYSShotVolley>& InVolley) { Volley = InVolley; }
+
+	/** Shoot system Explosif : explosion (ou mine collée) à l'impact */
+	void SetExplosion(const FYSProjectileExplosion& InExplosion) { Explosion = InExplosion; }
 
 	/** Tags des acteurs que ce projectile peut toucher */
 	const FGameplayTagContainer& GetHitTags() const { return HitTags; }

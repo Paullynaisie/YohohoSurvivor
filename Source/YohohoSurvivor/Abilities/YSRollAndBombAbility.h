@@ -34,9 +34,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Roll and Bomb")
 	TSubclassOf<AYSPlayerBomb> MineClass;
 
-	/** Golden Mine : moment où la seconde mine est posée, en part de la roulade (0.5 = à mi-roulade, 1 = à la fin) */
+	/** Golden Mine (et Always Drop Second Bomb) : moment où la seconde bombe / mine est posée, en part de la roulade (0.5 = à mi-roulade, 1 = à la fin) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Roll and Bomb", meta=(ClampMin="0", ClampMax="1"))
 	float SecondMineRollFraction = 0.5f;
+
+	/** Une seconde bombe (ou mine) est toujours posée pendant la roulade, à Second Mine Roll Fraction (Saboteur) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Roll and Bomb")
+	bool bAlwaysDropSecondBomb = false;
 
 	UYSRollAndBombAbility();
 

@@ -228,6 +228,8 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustDuration);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustAtkSpeedPerStack);
 	DOREPLIFETIME(AYSPlayerCharacter, bGoldenBloodlust);
+	DOREPLIFETIME(AYSPlayerCharacter, AimingDelay);
+	DOREPLIFETIME(AYSPlayerCharacter, bGoldenAiming);
 	DOREPLIFETIME(AYSPlayerCharacter, CriticalDamageBonus);
 	DOREPLIFETIME(AYSPlayerCharacter, CriticalDamageAdd);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustExpireServerTime);
@@ -1369,9 +1371,12 @@ const AActor* AYSPlayerCharacter::GetHandAssistTarget(bool bLeft) const
 void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 {
 	HandSwayTime += DeltaSeconds;
-	const FTransform& PivotTransform = BodyPivot->GetComponentTransform();
+	// allongé (Aiming) : les mains gardent le repère du corps debout, plus bas et plus en avant
+	const FTransform PivotTransform = ProneBlend > KINDA_SMALL_NUMBER ? HandsPivotTransform : BodyPivot->GetComponentTransform();
+	const FVector ProneHandOffset = GetActorForwardVector().GetSafeNormal2D() * ProneHandForward;
+	const float ProneHandZ = GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + ProneHandHeight;
 
-	auto UpdateHand = [this, DeltaSeconds, &PivotTransform](USceneComponent* Hand, FVector& WorldLocation, float& CurrentYaw, bool bLeft, float NoiseSeed)
+	auto UpdateHand = [this, DeltaSeconds, &PivotTransform, &ProneHandOffset, ProneHandZ](USceneComponent* Hand, FVector& WorldLocation, float& CurrentYaw, bool bLeft, float NoiseSeed)
 	{
 		// objet porté, barre / canon : la main est sur son point de placement, sans retard (l'objet suit déjà le corps)
 		const AYSInteractiveObject* HandObject = IsValid(CarriedObject) ? CarriedObject.Get()
@@ -1379,8 +1384,7 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 		if (const USceneComponent* HandPoint = HandObject ? HandObject->GetHandPoint(bLeft) : nullptr)
 		{
 			WorldLocation = HandPoint->GetComponentLocation();
-			Hand->SetWorldLocation(WorldLocation);
-			Hand->SetRelativeRotation(PivotTransform.GetRotation().Inverse() * HandPoint->GetComponentQuat());
+			Hand->SetWorldLocationAndRotation(WorldLocation, HandPoint->GetComponentQuat());
 			return;
 		}
 
@@ -1394,6 +1398,11 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 		FVector Target = PivotTransform.TransformPosition(GetHandTargetLocation(bLeft) + Sway.GetClampedToMaxSize(HandSwayAmplitude));
 		// nage : les mains à la hauteur de l'eau
 		Target.Z = FMath::Lerp(Target.Z, SwimSurfaceZ + SwimHandHeight, SwimBlend);
+		// allongé (Aiming) : les mains près du sol, devant la tête
+		if (ProneBlend > KINDA_SMALL_NUMBER)
+		{
+			Target = FMath::Lerp(Target, FVector(Target.X, Target.Y, ProneHandZ) + ProneHandOffset, ProneBlend);
+		}
 
 		// retard : la main rejoint sa cible progressivement (téléportation / première image : directement)
 		if (!bHandsInitialized || HandFollowSpeed <= 0.0f || FVector::DistSquared(WorldLocation, Target) > FMath::Square(HandSnapDistance))
@@ -1477,8 +1486,7 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 			FinalRotation = FQuat::Slerp(PoseRotation, FinalRotation, IdleWeight);
 		}
 
-		Hand->SetWorldLocation(FinalLocation);
-		Hand->SetRelativeRotation(FinalRotation);
+		Hand->SetWorldLocationAndRotation(FinalLocation, PivotTransform.GetRotation() * FinalRotation);
 	};
 
 	UpdateHand(LeftHand, LeftHandWorldLocation, LeftHandYaw, true, 0.0f);
@@ -1546,7 +1554,22 @@ void AYSPlayerCharacter::UpdateBodyPivot(float DeltaSeconds)
 		RollQuat = FQuat(FVector::CrossProduct(FVector::UpVector, RollAnimDirection).GetSafeNormal(), FMath::DegreesToRadians(RollAngle));
 		PivotLocation.Z += RollHeight;
 	}
-	BodyPivot->SetWorldLocationAndRotation(PivotLocation, RollQuat * LeanQuat * GetActorQuat());
+	// les mains restent dans le repère du corps debout (pose allongée exclue)
+	HandsPivotTransform = FTransform(RollQuat * LeanQuat * GetActorQuat(), PivotLocation, BodyPivot->GetComponentScale());
+
+	// Aiming : le chrono repart dès que le personnage bouge ; critiques prêts = allongé à plat ventre, vers l'avant
+	if (Velocity.SizeSquared2D() > FMath::Square(MovingSpeedThreshold) || AimingDelay <= 0.0f)
+	{
+		LastMovingTime = GetWorld()->GetTimeSeconds();
+	}
+	ProneBlend = FMath::FInterpTo(ProneBlend, IsAimingCritical() ? 1.0f : 0.0f, DeltaSeconds, ProneBlendSpeed);
+	FQuat ProneQuat = FQuat::Identity;
+	if (ProneBlend > KINDA_SMALL_NUMBER)
+	{
+		ProneQuat = FQuat(FVector::CrossProduct(FVector::UpVector, GetActorForwardVector().GetSafeNormal2D()).GetSafeNormal(), FMath::DegreesToRadians(ProneAngle * ProneBlend));
+		PivotLocation.Z = FMath::Lerp(PivotLocation.Z, Feet.Z + ProneBodyHeight, ProneBlend);
+	}
+	BodyPivot->SetWorldLocationAndRotation(PivotLocation, ProneQuat * RollQuat * LeanQuat * GetActorQuat());
 }
 
 float AYSPlayerCharacter::UpdateHop(float DeltaSeconds, float Speed)
@@ -2523,6 +2546,21 @@ void AYSPlayerCharacter::SetBloodlust(int32 MaxStacks, float Duration, float Atk
 	bGoldenBloodlust = bGolden;
 	BloodlustStacks = FMath::Min(BloodlustStacks, BloodlustMaxStacks);
 	ForceNetUpdate();
+}
+
+void AYSPlayerCharacter::SetAiming(float Delay, bool bGolden)
+{
+	AimingDelay = FMath::Max(0.0f, Delay);
+	bGoldenAiming = bGolden;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSAiming] %s : immobile %.2f s -> critiques%s"), *GetName(), AimingDelay, bGolden ? TEXT(", traversent tout") : TEXT(""));
+}
+
+bool AYSPlayerCharacter::IsAimingCritical() const
+{
+	// immobile depuis Aiming Delay, les armes en main (pas à la nage, ni en portant un objet, ni à un poste)
+	const UWorld* World = GetWorld();
+	return AimingDelay > 0.0f && World && !AreWeaponsStowed() && !IsDying() && World->GetTimeSeconds() - LastMovingTime >= AimingDelay;
 }
 
 void AYSPlayerCharacter::AddBloodlustStack()

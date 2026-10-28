@@ -102,12 +102,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shard|Equation", meta=(ClampMin="0", ClampMax="1"))
 	float MinMultiplier = 0.1f;
 
-	/** Shoot system : Index pour le Shotgun (AMMO par tir) et le Sniper (NME traversés) ; le PewPew prend Index */
+	/** Ancien shoot system Shotgun (n'existe plus : le Shotgun est en Pierce) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shard|Shoot System")
 	float ShotgunIndex = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shard|Shoot System")
+	/** Shoot system : Index pour le Pierce (NME traversés, équation de la shard) ; le PewPew prend Index */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shard|Shoot System", meta=(DisplayName="Pierce Index"))
 	float SniperIndex = 0.5f;
+
+	/** Shoot system Explosif : rayon des explosions x (1 + Explosive Index x niveau), quelle que soit l'équation (30 / 30 : x2.95) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shard|Shoot System")
+	float ExplosiveIndex = 0.065f;
 
 	/** Luck : points de % de chance ajoutés à chaque rareté par niveau (négatif = retirés) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shard|Luck")

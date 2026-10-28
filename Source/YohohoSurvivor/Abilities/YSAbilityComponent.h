@@ -23,6 +23,18 @@ enum class EYSWeaponType : uint8
 	Summon,
 };
 
+/** Shoot system d'une attaque auto de Gun : définit ce qu'améliore l'upgrade Shoot system et la règle des critiques */
+UENUM(BlueprintType)
+enum class EYSShootSystem : uint8
+{
+	/** Rafale de balles réparties sur Burst Duration ; Shoot system = balles en plus ; critique : une balle sur N reçue par un même NME */
+	PewPew		UMETA(DisplayName="PewPew"),
+	/** Chaque balle traverse les NME (Pierce Max Hits, + Shoot system) ; critique : toujours sur un NME en train d'être bumpé */
+	Pierce		UMETA(DisplayName="Pierce"),
+	/** Balles / bombes qui explosent (zone) ; Shoot system = rayon des explosions x (1 + bonus) */
+	Explosive	UMETA(DisplayName="Explosif"),
+};
+
 class UTexture2D;
 
 /** Activation forcée d'une Ability par un autre personnage (« Allez-y mes minions ! » du Cursed Hook) */
@@ -78,6 +90,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Akimbo", meta=(ClampMin="0", Units="Seconds"))
 	float AkimboFireDelay = 0.5f;
 
+	/** À l'activation, la recharge de l'attaque auto de toutes les armes tenues est rendue (après Auto Attack Reset Delay) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ability|Auto Atk Reset")
+	bool bResetAutoAttackOnUse = false;
+
+	/** Délai entre l'activation et la recharge rendue (ex. Dragon breath : après le recul) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ability|Auto Atk Reset", meta=(ClampMin="0", Units="Seconds", EditCondition="bResetAutoAttackOnUse"))
+	float AutoAttackResetDelay = 0.0f;
+
 protected:
 
 	/** Instant (en temps serveur) où la capacité redevient disponible */
@@ -128,6 +148,12 @@ public:
 
 	/** Dégâts de base de la capacité, sans bonus (0 si elle n'inflige pas de dégâts) */
 	virtual float GetBaseDamage() const { return 0.0f; }
+
+	/** Attaque auto de Gun : son shoot system (upgrade Shoot system) ; faux si l'action n'en a pas */
+	virtual bool GetShootSystem(EYSShootSystem& OutSystem) const { return false; }
+
+	/** Shoot system Explosif : rayon des explosions x (1 + bonus Shoot system du porteur) ; 1 sinon */
+	float GetExplosiveRadiusMultiplier() const;
 
 	/**
 	 *  Cible dans un cône horizontal : le pawn le plus proche portant un des Tags, à moins de MaxDistance
@@ -339,4 +365,9 @@ protected:
 
 	/** Temps du monde synchronisé avec le serveur */
 	double GetServerTime() const;
+
+	/** Reset Auto Attack On Use : recharge de l'attaque auto des armes tenues rendue, tout de suite ou après le délai (serveur) */
+	void ScheduleAutoAttackReset();
+
+	FTimerHandle AutoAttackResetTimer;
 };

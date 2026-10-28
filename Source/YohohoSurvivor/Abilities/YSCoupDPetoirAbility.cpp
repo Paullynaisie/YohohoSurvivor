@@ -62,7 +62,7 @@ void UYSCoupDPetoirAbility::StartBurst(const FVector& TargetLocation)
 	BulletsFired = 0;
 	BurstShooters.Reset();
 	BurstBulletCount = GetBulletsPerBurst();
-	if (ShootSystem == EYSShootSystem::Shotgun)
+	if (bSpreadFire)
 	{
 		FireShotgun(TargetLocation);
 		return;
@@ -79,13 +79,24 @@ void UYSCoupDPetoirAbility::FireShotgun(const FVector& TargetLocation)
 		return;
 	}
 
+	// Gros sel (attaque auto) : les AMMO de ce tir partagent le compte des touches par cible
+	CurrentVolley.Reset();
+	if (IsAutomatic() && GetWeaponStat(UYSGrosSelUpgrade::GrosSelStat, 0.0f) > 0.0f)
+	{
+		CurrentVolley = MakeShared<FYSShotVolley>();
+		CurrentVolley->DamageBonusPerHit = GetWeaponStat(UYSGrosSelUpgrade::GrosSelStat, 0.0f);
+		CurrentVolley->CriticalHitCount = FMath::RoundToInt(GetWeaponStat(UYSGrosSelUpgrade::GrosSelCriticalStat, 0.0f));
+	}
+
+	// éventail régulier : de -Spread à +Spread, à angles égaux (une seule AMMO : droit vers la cible)
 	const float BaseYaw = Direction.Rotation().Yaw;
 	for (int32 Index = 0; Index < BurstBulletCount; ++Index)
 	{
-		const float Yaw = BaseYaw + FMath::FRandRange(-ShotgunSpread, ShotgunSpread);
-		SpawnProjectile(Muzzle, FRotator(0.0f, Yaw, 0.0f).Vector());
+		const float Offset = BurstBulletCount > 1 ? FMath::Lerp(-ShotgunSpread, ShotgunSpread, static_cast<float>(Index) / (BurstBulletCount - 1)) : 0.0f;
+		SpawnProjectile(Muzzle, FRotator(0.0f, BaseYaw + Offset, 0.0f).Vector());
 	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s Shotgun : %d AMMO (+/- %.0f°) à %.2f"), *GetOwner()->GetName(), *GetName(),
+	CurrentVolley.Reset();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s éventail : %d AMMO (+/- %.0f°) à %.2f"), *GetOwner()->GetName(), *GetName(),
 		BurstBulletCount, ShotgunSpread, GetWorld()->GetTimeSeconds());
 
 	// recul sur toutes les machines, puis l'animation de rechargement
@@ -132,7 +143,7 @@ void UYSCoupDPetoirAbility::PlayReloadAnims()
 
 float UYSCoupDPetoirAbility::GetTimeToNextShot(int32 BulletIndex, int32 BulletCount) const
 {
-	if (BulletCount <= 1 || ShootSystem == EYSShootSystem::Shotgun)
+	if (BulletCount <= 1 || bSpreadFire)
 	{
 		return 0.0f;
 	}
@@ -227,21 +238,51 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 		return;
 	}
 
-	Projectile->SetDamage(Damage * GetDamageMultiplier());
-	// Atk critique (attaques auto) : PewPew = les balles comptent sur chaque NME, une sur N est critique ;
-	// Shotgun = critique sur les NME proches du tireur ; Sniper = critique sur les NME loin du tireur
+	const float DamageMultiplier = GetDamageMultiplier();
+	Projectile->SetDamage(Damage * DamageMultiplier);
+	// critiques des attaques auto : PewPew / Explosif = les balles comptent sur chaque NME, une sur N est critique ;
+	// Pierce = critique sur un NME en train d'être bumpé
 	const AYSPlayerCharacter* HolderCharacter = Cast<AYSPlayerCharacter>(Shooter);
 	if (IsAutomatic() && HolderCharacter)
 	{
 		switch (ShootSystem)
 		{
-		case EYSShootSystem::PewPew:	Projectile->SetCriticalBulletInterval(HolderCharacter->GetCriticalBulletInterval()); break;
-		case EYSShootSystem::Shotgun:	Projectile->SetCriticalDistances(HolderCharacter->GetCriticalShotgunMaxDistance(), 0.0f); break;
-		case EYSShootSystem::Sniper:	Projectile->SetCriticalDistances(0.0f, HolderCharacter->GetCriticalSniperMinDistance()); break;
+		case EYSShootSystem::Pierce:	Projectile->SetCriticalOnBumped(true); break;
+		default:						Projectile->SetCriticalBulletInterval(HolderCharacter->GetCriticalBulletInterval()); break;
 		}
 	}
-	// Sniper : la balle traverse les NME
+	// Pierce : la balle traverse les NME
 	Projectile->SetMaxHits(GetMaxHitsPerBullet());
+	// Aiming (Harquebusier immobile assez longtemps) : toutes ses balles critiques ; Golden aiming : elles traversent tous les NME
+	if (HolderCharacter && HolderCharacter->IsAimingCritical())
+	{
+		Projectile->SetAlwaysCritical(true);
+		if (HolderCharacter->HasGoldenAiming())
+		{
+			Projectile->SetPierceAllTargets(true);
+		}
+	}
+	// Gros sel : AMMO de l'éventail en cours
+	if (CurrentVolley.IsValid())
+	{
+		Projectile->SetVolley(CurrentVolley);
+	}
+	// Explosif : explosion à l'impact (dégâts et rayon : Damage bonus, Shoot system) ; MineShooter : mine collée au NME
+	if (ShootSystem == EYSShootSystem::Explosive && (ExplosionClass || StickyMineClass))
+	{
+		FYSProjectileExplosion ProjectileExplosion;
+		ProjectileExplosion.ExplosionClass = ExplosionClass;
+		ProjectileExplosion.Damage = ExplosionDamage * DamageMultiplier;
+		ProjectileExplosion.RadiusMultiplier = GetExplosiveRadiusMultiplier();
+		if (IsAutomatic() && GetWeaponStat(UYSMineShooterUpgrade::MineShooterStat, 0.0f) > 0.0f)
+		{
+			ProjectileExplosion.StickyMineClass = StickyMineClass;
+			ProjectileExplosion.StickyFuse = StickyMineFuse;
+			ProjectileExplosion.StickyBonusPerMine = GetWeaponStat(UYSMineShooterUpgrade::MineShooterBonusStat, 0.0f);
+			ProjectileExplosion.RadiusMultiplier *= GetWeaponStat(UYSMineShooterUpgrade::MineShooterRadiusStat, 1.0f);
+		}
+		Projectile->SetExplosion(ProjectileExplosion);
+	}
 	// upgrades d'arme (Ricochet) : seulement pour l'Ability, pas pour l'Auto shot
 	if (!IsAutomatic())
 	{
@@ -341,24 +382,35 @@ FRotator UYSCoupDPetoirAbility::GetReloadSpin() const
 
 int32 UYSCoupDPetoirAbility::GetBulletsPerBurst() const
 {
-	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	const float Bonus = Character ? Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 0.0f;
-	// Sniper : le Shoot system augmente les NME traversés, pas les balles
-	if (ShootSystem == EYSShootSystem::Sniper)
+	// éventail : Spread Ammo Count + Gros sel ++ (attaque auto)
+	if (bSpreadFire)
 	{
-		return FMath::Max(1, BulletsPerBurst);
+		const int32 ExtraAmmo = IsAutomatic() ? FMath::RoundToInt(GetWeaponStat(UYSGrosSelUpgrade::GrosSelAmmoStat, 0.0f)) : 0;
+		return FMath::Max(1, ShotgunAmmoPerShot + ExtraAmmo);
 	}
-	const int32 BaseCount = ShootSystem == EYSShootSystem::Shotgun ? ShotgunAmmoPerShot : BulletsPerBurst;
-	return FMath::Max(1, BaseCount + FMath::RoundToInt(Bonus));
+	// rafale : le Shoot system n'ajoute des balles qu'en PewPew (Pierce : NME traversés ; Explosif : rayon)
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	const float Bonus = Character && ShootSystem == EYSShootSystem::PewPew ? Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 0.0f;
+	return FMath::Max(1, BulletsPerBurst + FMath::RoundToInt(Bonus));
 }
 
 int32 UYSCoupDPetoirAbility::GetMaxHitsPerBullet() const
 {
-	if (ShootSystem != EYSShootSystem::Sniper)
+	if (ShootSystem != EYSShootSystem::Pierce)
 	{
 		return 1;
 	}
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	const float Bonus = Character ? Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 0.0f;
-	return FMath::Max(1, SniperMaxHits + FMath::RoundToInt(Bonus));
+	return FMath::Max(1, PierceMaxHits + FMath::RoundToInt(Bonus));
+}
+
+bool UYSCoupDPetoirAbility::GetShootSystem(EYSShootSystem& OutSystem) const
+{
+	if (WeaponType != EYSWeaponType::Gun || !IsAutomatic())
+	{
+		return false;
+	}
+	OutSystem = ShootSystem;
+	return true;
 }

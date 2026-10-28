@@ -1,5 +1,6 @@
 #include "Upgrades/YSUpgrade.h"
 #include "Abilities/YSAbilityComponent.h"
+#include "Abilities/YSAutoShotAbility.h"
 #include "Abilities/YSAutoSwingAbility.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Abilities/YSGoMinionsAbility.h"
@@ -318,24 +319,16 @@ UYSShootSystemUpgrade::UYSShootSystemUpgrade()
 
 bool UYSShootSystemUpgrade::IsActionEligible(const UYSAbilityComponent* Action) const
 {
+	// ancien système (sans shards) : PewPew et Pierce seulement
 	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(Action);
 	return Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->IsAutomatic()
-		&& (Gun->ShootSystem == EYSShootSystem::PewPew || Gun->ShootSystem == EYSShootSystem::Shotgun || Gun->ShootSystem == EYSShootSystem::Sniper);
+		&& (Gun->ShootSystem == EYSShootSystem::PewPew || Gun->ShootSystem == EYSShootSystem::Pierce);
 }
 
 float UYSShootSystemUpgrade::GetAmmoPerBonus(const AYSPlayerCharacter* Character, int32 Variant) const
 {
 	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(GetSlotAction(Character, Variant));
-	if (!Gun)
-	{
-		return 1.0f;
-	}
-	switch (Gun->ShootSystem)
-	{
-	case EYSShootSystem::Shotgun:	return ShotgunAmmoPerLevel;
-	case EYSShootSystem::Sniper:	return SniperHitsPerLevel;
-	default:						return 1.0f;
-	}
+	return Gun && Gun->ShootSystem == EYSShootSystem::Pierce ? SniperHitsPerLevel : 1.0f;
 }
 
 float UYSShootSystemUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Character, int32 Variant) const
@@ -345,27 +338,13 @@ float UYSShootSystemUpgrade::GetBaseStatValue(const AYSPlayerCharacter* Characte
 	{
 		return 0.0f;
 	}
-	switch (Gun->ShootSystem)
-	{
-	case EYSShootSystem::Shotgun:	return Gun->ShotgunAmmoPerShot;
-	case EYSShootSystem::Sniper:	return Gun->SniperMaxHits;
-	default:						return Gun->BulletsPerBurst;
-	}
+	return Gun->ShootSystem == EYSShootSystem::Pierce ? Gun->PierceMaxHits : Gun->BulletsPerBurst;
 }
 
 FText UYSShootSystemUpgrade::GetStatLabel(const AYSPlayerCharacter* Character, int32 Variant) const
 {
 	const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(GetSlotAction(Character, Variant));
-	if (!Gun)
-	{
-		return StatLabel;
-	}
-	switch (Gun->ShootSystem)
-	{
-	case EYSShootSystem::Shotgun:	return ShotgunStatLabel;
-	case EYSShootSystem::Sniper:	return SniperStatLabel;
-	default:						return StatLabel;
-	}
+	return Gun && Gun->ShootSystem == EYSShootSystem::Pierce ? SniperStatLabel : StatLabel;
 }
 
 float UYSShootSystemUpgrade::GetDisplayValue(const AYSPlayerCharacter* Character, int32 Variant, float TotalBonus) const
@@ -967,6 +946,98 @@ void UYSMarkCriticalUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, 
 	Character->SetWeaponStat(MarkCooldownRefundStat, bUnlocked && bSuper ? SuperCooldownRefund : 0.0f);
 }
 
+const FName UYSGrosSelUpgrade::GrosSelStat(TEXT("GrosSel"));
+const FName UYSGrosSelUpgrade::GrosSelAmmoStat(TEXT("GrosSelAmmo"));
+const FName UYSGrosSelUpgrade::GrosSelCriticalStat(TEXT("GrosSelCritical"));
+
+UYSGrosSelUpgrade::UYSGrosSelUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "GrosSelName", "Gros sel");
+	RequiredActionClass = UYSAutoShotAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::AutoAtk;
+	UnlockName = NSLOCTEXT("YS", "GrosSelUnlockName", "Gros sel");
+	UnlockDescription = NSLOCTEXT("YS", "GrosSelUnlockDesc", "Chaque AMMO d'un même tir qui touche la même cible\nfait 10 % de dégâts en plus que la précédente");
+	BonusName = NSLOCTEXT("YS", "GrosSelBonusName", "Gros sel ++");
+	BonusDescription = NSLOCTEXT("YS", "GrosSelBonusDesc", "Une AMMO de plus dans l'éventail");
+	BonusStatLabel = NSLOCTEXT("YS", "GrosSelBonusStat", "AMMO par tir");
+	MaxBonusStacks = 5;
+	BonusSilverValue = 1.0f;
+	BonusGoldValue = 1.0f;
+	SuperName = NSLOCTEXT("YS", "GrosSelSuperName", "Golden gros sel");
+	SuperDescription = NSLOCTEXT("YS", "GrosSelSuperDesc", "Si au moins 5 AMMO touchent la même cible,\nelles sont critiques");
+}
+
+float UYSGrosSelUpgrade::GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const
+{
+	float BaseAmmo = 0.0f;
+	for (const UYSAbilityComponent* Action : GetRequiredActions(Character))
+	{
+		if (const UYSCoupDPetoirAbility* Gun = Cast<UYSCoupDPetoirAbility>(Action))
+		{
+			BaseAmmo = Gun->ShotgunAmmoPerShot;
+			break;
+		}
+	}
+	return BaseAmmo + BonusTotal;
+}
+
+void UYSGrosSelUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	Character->SetWeaponStat(GrosSelStat, bUnlocked ? DamageBonusPerHit : 0.0f);
+	Character->SetWeaponStat(GrosSelAmmoStat, bUnlocked ? FMath::RoundToFloat(BonusTotal) : 0.0f);
+	Character->SetWeaponStat(GrosSelCriticalStat, bUnlocked && bSuper ? static_cast<float>(SuperCriticalHitCount) : 0.0f);
+}
+
+UYSAimingUpgrade::UYSAimingUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "AimingName", "Aiming");
+	RequiredActionClass = UYSAutoShotAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::AutoAtk;
+	UnlockName = NSLOCTEXT("YS", "AimingUnlockName", "Aiming");
+	UnlockDescription = NSLOCTEXT("YS", "AimingUnlockDesc", "Immobile depuis 3.5 s, toutes ses balles sont critiques");
+	BonusName = NSLOCTEXT("YS", "AimingBonusName", "Aiming ++");
+	BonusDescription = NSLOCTEXT("YS", "AimingBonusDesc", "Aiming se déclenche 0.5 s plus tôt");
+	BonusStatLabel = NSLOCTEXT("YS", "AimingBonusStat", "Temps immobile (s)");
+	MaxBonusStacks = 5;
+	BonusSilverValue = 0.5f;
+	BonusGoldValue = 0.5f;
+	SuperName = NSLOCTEXT("YS", "AimingSuperName", "Golden aiming");
+	SuperDescription = NSLOCTEXT("YS", "AimingSuperDesc", "Les balles critiques traversent tous les NME");
+}
+
+void UYSAimingUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	Character->SetAiming(bUnlocked ? FMath::Max(MinDelay, BaseDelay - BonusTotal) : 0.0f, bUnlocked && bSuper);
+}
+
+const FName UYSMineShooterUpgrade::MineShooterStat(TEXT("MineShooter"));
+const FName UYSMineShooterUpgrade::MineShooterBonusStat(TEXT("MineShooterBonus"));
+const FName UYSMineShooterUpgrade::MineShooterRadiusStat(TEXT("MineShooterRadius"));
+
+UYSMineShooterUpgrade::UYSMineShooterUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "MineShooterName", "MineShooter");
+	RequiredActionClass = UYSAutoShotAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::AutoAtk;
+	UnlockName = NSLOCTEXT("YS", "MineShooterUnlockName", "MineShooter");
+	UnlockDescription = NSLOCTEXT("YS", "MineShooterUnlockDesc", "Les AMMO collent une mine sur le NME touché.\nToutes ses mines explosent 5 s après la dernière collée, ou à sa mort");
+	BonusName = NSLOCTEXT("YS", "MineShooterBonusName", "MineShooter ++");
+	BonusDescription = NSLOCTEXT("YS", "MineShooterBonusDesc", "Les mines font plus de dégâts\npour chaque mine collée sur le NME");
+	BonusStatLabel = NSLOCTEXT("YS", "MineShooterBonusStat", "Dégâts par mine collée (+%)");
+	MaxBonusStacks = 5;
+	BonusSilverValue = 0.05f;
+	BonusGoldValue = 0.05f;
+	SuperName = NSLOCTEXT("YS", "MineShooterSuperName", "Golden mineshooter");
+	SuperDescription = NSLOCTEXT("YS", "MineShooterSuperDesc", "Rayon d'explosion des mines x2");
+}
+
+void UYSMineShooterUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	Character->SetWeaponStat(MineShooterStat, bUnlocked ? 1.0f : 0.0f);
+	Character->SetWeaponStat(MineShooterBonusStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(MineShooterRadiusStat, bUnlocked && bSuper ? SuperRadiusMultiplier : 1.0f);
+}
+
 UYSClassUpgrade::UYSClassUpgrade()
 {
 	UpgradeType = EYSUpgradeType::Class;
@@ -1064,12 +1135,21 @@ bool UYSCriticalAttackUpgrade::HasPewPewAutoAttack(const AYSPlayerCharacter* Cha
 
 bool UYSCriticalAttackUpgrade::HasShotgunAutoAttack(const AYSPlayerCharacter* Character)
 {
-	return HasGunAutoAttack(Character, EYSShootSystem::Shotgun);
+	// ancien système : le Shotgun est un tir en éventail (shoot system Pierce)
+	for (const AYSWeapon* Weapon : Character ? Character->GetHeldWeapons() : TArray<AYSWeapon*>())
+	{
+		const UYSCoupDPetoirAbility* Gun = Weapon ? Cast<UYSCoupDPetoirAbility>(Weapon->GetAutoAction()) : nullptr;
+		if (Gun && Gun->WeaponType == EYSWeaponType::Gun && Gun->bSpreadFire)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 bool UYSCriticalAttackUpgrade::HasSniperAutoAttack(const AYSPlayerCharacter* Character)
 {
-	return HasGunAutoAttack(Character, EYSShootSystem::Sniper);
+	return HasGunAutoAttack(Character, EYSShootSystem::Pierce) && !HasShotgunAutoAttack(Character);
 }
 
 bool UYSCriticalAttackUpgrade::IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const

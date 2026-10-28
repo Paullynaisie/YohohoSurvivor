@@ -12,7 +12,7 @@ class UTexture2D;
  *  Module de combat « Cannonerie » (acteurs enfants CannonFront / CannonLeft / CannonRight du bateau ; +X = direction d'origine :
  *  avant, bâbord, tribord) : E -> le joueur se met derrière le canon, ne bouge plus, ni attaque auto ni Ability ; E le quitte.
  *  Un seul joueur à la fois. Le canon (Cannon Pivot) suit le regard du joueur (curseur), à +/- Max Aim Angle de son alignement
- *  d'origine. Clic droit = « Tir de canon » : comme le tir du Shotgun (Ammo Per Shot CanonAMMO réparties au hasard à +/- Spread
+ *  d'origine. Clic droit = « Tir de canon » : comme le tir du Shotgun (Ammo Per Shot CanonAMMO réparties à angles égaux de -Spread à +Spread
  *  autour de la direction du canon, tout part d'un coup), Damage par AMMO, échelle Projectile Scale, recharge Cooldown (icône en
  *  bas de l'écran à la place de celles des armes). Caméra : dézoomée comme à la barre, toujours décalée au maximum vers la visée
  *  du canon (butée à l'angle max).
@@ -69,7 +69,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="1"))
 	int32 AmmoPerShot = 5;
 
-	/** Dispersion : chaque AMMO part au hasard à +/- cet angle de la direction du canon */
+	/** Dispersion : AMMO réparties à angles égaux entre -cet angle et +cet angle autour de la direction du canon */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0", ClampMax="90", Units="Degrees"))
 	float Spread = 20.0f;
 

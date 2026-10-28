@@ -310,6 +310,25 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Swim", meta=(ClampMin="0"))
 	float SwimBlendSpeed = 6.0f;
 
+	/** Aiming (Harquebusier) : critiques prêts = le corps s'allonge à plat ventre, basculé vers l'avant de cet angle */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Aiming", meta=(ClampMin="0", ClampMax="90", Units="Degrees"))
+	float ProneAngle = 90.0f;
+
+	/** Allongé : hauteur du centre du corps au-dessus des pieds */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Aiming", meta=(Units="Centimeters"))
+	float ProneBodyHeight = 30.0f;
+
+	/** Allongé : hauteur des mains au-dessus des pieds, et décalage des mains vers l'avant */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Aiming", meta=(Units="Centimeters"))
+	float ProneHandHeight = 25.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Aiming", meta=(Units="Centimeters"))
+	float ProneHandForward = 40.0f;
+
+	/** Vitesse de passage debout <-> allongé */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Aiming", meta=(ClampMin="0"))
+	float ProneBlendSpeed = 8.0f;
+
 	/** Armes colorées selon la main (principale / autre / set d'upgrade de classe) ; faux = matériaux de base de leur Blueprint (minions) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Customization")
 	bool bWeaponColoration = true;
@@ -461,6 +480,14 @@ protected:
 	/** Temps serveur où les stacks sont perdues */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
 	double BloodlustExpireServerTime = 0.0;
+
+	/** Aiming (upgrade d'arme du Harquebusier ; serveur, répliqué pour la pose) : immobile depuis ce temps = balles critiques ; 0 = pas débloqué */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Aiming")
+	float AimingDelay = 0.0f;
+
+	/** Golden aiming : les balles critiques d'Aiming traversent tous les NME */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Aiming")
+	bool bGoldenAiming = false;
 
 	/**
 	 *  BloodRage (upgrade d'arme de la GreatAxe ; serveur, répliqué pour l'UI) : stacks gagnées à chaque coup reçu, toutes perdues
@@ -716,6 +743,15 @@ private:
 
 	/** Direction de l'animation de roulade (dernière direction de mouvement pendant la roulade) */
 	FVector RollAnimDirection = FVector::ForwardVector;
+
+	/** Aiming : dernier instant (temps local) où le personnage bougeait */
+	double LastMovingTime = 0.0;
+
+	/** Aiming : 0 = debout, 1 = allongé à plat ventre (lissé) */
+	float ProneBlend = 0.0f;
+
+	/** Corps sans la pose allongée (lean, sautillement, nage) : repère des mains, qui restent à l'endroit */
+	FTransform HandsPivotTransform = FTransform::Identity;
 
 	/** Yaw actuel (lissé, relatif au corps) de chaque main : vers la cible de visée assistée, sinon rotation par défaut */
 	float LeftHandYaw = 0.0f;
@@ -1019,6 +1055,14 @@ public:
 
 	/** Bloodlust réglé par l'upgrade (serveur) : MaxStacks 0 = désactivé (stacks remises à 0) */
 	void SetBloodlust(int32 MaxStacks, float Duration, float AtkSpeedPerStack, bool bGolden);
+
+	/** Aiming (serveur, upgrade) : délai immobile avant les critiques (0 = pas débloqué), Golden aiming */
+	void SetAiming(float Delay, bool bGolden);
+
+	/** Aiming : immobile depuis Aiming Delay, toutes ses balles sont critiques (calculé sur chaque machine depuis la vitesse) */
+	bool IsAimingCritical() const;
+
+	bool HasGoldenAiming() const { return bGoldenAiming; }
 
 	/** Une Auto swing a touché (serveur) : +1 stack (max BloodlustMaxStacks) et le délai repart */
 	void AddBloodlustStack();

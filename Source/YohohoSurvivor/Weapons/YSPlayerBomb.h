@@ -192,6 +192,19 @@ public:
 
 	void SetRadiusMultiplier(float NewRadiusMultiplier) { RadiusMultiplier = FMath::Max(NewRadiusMultiplier, 0.01f); }
 
+	/** Explose dès son apparition, sans mèche ni disque (balle explosive, Rocket jump ; serveur, avant FinishSpawning) */
+	void SetInstant(bool bCritical) { bInstant = true; bCriticalExplosion = bCritical; }
+
+	/**
+	 *  Mine collée (MineShooter ; serveur, avant FinishSpawning) : accrochée à Target à un endroit au hasard de son corps ; toutes les mines
+	 *  du même poseur collées sur Target explosent ensemble Fuse secondes après la dernière collée, ou tout de suite s'il meurt.
+	 *  Dégâts x (1 + BonusPerMine x mines collées au moment de l'explosion).
+	 */
+	void SetStuckTo(AActor* Target, float Fuse, float BonusPerMine);
+
+	/** Mine collée sur Target, pas encore explosée */
+	bool IsStuckOn(const AActor* Target) const { return Target && StuckActor == Target && !bExploded; }
+
 	/** Peut encore exploser (pas déjà explosée) */
 	bool CanDetonate() const { return !bExploded; }
 
@@ -219,7 +232,41 @@ protected:
 	FVector GetExplosionCenter() const { return Flight.bThrown ? Flight.Target : GetActorLocation(); }
 
 	/** Délai entre la pose (ou le lancer) et l'explosion */
-	float GetTimeToExplode() const { return Flight.bThrown ? FMath::Max(Flight.Duration, 0.05f) : FuseDuration; }
+	float GetTimeToExplode() const { return bInstant ? 0.0f : Flight.bThrown ? FMath::Max(Flight.Duration, 0.05f) : FuseDuration; }
+
+	/** Explose dès son apparition (SetInstant) */
+	UPROPERTY(Replicated)
+	bool bInstant = false;
+
+	/** Mine collée : acteur porteur et position relative (répliqués à l'apparition) */
+	UPROPERTY(Replicated)
+	TObjectPtr<AActor> StuckActor;
+
+	UPROPERTY(Replicated)
+	FVector StuckOffset = FVector::ZeroVector;
+
+	/** Mine collée : explosion à cette heure serveur (repoussée à chaque nouvelle mine collée sur le même NME) */
+	UPROPERTY(Replicated)
+	double StuckExplodeServerTime = 0.0;
+
+	/** Mine collée : délai d'explosion (pour la lueur de la mèche) et dégâts en plus par mine collée */
+	UPROPERTY(Replicated)
+	float StuckFuse = 5.0f;
+
+	float StuckBonusPerMine = 0.0f;
+
+	bool IsStuck() const { return StuckActor != nullptr; }
+
+	/** Mines collées (pas encore explosées) du même poseur sur le même porteur, celle-ci comprise */
+	TArray<AYSPlayerBomb*> GetStuckGroup() const;
+
+	/** Toutes les mines du groupe explosent, dégâts x (1 + bonus par mine x nombre de mines) (serveur) */
+	void ExplodeStuckGroup();
+
+	/** Mine collée : accrochée à son porteur sur cette machine */
+	void AttachToStuckActor();
+
+	double GetServerWorldTime() const;
 
 
 	/** Explosion (serveur : dégâts) puis effet sur toutes les machines */

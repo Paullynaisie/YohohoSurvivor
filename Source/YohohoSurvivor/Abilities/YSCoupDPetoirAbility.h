@@ -2,21 +2,11 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/YSAbilityComponent.h"
+#include "Weapons/YSProjectile.h"
 #include "YSCoupDPetoirAbility.generated.h"
 
 class AYSProjectile;
-
-/** Shoot system d'une action de Gun */
-UENUM(BlueprintType)
-enum class EYSShootSystem : uint8
-{
-	/** Tire toutes ses balles une par une, réparties uniformément sur Burst Duration, puis recharge (Cooldown) */
-	PewPew		UMETA(DisplayName="PewPew"),
-	/** Tire toutes ses AMMO d'un coup vers la cible, chacune avec une imprécision aléatoire (Shotgun Spread), puis recharge (Cooldown) */
-	Shotgun		UMETA(DisplayName="Shotgun"),
-	/** Comme PewPew (rafale, recharge), mais chaque balle traverse les NME : elle en touche Sniper Max Hits (+ Shoot system) avant de disparaître */
-	Sniper		UMETA(DisplayName="Sniper"),
-};
+class AYSPlayerBomb;
 
 /** Axe de rotation de l'animation de rechargement (par rapport à la main) */
 UENUM(BlueprintType)
@@ -61,29 +51,56 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'Petoir|Assist Aim", meta=(ClampMin="0", ClampMax="180", Units="Degrees"))
 	float AssistAimAngle = 15.0f;
 
-	/** Shoot system (PewPew, Shotgun, Sniper) */
+	/**
+	 *  Shoot system (attaque auto : ce qu'améliore l'upgrade Shoot system et la règle des critiques) :
+	 *  PewPew = balles par rafale, critique une balle sur N ; Pierce = les balles traversent les NME, critique sur un NME bumpé ;
+	 *  Explosif = chaque balle explose à l'impact (Explosion Class), rayon des explosions
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System")
 	EYSShootSystem ShootSystem = EYSShootSystem::PewPew;
 
-	/** PewPew / Sniper : balles tirées par activation (en akimbo, réparties en alternance entre les deux armes, pas doublées) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="1", EditCondition="ShootSystem!=EYSShootSystem::Shotgun", EditConditionHides))
+	/**
+	 *  Tir en éventail (Shotgun, Dragon breath) : à chaque tir, Spread Ammo Count AMMO partent d'un coup, réparties à angles égaux
+	 *  entre -Spread et +Spread autour de la direction de la cible (pas de rafale) ; sinon rafale de Bullets Per Burst balles
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System")
+	bool bSpreadFire = false;
+
+	/** Rafale : balles tirées par activation (en akimbo, réparties en alternance entre les deux armes, pas doublées) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="1", EditCondition="!bSpreadFire", EditConditionHides))
 	int32 BulletsPerBurst = 1;
 
-	/** PewPew / Sniper : durée de la rafale (de la première à la dernière balle, réparties uniformément) ; la recharge commence après */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="0", Units="Seconds", EditCondition="ShootSystem!=EYSShootSystem::Shotgun", EditConditionHides))
+	/** Rafale : durée (de la première à la dernière balle, réparties uniformément) ; la recharge commence après */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="0", Units="Seconds", EditCondition="!bSpreadFire", EditConditionHides))
 	float BurstDuration = 0.0f;
 
-	/** Shotgun : AMMO tirées d'un coup à chaque tir (+ upgrade Shoot system) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="1", EditCondition="ShootSystem==EYSShootSystem::Shotgun", EditConditionHides))
+	/** Éventail : AMMO tirées d'un coup à chaque tir (+ Gros sel ++) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(DisplayName="Spread Ammo Count", ClampMin="1", EditCondition="bSpreadFire", EditConditionHides))
 	int32 ShotgunAmmoPerShot = 5;
 
-	/** Shotgun : imprécision de chaque AMMO, tirée au hasard entre -Spread et +Spread autour de la direction de la cible */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="0", ClampMax="180", Units="Degrees", EditCondition="ShootSystem==EYSShootSystem::Shotgun", EditConditionHides))
+	/** Éventail : angle de chaque côté de la direction de la cible ; les AMMO sont réparties à angles égaux de -Spread à +Spread */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(DisplayName="Spread", ClampMin="0", ClampMax="180", Units="Degrees", EditCondition="bSpreadFire", EditConditionHides))
 	float ShotgunSpread = 20.0f;
 
-	/** Sniper : NME touchés par chaque balle avant qu'elle disparaisse (+ upgrade Shoot system) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="1", EditCondition="ShootSystem==EYSShootSystem::Sniper", EditConditionHides))
-	int32 SniperMaxHits = 2;
+	/** Pierce : NME touchés par chaque balle avant qu'elle disparaisse (2 = traverse une fois ; + upgrade Shoot system) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="1", EditCondition="ShootSystem==EYSShootSystem::Pierce", EditConditionHides))
+	int32 PierceMaxHits = 2;
+
+	/** Explosif : explosion à l'impact de la balle (BP enfant de BP_CannoneerBomb : rayon, effet ; elle explose tout de suite) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System|Explosive", meta=(EditCondition="ShootSystem==EYSShootSystem::Explosive", EditConditionHides))
+	TSubclassOf<AYSPlayerBomb> ExplosionClass;
+
+	/** Explosif : dégâts de l'explosion à chaque NME touché (x Damage bonus, comme les dégâts d'impact) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System|Explosive", meta=(ClampMin="0", EditCondition="ShootSystem==EYSShootSystem::Explosive", EditConditionHides))
+	float ExplosionDamage = 50.0f;
+
+	/** Explosif + upgrade MineShooter : mine collée au NME touché à la place de l'explosion (BP enfant de BP_CannoneerBomb) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System|Explosive", meta=(EditCondition="ShootSystem==EYSShootSystem::Explosive", EditConditionHides))
+	TSubclassOf<AYSPlayerBomb> StickyMineClass;
+
+	/** MineShooter : délai entre la dernière mine collée sur un NME et l'explosion de toutes ses mines */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System|Explosive", meta=(ClampMin="0", Units="Seconds", EditCondition="ShootSystem==EYSShootSystem::Explosive", EditConditionHides))
+	float StickyMineFuse = 5.0f;
 
 	/**
 	 *  Cible de la visée assistée : parmi les acteurs touchables par le projectile (ses HitTags),
@@ -164,8 +181,11 @@ public:
 	/** Indisponible pendant la rafale puis pendant la recharge (CD reduction : seulement la recharge) */
 	virtual float GetCooldownDuration() const override { return GetBurstTime() + Cooldown * GetCooldownMultiplier(); }
 
-	/** Durée de la rafale (PewPew / Sniper : Burst Duration ; Shotgun : 0, tout part d'un coup) */
-	float GetBurstTime() const { return ShootSystem != EYSShootSystem::Shotgun ? BurstDuration : 0.0f; }
+	/** Durée de la rafale (Burst Duration ; éventail : 0, tout part d'un coup) */
+	float GetBurstTime() const { return bSpreadFire ? 0.0f : BurstDuration; }
+
+	/** Attaque auto de Gun : Shoot System */
+	virtual bool GetShootSystem(EYSShootSystem& OutSystem) const override;
 
 	/** Priorités : le tir est « en cours » pendant la rafale puis l'animation de recul de la dernière balle */
 	virtual float GetActionDuration() const override { return RecoilKickDuration + RecoilRecoverDuration; }
@@ -178,12 +198,12 @@ public:
 	virtual bool IsBlockingLowerPriority() const override;
 
 	/**
-	 *  Balles par activation + upgrade Shoot system du type d'action :
-	 *  PewPew = Bullets Per Burst (balles de la rafale), Shotgun = Shotgun Ammo Per Shot (AMMO tirées d'un coup)
+	 *  Balles par activation : rafale = Bullets Per Burst (+ upgrade Shoot system en PewPew) ;
+	 *  éventail = Spread Ammo Count (+ Gros sel ++ pour l'attaque auto)
 	 */
 	int32 GetBulletsPerBurst() const;
 
-	/** Sniper : NME touchés par chaque balle = Sniper Max Hits + upgrade Shoot system ; 1 pour les autres shoot systems */
+	/** Pierce : NME touchés par chaque balle = Pierce Max Hits + upgrade Shoot system ; 1 pour les autres shoot systems */
 	int32 GetMaxHitsPerBullet() const;
 
 	/** Démarre une rafale vers TargetLocation (serveur ; ExecuteAbility, ou l'autre arme en akimbo) */
@@ -233,8 +253,11 @@ private:
 	/** Tire la balle suivante de la rafale, programme la suivante ou lance le rechargement (serveur) */
 	void FireNextBullet();
 
-	/** Shotgun : toutes les AMMO d'un coup vers TargetLocation, chacune déviée au hasard, un seul recul (serveur) */
+	/** Éventail : toutes les AMMO d'un coup vers TargetLocation, réparties à angles égaux, un seul recul (serveur) */
 	void FireShotgun(const FVector& TargetLocation);
+
+	/** Gros sel de l'éventail en cours (dégâts en plus par AMMO sur une même cible, critique à partir de N) */
+	TSharedPtr<FYSShotVolley> CurrentVolley;
 
 	/**
 	 *  Départ et direction (à plat) d'un tir vers TargetLocation : bouche de l'arme, visée assistée (un NME proche de la

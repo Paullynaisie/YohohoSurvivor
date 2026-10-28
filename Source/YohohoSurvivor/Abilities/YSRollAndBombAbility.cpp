@@ -26,8 +26,9 @@ void UYSRollAndBombAbility::DropBombs()
 {
 	DropBomb();
 
-	// Golden Mine : la seconde mine est posée en cours de roulade (Second Mine Roll Fraction)
-	if (MineClass && GetWeaponStat(UYSMineUpgrade::MineStat, 0.0f) > 0.0f && GetWeaponStat(UYSMineUpgrade::MineDoubleStat, 0.0f) > 0.0f)
+	// Golden Mine (ou Always Drop Second Bomb : Saboteur) : la seconde bombe / mine est posée en cours de roulade (Second Mine Roll Fraction)
+	const bool bGoldenMine = MineClass && GetWeaponStat(UYSMineUpgrade::MineStat, 0.0f) > 0.0f && GetWeaponStat(UYSMineUpgrade::MineDoubleStat, 0.0f) > 0.0f;
+	if (bGoldenMine || bAlwaysDropSecondBomb)
 	{
 		GetWorld()->GetTimerManager().SetTimer(SecondMineTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { DropBomb(); }), FMath::Max(RollDuration * SecondMineRollFraction, KINDA_SMALL_NUMBER), false);
 	}
@@ -110,7 +111,12 @@ void UYSRollAndBombAbility::GetUnusedProperties(TArray<FName>& OutNames) const
 		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, BurstDuration),
 		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ShotgunAmmoPerShot),
 		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ShotgunSpread),
-		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, SniperMaxHits),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, PierceMaxHits),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, bSpreadFire),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ExplosionClass),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, ExplosionDamage),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, StickyMineClass),
+		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, StickyMineFuse),
 		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, RecoilPitch),
 		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, RecoilKickBack),
 		GET_MEMBER_NAME_CHECKED(UYSRollAndBombAbility, RecoilKickDuration),

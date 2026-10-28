@@ -1123,6 +1123,106 @@ protected:
 };
 
 /**
+ *  « Gros sel » (Shotgun du Harquebusier, attaque auto en éventail ; jumeau de Aiming) :
+ *  Déblocage : chaque AMMO d'un même tir qui touche une même cible fait Damage Bonus Per Hit de plus que la précédente
+ *  (100 %, 110 %, 120 %...) ; Bonus « Gros sel ++ » : + Bonus Value AMMO dans l'éventail (5 max) ;
+ *  Super « Golden gros sel » : à partir de Super Critical Hit Count AMMO sur la même cible, les AMMO sont critiques.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : Gros sel"))
+class UYSGrosSelUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSGrosSelUpgrade();
+
+	/** Déblocage : dégâts en plus de chaque AMMO après la première sur la même cible (0.1 = +10 %, cumulatif) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(ClampMin="0"))
+	float DamageBonusPerHit = 0.1f;
+
+	/** Golden gros sel : AMMO critiques à partir de cette AMMO sur la même cible */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="1"))
+	int32 SuperCriticalHitCount = 5;
+
+	/** Noms des propriétés d'arme posées sur le personnage (lues par le tir en éventail) */
+	static const FName GrosSelStat;
+	static const FName GrosSelAmmoStat;
+	static const FName GrosSelCriticalStat;
+
+protected:
+
+	/** AMMO par tir de l'attaque auto */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override;
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+};
+
+/**
+ *  « Aiming » (Sniper du Harquebusier et son Sniper de base, attaque auto ; jumeau de Gros sel) :
+ *  Déblocage : immobile depuis Base Delay secondes, toutes ses balles sont critiques (le corps s'allonge à plat ventre) ;
+ *  Bonus « Aiming ++ » : délai - Bonus Value (0.5 s) par bonus (au moins Min Delay) ;
+ *  Super « Golden aiming » : ces balles critiques traversent tous les NME.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : Aiming"))
+class UYSAimingUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSAimingUpgrade();
+
+	/** Déblocage : temps immobile avant les critiques */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(ClampMin="0", Units="Seconds"))
+	float BaseDelay = 3.5f;
+
+	/** Délai minimum après les bonus */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Bonus", meta=(ClampMin="0", Units="Seconds"))
+	float MinDelay = 0.5f;
+
+protected:
+
+	/** Temps immobile avant les critiques (s) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return FMath::Max(MinDelay, BaseDelay - BonusTotal); }
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+};
+
+/**
+ *  « MineShooter » (HandCanon de l'Artilleur, attaque auto Explosive ; jumeau de « Une Mine ! ») :
+ *  Déblocage : les AMMO collent une mine sur le NME touché (après les dégâts d'impact) au lieu d'exploser ; toutes les mines collées
+ *  sur un NME explosent ensemble Sticky Mine Fuse (5 s) après la dernière collée, ou à sa mort ;
+ *  Bonus « MineShooter ++ » : + Bonus Value de dégâts par mine collée au moment de l'explosion (0.05 = +5 % par mine, 5 bonus max) ;
+ *  Super « Golden mineshooter » : rayon d'explosion des mines x Super Radius Multiplier.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : MineShooter"))
+class UYSMineShooterUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSMineShooterUpgrade();
+
+	/** Golden mineshooter : rayon d'explosion des mines x ce multiplicateur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="1"))
+	float SuperRadiusMultiplier = 2.0f;
+
+	/** Noms des propriétés d'arme posées sur le personnage (lues par le tir Explosif) */
+	static const FName MineShooterStat;
+	static const FName MineShooterBonusStat;
+	static const FName MineShooterRadiusStat;
+
+protected:
+
+	/** Dégâts en plus par mine collée (%) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal * 100.0f; }
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+};
+
+/**
  *  Upgrade de classe : proposée (sans hasard, sans rareté) au niveau d'équipe AYSGameMode::ClassUpgradeLevel ;
  *  les choix sont toutes les upgrades de classe proposables du pool.
  *  Normalement : change le SET D'ARME du personnage (SourceWeaponSet -> TargetWeaponSet), qui garde toutes ses upgrades.
