@@ -2465,15 +2465,18 @@ void AYSPlayerCharacter::RestoreOnLevelUp()
 	Health = GetMaxHealth();
 	for (const AYSWeapon* Weapon : { GetMainHandWeapon(), GetOffHandWeapon() })
 	{
-		UYSAbilityComponent* Action = Weapon ? Weapon->GetActiveAction() : nullptr;
-		if (Action && Action->GetActionSlot() == EYSActionSlot::Ability)
+		// Ability et attaque auto
+		for (UYSAbilityComponent* Action : { Weapon ? Weapon->GetActiveAction() : nullptr, Weapon ? Weapon->GetAutoAction() : nullptr })
 		{
-			Action->ResetCooldown();
+			if (Action)
+			{
+				Action->ResetCooldown();
+			}
 		}
 	}
 	// pendant la pause du level up : réplication forcée
 	ForceNetUpdate();
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Level up : %s soigné (%.0f PV), recharge de l'Ability rendue"), *GetName(), Health);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Level up : %s soigné (%.0f PV), recharges de l'Ability et de l'attaque auto rendues"), *GetName(), Health);
 }
 
 void AYSPlayerCharacter::ForceAbility(const FYSForcedActivation& Forced)

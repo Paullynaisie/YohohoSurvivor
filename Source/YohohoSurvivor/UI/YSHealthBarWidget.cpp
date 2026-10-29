@@ -65,6 +65,18 @@ void UYSHealthBarWidget::BuildWidgetTree()
 	BarSlot->SetHorizontalAlignment(HAlign_Fill);
 	BarSlot->SetVerticalAlignment(VAlign_Fill);
 
+	// bouclier de boss : par-dessus la barre de vie, fond transparent (la vie reste visible dans la partie vide)
+	ShieldBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("ShieldBar"));
+	FProgressBarStyle ShieldStyle = ShieldBar->GetWidgetStyle();
+	ShieldStyle.BackgroundImage.TintColor = FSlateColor(FLinearColor::Transparent);
+	ShieldStyle.FillImage.TintColor = FSlateColor(FLinearColor::White);
+	ShieldBar->SetWidgetStyle(ShieldStyle);
+	ShieldBar->SetFillColorAndOpacity(ShieldColor);
+	ShieldBar->SetVisibility(ESlateVisibility::Collapsed);
+	UOverlaySlot* ShieldSlot = Overlay->AddChildToOverlay(ShieldBar);
+	ShieldSlot->SetHorizontalAlignment(HAlign_Fill);
+	ShieldSlot->SetVerticalAlignment(VAlign_Fill);
+
 	Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Label"));
 	FSlateFontInfo Font = Label->GetFont();
 	Font.Size = FontSize;
@@ -94,9 +106,36 @@ void UYSHealthBarWidget::SetHealth(float Current, float Max, bool bShowWhenFull)
 		Format.MaximumFractionalDigits = 1;
 
 		Bar->SetPercent(Current / Max);
-		Label->SetText(FText::Format(NSLOCTEXT("YS", "HealthBarLabel", "{0} / {1}"), FText::AsNumber(Current, &Format), FText::AsNumber(Max, &Format)));
+		HealthText = FText::Format(NSLOCTEXT("YS", "HealthBarLabel", "{0} / {1}"), FText::AsNumber(Current, &Format), FText::AsNumber(Max, &Format));
+		if (ShieldCurrent <= 0.0f)
+		{
+			Label->SetText(HealthText);
+		}
 	}
 	RefreshVisibility();
+}
+
+void UYSHealthBarWidget::SetShield(float Current, float Max)
+{
+	if (!ShieldBar || !Label)
+	{
+		return;
+	}
+	ShieldCurrent = Current;
+	ShieldMax = Max;
+	const bool bShield = Current > 0.0f && Max > 0.0f;
+	ShieldBar->SetVisibility(bShield ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	if (bShield)
+	{
+		FNumberFormattingOptions Format;
+		Format.MaximumFractionalDigits = 0;
+		ShieldBar->SetPercent(Current / Max);
+		Label->SetText(FText::Format(NSLOCTEXT("YS", "HealthBarShieldLabel", "Bouclier {0} / {1}"), FText::AsNumber(Current, &Format), FText::AsNumber(Max, &Format)));
+	}
+	else
+	{
+		Label->SetText(HealthText);
+	}
 }
 
 void UYSHealthBarWidget::SetSizeMultiplier(float Multiplier)

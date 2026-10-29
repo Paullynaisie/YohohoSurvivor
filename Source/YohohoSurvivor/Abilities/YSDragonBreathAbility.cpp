@@ -8,6 +8,8 @@ UYSDragonBreathAbility::UYSDragonBreathAbility()
 	bSpreadFire = true;
 	ShotgunAmmoPerShot = 7;
 	ShotgunSpread = 30.0f;
+	// pas la dégressivité des plombs du Shotgun (réglable)
+	SpreadDamageFalloff = 0.0f;
 	// recul de 0.25 s, puis l'attaque auto est rechargée
 	RecoilKickDuration = 0.05f;
 	RecoilRecoverDuration = 0.2f;

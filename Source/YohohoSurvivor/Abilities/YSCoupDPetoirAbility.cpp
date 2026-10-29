@@ -79,13 +79,16 @@ void UYSCoupDPetoirAbility::FireShotgun(const FVector& TargetLocation)
 		return;
 	}
 
-	// Gros sel (attaque auto) : les AMMO de ce tir partagent le compte des touches par cible
+	// dégressivité naturelle et Gros sel (attaque auto) : les AMMO de ce tir partagent le compte des touches par cible
 	CurrentVolley.Reset();
-	if (IsAutomatic() && GetWeaponStat(UYSGrosSelUpgrade::GrosSelStat, 0.0f) > 0.0f)
+	const float GrosSel = IsAutomatic() ? GetWeaponStat(UYSGrosSelUpgrade::GrosSelStat, 0.0f) : 0.0f;
+	if (GrosSel > 0.0f || SpreadDamageFalloff > 0.0f)
 	{
 		CurrentVolley = MakeShared<FYSShotVolley>();
-		CurrentVolley->DamageBonusPerHit = GetWeaponStat(UYSGrosSelUpgrade::GrosSelStat, 0.0f);
-		CurrentVolley->CriticalHitCount = FMath::RoundToInt(GetWeaponStat(UYSGrosSelUpgrade::GrosSelCriticalStat, 0.0f));
+		CurrentVolley->DamageBonusPerHit = GrosSel;
+		CurrentVolley->DamageFalloffPerHit = SpreadDamageFalloff;
+		CurrentVolley->MinFalloffMultiplier = SpreadMinDamageMultiplier;
+		CurrentVolley->CriticalHitCount = IsAutomatic() ? FMath::RoundToInt(GetWeaponStat(UYSGrosSelUpgrade::GrosSelCriticalStat, 0.0f)) : 0;
 	}
 
 	// éventail régulier : de -Spread à +Spread, à angles égaux (une seule AMMO : droit vers la cible)

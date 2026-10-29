@@ -11,12 +11,15 @@ class USphereComponent;
 class UStaticMeshComponent;
 
 /**
- *  Éventail tiré d'un coup (Shotgun) avec l'upgrade Gros sel : partagé par ses AMMO (serveur). La N-ième AMMO qui touche une même
- *  cible fait x (1 + Damage Bonus Per Hit x (N - 1)) ; à partir de Critical Hit Count AMMO sur la même cible (0 = jamais), critique.
+ *  Éventail tiré d'un coup (Shotgun) : partagé par ses AMMO (serveur). La N-ième AMMO qui touche une même cible fait
+ *  x max(Min Falloff Multiplier, 1 - Damage Falloff Per Hit x (N - 1)) (dégressivité naturelle) x (1 + Damage Bonus Per Hit x (N - 1))
+ *  (Gros sel) ; à partir de Critical Hit Count AMMO sur la même cible (0 = jamais, Golden gros sel), critique.
  */
 struct FYSShotVolley
 {
 	float DamageBonusPerHit = 0.0f;
+	float DamageFalloffPerHit = 0.0f;
+	float MinFalloffMultiplier = 0.2f;
 	int32 CriticalHitCount = 0;
 	TMap<TWeakObjectPtr<AActor>, int32> HitCounts;
 };
@@ -86,9 +89,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground", meta=(ClampMin="0", Units="Centimeters", EditCondition="bFollowGround"))
 	float GroundFollowMaxStep = 100.0f;
 
-	/** La balle regarde le sol ce temps devant elle pour monter avant la pente (sinon elle la heurte) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground", meta=(ClampMin="0", Units="Seconds", EditCondition="bFollowGround"))
-	float GroundFollowLookAhead = 0.1f;
+	/**
+	 *  Pente max suivie à la lettre (dénivelé / distance parcourue, 1 = 45°) : les pentes de l'île (jusqu'à ~0.42) sont suivies exactement,
+	 *  en montée comme en descente ; une descente plus raide (bord d'un rocher, d'un prop) est adoucie (Ground Follow Interp Speed)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground", meta=(ClampMin="0", EditCondition="bFollowGround"))
+	float GroundFollowMaxSlope = 1.0f;
 
 	/** Descente : vitesse à laquelle la balle redescend à la hauteur voulue (0 = immédiat ; plus petit = plus doux). Les montées sont immédiates */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground", meta=(ClampMin="0", EditCondition="bFollowGround"))

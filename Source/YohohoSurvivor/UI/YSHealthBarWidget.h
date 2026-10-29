@@ -38,6 +38,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
 	int32 FontSize = 10;
 
+	/** Bouclier de boss (barre sous l'élite) : barre par-dessus celle de vie, de cette couleur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Shield")
+	FLinearColor ShieldColor = FLinearColor(0.2f, 0.75f, 1.0f);
+
 	/** Diamètre du point critique (pixels) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Critical")
 	float CriticalDotSize = 12.0f;
@@ -72,6 +76,9 @@ public:
 	/** Barre et texte x Multiplier (barre sous l'élite) ; le point critique garde sa taille */
 	void SetSizeMultiplier(float Multiplier);
 
+	/** Bouclier de boss : barre par-dessus celle de vie et texte « Bouclier X / Y » tant qu'il en reste (0 = caché) */
+	void SetShield(float Current, float Max);
+
 private:
 
 	void BuildWidgetTree();
@@ -87,6 +94,15 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> Label;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UProgressBar> ShieldBar;
+
+	/** Texte des PV, remis quand le bouclier disparaît */
+	FText HealthText;
+
+	float ShieldCurrent = 0.0f;
+	float ShieldMax = 0.0f;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UImage> CriticalDot;

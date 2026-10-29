@@ -82,6 +82,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(DisplayName="Spread", ClampMin="0", ClampMax="180", Units="Degrees", EditCondition="bSpreadFire", EditConditionHides))
 	float ShotgunSpread = 20.0f;
 
+	/**
+	 *  Éventail : dégressivité naturelle, la N-ième AMMO d'un même tir qui touche une même cible fait x (1 - Falloff x (N - 1))
+	 *  (10 % de moins à chaque AMMO) ; se multiplie avec le bonus du Gros sel (0 = aucune)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="0", ClampMax="1", EditCondition="bSpreadFire", EditConditionHides))
+	float SpreadDamageFalloff = 0.1f;
+
+	/** Éventail : multiplicateur minimum de la dégressivité (garde-fou quand beaucoup d'AMMO touchent la même cible) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="0", ClampMax="1", EditCondition="bSpreadFire", EditConditionHides))
+	float SpreadMinDamageMultiplier = 0.2f;
+
 	/** Pierce : NME touchés par chaque balle avant qu'elle disparaisse (2 = traverse une fois ; + upgrade Shoot system) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="1", EditCondition="ShootSystem==EYSShootSystem::Pierce", EditConditionHides))
 	int32 PierceMaxHits = 2;

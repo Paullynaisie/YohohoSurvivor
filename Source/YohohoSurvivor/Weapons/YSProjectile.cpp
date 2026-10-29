@@ -131,8 +131,21 @@ void AYSProjectile::BeginPlay()
 	float GroundZ = 0.0f;
 	if (bFollowGround && FindGroundZ(FVector2D(GetActorLocation().X, GetActorLocation().Y), GetActorLocation().Z, 0.0f, YSProjectile::InitialGroundSearch, GroundZ))
 	{
+		// hauteur mesurée depuis le sol sous les pieds du tireur, pas sous le canon : face à une descente, le sol sous le canon
+		// (devant lui) est plus bas et la balle partait trop haut pour tout le vol
+		float ShooterGroundZ = GroundZ;
+		const APawn* Shooter = GetInstigator();
+		if (Shooter && ForcedHeightAboveGround < 0.0f)
+		{
+			const FVector ShooterLocation = Shooter->GetActorLocation();
+			float FeetGroundZ = 0.0f;
+			if (FindGroundZ(FVector2D(ShooterLocation.X, ShooterLocation.Y), ShooterLocation.Z, 0.0f, YSProjectile::InitialGroundSearch, FeetGroundZ))
+			{
+				ShooterGroundZ = FeetGroundZ;
+			}
+		}
 		// au moins un peu plus que le rayon de la balle, pour ne pas frotter le sol ; canon : hauteur imposée
-		HeightAboveGround = FMath::Max(ForcedHeightAboveGround >= 0.0f ? ForcedHeightAboveGround : GetActorLocation().Z - GroundZ, Collision->GetScaledSphereRadius() + YSProjectile::MinGroundClearance);
+		HeightAboveGround = FMath::Max(ForcedHeightAboveGround >= 0.0f ? ForcedHeightAboveGround : GetActorLocation().Z - ShooterGroundZ, Collision->GetScaledSphereRadius() + YSProjectile::MinGroundClearance);
 		LastGroundZ = GroundZ;
 
 		// vol à plat : la hauteur ne vient que du sol
@@ -230,25 +243,30 @@ void AYSProjectile::Tick(float DeltaSeconds)
 		return;
 	}
 
-	// sol sous la balle et un peu devant elle (pour monter avant la pente) ;
-	// sol trop haut (mur) ou absent (bord du monde) : la balle continue tout droit et heurte le mur
+	// sol sous la balle et là où elle sera à l'image suivante (pour monter avant la pente, sans prendre d'avance : sinon elle passe
+	// au-dessus des NME de la pente) ; sol trop haut (mur) ou absent (bord du monde) : la balle continue tout droit et heurte le mur
 	FVector Location = GetActorLocation();
 	const FVector2D Here(Location.X, Location.Y);
-	const FVector2D Ahead = Here + FVector2D(GetVelocity().X, GetVelocity().Y) * GroundFollowLookAhead;
+	const FVector2D Step = FVector2D(GetVelocity().X, GetVelocity().Y) * DeltaSeconds;
 	float GroundZ = 0.0f;
 	if (FindGroundZ(Here, LastGroundZ, GroundFollowMaxStep, YSProjectile::GroundSearchDown, GroundZ))
 	{
 		LastGroundZ = GroundZ;
 	}
 	float AheadGroundZ = LastGroundZ;
-	if (GroundFollowLookAhead > 0.0f && FindGroundZ(Ahead, LastGroundZ, GroundFollowMaxStep, YSProjectile::GroundSearchDown, GroundZ))
+	if (FindGroundZ(Here + Step, LastGroundZ, GroundFollowMaxStep, YSProjectile::GroundSearchDown, GroundZ))
 	{
 		AheadGroundZ = GroundZ;
 	}
 
-	// montée immédiate (ne jamais toucher la pente), descente adoucie
+	// montée immédiate (ne jamais toucher la pente) ; descente suivie exactement sur une pente praticable (avant : adoucie, la balle
+	// restait jusqu'à ~1 m trop haut en tirant vers le bas d'une colline), adoucie seulement au bord d'un obstacle
 	const float TargetZ = FMath::Max(LastGroundZ, AheadGroundZ) + HeightAboveGround;
-	const float NewZ = TargetZ >= Location.Z || GroundFollowInterpSpeed <= 0.0f ? TargetZ : FMath::FInterpTo(Location.Z, TargetZ, DeltaSeconds, GroundFollowInterpSpeed);
+	const float Drop = Location.Z - TargetZ;
+	const bool bFollowExactly = TargetZ >= Location.Z || GroundFollowInterpSpeed <= 0.0f || Drop <= Step.Size() * GroundFollowMaxSlope + 1.0f;
+	const float NewZ = bFollowExactly ? TargetZ : FMath::FInterpTo(Location.Z, TargetZ, DeltaSeconds, GroundFollowInterpSpeed);
+	UE_LOG(LogTemp, VeryVerbose, TEXT("[YSProjectile] %s en vol (%.0f, %.0f) : sol %.0f, %.0f cm au-dessus (voulu %.0f)%s"), *GetName(),
+		Location.X, Location.Y, LastGroundZ, NewZ - LastGroundZ, HeightAboveGround, bFollowExactly ? TEXT("") : TEXT(", descente adoucie"));
 	if (!FMath::IsNearlyEqual(NewZ, Location.Z, 0.1f))
 	{
 		Location.Z = NewZ;
@@ -365,11 +383,15 @@ void AYSProjectile::HitTarget(AActor* OtherActor, const FHitResult& SweepResult)
 		HitDamage *= DistanceShooter->GetCriticalDamageMultiplier();
 	}
 	AYSFoeCharacter* TargetFoe = Cast<AYSFoeCharacter>(OtherActor);
-	// Gros sel : la N-ième AMMO de l'éventail sur cette cible fait plus de dégâts (100 %, 110 %, 120 %...), critique à partir de N (Golden)
+	// éventail : la N-ième AMMO sur cette cible fait 10 % de moins à chaque fois (100 %, 90 %, 80 %...) ; Gros sel : plus de dégâts
+	// (100 %, 110 %, 120 %...), multiplié à la dégressivité ; critique à partir de N (Golden)
 	if (Volley.IsValid() && TargetFoe)
 	{
 		int32& VolleyHits = Volley->HitCounts.FindOrAdd(OtherActor);
-		HitDamage *= 1.0f + Volley->DamageBonusPerHit * VolleyHits;
+		const float Falloff = FMath::Max(Volley->MinFalloffMultiplier, 1.0f - Volley->DamageFalloffPerHit * VolleyHits);
+		HitDamage *= Falloff * (1.0f + Volley->DamageBonusPerHit * VolleyHits);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s : AMMO n°%d de l'éventail sur %s : x%.2f (dégressivité) x%.2f (Gros sel)"), *GetName(), VolleyHits + 1,
+			*OtherActor->GetName(), Falloff, 1.0f + Volley->DamageBonusPerHit * VolleyHits);
 		++VolleyHits;
 		if (!bCritical && DistanceShooter && Volley->CriticalHitCount > 0 && VolleyHits >= Volley->CriticalHitCount)
 		{

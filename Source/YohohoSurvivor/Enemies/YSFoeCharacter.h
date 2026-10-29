@@ -202,7 +202,7 @@ protected:
 
 	/** Taille de cette barre (largeur, hauteur et texte) par rapport à celle des autres NME (WBP_FoeHealthBar) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(EditCondition="bIsElite && bEliteHealthBarUnder", ClampMin="0.1"))
-	float EliteHealthBarScale = 3.0f;
+	float EliteHealthBarScale = 2.0f;
 
 	/**
 	 *  Boss armor (élites) : un coup dont les dégâts HORS CRITIQUE dépassent Rage Cap est réduit : Rage Cap + excès x
@@ -343,6 +343,13 @@ protected:
 	/** NME à distance qui vise un joueur en train de nager : s'arrête quand la mer est à cette distance devant lui (pas dans l'eau) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement", meta=(ClampMin="0", Units="Centimeters"))
 	float WaterStopDistance = 50.0f;
+
+	/**
+	 *  Élite : poursuit aussi les joueurs qui nagent et entre dans la mer tant que l'eau devant lui (à Water Stop Distance x sa
+	 *  taille) n'est pas plus profonde que ça (0 = comme les autres NME : jamais dans l'eau, nageurs ignorés en mêlée)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(ClampMin="0", Units="Centimeters", EditCondition="bIsElite"))
+	float EliteWadeDepth = 200.0f;
 
 	/**
 	 *  Les capsules des NME se bloquent entre elles (ancien comportement : foule compacte, mais chaque NME bute sur ses voisins,
@@ -673,7 +680,7 @@ protected:
 	APawn* FindNearestPlayer(bool bIncludeSwimmers = false) const;
 
 	/** Le sol devant le NME (Distance dans Direction) est la mer : il s'arrête au bord au lieu d'y entrer (cible qui nage) */
-	bool IsWaterAhead(const FVector& Direction, float Distance) const;
+	bool IsWaterAhead(const FVector& Direction, float Distance, float MaxDepth = 0.0f) const;
 
 	/** Blesse les joueurs dont la hurtbox touche la Hitbox (serveur) */
 	void ApplyContactDamage();

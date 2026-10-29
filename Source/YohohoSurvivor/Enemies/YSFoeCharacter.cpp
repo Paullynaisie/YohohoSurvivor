@@ -439,6 +439,8 @@ void AYSFoeCharacter::UpdateHealthBar()
 		if (bIsElite)
 		{
 			Bar->SetHealth(bEliteHealthBarUnder ? Health : 0.0f, MaxHealth, bEliteHealthBarUnder);
+			// bouclier de boss par-dessus la barre de vie
+			Bar->SetShield(bEliteHealthBarUnder ? Shield : 0.0f, MaxShield);
 		}
 		else
 		{
@@ -706,7 +708,9 @@ void AYSFoeCharacter::Die()
 	{
 		const FVector Feet = GetActorLocation() - FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 		const float WaterDepth = AYSOcean::GetWaterDepth(GetWorld(), Feet);
-		if (bSkipDeathAnim || WaterDepth > NoExperienceWaterDepth)
+		// élite qui marche dans l'eau peu profonde (Elite Wade Depth) : XP gardée
+		const float MaxWaterDepth = bIsElite ? FMath::Max(NoExperienceWaterDepth, EliteWadeDepth) : NoExperienceWaterDepth;
+		if (bSkipDeathAnim || WaterDepth > MaxWaterDepth)
 		{
 			UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s meurt dans l'eau (%s, %.0f cm d'eau) : pas d'XP"), *GetName(), bSkipDeathAnim ? TEXT("deadzone") : TEXT("dans la mer"), WaterDepth);
 		}
@@ -1192,8 +1196,9 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		}
 	}
 
-	// NME à distance : les joueurs qui nagent restent des cibles
-	Target = FindNearestPlayer(Ranged != nullptr);
+	// NME à distance : les joueurs qui nagent restent des cibles ; élite : aussi (il entre dans l'eau peu profonde)
+	const bool bWades = bIsElite && EliteWadeDepth > 0.0f;
+	Target = FindNearestPlayer(Ranged != nullptr || bWades);
 	if (!Target)
 	{
 		return;
@@ -1227,8 +1232,11 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	else
 	{
 		// cible qui nage : le NME s'arrête au bord de l'eau (il attend qu'elle revienne à portée)
+		// élite : il entre dans la mer jusqu'à Elite Wade Depth (quelle que soit la cible)
 		const AYSPlayerCharacter* TargetCharacter = Cast<AYSPlayerCharacter>(Target);
-		if (!(TargetCharacter && TargetCharacter->IsSwimming() && IsWaterAhead(ToTarget, WaterStopDistance)))
+		const bool bBlockedByWater = bWades ? IsWaterAhead(ToTarget, WaterStopDistance * GetActorScale3D().X, EliteWadeDepth)
+			: TargetCharacter && TargetCharacter->IsSwimming() && IsWaterAhead(ToTarget, WaterStopDistance);
+		if (!bBlockedByWater)
 		{
 			AddMovementInput(ToTarget.GetSafeNormal());
 		}
@@ -1249,7 +1257,7 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	SetActorRotation(TurnSpeed > 0.0f ? FMath::RInterpTo(GetActorRotation(), Desired, DeltaSeconds, TurnSpeed) : Desired);
 }
 
-bool AYSFoeCharacter::IsWaterAhead(const FVector& Direction, float Distance) const
+bool AYSFoeCharacter::IsWaterAhead(const FVector& Direction, float Distance, float MaxDepth) const
 {
 	const UWorld* World = GetWorld();
 	const FVector Ahead = GetActorLocation() + Direction.GetSafeNormal2D() * Distance;
@@ -1259,7 +1267,8 @@ bool AYSFoeCharacter::IsWaterAhead(const FVector& Direction, float Distance) con
 	{
 		return true;
 	}
-	return AYSOcean::IsUnderwater(World, Hit.ImpactPoint);
+	// profondeur tolérée (élite) : eau peu profonde praticable
+	return MaxDepth > 0.0f ? AYSOcean::GetWaterDepth(World, Hit.ImpactPoint) > MaxDepth : AYSOcean::IsUnderwater(World, Hit.ImpactPoint);
 }
 
 APawn* AYSFoeCharacter::FindNearestPlayer(bool bIncludeSwimmers) const
