@@ -33,10 +33,17 @@ namespace YSShardUpgrades
 		return FindAction(Character, bAuto, [](const UYSAbilityComponent*) { return true; });
 	}
 
-	/** Atk speed : attaque auto qui n'est pas un Gun (l'Auto atk des Guns a le Shoot system) */
-	bool IsAtkSpeedAction(const UYSAbilityComponent* Action)
+	/** Melee Range : arme tenue dont l'attaque auto est Melee */
+	bool HasMeleeWeapon(const AYSPlayerCharacter* Character)
 	{
-		return Action->WeaponType != EYSWeaponType::Gun || !Action->IsAutomatic();
+		for (const AYSWeapon* Weapon : { Character->GetMainHandWeapon(), Character->GetOffHandWeapon() })
+		{
+			if (Weapon && Weapon->IsMeleeWeapon())
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Shoot system : attaque auto avec un shoot system (Gun PewPew / Pierce / Explosif, BombThrow du Saboteur) */
@@ -130,9 +137,11 @@ bool UYSUpShard::IsApplicable(const AYSPlayerCharacter* Character) const
 	case EYSShardStat::AutoAtkDamage:	return YSShardUpgrades::FindAction(Character, true) != nullptr;
 	case EYSShardStat::AbilityDamage:	return YSShardUpgrades::FindAction(Character, false) != nullptr;
 	case EYSShardStat::CdReduction:		return YSShardUpgrades::FindAction(Character, false) != nullptr;
-	case EYSShardStat::AtkSpeed:		return YSShardUpgrades::FindAction(Character, true, YSShardUpgrades::IsAtkSpeedAction) != nullptr;
+	// Atk speed : toutes les attaques auto (Guns compris : seulement la recharge, pas la durée de la rafale)
+	case EYSShardStat::AtkSpeed:		return YSShardUpgrades::FindAction(Character, true) != nullptr;
 	case EYSShardStat::ShootSystem:		return YSShardUpgrades::FindShootSystemGun(Character) != nullptr;
 	case EYSShardStat::SummonSystem:	return YSShardUpgrades::FindSummonAction(Character) != nullptr;
+	case EYSShardStat::MeleeRange:		return YSShardUpgrades::HasMeleeWeapon(Character);
 	default:							return true;
 	}
 }
@@ -164,6 +173,8 @@ void UYSUpShard::Apply(AYSPlayerCharacter* Character, int32 Level) const
 		break;
 	}
 	case EYSShardStat::SummonSystem:	Character->SetSummonSystemBonus(YSShardUpgrades::Evaluate(this, 0.0f, Level, LevelIndex)); break;
+	// échelle des armes de mêlée (DA : Multiplicative, Base 1, Index 0.065 = x2.95 à 30 / 30, comme le rayon de l'Explosif)
+	case EYSShardStat::MeleeRange:		Character->SetMeleeRangeMultiplier(YSShardUpgrades::Evaluate(this, 1.0f, Level, LevelIndex)); break;
 	case EYSShardStat::CritDamage:
 		// multiplicateur de base du personnage (1.5, Marksman : 2) à la place de Base : dégâts critiques = base + Index x Lvl
 		Character->SetCriticalDamageAdd(LevelIndex * Level);
@@ -224,7 +235,7 @@ bool UYSUpShard::GetDisplayValue(const AYSPlayerCharacter* Character, int32 Leve
 	case EYSShardStat::AtkSpeed:
 	{
 		const bool bAuto = Stat == EYSShardStat::AtkSpeed;
-		const UYSAbilityComponent* Action = bAuto ? YSShardUpgrades::FindAction(Character, true, YSShardUpgrades::IsAtkSpeedAction) : YSShardUpgrades::FindAction(Character, false);
+		const UYSAbilityComponent* Action = YSShardUpgrades::FindAction(Character, bAuto);
 		if (!Action)
 		{
 			return false;
@@ -270,6 +281,10 @@ bool UYSUpShard::GetDisplayValue(const AYSPlayerCharacter* Character, int32 Leve
 		OutValue = YSShardUpgrades::Evaluate(this, Summon->BaseMaxMinions, Level, LevelIndex);
 		return true;
 	}
+	case EYSShardStat::MeleeRange:
+		OutLabel = NSLOCTEXT("YS", "ShardMeleeRangeLabel", "Taille de l'arme (x)");
+		OutValue = YSShardUpgrades::Evaluate(this, 1.0f, Level, LevelIndex);
+		return true;
 	case EYSShardStat::Luck:
 		// une ligne de plus pour le Mythique dans la carte (UYSUpStats::GetOfferCard)
 		OutLabel = NSLOCTEXT("YS", "ShardLuckGoldLabel", "Chance Gold (%)");

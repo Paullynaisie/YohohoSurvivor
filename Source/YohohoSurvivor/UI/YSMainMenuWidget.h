@@ -58,6 +58,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
 	float GameButtonHeight = 44.0f;
 
+	/** Manette : échelle du bouton qui a le focus (navigation au stick gauche, A = valider) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
+	float GamepadFocusScale = 1.05f;
+
 	virtual bool Initialize() override;
 
 	/** Clic sur une partie de la liste Steam (via son proxy) */
@@ -68,6 +72,8 @@ protected:
 	virtual void NativeConstruct() override;
 
 	virtual void NativeDestruct() override;
+
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 private:
 

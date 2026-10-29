@@ -56,6 +56,18 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	float AutoAttackIconSpacing = 16.0f;
 
+	/** Manette : zone morte du stick droit (visée) */
+	UPROPERTY(EditAnywhere, Category="Gamepad", meta=(ClampMin="0", ClampMax="1"))
+	float GamepadAimDeadZone = 0.25f;
+
+	/** Manette : distance du point visé (curseur) au personnage, stick juste sorti de la zone morte */
+	UPROPERTY(EditAnywhere, Category="Gamepad", meta=(ClampMin="0", Units="Centimeters"))
+	float GamepadAimMinDistance = 300.0f;
+
+	/** Manette : distance du point visé au personnage, stick poussé à fond (ex. lancer de bombe vers le curseur) */
+	UPROPERTY(EditAnywhere, Category="Gamepad", meta=(ClampMin="0", Units="Centimeters"))
+	float GamepadAimMaxDistance = 1000.0f;
+
 	/** Distance entre les icônes des joueurs hors écran et le bord de l'écran */
 	UPROPERTY(EditAnywhere, Category="UI")
 	float OffscreenIndicatorMargin = 12.0f;
@@ -562,4 +574,23 @@ protected:
 
 	/** Projette la souris sur le plan horizontal du pawn et tourne la rotation de contrôle vers ce point */
 	void UpdateAim();
+
+	/**
+	 *  Stick droit : place le curseur de la souris sur le point visé (direction du stick depuis le personnage, distance selon
+	 *  l'inclinaison), donc tout ce qui suit le curseur (regard, lancers, caméra, postes du bateau) marche à la manette.
+	 *  Stick relâché : le point visé reste au même endroit par rapport au personnage ; la souris bougée reprend la main.
+	 */
+	void UpdateGamepadAim(const APawn* ControlledPawn);
+
+	/** Visée à la manette en cours (le curseur est placé par le stick droit) */
+	bool bGamepadAiming = false;
+
+	/** Point visé à la manette, par rapport au personnage (à plat) */
+	FVector GamepadAimOffset = FVector::ZeroVector;
+
+	/** Positions du curseur placées aux deux dernières images (la souris réelle est rendue avec une image de retard) */
+	FVector2D GamepadCursorPositions[2] = { FVector2D(-1.0f), FVector2D(-1.0f) };
+
+	/** Un menu (sélection, upgrades) gardait le focus : rendu au jeu quand il se cache (A doit de nouveau interagir) */
+	void UpdateMenuFocus();
 };

@@ -182,6 +182,12 @@ UYSAbilityComponent* AYSWeapon::GetAutoAction() const
 	return nullptr;
 }
 
+bool AYSWeapon::IsMeleeWeapon() const
+{
+	const UYSAbilityComponent* Action = GetAutoAction();
+	return Action && Action->WeaponType == EYSWeaponType::Melee;
+}
+
 APawn* AYSWeapon::GetHolder() const
 {
 	return Cast<APawn>(GetOwner());

@@ -102,6 +102,10 @@ class UYSCharacterSelectWidget : public UUserWidget
 
 public:
 
+	/** Manette : échelle du bouton qui a le focus (navigation au stick gauche, A = valider) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Gamepad", meta=(ClampMin="1"))
+	float GamepadFocusScale = 1.08f;
+
 	// ---- couleurs ----
 
 	/** Couleur du bouton choisi (et du bouton « Prêt » quand le joueur est prêt) */

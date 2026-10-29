@@ -46,6 +46,10 @@ class UYSUpgradeMenuWidget : public UUserWidget
 
 public:
 
+	/** Manette : échelle du bouton qui a le focus (navigation au stick gauche, A = valider) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Gamepad", meta=(ClampMin="1"))
+	float GamepadFocusScale = 1.05f;
+
 	// ---- couleurs ----
 
 	/** Voile derrière le menu */
@@ -223,6 +227,10 @@ public:
 
 	/** Index du proxy du bouton « Valider » (INDEX_NONE = « Relance », 0..N-1 = cartes) */
 	static constexpr int32 ValidateButtonIndex = -2;
+
+protected:
+
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 private:
 

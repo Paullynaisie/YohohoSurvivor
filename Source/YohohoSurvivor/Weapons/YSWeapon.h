@@ -160,6 +160,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	UYSAbilityComponent* GetAutoAction() const;
 
+	/** Arme de mêlée = son attaque auto est Melee (ex. épées, GreatAxe ; concernée par la shard Melee Range) */
+	bool IsMeleeWeapon() const;
+
 	/** Pawn qui tient l'arme */
 	UFUNCTION(BlueprintPure, Category="Weapon")
 	APawn* GetHolder() const;

@@ -27,6 +27,7 @@ enum class EYSShardStat : uint8
 	AtkSpeed		UMETA(DisplayName="Atk speed (Auto atk)"),
 	ShootSystem		UMETA(DisplayName="Shoot system (Auto atk des Guns)"),
 	SummonSystem	UMETA(DisplayName="Summon system (minions max des armes d'invocation)"),
+	MeleeRange		UMETA(DisplayName="Melee Range (taille des armes de mêlée)"),
 	Luck			UMETA(DisplayName="Luck"),
 	MaxStats		UMETA(DisplayName="Max stats (spéciale)"),
 	MinStats		UMETA(DisplayName="Min stats (spéciale)"),
@@ -128,7 +129,7 @@ public:
 	float MythicPerLevel = 0.65f;
 
 	/**
-	 *  Shard jumelle (Atk speed <-> Shoot system) : au changement de set d'arme, si cette shard ne concerne plus le personnage
+	 *  Shard jumelle (Melee Range <-> Shoot system) : au changement de set d'arme, si cette shard ne concerne plus le personnage
 	 *  mais que la jumelle oui, ses niveaux passent à la jumelle
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shard")

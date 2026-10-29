@@ -210,6 +210,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, UpgradeProgress);
 	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, SummonSystemBonus);
+	DOREPLIFETIME(AYSPlayerCharacter, MeleeRangeMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, MarkedFoe);
 	DOREPLIFETIME(AYSPlayerCharacter, Rise);
 	DOREPLIFETIME(AYSPlayerCharacter, Death);
@@ -1238,6 +1239,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateHands(DeltaSeconds);
 	// les armes répliquées arrivent après le perso chez les clients : réappliqué tant qu'elles changent (sinon rien)
 	UpdateWeaponColoration();
+	UpdateWeaponRangeScale();
 	UpdateDayNight(DeltaSeconds);
 	UpdateCursorCamera(DeltaSeconds);
 	UpdateAutoAttackInput();
@@ -1739,6 +1741,22 @@ void AYSPlayerCharacter::CreateDefaultInput()
 
 	// droite
 	MapKey(EKeys::D, false, false);
+
+	// manette : stick gauche = déplacement (X droite, Y haut, comme ZQSD), gâchette gauche = clic droit (Ability),
+	// gâchette droite = clic gauche (attaque auto), A = interagir ; stick droit = visée (AYSPlayerController::UpdateGamepadAim)
+	FEnhancedActionKeyMapping& StickMapping = DefaultMappingContext->MapKey(MoveAction, EKeys::Gamepad_Left2D);
+	UInputModifierDeadZone* DeadZone = NewObject<UInputModifierDeadZone>(DefaultMappingContext);
+	DeadZone->LowerThreshold = GamepadMoveDeadZone;
+	StickMapping.Modifiers.Add(DeadZone);
+	for (const TPair<UInputAction*, FKey>& Trigger : { TPair<UInputAction*, FKey>(FireAction, EKeys::Gamepad_LeftTriggerAxis), TPair<UInputAction*, FKey>(AutoAttackAction, EKeys::Gamepad_RightTriggerAxis) })
+	{
+		// gâchette à peine effleurée : rien
+		FEnhancedActionKeyMapping& TriggerMapping = DefaultMappingContext->MapKey(Trigger.Key, Trigger.Value);
+		UInputModifierDeadZone* TriggerDeadZone = NewObject<UInputModifierDeadZone>(DefaultMappingContext);
+		TriggerDeadZone->LowerThreshold = GamepadTriggerDeadZone;
+		TriggerMapping.Modifiers.Add(TriggerDeadZone);
+	}
+	DefaultMappingContext->MapKey(InteractAction, EKeys::Gamepad_FaceButton_Bottom);
 }
 
 void AYSPlayerCharacter::Move(const FInputActionValue& Value)
@@ -3301,6 +3319,21 @@ void AYSPlayerCharacter::UpdateWeaponColoration()
 	if (AYSWeapon* OffWeapon = GetOffHandWeapon())
 	{
 		OffWeapon->SetColoration(bClassUpgraded ? EYSWeaponColoration::ClassUpgrade : EYSWeaponColoration::OffHand);
+	}
+}
+
+void AYSPlayerCharacter::UpdateWeaponRangeScale()
+{
+	// l'arme grandit autour de son origine (la poignée, dans la main) : lame, hitbox et socket de l'autre main compris
+	for (UChildActorComponent* Hand : { LeftHandWeapon.Get(), RightHandWeapon.Get() })
+	{
+		const AYSWeapon* Weapon = Hand ? Cast<AYSWeapon>(Hand->GetChildActor()) : nullptr;
+		const FVector Scale(Weapon && Weapon->IsMeleeWeapon() ? MeleeRangeMultiplier : 1.0f);
+		if (Hand && !Hand->GetRelativeScale3D().Equals(Scale))
+		{
+			Hand->SetRelativeScale3D(Scale);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSShard] %s : %s à l'échelle %.3f (Melee Range)"), *GetName(), Weapon ? *Weapon->GetName() : TEXT("(aucune arme)"), Scale.X);
+		}
 	}
 }
 

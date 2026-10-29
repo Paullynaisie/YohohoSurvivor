@@ -1,4 +1,5 @@
 #include "UI/YSMainMenuWidget.h"
+#include "Core/YSGamepad.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
@@ -229,6 +230,14 @@ void UYSMainMenuWidget::NativeDestruct()
 	}
 
 	Super::NativeDestruct();
+}
+
+void UYSMainMenuWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// manette : focus sur le premier bouton actif, puis navigation au stick gauche
+	YSGamepad::UpdateMenuFocus(this, nullptr, GamepadFocusScale);
 }
 
 void UYSMainMenuWidget::RefreshSteamState()

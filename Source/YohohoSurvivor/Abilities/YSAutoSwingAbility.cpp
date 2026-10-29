@@ -132,7 +132,10 @@ AActor* UYSAutoSwingAbility::FindAutoTarget() const
 	{
 		return nullptr;
 	}
-	return FindTargetInCone(GetWorld(), Holder->GetActorLocation(), Holder->GetActorForwardVector(), DetectionDistance, DetectionAngle, HitTags, Holder);
+	// Melee Range : arme plus grande = détectée plus loin
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Holder);
+	const float RangeMultiplier = Character ? Character->GetMeleeRangeMultiplier() : 1.0f;
+	return FindTargetInCone(GetWorld(), Holder->GetActorLocation(), Holder->GetActorForwardVector(), DetectionDistance * RangeMultiplier, DetectionAngle, HitTags, Holder);
 }
 
 bool UYSAutoSwingAbility::HasHolderAuthority() const

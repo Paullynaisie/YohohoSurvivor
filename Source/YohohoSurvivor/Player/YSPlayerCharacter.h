@@ -138,6 +138,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Movement", meta=(ClampMin="0", Units="CentimetersPerSecond"))
 	float MoveSpeed = 600.0f;
 
+	/** Manette : zone morte du stick gauche (déplacement) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Gamepad", meta=(ClampMin="0", ClampMax="1"))
+	float GamepadMoveDeadZone = 0.2f;
+
+	/** Manette : zone morte des gâchettes (gauche = Ability, droite = attaque auto) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Gamepad", meta=(ClampMin="0", ClampMax="1"))
+	float GamepadTriggerDeadZone = 0.2f;
+
 	/** Points de vie max de base (avant Hps bonus) ; remplacés par ceux du set d'arme s'il en fixe (Weapon Set > Health) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category="3C|Health", meta=(ClampMin="1"))
 	float MaxHealth = 20.0f;
@@ -520,6 +528,10 @@ protected:
 	/** Upgrade Summon system (armes d'invocation, ex. Crochet du capitaine) : minions max en plus (répliqué : le client vérifie s'il peut invoquer) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, Category="3C|Upgrades")
 	float SummonSystemBonus = 0.0f;
+
+	/** Shard Melee Range : échelle des armes de mêlée tenues (répliqué : appliquée sur chaque machine, UpdateWeaponRangeScale) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, Category="3C|Upgrades")
+	float MeleeRangeMultiplier = 1.0f;
 
 	/** NME marqué par les balles de ce joueur (Captain AMMO) : un seul à la fois, marquage au sol sous lui sur toutes les machines */
 	UPROPERTY(ReplicatedUsing=OnRep_MarkedFoe, Transient, VisibleInstanceOnly, Category="3C|Combat")
@@ -1002,6 +1014,11 @@ public:
 
 	float GetSummonSystemBonus() const { return SummonSystemBonus; }
 
+	/** Melee Range : échelle des armes de mêlée (serveur, répliqué) */
+	void SetMeleeRangeMultiplier(float Multiplier) { MeleeRangeMultiplier = Multiplier; ForceNetUpdate(); }
+
+	float GetMeleeRangeMultiplier() const { return MeleeRangeMultiplier; }
+
 	/**
 	 *  Captain AMMO / Captain Sword : marque ce NME (la marque quitte l'ancien ; serveur). Effets de la marque (ceux de la dernière arme
 	 *  qui a marqué) : bMinionsCritical = les minions font des critiques sur lui (Captain Sword) ; bSpawnsMinion = à sa mort, un minion
@@ -1426,6 +1443,9 @@ protected:
 
 	/** Couleur des armes (composant Coloration) : main principale, autre main, ou set d'upgrade de classe ; local */
 	void UpdateWeaponColoration();
+
+	/** Melee Range : échelle des armes de mêlée (composant d'arme de la main), local d'après MeleeRangeMultiplier répliqué */
+	void UpdateWeaponRangeScale();
 
 	/** Invite « E » sur l'objet devant le joueur local */
 	void UpdateInteractPrompt();

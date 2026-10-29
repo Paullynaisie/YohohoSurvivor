@@ -64,6 +64,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static bool SetCharaUpgradesRow(class UDataTable* Table, FName RowName, const TArray<class UYSUpStats*>& Upgrades);
 
+	/** Upgrades d'une ligne de DT_Chara_Upgrades (vide si la ligne n'existe pas) */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static TArray<class UYSUpStats*> GetCharaUpgradesRow(class UDataTable* Table, FName RowName);
+
 	/**
 	 *  Copie toutes les propriétés éditables (EditAnywhere / EditDefaultsOnly) de Source vers Target, pour celles que Target
 	 *  possède aussi (même classe ou classe parente commune) ; retourne le nombre de propriétés copiées.

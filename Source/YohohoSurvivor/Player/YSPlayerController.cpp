@@ -1,4 +1,5 @@
 #include "Player/YSPlayerController.h"
+#include "Core/YSGamepad.h"
 #include "Abilities/YSAbilityComponent.h"
 #include "Abilities/YSBombThrowerAbility.h"
 #include "Player/YSPlayerCharacter.h"
@@ -756,6 +757,7 @@ void AYSPlayerController::Tick(float DeltaSeconds)
 	if (IsLocalController())
 	{
 		UpdateCharacterSelectMenu();
+		UpdateMenuFocus();
 		UpdatePlayerHUD();
 		UpdateUpgradeMenu();
 		UpdateDayNightUI(DeltaSeconds);
@@ -1697,6 +1699,8 @@ void AYSPlayerController::UpdateAim()
 		return;
 	}
 
+	UpdateGamepadAim(ControlledPawn);
+
 	FVector RayOrigin, RayDirection;
 	if (!DeprojectMousePositionToWorld(RayOrigin, RayDirection) || FMath::IsNearlyZero(RayDirection.Z))
 	{
@@ -1726,6 +1730,67 @@ void AYSPlayerController::UpdateAim()
 	if (ToAim.SizeSquared2D() > 1.0f)
 	{
 		SetControlRotation(FRotator(0.0f, ToAim.Rotation().Yaw, 0.0f));
+	}
+}
+
+void AYSPlayerController::UpdateGamepadAim(const APawn* ControlledPawn)
+{
+	float MouseX = 0.0f, MouseY = 0.0f;
+	const bool bHasMouse = GetMousePosition(MouseX, MouseY);
+
+	// souris bougée par le joueur (curseur ailleurs que là où le stick l'a mis) : la souris reprend la main
+	if (bGamepadAiming && bHasMouse)
+	{
+		const FVector2D Mouse(MouseX, MouseY);
+		if (!Mouse.Equals(GamepadCursorPositions[0], 2.0f) && !Mouse.Equals(GamepadCursorPositions[1], 2.0f))
+		{
+			bGamepadAiming = false;
+			UE_LOG(LogTemp, Verbose, TEXT("[YSGamepad] %s : visée à la souris"), *GetName());
+		}
+	}
+
+	// stick droit incliné : direction relative à la caméra (haut du stick = haut de l'écran), distance selon l'inclinaison
+	const FVector2D Stick(GetInputAnalogKeyState(EKeys::Gamepad_RightX), GetInputAnalogKeyState(EKeys::Gamepad_RightY));
+	const float Tilt = FMath::Min(Stick.Size(), 1.0f);
+	if (Tilt > GamepadAimDeadZone)
+	{
+		if (!bGamepadAiming)
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[YSGamepad] %s : visée au stick droit"), *GetName());
+		}
+		bGamepadAiming = true;
+		const float CameraYaw = PlayerCameraManager ? PlayerCameraManager->GetCameraRotation().Yaw : GetControlRotation().Yaw;
+		const FRotationMatrix CameraMatrix(FRotator(0.0f, CameraYaw, 0.0f));
+		const FVector Direction = (CameraMatrix.GetUnitAxis(EAxis::X) * Stick.Y + CameraMatrix.GetUnitAxis(EAxis::Y) * Stick.X).GetSafeNormal2D();
+		const float Alpha = (Tilt - GamepadAimDeadZone) / FMath::Max(1.0f - GamepadAimDeadZone, KINDA_SMALL_NUMBER);
+		GamepadAimOffset = Direction * FMath::Lerp(GamepadAimMinDistance, GamepadAimMaxDistance, Alpha);
+	}
+	if (!bGamepadAiming)
+	{
+		return;
+	}
+
+	// curseur posé sur le point visé (plan horizontal du personnage, comme la souris)
+	FVector2D Screen;
+	if (ProjectWorldLocationToScreen(ControlledPawn->GetActorLocation() + GamepadAimOffset, Screen, true))
+	{
+		const FIntPoint Cursor(FMath::RoundToInt(Screen.X), FMath::RoundToInt(Screen.Y));
+		SetMouseLocation(Cursor.X, Cursor.Y);
+		GamepadCursorPositions[1] = GamepadCursorPositions[0];
+		GamepadCursorPositions[0] = FVector2D(Cursor);
+	}
+}
+
+void AYSPlayerController::UpdateMenuFocus()
+{
+	// menu caché alors qu'un de ses boutons avait le focus (navigation à la manette) : focus rendu au jeu
+	for (const UUserWidget* Menu : { static_cast<const UUserWidget*>(CharacterSelectMenu), static_cast<const UUserWidget*>(UpgradeMenu) })
+	{
+		if (Menu && !Menu->IsVisible() && Menu->HasFocusedDescendants())
+		{
+			YSGamepad::ReturnFocusToGame();
+			UE_LOG(LogTemp, Verbose, TEXT("[YSGamepad] %s : focus rendu au jeu (%s caché)"), *GetName(), *Menu->GetName());
+		}
 	}
 }
 

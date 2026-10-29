@@ -1,4 +1,5 @@
 #include "UI/YSUpgradeMenuWidget.h"
+#include "Core/YSGamepad.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -294,6 +295,14 @@ void UYSUpgradeMenuWidget::SetStatus(const FText& Status)
 	{
 		StatusText->SetText(Status);
 	}
+}
+
+void UYSUpgradeMenuWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// manette : focus sur la première carte, navigation au stick gauche (A = choisir la carte, puis Valider)
+	YSGamepad::UpdateMenuFocus(this, CardButtons.Num() > 0 ? CardButtons[0].Get() : nullptr, GamepadFocusScale);
 }
 
 void UYSUpgradeMenuWidget::SetRerollVisible(bool bVisible)

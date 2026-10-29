@@ -360,11 +360,7 @@ float UYSAbilityComponent::GetDamageMultiplier() const
 
 float UYSAbilityComponent::GetCooldownMultiplier() const
 {
-	// l'Auto atk des Guns n'a pas de CD reduction (elle a l'upgrade Shoot system) ; l'Ability des Guns si
-	if (WeaponType == EYSWeaponType::Gun && IsAutomatic())
-	{
-		return 1.0f;
-	}
+	// Atk speed (shards) : aussi l'Auto atk des Guns, sur la seule recharge (Cooldown), pas la durée de la rafale
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	return Character ? Character->GetWeaponCooldownMultiplier(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 1.0f;
 }

@@ -1,4 +1,5 @@
 #include "UI/YSCharacterSelectWidget.h"
+#include "Core/YSGamepad.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -436,6 +437,9 @@ void UYSCharacterSelectWidget::SetPreviewTexture(UTexture* Texture)
 void UYSCharacterSelectWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// manette : focus sur le premier personnage, puis navigation au stick gauche
+	YSGamepad::UpdateMenuFocus(this, Buttons.Num() > 0 ? Buttons[0].Get() : nullptr, GamepadFocusScale);
 
 	if (!NicknameBox)
 	{

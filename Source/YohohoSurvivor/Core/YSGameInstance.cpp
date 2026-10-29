@@ -1,4 +1,5 @@
 #include "Core/YSGameInstance.h"
+#include "Core/YSGamepad.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -33,6 +34,9 @@ void UYSGameInstance::Init()
 {
 	Super::Init();
 
+	// manette : dernier périphérique utilisé (focus des menus)
+	YSGamepad::Register();
+
 	if (GEngine)
 	{
 		NetworkFailureHandle = GEngine->OnNetworkFailure().AddUObject(this, &UYSGameInstance::HandleNetworkFailure);
@@ -57,6 +61,8 @@ void UYSGameInstance::Init()
 
 void UYSGameInstance::Shutdown()
 {
+	YSGamepad::Unregister();
+
 	if (GEngine)
 	{
 		GEngine->OnNetworkFailure().Remove(NetworkFailureHandle);

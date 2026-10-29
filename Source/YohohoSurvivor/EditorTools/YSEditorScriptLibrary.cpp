@@ -247,6 +247,21 @@ bool UYSEditorScriptLibrary::SetCharaUpgradesRow(UDataTable* Table, FName RowNam
 	return true;
 }
 
+TArray<UYSUpStats*> UYSEditorScriptLibrary::GetCharaUpgradesRow(UDataTable* Table, FName RowName)
+{
+	TArray<UYSUpStats*> Result;
+	const FYSCharaUpgradesRow* Row = Table && Table->GetRowStruct() == FYSCharaUpgradesRow::StaticStruct()
+		? Table->FindRow<FYSCharaUpgradesRow>(RowName, TEXT("GetCharaUpgradesRow"), false) : nullptr;
+	if (Row)
+	{
+		for (const TObjectPtr<UYSUpStats>& Stats : Row->Upgrades)
+		{
+			Result.Add(Stats.Get());
+		}
+	}
+	return Result;
+}
+
 int32 UYSEditorScriptLibrary::CopyEditableProperties(UObject* Source, UObject* Target)
 {
 	if (!Source || !Target)
