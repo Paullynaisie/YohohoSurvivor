@@ -58,6 +58,57 @@ AYSWeapon::AYSWeapon()
 	ClassUpgradeMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Art/Materials/PH_materials/m_PH_emissive_turboYellow.m_PH_emissive_turboYellow")));
 }
 
+void AYSWeapon::OptimizeForCrowd(bool bCastShadow)
+{
+	if (bCrowdOptimized || !GetWorld() || !GetWorld()->IsGameWorld())
+	{
+		return;
+	}
+	bCrowdOptimized = true;
+
+	// mesh fusionné (repère de Root, échelle 1) à la place de toutes les formes
+	if (MergedMesh)
+	{
+		TInlineComponentArray<UStaticMeshComponent*> Shapes(this);
+		UStaticMeshComponent* Merged = NewObject<UStaticMeshComponent>(this, TEXT("MergedMeshComponent"));
+		Merged->SetStaticMesh(MergedMesh);
+		Merged->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Merged->SetupAttachment(Root);
+		Merged->RegisterComponent();
+		AddInstanceComponent(Merged);
+		for (UStaticMeshComponent* Shape : Shapes)
+		{
+			// ce qui est accroché à une forme (Muzzle, Hitbox...) reste à sa place, remonté sur le parent de la forme
+			USceneComponent* Parent = Shape->GetAttachParent() ? Shape->GetAttachParent() : Root.Get();
+			const TArray<TObjectPtr<USceneComponent>> ShapeChildren = Shape->GetAttachChildren();
+			for (USceneComponent* Child : ShapeChildren)
+			{
+				Child->AttachToComponent(Parent, FAttachmentTransformRules::KeepWorldTransform);
+			}
+			if (Shape == Mesh)
+			{
+				// composant natif (référencé par le code) : vidé, invisible et détaché (plus mis à jour quand l'arme bouge)
+				Mesh->SetStaticMesh(nullptr);
+				Mesh->SetVisibility(false);
+				Mesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+			}
+			else
+			{
+				Shape->DestroyComponent();
+			}
+		}
+	}
+
+	TInlineComponentArray<UPrimitiveComponent*> Primitives(this);
+	for (UPrimitiveComponent* Primitive : Primitives)
+	{
+		Primitive->SetGenerateOverlapEvents(false);
+		Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Primitive->SetCastShadow(bCastShadow);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSWeapon] %s optimisée (%s, %d primitive(s))"), *GetName(), MergedMesh ? TEXT("mesh fusionné") : TEXT("formes du Blueprint"), Primitives.Num());
+}
+
 void AYSWeapon::SetColoration(EYSWeaponColoration NewColoration)
 {
 	if (NewColoration == AppliedColoration || NewColoration == EYSWeaponColoration::None)

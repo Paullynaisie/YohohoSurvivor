@@ -200,6 +200,12 @@ void AYSProjectile::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	SweepPawnHits();
+	if (bHasHit || IsActorBeingDestroyed())
+	{
+		return;
+	}
+
 	if (bDetonatesBombs && HasAuthority() && !bHasHit && !bRicochetPaused)
 	{
 		CheckBombHits();
@@ -260,6 +266,31 @@ void AYSProjectile::LifeSpanExpired()
 void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	HitTarget(OtherActor, SweepResult);
+}
+
+void AYSProjectile::SweepPawnHits()
+{
+	const FVector End = GetActorLocation();
+	const FVector Start = bHasPawnSweepLocation ? LastPawnSweepLocation : End;
+	LastPawnSweepLocation = End;
+	bHasPawnSweepLocation = true;
+	if (!HasAuthority() || bHasHit || bRicochetPaused)
+	{
+		return;
+	}
+
+	// du plus proche au plus loin le long du trajet (Ricochet / traversée : la première cible compte en premier)
+	TArray<FHitResult> Hits;
+	const FCollisionQueryParams Params(SCENE_QUERY_STAT(YSProjectilePawns), false, this);
+	GetWorld()->SweepMultiByObjectType(Hits, Start, End, FQuat::Identity, FCollisionObjectQueryParams(ECC_Pawn), Collision->GetCollisionShape(), Params);
+	for (const FHitResult& Hit : Hits)
+	{
+		HitTarget(Hit.GetActor(), Hit);
+		if (bHasHit || bRicochetPaused || IsActorBeingDestroyed())
+		{
+			return;
+		}
+	}
 }
 
 void AYSProjectile::CheckBumpedFoeHits()
@@ -525,6 +556,12 @@ void AYSProjectile::OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* Ot
 
 	if (HasAuthority() && bDestroyOnWorldHit)
 	{
+		// NME collé au mur : touché avant que la balle ne disparaisse
+		SweepPawnHits();
+		if (bHasHit || IsActorBeingDestroyed())
+		{
+			return;
+		}
 		UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s arrêtée par %s en (%.0f, %.0f, %.0f), sol %.0f"), *GetName(), OtherActor ? *OtherActor->GetName() : TEXT("?"),
 			Hit.ImpactPoint.X, Hit.ImpactPoint.Y, Hit.ImpactPoint.Z, LastGroundZ);
 		// shoot system Explosif : explose aussi contre le décor

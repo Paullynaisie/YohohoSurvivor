@@ -16,6 +16,7 @@ class UYSFaceDecalComponent;
 class AYSInteractiveObject;
 class AYSFoeBomb;
 class AYSWeapon;
+class AYSPlayerCharacter;
 class UChildActorComponent;
 class UYSWeaponSet;
 class UMaterialInterface;
@@ -275,8 +276,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands")
 	FRotator HandRotation = FRotator::ZeroRotator;
 
+	/**
+	 *  Oscillation des mains au repos. Perf : décochée, une main au repos ne bouge plus d'elle-même ; elle n'est recalculée que
+	 *  quand le NME bouge ou attaque (foules : grosse économie)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands")
+	bool bHandSway = false;
+
 	/** Écart maximal de l'oscillation des mains autour de leur position (0 = pas d'oscillation) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands", meta=(ClampMin="0", Units="Centimeters"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands", meta=(ClampMin="0", Units="Centimeters", EditCondition="bHandSway"))
 	float HandSwayAmplitude = 5.0f;
 
 	/** Vitesse de l'oscillation (bruit de Perlin) */
@@ -294,6 +302,28 @@ protected:
 	/** Perf : les mains ne sont animées que si le NME a été affiché il y a moins de ce temps (hors écran : figées) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hands", meta=(ClampMin="0", Units="Seconds"))
 	float HandsOffscreenFreezeDelay = 0.2f;
+
+	/** Perf (ombres) : les sphères des mains projettent une ombre (seul le corps en projette sinon) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Performance")
+	bool bHandsCastShadow = false;
+
+	/** Perf (ombres) : les armes tenues projettent une ombre */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Performance")
+	bool bWeaponsCastShadow = false;
+
+	/**
+	 *  Perf : un NME pas affiché à l'écran et à plus de Far Tick Distance de tout joueur (minions compris) ne calcule son
+	 *  déplacement, sa barre de vie et les actions de ses armes que toutes les Far Tick Interval secondes (0 = jamais réduit)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Performance", meta=(ClampMin="0", Units="Seconds"))
+	float FarTickInterval = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Performance", meta=(ClampMin="0", Units="Centimeters"))
+	float FarTickDistance = 2500.0f;
+
+	/** Fréquence de la vérification « loin » (secondes) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Performance", meta=(ClampMin="0.05", Units="Seconds"))
+	float FarTickCheckInterval = 0.5f;
 
 	/** Set d'arme (Data Asset : arme de chaque main, /Game/Core/WeaponSets) ; prioritaire sur les armes par main ci-dessous */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Weapons")
@@ -531,6 +561,18 @@ protected:
 	/** Blesse les joueurs dont la hurtbox touche la Hitbox (serveur) */
 	void ApplyContactDamage();
 
+	/**
+	 *  Joueurs vivants (Contact Hit Tags) dont la hurtbox touche la Hitbox : test direct contre chaque joueur (la Hitbox n'a
+	 *  ni collision ni overlaps : dans une foule, les overlaps NME <-> NME coûtaient cher pour rien)
+	 */
+	void GetPlayersInHitbox(TArray<AYSPlayerCharacter*>& OutPlayers) const;
+
+	/** Perf : déplacement / barre de vie / actions des armes ralentis si le NME est loin de tous les joueurs et hors écran */
+	void UpdateFarTicking();
+
+	/** Perf : armes tenues sans collision ni overlaps, mesh fusionné, ombres (une fois par arme créée) */
+	void OptimizeWeapons();
+
 	/** Actions de mêlée (Auto swing) des armes tenues */
 	void GetMeleeActions(TArray<UYSAutoSwingAbility*>& OutActions) const;
 
@@ -657,6 +699,11 @@ private:
 	FVector RightHandWorldLocation = FVector::ZeroVector;
 	float HandSwayTime = 0.0f;
 	bool bHandsInitialized = false;
+
+	/** Perf : ticks ralentis (loin et hors écran), prochaine vérification, armes déjà optimisées */
+	bool bFarTicking = false;
+	float FarTickCheckTimer = 0.0f;
+	TWeakObjectPtr<AYSWeapon> OptimizedWeapons[2];
 
 
 	/** Recharge de la bombe depuis la dernière (serveur, plafonnée à ThrowInterval) */

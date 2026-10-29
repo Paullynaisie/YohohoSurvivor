@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "YSWeapon.generated.h"
 
+class UStaticMesh;
 class UStaticMeshComponent;
 class UMaterialInterface;
 class UYSAbilityComponent;
@@ -100,7 +101,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Coloration")
 	TSoftObjectPtr<UMaterialInterface> ClassUpgradeMaterial;
 
+	/**
+	 *  Perf (armes des NME) : toutes les formes du Blueprint fusionnées en un seul mesh (Tools/EditorScripts/merge_foe_weapons.py,
+	 *  à relancer après avoir retouché les formes). En jeu, ce mesh remplace les formes : une primitive à déplacer et à dessiner
+	 *  au lieu d'une dizaine. Vide = formes du Blueprint. Appliqué par OptimizeForCrowd (NME seulement).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Optimization")
+	TObjectPtr<UStaticMesh> MergedMesh;
+
 public:
+
+	/**
+	 *  Perf, arme d'un NME (local, sur chaque machine) : Merged Mesh à la place des formes, aucune primitive avec collision ni
+	 *  overlaps (la Hitbox de l'Auto swing ne sert que de forme pour sa requête), ombres selon bCastShadow. Une seule fois.
+	 */
+	void OptimizeForCrowd(bool bCastShadow);
 
 	/** Colore les sous-composants du composant Coloration (rien si déjà appliquée ou None) ; local, sur chaque machine */
 	void SetColoration(EYSWeaponColoration NewColoration);
@@ -169,6 +184,8 @@ public:
 private:
 
 	EYSWeaponColoration AppliedColoration = EYSWeaponColoration::None;
+
+	bool bCrowdOptimized = false;
 
 	UPROPERTY(ReplicatedUsing=OnRep_ChainSizeBonus)
 	float ChainSizeBonus = 0.0f;

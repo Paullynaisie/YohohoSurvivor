@@ -114,9 +114,13 @@ AYSFoeCharacter::AYSFoeCharacter()
 	auto CreateHand = [this](const TCHAR* SocketName, const TCHAR* MeshName, const TCHAR* WeaponName,
 		TObjectPtr<USceneComponent>& OutSocket, TObjectPtr<UStaticMeshComponent>& OutMesh, TObjectPtr<UChildActorComponent>& OutWeapon)
 	{
+		// transform monde entièrement absolu : seul UpdateHands déplace la main (sinon chaque mouvement du NME la mettait à
+		// jour deux fois, elle et toute son arme)
 		OutSocket = CreateDefaultSubobject<USceneComponent>(SocketName);
 		OutSocket->SetupAttachment(RootComponent);
 		OutSocket->SetUsingAbsoluteLocation(true);
+		OutSocket->SetUsingAbsoluteRotation(true);
+		OutSocket->SetUsingAbsoluteScale(true);
 
 		OutMesh = CreateDefaultSubobject<UStaticMeshComponent>(MeshName);
 		OutMesh->SetupAttachment(OutSocket);
@@ -306,12 +310,16 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 
 	auto UpdateHand = [this, DeltaSeconds, &BodyTransform](USceneComponent* Hand, FVector& WorldLocation, bool bLeft, float NoiseSeed)
 	{
-		// oscillation : bruit de Perlin sur chaque axe, limité à HandSwayAmplitude autour de la cible
-		const float NoiseTime = HandSwayTime * HandSwaySpeed + NoiseSeed;
-		const FVector Sway = FVector(
-			FMath::PerlinNoise1D(NoiseTime),
-			FMath::PerlinNoise1D(NoiseTime + 31.7f),
-			FMath::PerlinNoise1D(NoiseTime + 67.3f)) * HandSwayAmplitude;
+		// oscillation (option) : bruit de Perlin sur chaque axe, limité à HandSwayAmplitude autour de la cible
+		FVector Sway = FVector::ZeroVector;
+		if (bHandSway && HandSwayAmplitude > 0.0f)
+		{
+			const float NoiseTime = HandSwayTime * HandSwaySpeed + NoiseSeed;
+			Sway = FVector(
+				FMath::PerlinNoise1D(NoiseTime),
+				FMath::PerlinNoise1D(NoiseTime + 31.7f),
+				FMath::PerlinNoise1D(NoiseTime + 67.3f)) * HandSwayAmplitude;
+		}
 		const FVector Target = BodyTransform.TransformPosition(GetHandTargetLocation(bLeft) + Sway.GetClampedToMaxSize(HandSwayAmplitude));
 
 		// retard : la main rejoint sa cible progressivement (téléportation / première image : directement)
@@ -360,8 +368,12 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 			FinalRotation = FQuat::Slerp(PoseRotation, FinalRotation, IdleWeight);
 		}
 
-		Hand->SetWorldLocation(FinalLocation);
-		Hand->SetRelativeRotation(FinalRotation);
+		// transform absolu (rotation exprimée par rapport au corps, échelle du NME) ; inchangé = rien à mettre à jour
+		const FTransform NewTransform(BodyTransform.GetRotation() * FinalRotation, FinalLocation, BodyTransform.GetScale3D());
+		if (!Hand->GetComponentTransform().Equals(NewTransform, 0.01f))
+		{
+			Hand->SetWorldTransform(NewTransform);
+		}
 	};
 
 	UpdateHand(LeftHand, LeftHandWorldLocation, true, 0.0f);
@@ -376,7 +388,11 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 		if (Socket)
 		{
 			USceneComponent* OtherHand = bWeaponInLeft ? RightHand : LeftHand;
-			OtherHand->SetWorldLocationAndRotation(Socket->GetComponentLocation(), Socket->GetComponentQuat());
+			const FTransform SocketTransform(Socket->GetComponentQuat(), Socket->GetComponentLocation(), BodyTransform.GetScale3D());
+			if (!OtherHand->GetComponentTransform().Equals(SocketTransform, 0.01f))
+			{
+				OtherHand->SetWorldTransform(SocketTransform);
+			}
 			(bWeaponInLeft ? RightHandWorldLocation : LeftHandWorldLocation) = Socket->GetComponentLocation();
 		}
 	}
@@ -765,6 +781,8 @@ void AYSFoeCharacter::BeginDeathLocal()
 	for (USceneComponent* Component : { static_cast<USceneComponent*>(LeftHand), static_cast<USceneComponent*>(RightHand), static_cast<USceneComponent*>(FaceDecal) })
 	{
 		Component->SetUsingAbsoluteLocation(false);
+		Component->SetUsingAbsoluteRotation(false);
+		Component->SetUsingAbsoluteScale(false);
 		Component->AttachToComponent(BodyMesh, FAttachmentTransformRules::KeepWorldTransform);
 	}
 	BodyMesh->SetGenerateOverlapEvents(false);
@@ -912,6 +930,35 @@ void AYSFoeCharacter::BeginPlay()
 	YSCombat::ConfigureHurtbox(BodyMesh);
 	YSCombat::ConfigureHitbox(Hitbox);
 
+	// perf (foules) : aucun overlap entretenu par les NME. La hurtbox reste une cible de requêtes (coups, explosions, balles :
+	// AYSProjectile::SweepPawnHits) ; la Hitbox de contact est testée à la main contre les joueurs (GetPlayersInHitbox)
+	BodyMesh->SetGenerateOverlapEvents(false);
+	Hitbox->SetGenerateOverlapEvents(false);
+	Hitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetCapsuleComponent()->SetGenerateOverlapEvents(false);
+	// un NME ne tente pas de monter sur un autre (marches sur les capsules voisines : balayages en plus dans la foule)
+	GetCapsuleComponent()->CanCharacterStepUpOn = ECB_No;
+	// mesh squelettique vide : ni tick, ni lissage réseau (le visuel est attaché à la capsule, le lissage ne bougeait que lui)
+	GetMesh()->SetComponentTickEnabled(false);
+	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+	// ... et plus mis à jour quand le NME bouge
+	GetMesh()->SetUsingAbsoluteLocation(true);
+	GetMesh()->SetUsingAbsoluteRotation(true);
+	GetMesh()->SetUsingAbsoluteScale(true);
+	// contrôleur IA : ne sert qu'à faire consommer l'input au CharacterMovement (rotation pilotée par le NME)
+	if (AController* FoeController = GetController())
+	{
+		FoeController->SetActorTickEnabled(false);
+	}
+	// ombres : seul le corps en projette (option)
+	for (UStaticMeshComponent* HandMesh : { LeftHandMesh.Get(), RightHandMesh.Get() })
+	{
+		HandMesh->SetCastShadow(bHandsCastShadow);
+		HandMesh->SetGenerateOverlapEvents(false);
+	}
+	// phase des vérifications « loin » répartie entre les NME
+	FarTickCheckTimer = FMath::FRandRange(0.0f, FarTickCheckInterval);
+
 	GetCharacterMovement()->MaxWalkSpeed = MoveSpeed;
 
 	// taille (élites) : réglage du Blueprint, appliqué à l'identique sur toutes les machines.
@@ -983,6 +1030,15 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	{
 		UpdateDeath();
 		return;
+	}
+
+	// perf : armes (re)créées optimisées, ticks ralentis loin des joueurs
+	OptimizeWeapons();
+	FarTickCheckTimer -= DeltaSeconds;
+	if (FarTickCheckTimer <= 0.0f)
+	{
+		FarTickCheckTimer = FarTickCheckInterval;
+		UpdateFarTicking();
 	}
 
 	// mains : visuel local sur toutes les machines
@@ -1184,18 +1240,11 @@ void AYSFoeCharacter::ApplyContactDamage()
 	}
 
 	const double Now = GetWorld()->GetTimeSeconds();
-	TArray<UPrimitiveComponent*> Touching;
-	Hitbox->GetOverlappingComponents(Touching);
+	TArray<AYSPlayerCharacter*> Touching;
+	GetPlayersInHitbox(Touching);
 
-	for (UPrimitiveComponent* Component : Touching)
+	for (AYSPlayerCharacter* Player : Touching)
 	{
-		// seule la hurtbox (le corps) d'un joueur compte, pas sa capsule de mouvement
-		AYSPlayerCharacter* Player = Component ? Cast<AYSPlayerCharacter>(Component->GetOwner()) : nullptr;
-		if (!Player || Component != Player->GetHurtbox() || !Player->IsAlive() || !Player->HasAnyMatchingGameplayTags(ContactHitTags))
-		{
-			continue;
-		}
-
 		double& NextTime = NextContactDamageTime.FindOrAdd(Player, 0.0);
 		if (Now < NextTime)
 		{
@@ -1205,6 +1254,85 @@ void AYSFoeCharacter::ApplyContactDamage()
 		NextTime = Now + ContactDamageInterval;
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur le joueur
 		Player->TakeDamage(ContactDamage, FDamageEvent(), GetController(), nullptr);
+	}
+}
+
+void AYSFoeCharacter::GetPlayersInHitbox(TArray<AYSPlayerCharacter*>& OutPlayers) const
+{
+	const FCollisionShape Shape = Hitbox->GetCollisionShape();
+	const FVector Center = Hitbox->GetComponentLocation();
+	const FQuat Rotation = Hitbox->GetComponentQuat();
+	const float Reach = Shape.GetExtent().Size();
+	for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
+	{
+		// seule la hurtbox (le corps) d'un joueur compte, pas sa capsule de mouvement
+		AYSPlayerCharacter* Player = *It;
+		UPrimitiveComponent* Hurtbox = Player->GetHurtbox();
+		if (!Hurtbox || !Player->IsAlive() || !Player->HasAnyMatchingGameplayTags(ContactHitTags)
+			|| FVector::DistSquared(Center, Hurtbox->Bounds.Origin) > FMath::Square(Reach + Hurtbox->Bounds.SphereRadius))
+		{
+			continue;
+		}
+		if (Hurtbox->OverlapComponent(Center, Rotation, Shape))
+		{
+			OutPlayers.Add(Player);
+		}
+	}
+}
+
+void AYSFoeCharacter::UpdateFarTicking()
+{
+	// loin = hors écran (ici) et à plus de Far Tick Distance de tout personnage joueur (minions compris : ils se battent aussi)
+	bool bFar = FarTickInterval > 0.0f && !bLocalDeathStarted && !WasRecentlyRendered(FarTickCheckInterval);
+	if (bFar)
+	{
+		const float FarDistanceSq = FMath::Square(FarTickDistance);
+		for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It && bFar; ++It)
+		{
+			bFar = FVector::DistSquared2D(It->GetActorLocation(), GetActorLocation()) > FarDistanceSq;
+		}
+	}
+	if (bFar == bFarTicking)
+	{
+		return;
+	}
+	bFarTicking = bFar;
+
+	// le tick de l'acteur reste à chaque image : l'IA ajoute son input, le déplacement le consomme à son rythme (somme plafonnée)
+	const float Interval = bFar ? FarTickInterval : 0.0f;
+	GetCharacterMovement()->SetComponentTickInterval(Interval);
+	HealthBar->SetComponentTickInterval(Interval);
+	for (const AYSWeapon* Weapon : { GetLeftHandWeapon(), GetRightHandWeapon() })
+	{
+		if (Weapon)
+		{
+			for (UActorComponent* Component : Weapon->GetComponents())
+			{
+				Component->SetComponentTickInterval(Interval);
+			}
+		}
+	}
+	UE_LOG(LogTemp, VeryVerbose, TEXT("[YSFoe] %s : ticks %s"), *GetName(), bFar ? TEXT("ralentis (loin)") : TEXT("normaux"));
+}
+
+void AYSFoeCharacter::OptimizeWeapons()
+{
+	AYSWeapon* Weapons[2] = { GetLeftHandWeapon(), GetRightHandWeapon() };
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		if (Weapons[Index] && OptimizedWeapons[Index].Get() != Weapons[Index])
+		{
+			OptimizedWeapons[Index] = Weapons[Index];
+			Weapons[Index]->OptimizeForCrowd(bWeaponsCastShadow);
+			// arme recréée (gaucher) pendant un tick ralenti : même rythme
+			if (bFarTicking)
+			{
+				for (UActorComponent* Component : Weapons[Index]->GetComponents())
+				{
+					Component->SetComponentTickInterval(FarTickInterval);
+				}
+			}
+		}
 	}
 }
 
@@ -1240,14 +1368,12 @@ void AYSFoeCharacter::TriggerMeleeAttack()
 
 	// un joueur vivant (sa hurtbox, pas sa capsule) touche la hitbox de contact : déclencheur de l'attaque
 	// (le plus proche s'il y en a plusieurs : c'est vers lui que part le coup)
-	TArray<UPrimitiveComponent*> Touching;
-	Hitbox->GetOverlappingComponents(Touching);
+	TArray<AYSPlayerCharacter*> Touching;
+	GetPlayersInHitbox(Touching);
 	AYSPlayerCharacter* Victim = nullptr;
-	for (UPrimitiveComponent* Component : Touching)
+	for (AYSPlayerCharacter* Player : Touching)
 	{
-		AYSPlayerCharacter* Player = Component ? Cast<AYSPlayerCharacter>(Component->GetOwner()) : nullptr;
-		if (Player && Component == Player->GetHurtbox() && Player->IsAlive() && Player->HasAnyMatchingGameplayTags(ContactHitTags)
-			&& (!Victim || FVector::DistSquared2D(Player->GetActorLocation(), GetActorLocation()) < FVector::DistSquared2D(Victim->GetActorLocation(), GetActorLocation())))
+		if (!Victim || FVector::DistSquared2D(Player->GetActorLocation(), GetActorLocation()) < FVector::DistSquared2D(Victim->GetActorLocation(), GetActorLocation()))
 		{
 			Victim = Player;
 		}

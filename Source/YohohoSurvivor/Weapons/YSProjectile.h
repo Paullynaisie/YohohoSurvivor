@@ -196,6 +196,16 @@ private:
 	/** Position à la dernière recherche de NME bumpés */
 	FVector PreviousBumpCheckLocation = FVector::ZeroVector;
 
+	/**
+	 *  Pawns traversés depuis le dernier appel (balayage de la sphère de la balle, serveur) : les NME n'entretiennent pas
+	 *  d'overlaps (perf des foules), la balle les trouve elle-même ; les joueurs sont aussi trouvés par chevauchement
+	 */
+	void SweepPawnHits();
+
+	/** Position au dernier balayage des pawns */
+	FVector LastPawnSweepLocation = FVector::ZeroVector;
+	bool bHasPawnSweepLocation = false;
+
 	/** Position à la frame précédente (balles qui font exploser les bombes : segment parcouru) */
 	FVector PreviousLocation = FVector::ZeroVector;
 
