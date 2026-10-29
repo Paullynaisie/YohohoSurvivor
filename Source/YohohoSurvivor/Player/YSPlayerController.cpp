@@ -148,7 +148,7 @@ void AYSPlayerController::BeginPlay()
 			ViewportSubsystem->AddWidgetForPlayer(OffscreenIndicators, GetLocalPlayer(), IndicatorsSlot);
 
 			// barre de l'élite : haut droite (symétrique du HUD du joueur)
-			EliteHealth = CreateWidget<UYSEliteHealthWidget>(this, UYSEliteHealthWidget::StaticClass());
+			EliteHealth = CreateWidget<UYSEliteHealthWidget>(this, EliteHealthWidgetClass ? EliteHealthWidgetClass.Get() : UYSEliteHealthWidget::StaticClass());
 			EliteHealth->SetVisibility(ESlateVisibility::Collapsed);
 			FGameViewportWidgetSlot EliteSlot;
 			EliteSlot.Anchors = FAnchors(1.0f, 0.0f);
@@ -863,6 +863,7 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 	if (bShowElite)
 	{
 		EliteHealth->SetElite(Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
+		EliteHealth->SetBossState(Elite->GetBossShield(), Elite->GetMaxBossShield(), Elite->GetRage(), Elite->UsesBossArmor() ? Elite->GetMaxRage() : 0.0f);
 	}
 	EliteHealth->SetVisibility(bShowElite ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
@@ -885,6 +886,19 @@ void AYSPlayerController::ServerStartNight_Implementation()
 	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
 	{
 		GameMode->StartNight();
+	}
+}
+
+void AYSPlayerController::YSBossRage(float Amount)
+{
+	if (!HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSBoss] YSBossRage : hôte seulement"));
+		return;
+	}
+	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
+	{
+		It->DebugAddRage(Amount);
 	}
 }
 

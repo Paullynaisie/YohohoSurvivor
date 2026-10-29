@@ -22,7 +22,7 @@ public:
 
 	/** Distance au coin haut droit de l'écran (X vers la gauche, Y vers le bas) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
-	FVector2D ScreenOffset = FVector2D(24.0f, 100.0f);
+	FVector2D ScreenOffset = FVector2D(24.0f, 130.0f);
 
 	/** Titre au-dessus de la jauge */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")

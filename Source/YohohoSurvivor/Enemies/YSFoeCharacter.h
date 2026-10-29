@@ -22,6 +22,7 @@ class UYSWeaponSet;
 class UMaterialInterface;
 class UYSFoeRangedAction;
 class UYSAutoSwingAbility;
+class UYSBossBigSlashAbility;
 class UYSGroundZoneComponent;
 class AYSProjectile;
 
@@ -57,6 +58,39 @@ struct FYSFoeBump
 	double StartServerTime = 0.0;
 
 	/** Incrémenté à chaque bump : un nouveau bump pendant le vol est vu par les clients */
+	UPROPERTY()
+	uint8 Counter = 0;
+};
+
+/** Boss Big Slash en cours : préparation immobile puis dash de Start à End, recalculé à l'identique sur chaque machine */
+USTRUCT()
+struct FYSFoeBossDash
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	bool bActive = false;
+
+	UPROPERTY()
+	FVector_NetQuantize Start = FVector::ZeroVector;
+
+	UPROPERTY()
+	FVector_NetQuantize End = FVector::ZeroVector;
+
+	/** Direction figée au lancement (à plat) */
+	UPROPERTY()
+	FVector_NetQuantizeNormal Direction = FVector::ForwardVector;
+
+	UPROPERTY()
+	float WindupDuration = 2.0f;
+
+	UPROPERTY()
+	float DashDuration = 0.4f;
+
+	UPROPERTY()
+	double StartServerTime = 0.0;
+
+	/** Incrémenté à chaque attaque */
 	UPROPERTY()
 	uint8 Counter = 0;
 };
@@ -157,6 +191,47 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(ClampMin="0.1"))
 	float SizeMultiplier = 1.0f;
+
+	/** Élite : barre de vie aussi affichée sous lui (en plus de celle du HUD), même PV pleins */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(EditCondition="bIsElite"))
+	bool bEliteHealthBarUnder = true;
+
+	/** Position de cette barre par rapport au centre du NME (x sa taille ; -110 = juste sous les pieds) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(EditCondition="bIsElite && bEliteHealthBarUnder"))
+	FVector EliteHealthBarLocation = FVector(0.0f, 0.0f, -110.0f);
+
+	/**
+	 *  Boss armor (élites) : un coup dont les dégâts HORS CRITIQUE dépassent Rage Cap est réduit : Rage Cap + excès x
+	 *  Dmg Reduce Factor / (Dmg Reduce Factor + excès), puis le critique est réappliqué. Rage gagnée = dégâts hors critique,
+	 *  au plus Rage Cap. Barre de rage pleine (Max Rage) ou PV sous Shield Health Threshold (une fois) : bouclier de boss.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(EditCondition="bIsElite"))
+	bool bBossArmor = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="0", EditCondition="bIsElite && bBossArmor"))
+	float RageCap = 50.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="1", EditCondition="bIsElite && bBossArmor"))
+	float DmgReduceFactor = 150.0f;
+
+	/** Barre de rage : pleine = bouclier de boss (la barre se vide) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="1", EditCondition="bIsElite && bBossArmor"))
+	float MaxRage = 650.0f;
+
+	/**
+	 *  Bouclier de boss : prend les dégâts à la place des PV (dégâts bruts, sans Boss armor), ne génère pas de rage,
+	 *  empêche les bumps, et donne l'attaque en plus de l'arme (Boss Big Slash). Un coup qui le brise ne déborde pas sur les PV.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="0", EditCondition="bIsElite && bBossArmor"))
+	float BossShield = 1200.0f;
+
+	/** Le bouclier suit le multiplicateur de PV des élites pour le nombre de joueurs (Elite Health Multiplier du GameMode) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(EditCondition="bIsElite && bBossArmor"))
+	bool bScaleShieldWithPlayerCount = true;
+
+	/** PV sous cette part des PV max : bouclier (une seule fois par élite) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="0", ClampMax="1", EditCondition="bIsElite && bBossArmor"))
+	float ShieldHealthThreshold = 0.5f;
 
 	/** Objet laissé au sol à sa mort (ex. coffre de l'élite ; vide = rien) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Loot")
@@ -516,6 +591,26 @@ public:
 
 	float GetDamageMultiplier() const { return DamageMultiplier; }
 
+	/** Élite avec Boss armor (rage, bouclier de boss) */
+	bool UsesBossArmor() const { return bIsElite && bBossArmor; }
+
+	float GetRage() const { return Rage; }
+
+	float GetMaxRage() const { return MaxRage; }
+
+	float GetBossShield() const { return Shield; }
+
+	float GetMaxBossShield() const { return MaxShield; }
+
+	/** Bouclier de boss actif (attaque en plus, pas de bump) */
+	bool HasBossShield() const { return Shield > 0.0f; }
+
+	/** Debug (serveur) : rage ajoutée (élite avec Boss armor, sans bouclier) ; pleine = bouclier */
+	void DebugAddRage(float Amount);
+
+	/** Boss Big Slash en cours (préparation ou dash) */
+	bool IsBossDashing() const { return BossDash.bActive; }
+
 	/** Attaque à distance de l'arme tenue (la première trouvée, main droite d'abord), ou nullptr : le NME est alors au corps à corps */
 	UYSFoeRangedAction* GetRangedAction() const;
 
@@ -629,6 +724,55 @@ protected:
 
 	/** Affiche (ou cache) la ligne de visée sur cette machine */
 	void ShowAimLine(bool bShow, const FVector& Start, const FVector& Direction);
+
+	/** Bande posée sur le relief (composant AimLine) : ligne de visée, zone du Boss Big Slash ; cachée si !bShow */
+	void ShowGroundStrip(bool bShow, const FVector& Start, const FVector& Direction, float Length, float Width, UMaterialInterface* Material, const FLinearColor& Color, float Opacity);
+
+	/** Rage (serveur, répliquée : HUD) */
+	UPROPERTY(Replicated)
+	float Rage = 0.0f;
+
+	/** Bouclier de boss restant et valeur au déclenchement (serveur, répliqués : HUD) */
+	UPROPERTY(ReplicatedUsing=OnRep_Health)
+	float Shield = 0.0f;
+
+	UPROPERTY(Replicated)
+	float MaxShield = 0.0f;
+
+	/** Bouclier déjà déclenché par le seuil de PV (serveur) */
+	bool bHealthShieldTriggered = false;
+
+	/** Boss armor (serveur) : dégâts réduits d'un coup (Damage critique compris), rage ajoutée */
+	float ApplyBossArmor(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator);
+
+	/** Rage pleine ou PV sous le seuil : bouclier de boss, rage vidée (serveur) */
+	void TryTriggerBossShield();
+
+	/** Boss Big Slash d'une arme tenue (attaque en plus sous bouclier), ou nullptr */
+	UYSBossBigSlashAbility* GetBossAttack() const;
+
+	/** Bouclier actif, attaque rechargée et cible à portée : lance le Boss Big Slash (serveur) */
+	bool TryStartBossAttack();
+
+	/** Boss Big Slash en cours (serveur, répliqué) */
+	UPROPERTY(ReplicatedUsing=OnRep_BossDash)
+	FYSFoeBossDash BossDash;
+
+	UFUNCTION()
+	void OnRep_BossDash();
+
+	/** Animation du Boss Big Slash sur les clients (armes de NME locales) : attaque de base arrêtée */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastBossAttack();
+
+	/** Début / position / fin du Boss Big Slash sur cette machine (mouvement du personnage coupé comme pendant le bump) */
+	void BeginBossDashLocal();
+	void UpdateBossDash();
+	void EndBossDashLocal();
+
+	bool bLocalBossDashActive = false;
+	bool bBossWarningShown = false;
+	uint8 LocalBossDashCounter = 0;
 
 	/** Bump en cours (serveur, répliqué) */
 	UPROPERTY(ReplicatedUsing=OnRep_Bump)

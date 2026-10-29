@@ -72,6 +72,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSObjectiveWidget> ObjectiveWidgetClass;
 
+	/** Barre de l'élite (haut droite : PV, bouclier de boss, rage) : Widget Blueprint enfant de YSEliteHealthWidget (réglages Layout) ; vide = classe C++ */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<UYSEliteHealthWidget> EliteHealthWidgetClass;
+
 	/** Fin de jeu temporaire (« X/Y sur le bateau », « BRAVO ») : Widget Blueprint enfant de YSShipBoardingWidget (réglages dans ses Class Defaults, catégorie Layout) */
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSShipBoardingWidget> ShipBoardingWidgetClass;
@@ -355,6 +359,10 @@ public:
 	/** Debug (console) : termine le jour en cours (la nuit et son élite commencent) */
 	UFUNCTION(Exec)
 	void YSStartNight();
+
+	/** Debug (console, hôte) : ajoute de la rage aux élites (Boss armor) ; pleine = bouclier de boss (ex. YSBossRage 650) */
+	UFUNCTION(Exec)
+	void YSBossRage(float Amount);
 
 	/** Debug (console, hôte) : le bateau apparaît comme si l'objectif de doublons était atteint */
 	UFUNCTION(Exec)

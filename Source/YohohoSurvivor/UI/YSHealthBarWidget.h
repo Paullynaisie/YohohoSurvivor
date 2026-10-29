@@ -63,8 +63,8 @@ public:
 
 	virtual bool Initialize() override;
 
-	/** Met à jour la barre ; cachée si Current >= Max (ou PV pas encore connus) */
-	void SetHealth(float Current, float Max);
+	/** Met à jour la barre ; cachée si Current >= Max (sauf bShowWhenFull : barre sous l'élite) ou PV pas encore connus */
+	void SetHealth(float Current, float Max, bool bShowWhenFull = false);
 
 	/** Affiche le point critique (prochaine balle du joueur local critique) */
 	void SetCriticalReady(bool bReady);

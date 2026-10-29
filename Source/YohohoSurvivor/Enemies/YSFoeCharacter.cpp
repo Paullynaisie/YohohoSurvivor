@@ -28,6 +28,7 @@
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
 #include "Abilities/YSAutoSwingAbility.h"
+#include "Abilities/YSBossBigSlashAbility.h"
 #include "Map/YSGroundZoneComponent.h"
 #include "Map/YSOcean.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -300,7 +301,7 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 {
 	// perf : pur visuel local (rien n'est répliqué) ; hors écran les mains restent figées, SAUF sur le serveur pendant une
 	// attaque de mêlée : la hitbox de l'arme suit la main (un client peut se battre hors de l'écran de l'hôte)
-	if (bHandsInitialized && GetWorld() && GetWorld()->IsGameWorld() && !WasRecentlyRendered(HandsOffscreenFreezeDelay) && !(HasAuthority() && (IsMeleeAttacking() || (GetRangedAction() && GetRangedAction()->IsAnimating()))))
+	if (bHandsInitialized && GetWorld() && GetWorld()->IsGameWorld() && !WasRecentlyRendered(HandsOffscreenFreezeDelay) && !(HasAuthority() && (IsMeleeAttacking() || bLocalBossDashActive || (GetRangedAction() && GetRangedAction()->IsAnimating()))))
 	{
 		return;
 	}
@@ -350,11 +351,14 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 
 		// attaque animée de l'arme (Auto swing : même animation que le joueur ; lancer de la NME bomb) : la pose animée
 		// remplace la pose normale sans retard ; poses exprimées pour la main droite, symétrisées pour la gauche
+		// (Boss Big Slash d'abord : plus prioritaire que l'attaque de base)
+		const UYSAutoSwingAbility* BossSwing = Weapon ? Cast<UYSAutoSwingAbility>(Weapon->GetActiveAction()) : nullptr;
 		const UYSAutoSwingAbility* Swing = Weapon ? Cast<UYSAutoSwingAbility>(Weapon->GetAutoAction()) : nullptr;
 		float IdleWeight = 1.0f;
 		FVector PoseLocation = FVector::ZeroVector;
 		FQuat PoseRotation = FQuat::Identity;
-		if ((Swing && Swing->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation)) || (Ranged && Ranged->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation)))
+		if ((BossSwing && BossSwing->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation)) || (Swing && Swing->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation))
+			|| (Ranged && Ranged->EvaluateHandPose(IdleWeight, PoseLocation, PoseRotation)))
 		{
 			if (bLeft)
 			{
@@ -411,6 +415,10 @@ void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(AYSFoeCharacter, Bump);
 	DOREPLIFETIME(AYSFoeCharacter, Rise);
 	DOREPLIFETIME(AYSFoeCharacter, Death);
+	DOREPLIFETIME(AYSFoeCharacter, Rage);
+	DOREPLIFETIME(AYSFoeCharacter, Shield);
+	DOREPLIFETIME(AYSFoeCharacter, MaxShield);
+	DOREPLIFETIME(AYSFoeCharacter, BossDash);
 }
 
 void AYSFoeCharacter::OnRep_Health()
@@ -427,8 +435,15 @@ void AYSFoeCharacter::UpdateHealthBar()
 {
 	if (UYSHealthBarWidget* Bar = Cast<UYSHealthBarWidget>(HealthBar->GetUserWidgetObject()))
 	{
-		// élite : barre de vie dans le HUD (AYSPlayerController), pas au-dessus de sa tête ; le point critique reste
-		Bar->SetHealth(bIsElite ? 0.0f : Health, MaxHealth);
+		// élite : barre de vie dans le HUD (AYSPlayerController) et, en option, sous lui (même PV pleins) ; le point critique reste
+		if (bIsElite)
+		{
+			Bar->SetHealth(bEliteHealthBarUnder ? Health : 0.0f, MaxHealth, bEliteHealthBarUnder);
+		}
+		else
+		{
+			Bar->SetHealth(Health, MaxHealth);
+		}
 		const APlayerController* LocalController = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
 		const APlayerState* LocalState = LocalController ? LocalController->PlayerState.Get() : nullptr;
 		Bar->SetCriticalReady(LocalState && CriticalReadyShooters.Contains(LocalState));
@@ -439,8 +454,19 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 {
 	// Marquage Critique ++ : le NME marqué subit plus de dégâts (toutes les sources) ; dégâts toujours entiers (arrondis à l'entier le plus proche)
 	const float MarkMultiplier = HasAuthority() ? 1.0f + AYSPlayerCharacter::GetMarkStat(this, UYSMarkCriticalUpgrade::MarkDamageBonusStat) : 1.0f;
-	const float Damage = FMath::RoundToFloat(Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser) * MarkMultiplier);
-	if (!HasAuthority() || Health <= 0.0f || Damage <= 0.0f)
+	float Incoming = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	if (!HasAuthority() || Health <= 0.0f || Incoming <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// élite : le bouclier de boss prend les dégâts bruts ; sans bouclier, Boss armor (réduction et rage)
+	const bool bShieldHit = UsesBossArmor() && HasBossShield();
+	if (UsesBossArmor() && !bShieldHit)
+	{
+		Incoming = ApplyBossArmor(Incoming, DamageEvent, EventInstigator);
+	}
+	const float Damage = FMath::RoundToFloat(Incoming * MarkMultiplier);
+	if (Damage <= 0.0f)
 	{
 		return 0.0f;
 	}
@@ -457,10 +483,20 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 		UE_LOG(LogTemp, Verbose, TEXT("[YSMark] %s marqué : dégâts x%.2f -> %.0f"), *GetName(), MarkMultiplier, Damage);
 	}
 
-	Health = FMath::Max(0.0f, Health - Damage);
-
 	// chiffre de dégâts chez tous les joueurs, au point d'impact (position du projectile)
 	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator, UYSCriticalDamageType::IsCritical(DamageEvent));
+
+	// bouclier de boss : il prend tout le coup (pas de débordement sur les PV), pas de rage, pas de bump (pushback normal)
+	if (bShieldHit)
+	{
+		Shield = FMath::Max(0.0f, Shield - Damage);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSBoss] %s : bouclier -%.0f -> %.0f / %.0f%s"), *GetName(), Damage, Shield, MaxShield, Shield <= 0.0f ? TEXT(", BRISÉ") : TEXT(""));
+		UpdateHealthBar();
+		ApplyPushback(Damage, DamageEvent, EventInstigator);
+		return Damage;
+	}
+
+	Health = FMath::Max(0.0f, Health - Damage);
 
 	// OnRep n'est pas appelé sur le serveur : mise à jour directe pour le joueur hôte
 	UpdateHealthBar();
@@ -472,9 +508,13 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 		return Damage;
 	}
 
+	// élite : rage pleine ou PV sous le seuil -> bouclier de boss
+	TryTriggerBossShield();
+
 	// coup qui bumpe (Bumping Slash) : NME lancé en cloche ; un élite seulement si l'Ability le permet (Bump Elites), sinon pushback normal
+	// ; jamais sous bouclier de boss ni pendant le Boss Big Slash
 	const FYSBumpDamageEvent* BumpEventPtr = DamageEvent.IsOfType(FYSBumpDamageEvent::ClassID) ? static_cast<const FYSBumpDamageEvent*>(&DamageEvent) : nullptr;
-	if (BumpEventPtr && (!bIsElite || BumpEventPtr->bBumpElites))
+	if (BumpEventPtr && (!bIsElite || BumpEventPtr->bBumpElites) && !HasBossShield() && !BossDash.bActive)
 	{
 		const FYSBumpDamageEvent& BumpEvent = *BumpEventPtr;
 		StartBump(BumpEvent.ShotDirection, BumpEvent.Distance, BumpEvent.ApexHeight, BumpEvent.Duration, BumpEvent.SpinTurns);
@@ -626,8 +666,9 @@ void AYSFoeCharacter::EndBumpLocal()
 void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator)
 {
 	// direction du coup portée par l'événement (hitbox de l'arme, vol du projectile) ; force réglée sur le personnage qui frappe
+	// Boss Big Slash en cours : trajet calculé, pas de pushback
 	const AYSPlayerCharacter* Attacker = EventInstigator ? Cast<AYSPlayerCharacter>(EventInstigator->GetPawn()) : nullptr;
-	if (!Attacker || !DamageEvent.IsOfType(FPointDamageEvent::ClassID))
+	if (!Attacker || !DamageEvent.IsOfType(FPointDamageEvent::ClassID) || BossDash.bActive)
 	{
 		return;
 	}
@@ -750,6 +791,7 @@ void AYSFoeCharacter::BeginDeathLocal()
 	bAiming = false;
 	bLocalBumpActive = false;
 	bLocalRiseActive = false;
+	bLocalBossDashActive = false;
 	HealthBar->SetVisibility(false);
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	Movement->StopMovementImmediately();
@@ -1020,6 +1062,11 @@ void AYSFoeCharacter::BeginPlay()
 		}
 	}
 
+	// élite : barre de vie sous lui (position relative, suit sa taille)
+	if (bIsElite && bEliteHealthBarUnder)
+	{
+		HealthBar->SetRelativeLocation(EliteHealthBarLocation);
+	}
 	HealthBar->InitWidget();
 	UpdateHealthBar();
 }
@@ -1078,8 +1125,21 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// Boss Big Slash : préparation puis dash calculés sur chaque machine, aucun autre comportement
+	if (bLocalBossDashActive)
+	{
+		UpdateBossDash();
+		return;
+	}
+
 	// serveur autoritaire : les clients reçoivent position et rotation par réplication
 	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// bouclier de boss : son attaque en plus passe avant l'attaque de base
+	if (HasBossShield() && TryStartBossAttack())
 	{
 		return;
 	}
@@ -1615,26 +1675,275 @@ void AYSFoeCharacter::ShowAimLine(bool bShow, const FVector& Start, const FVecto
 	// réglages de la ligne : action de tir de l'arme (arme locale sur chaque machine)
 	const UYSFoeShotAction* Shot = Cast<UYSFoeShotAction>(GetRangedAction());
 	bShow = bShow && Shot;
-	AimLine->SetVisibility(bShow);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s ligne de visée %s (%s)"), *GetName(), bShow ? TEXT("affichée") : TEXT("cachée"), HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	if (!bShow)
+	{
+		ShowGroundStrip(false, Start, Direction, 0.0f, 0.0f, nullptr, FLinearColor::White, 0.0f);
+		return;
+	}
+	// matériau de la prévisualisation de la bombe
+	ShowGroundStrip(true, Start, Direction, Shot->AimLineLength, Shot->AimLineWidth, Shot->PreviewMaterial, Shot->PreviewColor, Shot->AimLineOpacity);
+}
+
+void AYSFoeCharacter::ShowGroundStrip(bool bShow, const FVector& Start, const FVector& Direction, float Length, float Width, UMaterialInterface* Material, const FLinearColor& Color, float Opacity)
+{
+	AimLine->SetVisibility(bShow);
 	if (!bShow)
 	{
 		AimLine->ClearAllMeshSections();
 		return;
 	}
 
-	// bande posée sur le relief, du NME vers la cible ; matériau de la prévisualisation de la bombe (bord désactivé : rayon immense)
+	// bande posée sur le relief depuis Start (bord désactivé : rayon immense)
 	AimLine->SetWorldLocation(Start);
-	AimLine->BuildStrip(Direction, Shot->AimLineLength, Shot->AimLineWidth, YSFoe::AimLineHeight);
-	if (Shot->PreviewMaterial)
+	AimLine->BuildStrip(Direction, Length, Width, YSFoe::AimLineHeight);
+	if (Material)
 	{
-		UMaterialInstanceDynamic* Material = AimLine->CreateDynamicMaterialInstance(0, Shot->PreviewMaterial);
-		Material->SetVectorParameterValue(TEXT("Color"), Shot->PreviewColor);
-		Material->SetScalarParameterValue(TEXT("Glow"), 0.3f);
-		Material->SetScalarParameterValue(TEXT("FillOpacity"), Shot->AimLineOpacity);
-		Material->SetScalarParameterValue(TEXT("EdgeOpacity"), 0.0f);
-		Material->SetScalarParameterValue(TEXT("Radius"), Shot->AimLineLength * 10.0f);
-		Material->SetScalarParameterValue(TEXT("EdgeWidth"), 1.0f);
+		UMaterialInstanceDynamic* Instance = AimLine->CreateDynamicMaterialInstance(0, Material);
+		Instance->SetVectorParameterValue(TEXT("Color"), Color);
+		Instance->SetScalarParameterValue(TEXT("Glow"), 0.3f);
+		Instance->SetScalarParameterValue(TEXT("FillOpacity"), Opacity);
+		Instance->SetScalarParameterValue(TEXT("EdgeOpacity"), 0.0f);
+		Instance->SetScalarParameterValue(TEXT("Radius"), Length * 10.0f);
+		Instance->SetScalarParameterValue(TEXT("EdgeWidth"), 1.0f);
+	}
+}
+
+float AYSFoeCharacter::ApplyBossArmor(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator)
+{
+	// dégâts hors critique : le critique de l'attaquant est retiré puis réappliqué après la réduction
+	const AYSPlayerCharacter* Attacker = EventInstigator ? Cast<AYSPlayerCharacter>(EventInstigator->GetPawn()) : nullptr;
+	const float CriticalMultiplier = UYSCriticalDamageType::IsCritical(DamageEvent) && Attacker ? FMath::Max(Attacker->GetCriticalDamageMultiplier(), 0.01f) : 1.0f;
+	const float Base = Damage / CriticalMultiplier;
+
+	// sous Rage Cap : dégâts normaux, rage = dégâts ; au-delà : l'excès est réduit, rage = Rage Cap
+	float Reduced = Base;
+	float RageGain = Base;
+	if (Base > RageCap)
+	{
+		const float Excess = Base - RageCap;
+		Reduced = RageCap + Excess * DmgReduceFactor / (DmgReduceFactor + Excess);
+		RageGain = RageCap;
+	}
+	Rage = FMath::Min(Rage + RageGain, MaxRage);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBoss] %s : coup %.1f (hors critique %.1f, x%.2f) -> %.1f, rage +%.0f = %.0f / %.0f"), *GetName(), Damage, Base, CriticalMultiplier,
+		Reduced * CriticalMultiplier, RageGain, Rage, MaxRage);
+	return Reduced * CriticalMultiplier;
+}
+
+void AYSFoeCharacter::TryTriggerBossShield()
+{
+	if (!UsesBossArmor() || HasBossShield() || BossShield <= 0.0f || Health <= 0.0f)
+	{
+		return;
+	}
+	const bool bRageFull = Rage >= MaxRage;
+	const bool bLowHealth = !bHealthShieldTriggered && Health <= MaxHealth * ShieldHealthThreshold;
+	if (!bRageFull && !bLowHealth)
+	{
+		return;
+	}
+	if (bLowHealth)
+	{
+		bHealthShieldTriggered = true;
+	}
+	MaxShield = FMath::RoundToFloat(BossShield * (bScaleShieldWithPlayerCount ? PlayerCountHealthMultiplier : 1.0f));
+	Shield = MaxShield;
+	Rage = 0.0f;
+	ForceNetUpdate();
+	UpdateHealthBar();
+	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : bouclier de boss %.0f (%s), rage vidée"), *GetName(), Shield, bRageFull ? TEXT("rage pleine") : TEXT("PV sous le seuil"));
+}
+
+void AYSFoeCharacter::DebugAddRage(float Amount)
+{
+	if (!HasAuthority() || !UsesBossArmor() || HasBossShield() || IsDying())
+	{
+		return;
+	}
+	Rage = FMath::Clamp(Rage + Amount, 0.0f, MaxRage);
+	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : rage %.0f / %.0f (debug)"), *GetName(), Rage, MaxRage);
+	TryTriggerBossShield();
+	ForceNetUpdate();
+}
+
+UYSBossBigSlashAbility* AYSFoeCharacter::GetBossAttack() const
+{
+	for (const AYSWeapon* Weapon : { GetRightHandWeapon(), GetLeftHandWeapon() })
+	{
+		if (UYSBossBigSlashAbility* Slash = Weapon ? Weapon->FindComponentByClass<UYSBossBigSlashAbility>() : nullptr)
+		{
+			return Slash;
+		}
+	}
+	return nullptr;
+}
+
+bool AYSFoeCharacter::TryStartBossAttack()
+{
+	UYSBossBigSlashAbility* Slash = GetBossAttack();
+	if (!Slash || !Slash->IsReady() || bAiming)
+	{
+		return false;
+	}
+	const APawn* Victim = FindNearestPlayer();
+	if (!Victim)
+	{
+		return false;
+	}
+	const FVector ToVictim = (Victim->GetActorLocation() - GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
+	if (ToVictim.SizeSquared() > FMath::Square(Slash->TriggerRange))
+	{
+		return false;
+	}
+
+	// plus prioritaire que l'attaque de base (Ability > Auto atk) : StartAttack l'interrompt
+	Slash->Damage = ContactDamage * Slash->ContactDamageMultiplier;
+	if (!Slash->StartAttack())
+	{
+		return false;
+	}
+
+	const FVector Direction = ToVictim.IsNearlyZero() ? GetActorForwardVector().GetSafeNormal2D() : ToVictim.GetSafeNormal();
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	BossDash.bActive = true;
+	BossDash.Start = GetActorLocation();
+	BossDash.End = Slash->FindDashEnd(GetActorLocation(), Direction, GetCapsuleComponent()->GetScaledCapsuleHalfHeight(), this);
+	BossDash.Direction = Direction;
+	BossDash.WindupDuration = Slash->GetWindupTime();
+	BossDash.DashDuration = Slash->GetSwingTime();
+	BossDash.StartServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	++BossDash.Counter;
+	MeleeVictim = nullptr;
+
+	MulticastBossAttack();
+	BeginBossDashLocal();
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : Boss Big Slash vers %s (%.0f dégâts), %.0f cm, préparation %.1f s, dash %.2f s"), *GetName(), *Victim->GetName(), Slash->Damage,
+		FVector::Dist2D(BossDash.Start, BossDash.End), BossDash.WindupDuration, BossDash.DashDuration);
+	return true;
+}
+
+void AYSFoeCharacter::MulticastBossAttack_Implementation()
+{
+	// serveur : déjà lancée par StartAttack ; clients : attaque de base arrêtée, l'arme locale joue l'animation
+	if (HasAuthority())
+	{
+		return;
+	}
+	TArray<UYSAutoSwingAbility*> MeleeActions;
+	GetMeleeActions(MeleeActions);
+	for (UYSAutoSwingAbility* Swing : MeleeActions)
+	{
+		Swing->StopActionLocally();
+	}
+	if (UYSBossBigSlashAbility* Slash = GetBossAttack())
+	{
+		Slash->PlayAttackLocally(EYSSwingAnim::Main);
+	}
+}
+
+void AYSFoeCharacter::OnRep_BossDash()
+{
+	if (BossDash.bActive && (!bLocalBossDashActive || LocalBossDashCounter != BossDash.Counter) && !bLocalDeathStarted)
+	{
+		BeginBossDashLocal();
+	}
+	else if (!BossDash.bActive && bLocalBossDashActive)
+	{
+		EndBossDashLocal();
+	}
+}
+
+void AYSFoeCharacter::BeginBossDashLocal()
+{
+	bLocalBossDashActive = true;
+	LocalBossDashCounter = BossDash.Counter;
+
+	// comme le bump : position calculée par UpdateBossDash sur chaque machine, mouvement du personnage et sa réplication coupés
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->StopMovementImmediately();
+	Movement->SetComponentTickEnabled(false);
+	if (HasAuthority())
+	{
+		SetReplicateMovement(false);
+	}
+
+	// zone rouge au sol sur tout le trajet pendant la préparation (réglages de l'arme locale)
+	const UYSBossBigSlashAbility* Slash = GetBossAttack();
+	const FVector Direction = BossDash.Direction;
+	bBossWarningShown = Slash != nullptr;
+	if (Slash)
+	{
+		const FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), BossDash.Start, this);
+		ShowGroundStrip(true, Ground, Direction, FVector::Dist2D(BossDash.Start, BossDash.End) + Slash->WarningExtraLength, Slash->WarningWidth,
+			Slash->WarningMaterial, Slash->WarningColor, Slash->WarningOpacity);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBoss] %s (%s) : Boss Big Slash commencé"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	UpdateBossDash();
+}
+
+void AYSFoeCharacter::UpdateBossDash()
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const float Elapsed = static_cast<float>(Now - BossDash.StartServerTime);
+	const FRotator Facing(0.0f, FVector(BossDash.Direction).Rotation().Yaw, 0.0f);
+
+	// préparation : immobile, tourné vers la direction figée
+	if (Elapsed < BossDash.WindupDuration)
+	{
+		SetActorLocationAndRotation(BossDash.Start, Facing);
+		return;
+	}
+	if (bBossWarningShown)
+	{
+		bBossWarningShown = false;
+		ShowGroundStrip(false, FVector::ZeroVector, FVector::ForwardVector, 0.0f, 0.0f, nullptr, FLinearColor::White, 0.0f);
+	}
+	const float Alpha = (Elapsed - BossDash.WindupDuration) / FMath::Max(BossDash.DashDuration, 0.01f);
+	if (Alpha >= 1.0f)
+	{
+		EndBossDashLocal();
+		return;
+	}
+
+	// dash : même profil de vitesse que le Dashing Slash ; hauteur = sol sous le NME (au-dessus de la mer)
+	const UYSBossBigSlashAbility* Slash = GetBossAttack();
+	FVector Location = FMath::Lerp(FVector(BossDash.Start), FVector(BossDash.End), Slash ? Slash->GetDashDistanceFraction(Alpha) : Alpha);
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSBossDash), false, this);
+	if (GetWorld()->LineTraceSingleByObjectType(Hit, Location + FVector(0.0f, 0.0f, 1000.0f), Location - FVector(0.0f, 0.0f, 5000.0f), FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+	{
+		Location.Z = AYSOcean::ClampAboveSea(GetWorld(), Hit.ImpactPoint.Z) + GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	}
+	SetActorLocationAndRotation(Location, Facing);
+}
+
+void AYSFoeCharacter::EndBossDashLocal()
+{
+	if (!bLocalBossDashActive)
+	{
+		return;
+	}
+	bLocalBossDashActive = false;
+	if (bBossWarningShown)
+	{
+		bBossWarningShown = false;
+		ShowGroundStrip(false, FVector::ZeroVector, FVector::ForwardVector, 0.0f, 0.0f, nullptr, FLinearColor::White, 0.0f);
+	}
+
+	SetActorLocation(BossDash.End);
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->SetComponentTickEnabled(true);
+	if (HasAuthority())
+	{
+		Movement->Velocity = FVector::ZeroVector;
+		Movement->SetMovementMode(MOVE_Falling);
+		BossDash.bActive = false;
+		SetReplicateMovement(true);
+		ForceNetUpdate();
+		UE_LOG(LogTemp, Verbose, TEXT("[YSBoss] %s : Boss Big Slash fini en (%.0f, %.0f, %.0f)"), *GetName(), BossDash.End.X, BossDash.End.Y, BossDash.End.Z);
 	}
 }
 
