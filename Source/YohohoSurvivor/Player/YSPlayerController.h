@@ -313,9 +313,13 @@ public:
 	UFUNCTION(Exec)
 	void YSGoToCorpse();
 
-	/** Debug d'un client : YSGoToBrooker (0) / YSGoToMedic (1) / YSGoToCorpse (2) faits par le serveur */
+	/** Debug (hôte ou client) : téléporte le personnage à Distance de l'accès du bateau le plus proche vers le large et Side sur le côté (dans l'eau à côté du ponton), tourné vers le bateau */
+	UFUNCTION(Exec)
+	void YSGoToBoarding(float Distance = 300.0f, float Side = 0.0f);
+
+	/** Debug d'un client : YSGoToBrooker (0) / YSGoToMedic (1) / YSGoToCorpse (2) / YSGoToBoarding (3) faits par le serveur */
 	UFUNCTION(Server, Reliable)
-	void ServerGoToDebug(uint8 Kind, float Distance);
+	void ServerGoToDebug(uint8 Kind, float Distance, float Side = 0.0f);
 
 	/** Debug (hôte) : carte au trésor devant le personnage (Distance > 0) ou au hasard dans la zone du GameMode (0) */
 	UFUNCTION(Exec)

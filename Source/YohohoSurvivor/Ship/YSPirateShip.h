@@ -91,6 +91,10 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UChildActorComponent> CannonRight;
 
+	/** Accès (AYSShipBoarding) : E pour monter sur le pont, même en nageant ; à l'ouverture du bastingage, +X vers le large */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> BoardingAccess;
+
 protected:
 
 	/** Nom affiché */
@@ -202,6 +206,9 @@ public:
 
 	/** Vitesse actuelle le long de la proue (cm/s) */
 	float GetSpeed() const { return Motion.Speed; }
+
+	/** Bateau déplacé d'un coup par le jeu (placement du port) : le pilotage repart de sa position, à l'arrêt (serveur) */
+	void SyncMotionToActor();
 
 	float GetHealth() const { return Health; }
 	float GetMaxHealth() const;

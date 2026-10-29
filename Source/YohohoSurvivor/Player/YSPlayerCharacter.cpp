@@ -248,8 +248,8 @@ UPrimitiveComponent* AYSPlayerCharacter::GetHurtbox() const
 
 float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-	// invulnérable (roulade du Rolling shot…)
-	if (IsInvulnerable())
+	// invulnérable (roulade du Rolling shot…, commande de triche god)
+	if (IsInvulnerable() || !CanBeDamaged())
 	{
 		UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s invulnérable : %.0f dégâts ignorés"), *GetName(), DamageAmount);
 		return 0.0f;
@@ -2820,15 +2820,15 @@ AYSInteractiveObject* AYSPlayerCharacter::FindInteractTarget() const
 			continue;
 		}
 
-		const FVector ToObject = (Object->GetActorLocation() - GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
+		const FVector ToObject = (Object->GetInteractLocation(GetActorLocation()) - GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
 		const float DistSq = ToObject.SizeSquared();
 		if (DistSq > BestDistSq)
 		{
 			continue;
 		}
 
-		// collé au personnage : toujours « devant »
-		if (DistSq > FMath::Square(GetCapsuleComponent()->GetScaledCapsuleRadius()) && FVector::DotProduct(ToObject.GetSafeNormal(), Forward) < MinCos)
+		// collé au personnage : toujours « devant » (accès du bateau : pas besoin de le regarder)
+		if (Object->RequiresFacing() && DistSq > FMath::Square(GetCapsuleComponent()->GetScaledCapsuleRadius()) && FVector::DotProduct(ToObject.GetSafeNormal(), Forward) < MinCos)
 		{
 			continue;
 		}

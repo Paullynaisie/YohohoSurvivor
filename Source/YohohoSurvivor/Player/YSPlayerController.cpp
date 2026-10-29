@@ -16,6 +16,7 @@
 #include "GameFramework/Pawn.h"
 #include "UI/YSAbilityIconWidget.h"
 #include "Ship/YSCrowsNest.h"
+#include "Ship/YSShipBoarding.h"
 #include "Ship/YSShipStation.h"
 #include "UI/YSBloodlustStacksWidget.h"
 #include "UI/YSCharacterSelectWidget.h"
@@ -1974,16 +1975,48 @@ void AYSPlayerController::GoToNPC(float Distance, bool bMedic)
 	UE_LOG(LogTemp, Log, TEXT("[YSGoToBrooker] %s à %.0f cm de %s"), *MyPawn->GetName(), Distance, *Brooker->GetName());
 }
 
-void AYSPlayerController::ServerGoToDebug_Implementation(uint8 Kind, float Distance)
+void AYSPlayerController::ServerGoToDebug_Implementation(uint8 Kind, float Distance, float Side)
 {
 	if (Kind == 2)
 	{
 		YSGoToCorpse();
 	}
+	else if (Kind == 3)
+	{
+		YSGoToBoarding(Distance, Side);
+	}
 	else
 	{
 		GoToNPC(Distance, Kind == 1);
 	}
+}
+
+void AYSPlayerController::YSGoToBoarding(float Distance, float Side)
+{
+	if (!HasAuthority())
+	{
+		ServerGoToDebug(3, Distance, Side);
+		return;
+	}
+	APawn* MyPawn = GetPawn();
+	const AYSShipBoarding* Best = nullptr;
+	for (TActorIterator<AYSShipBoarding> It(GetWorld()); It && MyPawn; ++It)
+	{
+		if (!Best || FVector::DistSquared(It->GetActorLocation(), MyPawn->GetActorLocation()) < FVector::DistSquared(Best->GetActorLocation(), MyPawn->GetActorLocation()))
+		{
+			Best = *It;
+		}
+	}
+	if (!Best)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSBoarding] YSGoToBoarding : aucun accès de bateau"));
+		return;
+	}
+	// +X de l'accès = le large ; posé à la surface de la mer, il nage
+	const FVector Out = Best->GetActorForwardVector().GetSafeNormal2D();
+	const FVector Location = Best->GetActorLocation() + Out * Distance + Best->GetActorRightVector().GetSafeNormal2D() * Side + FVector(0.0f, 0.0f, 100.0f);
+	MyPawn->TeleportTo(Location, (-Out).Rotation());
+	UE_LOG(LogTemp, Log, TEXT("[YSBoarding] %s à %.0f cm de l'accès %s (%s)"), *MyPawn->GetName(), Distance, *Best->GetName(), *Location.ToCompactString());
 }
 
 void AYSPlayerController::YSGoToCorpse()

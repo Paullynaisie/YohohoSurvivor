@@ -11,6 +11,7 @@
 #include "Core/YSPlayerState.h"
 #include "NPC/YSBrookerNPC.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Ship/YSPirateShip.h"
 
 AYSGameState::AYSGameState()
 {
@@ -146,6 +147,12 @@ void AYSGameState::UpdateHarborPlacement()
 		}
 		const FTransform Placed = GetHarborTransform(Actor->GetActorTransform(), OldPivot, HarborPivot, HarborYawDelta);
 		Actor->SetActorLocationAndRotation(Placed.GetLocation(), Placed.GetRotation());
+
+		// bateau pilotable : son état de pilotage (pris à son BeginPlay) le ramènerait à sa place d'origine en apparaissant
+		if (AYSPirateShip* Ship = Cast<AYSPirateShip>(Actor))
+		{
+			Ship->SyncMotionToActor();
+		}
 
 		// Brooker : reposé au sol, zone de rachat reconstruite sur le relief
 		if (AYSBrookerNPC* Brooker = Cast<AYSBrookerNPC>(Actor))

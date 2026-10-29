@@ -128,6 +128,12 @@ public:
 	/** Interaction (serveur) : par défaut, le joueur prend l'objet dans ses mains */
 	virtual void Interact(AYSPlayerCharacter* Character);
 
+	/** Point de l'objet le plus proche de From pour la portée d'interaction (défaut : son origine ; accès du bateau : sa zone) */
+	virtual FVector GetInteractLocation(const FVector& From) const { return GetActorLocation(); }
+
+	/** Le joueur doit être tourné vers l'objet (cône Interaction Angle) pour interagir */
+	virtual bool RequiresFacing() const { return true; }
+
 	/** Pris par un joueur, ou reposé (nullptr) au sol à DropLocation (serveur, appelé par le personnage) */
 	void SetCarrier(AYSPlayerCharacter* NewCarrier, const FVector& DropLocation = FVector::ZeroVector, float DropYaw = 0.0f);
 

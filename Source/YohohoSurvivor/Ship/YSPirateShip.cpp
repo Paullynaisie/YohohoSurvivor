@@ -9,6 +9,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Ship/YSCrowsNest.h"
 #include "Ship/YSLongboatLauncher.h"
+#include "Ship/YSShipBoarding.h"
 #include "Ship/YSShipCannon.h"
 #include "Ship/YSShipCore.h"
 #include "Ship/YSShipHelm.h"
@@ -67,6 +68,8 @@ AYSPirateShip::AYSPirateShip(const FObjectInitializer& ObjectInitializer)
 	CannonFront = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonFront"), AYSShipCannon::StaticClass(), FVector(1450.0f, 0.0f, 210.0f), 0.0f);
 	CannonLeft = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonLeft"), AYSShipCannon::StaticClass(), FVector(450.0f, -380.0f, 210.0f), -90.0f);
 	CannonRight = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonRight"), AYSShipCannon::StaticClass(), FVector(450.0f, 380.0f, 210.0f), 90.0f);
+	// accès : flanc bâbord (-Y), à l'ouverture du bastingage et de la planche d'embarquement, au niveau de la mer
+	BoardingAccess = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccess"), AYSShipBoarding::StaticClass(), FVector(0.0f, -500.0f, 0.0f), -90.0f);
 
 	ShipName = NSLOCTEXT("YS", "PirateShipName", "Bateau pirate");
 
@@ -145,6 +148,20 @@ float AYSPirateShip::GetMaxHealth() const
 	return Core ? Core->GetShipMaxHealth() : 0.0f;
 }
 
+void AYSPirateShip::SyncMotionToActor()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	Motion.Location = GetActorLocation();
+	Motion.Yaw = GetActorRotation().Yaw;
+	Motion.Speed = 0.0f;
+	Motion.YawRate = 0.0f;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : pilotage recalé sur sa position (%s, yaw %.0f)"), *GetName(), *Motion.Location.ToCompactString(), Motion.Yaw);
+}
+
 void AYSPirateShip::SetPilotInput(float Throttle, float Steer)
 {
 	if (!HasAuthority())
@@ -175,6 +192,11 @@ void AYSPirateShip::Tick(float DeltaSeconds)
 		{
 			AppliedPresence = Presence;
 			ApplyPresence(Presence == 1);
+			// caché, il ne simulait pas son pilotage : il apparaît là où il a été posé (port), pas à sa position du BeginPlay
+			if (Presence == 1 && bDrivable)
+			{
+				SyncMotionToActor();
+			}
 			UE_LOG(LogTemp, Log, TEXT("[YSShip] %s %s"), *GetName(), Presence ? TEXT("présent") : TEXT("absent (caché, sans collision)"));
 		}
 	}
@@ -201,7 +223,7 @@ void AYSPirateShip::ApplyPresence(bool bPresent)
 	GetAttachedActors(Attached, true, true);
 	for (AActor* Actor : Attached)
 	{
-		if (Actor->IsA<AYSShipStation>() || Actor->IsA<AYSShipCore>())
+		if (Actor->IsA<AYSShipStation>() || Actor->IsA<AYSShipCore>() || Actor->IsA<AYSShipBoarding>())
 		{
 			Actor->SetActorHiddenInGame(!bPresent);
 			Actor->SetActorEnableCollision(bPresent);
