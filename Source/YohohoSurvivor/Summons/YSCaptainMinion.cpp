@@ -1,4 +1,5 @@
 #include "Summons/YSCaptainMinion.h"
+#include "Core/YSCombat.h"
 #include "AIController.h"
 #include "Components/CapsuleComponent.h"
 #include "TimerManager.h"
@@ -40,11 +41,11 @@ void AYSCaptainMinion::BeginPlay()
 	if (SpawnPassThroughDuration > 0.0f)
 	{
 		UCapsuleComponent* Capsule = GetCapsuleComponent();
-		Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+		YSCombat::SetPassThroughCharacters(Capsule, true);
 		FTimerHandle Timer;
 		GetWorldTimerManager().SetTimer(Timer, FTimerDelegate::CreateWeakLambda(this, [this]()
 		{
-			GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+			YSCombat::SetPassThroughCharacters(GetCapsuleComponent(), false);
 			UE_LOG(LogTemp, Verbose, TEXT("[YSMinion] %s : collisions avec les personnages rétablies"), *GetName());
 		}), SpawnPassThroughDuration, false);
 	}

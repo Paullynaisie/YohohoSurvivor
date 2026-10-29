@@ -266,6 +266,24 @@ protected:
 	float WaterStopDistance = 50.0f;
 
 	/**
+	 *  Les capsules des NME se bloquent entre elles (ancien comportement : foule compacte, mais chaque NME bute sur ses voisins,
+	 *  coûteux). Décoché : elles se traversent (canal Foe ignoré entre NME) et une séparation douce les écarte.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Crowd")
+	bool bFoesBlockEachOther = true;
+
+	/**
+	 *  Séparation douce (serveur) : deux NME s'écartent dès que leurs centres sont à moins de (rayon + rayon voisin) x ce
+	 *  facteur ; plus ils se chevauchent, plus ils se poussent
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Crowd", meta=(ClampMin="0", EditCondition="!bFoesBlockEachOther"))
+	float SeparationRadiusScale = 1.15f;
+
+	/** Force de la séparation, ajoutée à l'input de déplacement (1 = autant que la poursuite à plein chevauchement) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Crowd", meta=(ClampMin="0", EditCondition="!bFoesBlockEachOther"))
+	float SeparationStrength = 1.5f;
+
+	/**
 	 *  Position par défaut de la main droite, par rapport au corps (centre de la capsule) ; la gauche est symétrique (Y inversé).
 	 *  Une arme peut la remplacer (Weapon > Hand Location). Mêmes réglages que le joueur (3C|Hands).
 	 */
@@ -569,6 +587,9 @@ protected:
 
 	/** Perf : déplacement / barre de vie / actions des armes ralentis si le NME est loin de tous les joueurs et hors écran */
 	void UpdateFarTicking();
+
+	/** Séparation douce des NME qui se traversent : input qui l'écarte de ses voisins (serveur, grille de voisinage) */
+	FVector ComputeSeparation() const;
 
 	/** Perf : armes tenues sans collision ni overlaps, mesh fusionné, ombres (une fois par arme créée) */
 	void OptimizeWeapons();

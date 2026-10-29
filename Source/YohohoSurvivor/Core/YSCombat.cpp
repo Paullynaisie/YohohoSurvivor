@@ -80,6 +80,15 @@ namespace YSCombat
 
 namespace YSCombat
 {
+	void SetPassThroughCharacters(UPrimitiveComponent* Capsule, bool bPassThrough)
+	{
+		if (Capsule)
+		{
+			Capsule->SetCollisionResponseToChannel(ECC_Pawn, bPassThrough ? ECR_Ignore : ECR_Block);
+			Capsule->SetCollisionResponseToChannel(ECC_YSFoe, bPassThrough ? ECR_Ignore : ECR_Block);
+		}
+	}
+
 	void ConfigureHurtbox(UPrimitiveComponent* Component)
 	{
 		if (!Component)

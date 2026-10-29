@@ -1,4 +1,5 @@
 #include "Abilities/YSDashingSlashAbility.h"
+#include "Core/YSCombat.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -154,7 +155,7 @@ void UYSDashingSlashAbility::SetPassThroughPawns(bool bPassThrough)
 		return;
 	}
 	bPassingThroughPawns = bPassThrough;
-	Character->GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, bPassThrough ? ECR_Ignore : ECR_Block);
+	YSCombat::SetPassThroughCharacters(Character->GetCapsuleComponent(), bPassThrough);
 }
 
 void UYSDashingSlashAbility::OnActionCancelled()

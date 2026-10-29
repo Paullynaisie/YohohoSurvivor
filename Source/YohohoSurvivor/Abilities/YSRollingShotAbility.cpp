@@ -1,4 +1,5 @@
 #include "Abilities/YSRollingShotAbility.h"
+#include "Core/YSCombat.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
@@ -58,13 +59,13 @@ void UYSRollingShotAbility::StartRoll()
 	if (bRollThroughFoes)
 	{
 		UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
-		Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+		YSCombat::SetPassThroughCharacters(Capsule, true);
 		TWeakObjectPtr<UCapsuleComponent> WeakCapsule = Capsule;
 		GetWorld()->GetTimerManager().SetTimer(RollCollisionTimer, FTimerDelegate::CreateWeakLambda(this, [WeakCapsule]()
 		{
 			if (WeakCapsule.IsValid())
 			{
-				WeakCapsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+				YSCombat::SetPassThroughCharacters(WeakCapsule.Get(), false);
 			}
 		}), FMath::Max(RollDuration, KINDA_SMALL_NUMBER), false);
 	}

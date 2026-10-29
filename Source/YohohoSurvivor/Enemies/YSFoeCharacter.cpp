@@ -938,6 +938,9 @@ void AYSFoeCharacter::BeginPlay()
 	GetCapsuleComponent()->SetGenerateOverlapEvents(false);
 	// un NME ne tente pas de monter sur un autre (marches sur les capsules voisines : balayages en plus dans la foule)
 	GetCapsuleComponent()->CanCharacterStepUpOn = ECB_No;
+	// capsule sur le canal Foe : bloque tout comme une capsule Pawn, sauf les autres NME (séparation douce à la place)
+	GetCapsuleComponent()->SetCollisionObjectType(ECC_YSFoe);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_YSFoe, bFoesBlockEachOther ? ECR_Block : ECR_Ignore);
 	// mesh squelettique vide : ni tick, ni lissage réseau (le visuel est attaché à la capsule, le lissage ne bougeait que lui)
 	GetMesh()->SetComponentTickEnabled(false);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
@@ -1108,6 +1111,16 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 			FireShot();
 		}
 		return;
+	}
+
+	// NME qui se traversent : écartés de leurs voisins (s'ajoute à la poursuite, l'input total est plafonné à 1)
+	if (!bFoesBlockEachOther && SeparationStrength > 0.0f)
+	{
+		const FVector Separation = ComputeSeparation();
+		if (!Separation.IsNearlyZero())
+		{
+			AddMovementInput(Separation);
+		}
 	}
 
 	// NME à distance : les joueurs qui nagent restent des cibles
@@ -1313,6 +1326,96 @@ void AYSFoeCharacter::UpdateFarTicking()
 		}
 	}
 	UE_LOG(LogTemp, VeryVerbose, TEXT("[YSFoe] %s : ticks %s"), *GetName(), bFar ? TEXT("ralentis (loin)") : TEXT("normaux"));
+}
+
+namespace YSFoeCrowd
+{
+	/** Grille de voisinage des NME (serveur), reconstruite une fois par image par le premier NME qui en a besoin */
+	constexpr float CellSize = 200.0f;
+
+	struct FGrid
+	{
+		const UWorld* World = nullptr;
+		uint64 Frame = MAX_uint64;
+		float MaxRadius = 0.0f;
+		TMap<FIntPoint, TArray<const AYSFoeCharacter*, TInlineAllocator<8>>> Cells;
+	};
+	FGrid Grid;
+
+	FIntPoint GetCell(const FVector& Location)
+	{
+		return FIntPoint(FMath::FloorToInt(Location.X / CellSize), FMath::FloorToInt(Location.Y / CellSize));
+	}
+
+	const FGrid& GetGrid(const UWorld* World)
+	{
+		if (Grid.World != World || Grid.Frame != GFrameCounter)
+		{
+			Grid.World = World;
+			Grid.Frame = GFrameCounter;
+			Grid.MaxRadius = 0.0f;
+			Grid.Cells.Reset();
+			for (TActorIterator<AYSFoeCharacter> It(const_cast<UWorld*>(World)); It; ++It)
+			{
+				if (!It->IsDying() && !It->IsActorBeingDestroyed())
+				{
+					Grid.Cells.FindOrAdd(GetCell(It->GetActorLocation())).Add(*It);
+					Grid.MaxRadius = FMath::Max(Grid.MaxRadius, It->GetSimpleCollisionRadius());
+				}
+			}
+		}
+		return Grid;
+	}
+}
+
+FVector AYSFoeCharacter::ComputeSeparation() const
+{
+	const YSFoeCrowd::FGrid& Grid = YSFoeCrowd::GetGrid(GetWorld());
+	const FVector Location = GetActorLocation();
+	const float Radius = GetSimpleCollisionRadius();
+	const FIntPoint Cell = YSFoeCrowd::GetCell(Location);
+	const int32 Ring = FMath::Clamp(FMath::CeilToInt((Radius + Grid.MaxRadius) * SeparationRadiusScale / YSFoeCrowd::CellSize), 1, 4);
+
+	FVector Push = FVector::ZeroVector;
+	for (int32 X = Cell.X - Ring; X <= Cell.X + Ring; ++X)
+	{
+		for (int32 Y = Cell.Y - Ring; Y <= Cell.Y + Ring; ++Y)
+		{
+			const auto* Foes = Grid.Cells.Find(FIntPoint(X, Y));
+			if (!Foes)
+			{
+				continue;
+			}
+			for (const AYSFoeCharacter* Other : *Foes)
+			{
+				if (Other == this)
+				{
+					continue;
+				}
+				FVector Away = Location - Other->GetActorLocation();
+				Away.Z = 0.0f;
+				const float Range = (Radius + Other->GetSimpleCollisionRadius()) * SeparationRadiusScale;
+				const float DistSq = Away.SizeSquared();
+				if (DistSq >= FMath::Square(Range))
+				{
+					continue;
+				}
+				// superposés exactement : direction fixe propre à la paire (pas de hasard d'une image à l'autre)
+				const float Dist = FMath::Sqrt(DistSq);
+				if (Dist < 1.0f)
+				{
+					const float Angle = static_cast<float>((reinterpret_cast<UPTRINT>(this) >> 4) % 360);
+					Away = FVector(FMath::Cos(FMath::DegreesToRadians(Angle)), FMath::Sin(FMath::DegreesToRadians(Angle)), 0.0f);
+				}
+				else
+				{
+					Away /= Dist;
+				}
+				Push += Away * (1.0f - Dist / Range);
+			}
+		}
+	}
+	return Push * SeparationStrength;
 }
 
 void AYSFoeCharacter::OptimizeWeapons()

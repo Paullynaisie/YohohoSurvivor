@@ -14,8 +14,17 @@ class UWorld;
  *    (filtrer ensuite sur la hurtbox de la cible : la capsule de mouvement est aussi de type Pawn).
  *  Les projectiles (WorldDynamic, détectent les Pawn) touchent donc aussi les hurtbox ; l'épée interroge les Pawn.
  */
+/**
+ *  Canal d'objet « Foe » (DefaultEngine.ini, réponse par défaut Block) : capsule de mouvement des NME. Les NME l'ignorent
+ *  entre eux (Foes Block Each Other faux : séparation douce à la place), tout le reste la bloque comme une capsule Pawn.
+ */
+inline constexpr ECollisionChannel ECC_YSFoe = ECC_GameTraceChannel2;
+
 namespace YSCombat
 {
+	/** Capsule d'un personnage qui traverse (ou plus) les autres personnages : joueurs / minions (Pawn) et NME (Foe) */
+	void SetPassThroughCharacters(UPrimitiveComponent* Capsule, bool bPassThrough);
+
 	void ConfigureHurtbox(UPrimitiveComponent* Component);
 
 	void ConfigureHitbox(UPrimitiveComponent* Component);
