@@ -1068,6 +1068,15 @@ void AYSFoeCharacter::BeginPlay()
 		HealthBar->SetRelativeLocation(EliteHealthBarLocation);
 	}
 	HealthBar->InitWidget();
+	if (bIsElite && bEliteHealthBarUnder)
+	{
+		if (UYSHealthBarWidget* Bar = Cast<UYSHealthBarWidget>(HealthBar->GetUserWidgetObject()))
+		{
+			Bar->SetSizeMultiplier(EliteHealthBarScale);
+		}
+		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : barre de vie sous l'élite (x%.2f, %s)"), *GetName(), EliteHealthBarScale,
+			HealthBar->GetUserWidgetObject() ? *HealthBar->GetUserWidgetObject()->GetClass()->GetName() : TEXT("AUCUN WIDGET"));
+	}
 	UpdateHealthBar();
 }
 

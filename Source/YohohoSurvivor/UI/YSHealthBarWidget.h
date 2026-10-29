@@ -69,6 +69,9 @@ public:
 	/** Affiche le point critique (prochaine balle du joueur local critique) */
 	void SetCriticalReady(bool bReady);
 
+	/** Barre et texte x Multiplier (barre sous l'élite) ; le point critique garde sa taille */
+	void SetSizeMultiplier(float Multiplier);
+
 private:
 
 	void BuildWidgetTree();

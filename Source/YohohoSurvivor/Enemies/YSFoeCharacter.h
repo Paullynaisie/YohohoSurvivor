@@ -200,6 +200,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(EditCondition="bIsElite && bEliteHealthBarUnder"))
 	FVector EliteHealthBarLocation = FVector(0.0f, 0.0f, -110.0f);
 
+	/** Taille de cette barre (largeur, hauteur et texte) par rapport à celle des autres NME (WBP_FoeHealthBar) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(EditCondition="bIsElite && bEliteHealthBarUnder", ClampMin="0.1"))
+	float EliteHealthBarScale = 3.0f;
+
 	/**
 	 *  Boss armor (élites) : un coup dont les dégâts HORS CRITIQUE dépassent Rage Cap est réduit : Rage Cap + excès x
 	 *  Dmg Reduce Factor / (Dmg Reduce Factor + excès), puis le critique est réappliqué. Rage gagnée = dégâts hors critique,

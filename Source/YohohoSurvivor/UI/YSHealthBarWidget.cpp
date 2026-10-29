@@ -99,6 +99,19 @@ void UYSHealthBarWidget::SetHealth(float Current, float Max, bool bShowWhenFull)
 	RefreshVisibility();
 }
 
+void UYSHealthBarWidget::SetSizeMultiplier(float Multiplier)
+{
+	if (!BarBox || !Label)
+	{
+		return;
+	}
+	BarBox->SetWidthOverride(BarSize.X * Multiplier);
+	BarBox->SetHeightOverride(BarSize.Y * Multiplier);
+	FSlateFontInfo Font = Label->GetFont();
+	Font.Size = FMath::RoundToInt(FontSize * Multiplier);
+	Label->SetFont(Font);
+}
+
 void UYSHealthBarWidget::SetCriticalReady(bool bReady)
 {
 	bCriticalReady = bReady;
