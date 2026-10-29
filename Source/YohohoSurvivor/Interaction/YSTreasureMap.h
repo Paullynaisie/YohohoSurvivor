@@ -80,7 +80,7 @@ protected:
 
 	/** Pointillés affichés jusqu'à cette distance du porteur */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes", meta=(ClampMin="0", Units="Centimeters"))
-	float VisibleRadius = 1500.0f;
+	float VisibleRadius = 1050.0f;
 
 	/** Les pointillés rétrécissent sur cette distance avant la limite d'affichage */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes", meta=(ClampMin="0", Units="Centimeters"))

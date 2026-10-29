@@ -1668,6 +1668,7 @@ void AYSPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 
 	// appelé uniquement pour le pawn contrôlé localement
 	CreateDefaultInput();
+	UE_LOG(LogTemp, Log, TEXT("[YSPossess] %s : entrées du joueur créées (%s)"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"));
 
 	if (const APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
@@ -1850,6 +1851,20 @@ void AYSPlayerCharacter::UpdateAutoAttackInput()
 	{
 		SendStationAction(static_cast<uint8>(EYSStationAction::Primary));
 	}
+	// distance du curseur (à plat) pendant le clic : portée des attaques auto lancées vers lui (BombThrow de la Battle Bomb)
+	if (bHeld || bDebugAutoAttack)
+	{
+		const float AimDistance = FVector::Dist2D(GetActorLocation(), GetAimLocation());
+		if (FMath::Abs(AimDistance - AutoAttackAimDistance) > AutoAttackAimDistanceThreshold || AutoAttackAimDistance < 0.0f)
+		{
+			AutoAttackAimDistance = AimDistance;
+			UE_LOG(LogTemp, VeryVerbose, TEXT("[YSAutoAttack] %s : curseur à %.0f cm"), *GetName(), AimDistance);
+			if (!HasAuthority())
+			{
+				ServerSetAutoAttackAimDistance(AimDistance);
+			}
+		}
+	}
 	if (bHeld == bAutoAttackHeld)
 	{
 		return;
@@ -1866,6 +1881,11 @@ void AYSPlayerCharacter::UpdateAutoAttackInput()
 void AYSPlayerCharacter::ServerSetAutoAttackHeld_Implementation(bool bHeld)
 {
 	bAutoAttackHeld = bHeld;
+}
+
+void AYSPlayerCharacter::ServerSetAutoAttackAimDistance_Implementation(float Distance)
+{
+	AutoAttackAimDistance = FMath::Max(0.0f, Distance);
 }
 
 void AYSPlayerCharacter::SetDebugAutoAttack(bool bHeld)

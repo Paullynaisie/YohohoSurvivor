@@ -38,7 +38,7 @@ struct FYSNightCircleEvent
 
 	/** Secondes après le début de la nuit */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn", meta=(ClampMin="0", Units="s"))
-	float Delay = 30.0f;
+	float Delay = 45.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Circle Spawn")
 	FYSCircleSpawn Circle;
@@ -194,7 +194,7 @@ public:
 	bool bRepeatLastNightCircle = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events", meta=(ClampMin="1", Units="s", EditCondition="bRepeatLastNightCircle"))
-	float NightCircleRepeatInterval = 30.0f;
+	float NightCircleRepeatInterval = 45.0f;
 
 	/** Chaque répétition : NME de ce nombre de niveaux de plus que le circle spawn précédent */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spawn|Night Events", meta=(ClampMin="0", EditCondition="bRepeatLastNightCircle"))

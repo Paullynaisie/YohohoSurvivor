@@ -1468,6 +1468,18 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 	}
 }
 
+void AYSPlayerController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+	UE_LOG(LogTemp, Log, TEXT("[YSPossess] %s (serveur) possède %s"), *GetName(), InPawn ? *InPawn->GetName() : TEXT("rien"));
+}
+
+void AYSPlayerController::AcknowledgePossession(APawn* P)
+{
+	Super::AcknowledgePossession(P);
+	UE_LOG(LogTemp, Log, TEXT("[YSPossess] %s (%s) prend en compte %s"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"), P ? *P->GetName() : TEXT("rien"));
+}
+
 void AYSPlayerController::YSDamageFoes(float Amount, float Delay, bool bScreenshot)
 {
 	FTimerHandle Timer;
@@ -1498,6 +1510,17 @@ void AYSPlayerController::YSDebugWalk(float X, float Y, float Duration, int32 Sh
 {
 	DebugWalkDirection = FVector(X, Y, 0.0f).GetSafeNormal();
 	DebugWalkRemaining = Duration;
+	// positions de départ et d'arrivée : vérifie que le joueur contrôle bien son personnage
+	const APawn* StartPawn = GetPawn();
+	UE_LOG(LogTemp, Log, TEXT("[YSDebug] %s : marche de %.1f s, départ %s en %s"), *GetName(), Duration, StartPawn ? *StartPawn->GetName() : TEXT("aucun pawn"),
+		StartPawn ? *StartPawn->GetActorLocation().ToCompactString() : TEXT("-"));
+	FTimerHandle EndTimer;
+	GetWorldTimerManager().SetTimer(EndTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+	{
+		const APawn* EndPawn = GetPawn();
+		UE_LOG(LogTemp, Log, TEXT("[YSDebug] %s : fin de marche, %s en %s"), *GetName(), EndPawn ? *EndPawn->GetName() : TEXT("aucun pawn"),
+			EndPawn ? *EndPawn->GetActorLocation().ToCompactString() : TEXT("-"));
+	}), FMath::Max(Duration + 0.5f, 0.1f), false);
 
 	for (int32 Index = 1; Index <= Shots; ++Index)
 	{
@@ -1932,6 +1955,11 @@ void AYSPlayerController::YSGoToMedic(float Distance)
 
 void AYSPlayerController::GoToNPC(float Distance, bool bMedic)
 {
+	if (!HasAuthority())
+	{
+		ServerGoToDebug(bMedic ? 1 : 0, Distance);
+		return;
+	}
 	APawn* MyPawn = GetPawn();
 	const AYSBrookerNPC* Brooker = MyPawn ? AYSBrookerNPC::FindNearest(GetWorld(), MyPawn->GetActorLocation(), nullptr, bMedic) : nullptr;
 	if (!Brooker || !HasAuthority())
@@ -1946,8 +1974,25 @@ void AYSPlayerController::GoToNPC(float Distance, bool bMedic)
 	UE_LOG(LogTemp, Log, TEXT("[YSGoToBrooker] %s à %.0f cm de %s"), *MyPawn->GetName(), Distance, *Brooker->GetName());
 }
 
+void AYSPlayerController::ServerGoToDebug_Implementation(uint8 Kind, float Distance)
+{
+	if (Kind == 2)
+	{
+		YSGoToCorpse();
+	}
+	else
+	{
+		GoToNPC(Distance, Kind == 1);
+	}
+}
+
 void AYSPlayerController::YSGoToCorpse()
 {
+	if (!HasAuthority())
+	{
+		ServerGoToDebug(2, 0.0f);
+		return;
+	}
 	APawn* MyPawn = GetPawn();
 	const AYSPlayerCorpse* Nearest = nullptr;
 	for (TActorIterator<AYSPlayerCorpse> It(GetWorld()); It && MyPawn; ++It)

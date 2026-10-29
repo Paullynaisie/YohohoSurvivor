@@ -43,7 +43,7 @@ AYSGameMode::AYSGameMode()
 	FYSOvertimeWave& FirstWave = OvertimeWaves.AddDefaulted_GetRef();
 	FirstWave.LevelOffset = 3;
 	FYSOvertimeWave& SecondWave = OvertimeWaves.AddDefaulted_GetRef();
-	SecondWave.Delay = 30.0f;
+	SecondWave.Delay = 45.0f;
 	SecondWave.LevelOffset = 5;
 }
 

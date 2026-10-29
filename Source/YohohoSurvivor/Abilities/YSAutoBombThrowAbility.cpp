@@ -60,8 +60,12 @@ bool UYSAutoBombThrowAbility::FindAutoTargetLocation(FVector& OutTarget, bool bF
 	const APawn* Holder = GetHolderPawn();
 	if (Holder && (bForceWithoutFoe || IsAutoAttackTargetOptional()))
 	{
-		// clic gauche maintenu sans cible (ou 2e bombe de l'akimbo) : droit devant, à la distance max
-		OutTarget = Holder->GetActorLocation() + Holder->GetActorForwardVector() * MaxThrowDistance;
+		// clic gauche maintenu sans cible (ou 2e bombe de l'akimbo) : droit devant, à la distance du curseur
+		// (de 0 = sur soi à Max Throw Distance) ; distance inconnue : à la distance max
+		const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Holder);
+		const float AimDistance = Character ? Character->GetAutoAttackAimDistance() : -1.0f;
+		const float Distance = AimDistance >= 0.0f ? FMath::Min(AimDistance, MaxThrowDistance) : MaxThrowDistance;
+		OutTarget = Holder->GetActorLocation() + Holder->GetActorForwardVector() * Distance;
 		return true;
 	}
 	return false;

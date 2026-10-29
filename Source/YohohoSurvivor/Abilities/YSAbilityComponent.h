@@ -156,10 +156,13 @@ public:
 	float GetExplosiveRadiusMultiplier() const;
 
 	/**
-	 *  Cible dans un cône horizontal : le pawn le plus proche portant un des Tags, à moins de MaxDistance
-	 *  de Origin et à moins de MaxAngle (de chaque côté) de Direction. Utilisé par la visée assistée et les attaques auto.
+	 *  Cible dans un cône horizontal : parmi les pawns portant un des Tags, à moins de MaxDistance de Origin et à moins
+	 *  de MaxAngle (de chaque côté) de Direction, celui le plus au CENTRE du cône (plus petit angle) ; à angles égaux
+	 *  (écart <= AngleTieTolerance degrés, ex. un NME à 15° à gauche et un à 15° à droite), le plus proche.
+	 *  Utilisé par la visée assistée et les attaques auto.
 	 */
-	static AActor* FindTargetInCone(const UWorld* World, const FVector& Origin, const FVector& Direction, float MaxDistance, float MaxAngle, const FGameplayTagContainer& Tags, const AActor* IgnoredActor);
+	static AActor* FindTargetInCone(const UWorld* World, const FVector& Origin, const FVector& Direction, float MaxDistance, float MaxAngle, const FGameplayTagContainer& Tags, const AActor* IgnoredActor,
+		float AngleTieTolerance = 1.0f);
 
 	/** Pawn qui utilise la capacité : le propriétaire direct, ou celui de l'arme qui la porte */
 	APawn* GetHolderPawn() const;

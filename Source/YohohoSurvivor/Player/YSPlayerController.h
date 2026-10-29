@@ -210,6 +210,10 @@ public:
 
 	virtual void PlayerTick(float DeltaTime) override;
 
+	/** Log de possession (toutes machines : serveur à la possession, client à sa prise en compte) */
+	virtual void OnPossess(APawn* InPawn) override;
+	virtual void AcknowledgePossession(APawn* P) override;
+
 	/** Tourne aussi pendant la pause (contrairement à PlayerTick) : mise à jour de l'UI */
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -294,20 +298,24 @@ public:
 	UFUNCTION(Exec)
 	void YSSpawnChest(float Distance = 150.0f);
 
-	/** Debug (hôte) : téléporte le personnage à côté du Brooker le plus proche */
+	/** Debug (hôte ou client) : téléporte le personnage à côté du Brooker le plus proche */
 	UFUNCTION(Exec)
 	void YSGoToBrooker(float Distance = 300.0f);
 
-	/** Debug (hôte) : téléporte le personnage à côté du Medic le plus proche */
+	/** Debug (hôte ou client) : téléporte le personnage à côté du Medic le plus proche */
 	UFUNCTION(Exec)
 	void YSGoToMedic(float Distance = 300.0f);
 
 	/** Téléporte le personnage à Distance du Brooker (ou du Medic) le plus proche */
 	void GoToNPC(float Distance, bool bMedic);
 
-	/** Debug (hôte) : téléporte le personnage sur le cadavre de joueur le plus proche (E le prend alors à coup sûr) */
+	/** Debug (hôte ou client) : téléporte le personnage sur le cadavre de joueur le plus proche (E le prend alors à coup sûr) */
 	UFUNCTION(Exec)
 	void YSGoToCorpse();
+
+	/** Debug d'un client : YSGoToBrooker (0) / YSGoToMedic (1) / YSGoToCorpse (2) faits par le serveur */
+	UFUNCTION(Server, Reliable)
+	void ServerGoToDebug(uint8 Kind, float Distance);
 
 	/** Debug (hôte) : carte au trésor devant le personnage (Distance > 0) ou au hasard dans la zone du GameMode (0) */
 	UFUNCTION(Exec)

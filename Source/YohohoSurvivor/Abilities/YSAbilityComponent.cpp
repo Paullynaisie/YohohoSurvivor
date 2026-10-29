@@ -121,7 +121,8 @@ bool UYSAbilityComponent::IsAutoAttackTargetOptional() const
 	return Character && Character->UsesHeldAutoAttack() && Character->WantsAutoAttack();
 }
 
-AActor* UYSAbilityComponent::FindTargetInCone(const UWorld* World, const FVector& Origin, const FVector& Direction, float MaxDistance, float MaxAngle, const FGameplayTagContainer& Tags, const AActor* IgnoredActor)
+AActor* UYSAbilityComponent::FindTargetInCone(const UWorld* World, const FVector& Origin, const FVector& Direction, float MaxDistance, float MaxAngle, const FGameplayTagContainer& Tags, const AActor* IgnoredActor,
+	float AngleTieTolerance)
 {
 	const FVector FlatDirection = FVector(Direction.X, Direction.Y, 0.0f).GetSafeNormal();
 	if (!World || MaxDistance <= 0.0f || MaxAngle <= 0.0f || FlatDirection.IsNearlyZero() || Tags.IsEmpty())
@@ -129,9 +130,10 @@ AActor* UYSAbilityComponent::FindTargetInCone(const UWorld* World, const FVector
 		return nullptr;
 	}
 
-	const float MinCos = FMath::Cos(FMath::DegreesToRadians(MaxAngle));
+	const float MaxDistanceSq = FMath::Square(MaxDistance);
 	AActor* BestTarget = nullptr;
-	float BestDistanceSq = FMath::Square(MaxDistance);
+	float BestAngle = 0.0f;
+	float BestDistanceSq = 0.0f;
 
 	for (TActorIterator<APawn> It(World); It; ++It)
 	{
@@ -144,14 +146,22 @@ AActor* UYSAbilityComponent::FindTargetInCone(const UWorld* World, const FVector
 
 		const FVector ToCandidate = FVector(Candidate->GetActorLocation() - Origin) * FVector(1.0f, 1.0f, 0.0f);
 		const float DistanceSq = ToCandidate.SizeSquared();
-		if (DistanceSq > BestDistanceSq || DistanceSq < KINDA_SMALL_NUMBER)
+		if (DistanceSq > MaxDistanceSq || DistanceSq < KINDA_SMALL_NUMBER)
 		{
 			continue;
 		}
 
-		if (FVector::DotProduct(ToCandidate.GetSafeNormal(), FlatDirection) >= MinCos)
+		const float Angle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(ToCandidate.GetSafeNormal(), FlatDirection), -1.0f, 1.0f)));
+		if (Angle > MaxAngle)
+		{
+			continue;
+		}
+		// le plus au centre du cône ; à angles égaux (à la tolérance près), le plus proche
+		const bool bTie = BestTarget && FMath::Abs(Angle - BestAngle) <= AngleTieTolerance;
+		if (!BestTarget || (bTie ? DistanceSq < BestDistanceSq : Angle < BestAngle))
 		{
 			BestTarget = Candidate;
+			BestAngle = Angle;
 			BestDistanceSq = DistanceSq;
 		}
 	}

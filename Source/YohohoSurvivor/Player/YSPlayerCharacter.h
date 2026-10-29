@@ -1237,6 +1237,9 @@ public:
 	/** Attaque auto autorisée : joueur = clic gauche maintenu (serveur : dernier état reçu) ; minions : toujours */
 	bool WantsAutoAttack() const { return !UsesHeldAutoAttack() || bAutoAttackHeld || bDebugAutoAttack; }
 
+	/** Distance (à plat) du curseur pendant le clic gauche, connue du serveur ; < 0 = inconnue */
+	float GetAutoAttackAimDistance() const { return AutoAttackAimDistance; }
+
 	/** Le personnage n'attaque automatiquement qu'en maintenant le clic gauche, et l'attaque auto le ralentit (joueurs ; pas les minions) */
 	virtual bool UsesHeldAutoAttack() const { return true; }
 
@@ -1327,8 +1330,17 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerSetDebugAutoAttack(bool bHeld);
 
+	UFUNCTION(Server, Unreliable)
+	void ServerSetAutoAttackAimDistance(float Distance);
+
 	/** Clic gauche maintenu (machine qui contrôle ; serveur : dernier état reçu) */
 	bool bAutoAttackHeld = false;
+
+	/** Distance (à plat) du curseur au personnage pendant le clic gauche (machine qui contrôle ; serveur : dernière reçue) ; < 0 = inconnue */
+	float AutoAttackAimDistance = -1.0f;
+
+	/** Écart (cm) au-delà duquel la distance du curseur est renvoyée au serveur */
+	static constexpr float AutoAttackAimDistanceThreshold = 25.0f;
 
 	/** Debug : clic gauche considéré comme maintenu */
 	bool bDebugAutoAttack = false;
