@@ -9,6 +9,7 @@ class AYSShipHelm;
 class AYSShipCore;
 class AYSShipStation;
 class AYSShipPath;
+class AYSShipBoarding;
 
 /** État du déplacement d'un bateau pilotable, répliqué par le serveur (les clients l'extrapolent) */
 USTRUCT()
@@ -239,6 +240,15 @@ public:
 
 	/** Core : stats du bateau (nullptr = valeurs du bateau seules) */
 	AYSShipCore* GetCore() const;
+
+	/** Accès du bateau (nullptr sur une chaloupe) */
+	AYSShipBoarding* GetBoardingAccess() const;
+
+	/**
+	 *  Point vers lequel marcher (à plat) pour aller de From à To sans buter contre la coque : To si From est déjà du même côté du bateau,
+	 *  sinon le long du flanc jusqu'à Margin au-delà de la proue ou de la poupe, puis de l'autre côté
+	 */
+	FVector GetRouteAroundHull(const FVector& From, const FVector& To, float Margin) const;
 
 	/** Postes du bateau (barre, nid d'pie, chalouperie, canonneries ; pas le core), acteurs enfants existants */
 	TArray<AYSShipStation*> GetStations() const;

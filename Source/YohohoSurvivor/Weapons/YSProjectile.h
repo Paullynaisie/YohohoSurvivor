@@ -287,6 +287,9 @@ public:
 
 	void SetDamage(float NewDamage) { Damage = NewDamage; }
 
+	/** Distance parcourue avant la fin de vie (vitesse x durée de vie) */
+	float GetMaxRange() const { return Speed * LifeTime; }
+
 	/** Ricochets (upgrade Ricochet) : nombre et multiplicateur de dégâts à chaque ricochet */
 	void SetRicochets(int32 Count, float DamageMultiplier) { RemainingRicochets = Count; RicochetDamageMultiplier = DamageMultiplier; }
 

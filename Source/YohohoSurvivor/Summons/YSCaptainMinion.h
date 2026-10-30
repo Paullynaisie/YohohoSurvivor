@@ -16,6 +16,9 @@ class AYSFoeCharacter;
  *  -> va l'attaquer (s'arrête à la portée de son arme, tourné vers lui : l'attaque auto part toute seule) ; sinon reste à moins
  *  de Follow Distance de son Captain. Damage bonus de l'Ability du Captain appliqué à ses dégâts. Meurt avec son Captain.
  *  Ennemis : les NME le ciblent (3x plus loin qu'un joueur) et ses PV baissent sous leurs coups (contact, balles, bombes).
+ *  Bateau : Captain à bord -> le minion monte aussi (accès du bateau, à pied ou à la nage) et ne quitte plus le pont pour poursuivre un NME ;
+ *  Captain à la barre -> marche jusqu'à un canon libre et tire tout seul sur les NME à portée ; barre lâchée -> lâche son canon. Un joueur
+ *  peut lui prendre sa place avec E (jamais l'inverse).
  *  Abilities (Dashing Slash de l'épée, Rolling shot du gun) : jamais utilisées d'elles-mêmes, seulement forcées par
  *  « Allez-y mes minions ! » du Cursed Hook (sans recharge), vers sa cible. Sur le NME marqué par la Captain Sword : coups critiques.
  */
@@ -57,6 +60,24 @@ public:
 	/** À l'apparition, le minion traverse les autres personnages (joueurs, minions, NME) pendant ce délai : il n'est pas poussé n'importe où */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion", meta=(ClampMin="0", Units="Seconds"))
 	float SpawnPassThroughDuration = 1.0f;
+
+	/** Captain à bord : pour rejoindre l'accès du bateau depuis l'autre flanc, le minion passe à cette distance de la proue ou de la poupe */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion|Ship", meta=(ClampMin="0", Units="Centimeters"))
+	float BoardingHullMargin = 250.0f;
+
+	/** Captain à la barre : le minion s'installe au canon une fois à cette distance de sa place (à plat) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion|Ship", meta=(ClampMin="0", Units="Centimeters"))
+	float CannonReachDistance = 100.0f;
+
+	/** En marchant sur le pont : plus lent que cette vitesse pendant Crew Stuck Delay (mât, marche) = bloqué, il contourne sur le côté pendant Crew Sidestep Duration */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion|Ship", meta=(ClampMin="0", Units="CentimetersPerSecond"))
+	float CrewStuckSpeed = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion|Ship", meta=(ClampMin="0", Units="s"))
+	float CrewStuckDelay = 0.4f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion|Ship", meta=(ClampMin="0", Units="s"))
+	float CrewSidestepDuration = 0.8f;
 
 	AYSCaptainMinion();
 
@@ -120,6 +141,34 @@ private:
 
 	/** Une Ability (forcée) est en cours : son déplacement est celui de l'action, pas celui de l'IA */
 	bool IsAbilityInProgress() const;
+
+	/**
+	 *  Captain à bord d'un bateau : monte à bord (accès du bateau, à pied ou à la nage) ; Captain à la barre : marche jusqu'à un canon libre,
+	 *  s'y installe et tire tout seul ; barre lâchée : lâche son canon. Vrai = le minion a fait ce qu'il avait à faire, pas d'IA normale.
+	 */
+	bool UpdateShipCrew(class AAIController* AIController, float DeltaSeconds);
+
+	/** Au canon : vise le NME le plus proche à portée, tire dès que le canon est rechargé */
+	void UpdateCannonFire(class AYSShipCannon* Cannon, AAIController* AIController);
+
+	/** Canon libre le plus proche, pas déjà visé par un autre minion (garde le sien s'il est encore libre), ou nullptr */
+	AYSShipCannon* FindFreeCannon(const AYSPirateShip* Ship) const;
+
+	/** Marche vers Goal (à plat), regarde où il va, contourne ce qui le bloque */
+	void WalkToward(const FVector& Goal, AAIController* AIController, float DeltaSeconds);
+
+	/** Traverse les autres personnages pendant Spawn Pass Through Duration (apparition, montée à bord) */
+	void StartPassThrough();
+
+	FTimerHandle PassThroughTimer;
+
+	/** Canon vers lequel il marche */
+	TWeakObjectPtr<AYSShipCannon> AssignedCannon;
+
+	/** Bloqué en marchant : temps sous Crew Stuck Speed, temps restant de contournement, côté du contournement */
+	float CrewStuckTime = 0.0f;
+	float CrewSidestepTime = 0.0f;
+	float CrewSidestepSide = 1.0f;
 
 	/** Revient vers le Captain (au-delà de Follow Distance) jusqu'à Follow Stop Distance */
 	bool bReturningToCaptain = false;

@@ -134,6 +134,38 @@ AYSShipCore* AYSPirateShip::GetCore() const
 	return CoreStation ? Cast<AYSShipCore>(CoreStation->GetChildActor()) : nullptr;
 }
 
+AYSShipBoarding* AYSPirateShip::GetBoardingAccess() const
+{
+	return BoardingAccess ? Cast<AYSShipBoarding>(BoardingAccess->GetChildActor()) : nullptr;
+}
+
+FVector AYSPirateShip::GetRouteAroundHull(const FVector& From, const FVector& To, float Margin) const
+{
+	const FBox2D Bounds = GetHullBounds();
+	if (!Bounds.bIsValid)
+	{
+		return To;
+	}
+	const FTransform& Transform = GetActorTransform();
+	const FVector LocalFrom = Transform.InverseTransformPositionNoScale(From);
+	const FVector LocalTo = Transform.InverseTransformPositionNoScale(To);
+
+	// déjà du côté de To (au-delà du flanc) : tout droit
+	const float Side = LocalTo.Y >= Bounds.GetCenter().Y ? 1.0f : -1.0f;
+	const float Flank = Side > 0.0f ? Bounds.Max.Y : Bounds.Min.Y;
+	if ((LocalFrom.Y - Flank) * Side >= 0.0f)
+	{
+		return To;
+	}
+
+	// le tour le plus court : par la proue ou par la poupe ; d'abord le long du flanc, puis en travers une fois la coque dépassée
+	const float Bow = Bounds.Max.X + Margin;
+	const float Stern = Bounds.Min.X - Margin;
+	const float EndX = FMath::Abs(LocalFrom.X - Bow) + FMath::Abs(LocalTo.X - Bow) < FMath::Abs(LocalFrom.X - Stern) + FMath::Abs(LocalTo.X - Stern) ? Bow : Stern;
+	const bool bPastHull = LocalFrom.X >= Bow - 1.0f || LocalFrom.X <= Stern + 1.0f;
+	return Transform.TransformPositionNoScale(FVector(EndX, bPastHull ? Flank + Side * Margin : LocalFrom.Y, LocalFrom.Z));
+}
+
 TArray<AYSShipStation*> AYSPirateShip::GetStations() const
 {
 	TArray<AYSShipStation*> Stations;

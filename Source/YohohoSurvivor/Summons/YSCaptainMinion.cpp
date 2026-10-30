@@ -8,7 +8,11 @@
 #include "Core/YSPlayerState.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "EngineUtils.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "Ship/YSPirateShip.h"
+#include "Ship/YSShipBoarding.h"
+#include "Ship/YSShipCannon.h"
 #include "Weapons/YSWeapon.h"
 
 AYSCaptainMinion::AYSCaptainMinion()
@@ -38,12 +42,16 @@ void AYSCaptainMinion::BeginPlay()
 	Super::BeginPlay();
 
 	// apparition : la capsule ignore les autres personnages un court instant (toutes les machines)
+	StartPassThrough();
+}
+
+void AYSCaptainMinion::StartPassThrough()
+{
 	if (SpawnPassThroughDuration > 0.0f)
 	{
 		UCapsuleComponent* Capsule = GetCapsuleComponent();
 		YSCombat::SetPassThroughCharacters(Capsule, true);
-		FTimerHandle Timer;
-		GetWorldTimerManager().SetTimer(Timer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		GetWorldTimerManager().SetTimer(PassThroughTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
 		{
 			YSCombat::SetPassThroughCharacters(GetCapsuleComponent(), false);
 			UE_LOG(LogTemp, Verbose, TEXT("[YSMinion] %s : collisions avec les personnages rétablies"), *GetName());
@@ -202,17 +210,27 @@ void AYSCaptainMinion::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// Captain à bord d'un bateau : monter à bord, canons
+	if (UpdateShipCrew(AIController, DeltaSeconds))
+	{
+		return;
+	}
+
+	// sur le même bateau que le Captain : il ne saute pas à l'eau pour poursuivre un NME (seulement ceux à bord)
+	const AYSPirateShip* Deck = GetShipUnderFeet();
+	const bool bStayAboard = Deck && Deck == Captain->GetShipUnderFeet();
+
 	// cible : s'approche jusqu'à la portée de son arme, tourné vers elle (l'attaque auto part toute seule)
 	FVector Goal = FVector::ZeroVector;
 	float StopDistance = 0.0f;
 	if (Target)
 	{
 		bReturningToCaptain = false;
-		Goal = Target->GetActorLocation();
+		Goal = bStayAboard && !Deck->IsInsideHull(Target->GetActorLocation()) ? FVector::ZeroVector : Target->GetActorLocation();
 		StopDistance = HasRangedWeapon() ? RangedStopDistance : MeleeStopDistance;
 		if (AIController)
 		{
-			AIController->SetFocalPoint(Goal);
+			AIController->SetFocalPoint(Target->GetActorLocation());
 		}
 	}
 	else
@@ -253,6 +271,166 @@ void AYSCaptainMinion::Tick(float DeltaSeconds)
 		{
 			AIController->ClearFocus(EAIFocusPriority::Gameplay);
 		}
+	}
+}
+
+bool AYSCaptainMinion::UpdateShipCrew(AAIController* AIController, float DeltaSeconds)
+{
+	AYSPirateShip* Ship = Captain->GetShipUnderFeet();
+	if (Ship && Ship->IsFoeShip())
+	{
+		Ship = nullptr;
+	}
+	const AYSShipStation* CaptainStation = Captain->GetCurrentStation();
+	const bool bCaptainPiloting = Ship && IsValid(CaptainStation) && CaptainStation->UsesPilotInput();
+
+	// au canon : il tire tant que le Captain pilote ce bateau, sinon il le lâche
+	if (IsAtStation())
+	{
+		AYSShipCannon* Cannon = Cast<AYSShipCannon>(GetCurrentStation());
+		if (Cannon && bCaptainPiloting && Cannon->GetShip() == Ship)
+		{
+			UpdateCannonFire(Cannon, AIController);
+			return true;
+		}
+		LeaveStation(TEXT("le Captain lâche la barre"), true);
+		AssignedCannon = nullptr;
+	}
+
+	if (!Ship)
+	{
+		AssignedCannon = nullptr;
+		return false;
+	}
+
+	// pas encore à bord : accès du bateau, à pied ou à la nage (le tour de la coque si l'accès est de l'autre côté)
+	// (au-dessus de la coque : il est à bord même sans le pont pour base de mouvement, en retombant ou debout sur un autre minion ; sinon il remonte à chaque image)
+	const FVector Location = GetActorLocation();
+	const bool bAboveDeck = Ship->IsInsideHull(Location) && Location.Z > Ship->GetActorLocation().Z;
+	if (GetShipUnderFeet() != Ship && !bAboveDeck)
+	{
+		AYSShipBoarding* Boarding = Ship->GetBoardingAccess();
+		if (!Boarding)
+		{
+			return false;
+		}
+		const FVector Access = Boarding->GetInteractLocation(Location);
+		if (FVector::Dist2D(Location, Access) <= InteractionDistance && Boarding->CanInteract(this))
+		{
+			// tous reposés au même point : ils se traversent le temps de s'en éloigner
+			Boarding->Interact(this);
+			StartPassThrough();
+			return true;
+		}
+		WalkToward(Ship->GetRouteAroundHull(Location, Access, BoardingHullMargin), AIController, DeltaSeconds);
+		return true;
+	}
+
+	// à bord, Captain à la barre : à pied jusqu'à un canon libre (aucun : il reste à bord, IA normale)
+	AYSShipCannon* Cannon = bCaptainPiloting ? FindFreeCannon(Ship) : nullptr;
+	AssignedCannon = Cannon;
+	if (!Cannon)
+	{
+		return false;
+	}
+	const FVector Seat = Cannon->GetOccupantFeetLocation();
+	if (FVector::Dist2D(Location, Seat) <= CannonReachDistance)
+	{
+		EnterStation(Cannon);
+		return true;
+	}
+	WalkToward(Seat, AIController, DeltaSeconds);
+	return true;
+}
+
+AYSShipCannon* AYSCaptainMinion::FindFreeCannon(const AYSPirateShip* Ship) const
+{
+	AYSShipCannon* Best = nullptr;
+	float BestDistSq = TNumericLimits<float>::Max();
+	for (AYSShipStation* Station : Ship->GetStations())
+	{
+		AYSShipCannon* Cannon = Cast<AYSShipCannon>(Station);
+		if (!Cannon || Cannon->GetOccupant() || !Cannon->CanInteract(this))
+		{
+			continue;
+		}
+		// déjà visé par un autre minion : pour lui
+		bool bReserved = false;
+		for (TActorIterator<AYSCaptainMinion> It(GetWorld()); It && !bReserved; ++It)
+		{
+			bReserved = *It != this && !It->IsDying() && It->AssignedCannon == Cannon;
+		}
+		if (bReserved)
+		{
+			continue;
+		}
+		if (AssignedCannon == Cannon)
+		{
+			return Cannon;
+		}
+		const float DistSq = FVector::DistSquared2D(Cannon->GetOccupantFeetLocation(), GetActorLocation());
+		if (DistSq < BestDistSq)
+		{
+			BestDistSq = DistSq;
+			Best = Cannon;
+		}
+	}
+	return Best;
+}
+
+void AYSCaptainMinion::UpdateCannonFire(AYSShipCannon* Cannon, AAIController* AIController)
+{
+	const AYSFoeCharacter* CannonTarget = Cannon->FindAutoFireTarget();
+	if (!CannonTarget)
+	{
+		// sans cible : droit devant le canon
+		if (AIController)
+		{
+			AIController->SetFocalPoint(Cannon->GetActorLocation() + Cannon->GetActorForwardVector() * 1000.0f);
+		}
+		return;
+	}
+	if (AIController)
+	{
+		AIController->SetFocalPoint(CannonTarget->GetActorLocation());
+	}
+	if (Cannon->GetCooldownRemaining() <= 0.0f && Cannon->IsAimedAt(CannonTarget))
+	{
+		Cannon->ServerHandleAction(this, EYSStationAction::Fire, CannonTarget->GetActorLocation());
+	}
+}
+
+void AYSCaptainMinion::WalkToward(const FVector& Goal, AAIController* AIController, float DeltaSeconds)
+{
+	const FVector Location = GetActorLocation();
+	FVector Direction = FVector(Goal.X - Location.X, Goal.Y - Location.Y, 0.0f).GetSafeNormal();
+
+	// bloqué (mât, marche, bastingage) : un moment sur le côté, de l'autre côté à chaque fois
+	if (CrewSidestepTime > 0.0f)
+	{
+		CrewSidestepTime -= DeltaSeconds;
+		Direction = (Direction + FVector::CrossProduct(FVector::UpVector, Direction) * CrewSidestepSide * 2.0f).GetSafeNormal();
+	}
+	else if (GetVelocity().Size2D() < CrewStuckSpeed)
+	{
+		CrewStuckTime += DeltaSeconds;
+		if (CrewStuckTime >= CrewStuckDelay)
+		{
+			CrewStuckTime = 0.0f;
+			CrewSidestepTime = CrewSidestepDuration;
+			CrewSidestepSide = -CrewSidestepSide;
+			UE_LOG(LogTemp, Verbose, TEXT("[YSMinion] %s bloqué en (%.0f, %.0f) : contourne"), *GetName(), Location.X, Location.Y);
+		}
+	}
+	else
+	{
+		CrewStuckTime = 0.0f;
+	}
+
+	AddMovementInput(Direction);
+	if (AIController)
+	{
+		AIController->SetFocalPoint(Location + Direction * 500.0f);
 	}
 }
 

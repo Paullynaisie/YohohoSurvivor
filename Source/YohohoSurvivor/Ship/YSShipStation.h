@@ -80,6 +80,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station")
 	bool bLockAim = true;
 
+	/** Un joueur prend la place d'un minion (E) : le minion est reposé à cette distance sur le côté */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station", meta=(ClampMin="0", Units="Centimeters"))
+	float ReplacedOccupantOffset = 150.0f;
+
 	/** PV du poste (0 = pas de PV) ; pas encore de dégâts */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station", meta=(ClampMin="0"))
 	float MaxHealth = 0.0f;
@@ -128,8 +132,11 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
-	/** Bateau présent, poste libre, joueur vivant aux mains libres (hors de l'eau sauf Allow Swimming Entry) et à aucun poste */
+	/** Bateau présent, poste libre (ou tenu par un minion, si c'est un joueur qui veut sa place), joueur vivant aux mains libres (hors de l'eau sauf Allow Swimming Entry) et à aucun poste */
 	virtual bool CanInteract(const AYSPlayerCharacter* Character) const override;
+
+	/** Le poste est tenu par un minion et Character est un joueur : il peut lui voler la place (un minion ne vole jamais, personne ne vole un joueur) */
+	bool CanTakeOverFrom(const AYSPlayerCharacter* Character) const;
 
 	/** Le joueur s'installe au poste (serveur) */
 	virtual void Interact(AYSPlayerCharacter* Character) override;

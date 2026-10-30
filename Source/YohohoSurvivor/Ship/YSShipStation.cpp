@@ -3,6 +3,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Ship/YSPirateShip.h"
+#include "Summons/YSCaptainMinion.h"
 
 AYSShipStation::AYSShipStation()
 {
@@ -68,15 +69,28 @@ bool AYSShipStation::IsShipAvailable() const
 
 bool AYSShipStation::CanInteract(const AYSPlayerCharacter* Character) const
 {
-	return IsShipAvailable() && !Occupant && Character && Character->IsAlive() && !Character->IsCarrying() && (bAllowSwimmingEntry || !Character->IsSwimming()) && !Character->IsAtStation();
+	return IsShipAvailable() && (!Occupant || CanTakeOverFrom(Character)) && Character && Character->IsAlive() && !Character->IsCarrying() && (bAllowSwimmingEntry || !Character->IsSwimming()) && !Character->IsAtStation();
+}
+
+bool AYSShipStation::CanTakeOverFrom(const AYSPlayerCharacter* Character) const
+{
+	return Occupant && Occupant->IsA<AYSCaptainMinion>() && Character && !Character->IsA<AYSCaptainMinion>();
 }
 
 void AYSShipStation::Interact(AYSPlayerCharacter* Character)
 {
-	if (HasAuthority() && CanInteract(Character))
+	if (!HasAuthority() || !CanInteract(Character))
 	{
-		Character->EnterStation(this);
+		return;
 	}
+	// place volée à un minion : il est reposé sur le côté et ira voir ailleurs
+	if (AYSPlayerCharacter* Replaced = Occupant)
+	{
+		UE_LOG(LogTemp, Log, TEXT("%s %s prend la place de %s à %s"), GetLogTag(), *Character->GetName(), *Replaced->GetName(), *GetName());
+		Replaced->LeaveStation(TEXT("place prise par un joueur"), true);
+		Replaced->TeleportToFeetLocation(GetOccupantFeetLocation() + OccupantPoint->GetRightVector().GetSafeNormal2D() * ReplacedOccupantOffset, GetOccupantForward());
+	}
+	Character->EnterStation(this);
 }
 
 void AYSShipStation::SetOccupant(AYSPlayerCharacter* NewOccupant)

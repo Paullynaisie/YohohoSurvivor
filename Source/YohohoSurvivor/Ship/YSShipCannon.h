@@ -4,6 +4,7 @@
 #include "Ship/YSShipStation.h"
 #include "YSShipCannon.generated.h"
 
+class AYSFoeCharacter;
 class AYSProjectile;
 class UStaticMeshComponent;
 class UTexture2D;
@@ -91,6 +92,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0.01", Units="s"))
 	float RecoilDuration = 0.4f;
 
+	/** Minion au canon : il vise le NME le plus proche à moins de cette distance et dans l'angle du canon, et tire dès que le canon est rechargé. 0 = portée de l'AMMO (vitesse x durée de vie) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Minion", meta=(ClampMin="0", Units="Centimeters"))
+	float AutoFireRange = 0.0f;
+
+	/** Le minion tire quand le canon est à moins de cet angle de sa cible */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Minion", meta=(ClampMin="0", Units="Degrees"))
+	float AutoFireAimTolerance = 5.0f;
+
 	/** Recul joué sur toutes les machines */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastFired();
@@ -117,6 +126,12 @@ public:
 
 	/** Secondes avant que le canon soit rechargé */
 	float GetCooldownRemaining() const;
+
+	/** Tir automatique d'un minion : NME le plus proche à portée et dans l'angle du canon, ou nullptr */
+	AYSFoeCharacter* FindAutoFireTarget() const;
+
+	/** Le canon pointe sur ce NME, à Auto Fire Aim Tolerance près */
+	bool IsAimedAt(const AActor* Target) const;
 
 private:
 

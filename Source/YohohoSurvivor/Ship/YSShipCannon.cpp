@@ -3,6 +3,8 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
+#include "Enemies/YSFoeCharacter.h"
+#include "EngineUtils.h"
 #include "GameFramework/GameStateBase.h"
 #include "Materials/MaterialInterface.h"
 #include "Net/UnrealNetwork.h"
@@ -197,6 +199,38 @@ float AYSShipCannon::GetCooldownRemaining() const
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
 	return FMath::Max(0.0f, static_cast<float>(ReadyServerTime - Now));
+}
+
+AYSFoeCharacter* AYSShipCannon::FindAutoFireTarget() const
+{
+	const AYSProjectile* Ammo = ProjectileClass ? ProjectileClass->GetDefaultObject<AYSProjectile>() : nullptr;
+	const float Range = AutoFireRange > 0.0f ? AutoFireRange : (Ammo ? Ammo->GetMaxRange() : 0.0f);
+	const FVector Origin = CannonPivot->GetComponentLocation();
+	const float BaseYaw = GetActorRotation().Yaw;
+
+	AYSFoeCharacter* Best = nullptr;
+	float BestDistSq = FMath::Square(Range);
+	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
+	{
+		AYSFoeCharacter* Foe = *It;
+		if (Foe->GetHealth() <= 0.0f || Foe->IsDying() || Foe->IsRising() || Foe->IsActorBeingDestroyed())
+		{
+			continue;
+		}
+		const FVector ToFoe = (Foe->GetActorLocation() - Origin) * FVector(1.0f, 1.0f, 0.0f);
+		const float DistSq = ToFoe.SizeSquared();
+		if (DistSq < BestDistSq && FMath::Abs(FRotator::NormalizeAxis(ToFoe.Rotation().Yaw - BaseYaw)) <= MaxAimAngle)
+		{
+			BestDistSq = DistSq;
+			Best = Foe;
+		}
+	}
+	return Best;
+}
+
+bool AYSShipCannon::IsAimedAt(const AActor* Target) const
+{
+	return Target && FMath::Abs(FRotator::NormalizeAxis(CurrentAimYaw - ComputeAimYaw(Target->GetActorLocation()))) <= AutoFireAimTolerance;
 }
 
 bool AYSShipCannon::GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const
