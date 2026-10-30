@@ -8,6 +8,7 @@
 class AYSPlayerCharacter;
 class UYSEnemySpawnRule;
 class AYSFoeCharacter;
+class AYSFoeJollyShip;
 class AYSTreasureMap;
 class AYSPlayerCorpse;
 class UTexture2D;
@@ -175,6 +176,43 @@ protected:
 	/** Ctrl gauche + touche du pavé numérique : circle spawn de ce nombre de NME de la touche sur le contour de la plage */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn", ClampMin="1"))
 	int32 NumpadCircleCount = 50;
+
+	/** Touche du pavé numérique qui fait apparaître un NME Jolly Ship (Jolly Ship Class) sur l'eau ; -1 = aucune */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn", ClampMin="-1", ClampMax="9"))
+	int32 NumpadJollyShipKey = 7;
+
+	/** NME Jolly Ship : vagues sur l'eau à partir du moment où le bateau est là (objectif de doublons atteint) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship")
+	bool bJollyShipWaves = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship")
+	TSubclassOf<AYSFoeJollyShip> JollyShipClass;
+
+	/** Secondes entre deux vagues (la première part dès que le bateau arrive) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="0.1", Units="s", EditCondition="bJollyShipWaves"))
+	float JollyShipWaveInterval = 10.0f;
+
+	/** Jolly Ships par vague pour 1 joueur (x Spawn Multiplier du nombre de joueurs, comme tous les NME) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="0", EditCondition="bJollyShipWaves"))
+	int32 JollyShipsPerWave = 5;
+
+	/** Nombre max de Jolly Ships à flot (0 = illimité) : les apparitions au-delà sont ignorées */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="0", EditCondition="bJollyShipWaves"))
+	int32 JollyShipMaxAlive = 0;
+
+	/** Apparition : à au moins cette distance de tous les joueurs (hors écran), jusqu'à Max si la mer est plus loin, par pas de Step */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="0", Units="Centimeters"))
+	float JollyShipMinSpawnDistance = 5000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="0", Units="Centimeters"))
+	float JollyShipMaxSpawnDistance = 20000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="10", Units="Centimeters"))
+	float JollyShipSpawnStep = 500.0f;
+
+	/** Directions essayées par Jolly Ship */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="1"))
+	int32 JollyShipSpawnAttempts = 10;
 
 	/** Centre de l'île (apparition de l'élite la nuit, centre des circle spawns) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Island")
@@ -362,6 +400,9 @@ public:
 	/** Ctrl gauche + pavé numérique (map de test) : circle spawn de NumpadCircleCount NME de la touche ; nombre apparus */
 	int32 SpawnNumpadCircle(int32 Key);
 
+	/** Un NME Jolly Ship sur l'eau, hors écran (serveur) ; nullptr si pas de classe ou pas d'emplacement */
+	AYSFoeJollyShip* SpawnJollyShip(const TCHAR* Reason);
+
 	/** Circle spawn : Count NME (tirés dans Classes selon leur Spawn Weight) répartis à intervalles réguliers sur le contour de la plage, tournés vers le centre */
 	int32 SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason, int32 ForcedLevel = INDEX_NONE, int32 LevelBonus = 0);
 
@@ -446,6 +487,12 @@ protected:
 
 	/** Joueurs à bord du bateau (« X/Y ») et victoire quand ils y sont tous */
 	void TickShipBoarding();
+
+	/** Vagues de NME Jolly Ship, le bateau arrivé */
+	void TickJollyShips();
+
+	/** Temps de partie de la prochaine vague de Jolly Ships (< 0 = pas encore commencé) */
+	float NextJollyShipWaveTime = -1.0f;
 
 	/** Temps de partie du début de l'overtime (< 0 = pas d'overtime) et prochaine vague d'overtime */
 	float OvertimeStartTime = -1.0f;

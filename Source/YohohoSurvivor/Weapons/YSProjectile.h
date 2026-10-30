@@ -70,7 +70,7 @@ protected:
 	float Speed = 1200.0f;
 
 	/** Durée de vie avant destruction automatique */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO", meta=(ClampMin="0", Units="Seconds"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category="AMMO", meta=(ClampMin="0", Units="Seconds"))
 	float LifeTime = 5.0f;
 
 	/** Le projectile touche les acteurs qui portent au moins un de ces tags ; il traverse les autres */
@@ -82,7 +82,7 @@ protected:
 	bool bDestroyOnWorldHit = true;
 
 	/** Relief : la balle garde pendant tout son vol sa hauteur au-dessus du sol prise au tir (au-dessus de la mer s'il y a un océan) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category="AMMO|Ground")
 	bool bFollowGround = true;
 
 	/** Montée max du sol suivie d'une image à l'autre ; au-delà c'est un mur (tronc, falaise) : la balle le heurte */
@@ -278,6 +278,12 @@ public:
 
 	/** Avant FinishSpawning : acteur traversé (et ce qui y est accroché), hauteur au-dessus du sol imposée (négatif = prise au tir) */
 	void SetFlightOverrides(AActor* IgnoredActor, float HeightAboveGroundOverride) { FlightIgnoredActor = IgnoredActor; ForcedHeightAboveGround = HeightAboveGroundOverride; }
+
+	/** Avant FinishSpawning : ligne droite dans la direction du tir, sans suivre le relief (NME à bord d'un Jolly Ship) */
+	void SetStraightFlight() { bFollowGround = false; }
+
+	/** Avant FinishSpawning : durée de vie multipliée (NME à bord d'un Jolly Ship) */
+	void MultiplyLifeTime(float Multiplier) { LifeTime *= Multiplier; }
 
 	void SetDamage(float NewDamage) { Damage = NewDamage; }
 

@@ -1187,6 +1187,7 @@ void AYSPlayerCharacter::BeginPlay()
 
 	// caméra à pied (réglée dans le Blueprint) : retrouvée en quittant la barre d'un bateau
 	DefaultCameraArmLength = CameraBoom->TargetArmLength;
+	DefaultCameraYaw = CameraBoom->GetComponentRotation().Yaw;
 
 	// réappliqué en jeu : la hurtbox ne dépend pas de réglages de collision sauvegardés dans le Blueprint
 	YSCombat::ConfigureHurtbox(BodyMesh);
@@ -2032,6 +2033,8 @@ void AYSPlayerCharacter::UpdateCursorCamera(float DeltaSeconds)
 		return;
 	}
 
+	UpdateShipCamera(DeltaSeconds);
+
 	// position du curseur par rapport au centre de l'écran : 0 au centre, 1 au bord (chaque axe), plafonnée à 1 dans les coins
 	FVector Target = FVector::ZeroVector;
 	const APlayerController* PlayerController = Cast<APlayerController>(GetController());
@@ -2078,6 +2081,41 @@ void AYSPlayerCharacter::UpdateCursorCamera(float DeltaSeconds)
 	// lissé : les tours de curseur ne secouent pas la caméra
 	CursorCameraOffset = CursorCameraInterpSpeed > 0.0f ? FMath::VInterpTo(CursorCameraOffset, Target, DeltaSeconds, CursorCameraInterpSpeed) : Target;
 	CameraBoom->TargetOffset = CursorCameraOffset + HelmCameraOffset * HelmCameraBlend;
+}
+
+AYSPirateShip* AYSPlayerCharacter::GetShipUnderFeet() const
+{
+	if (IsValid(CurrentStation))
+	{
+		return CurrentStation->GetShip();
+	}
+	const UPrimitiveComponent* Base = GetMovementBase();
+	return Base ? AYSPirateShip::GetShipOf(Base->GetOwner()) : nullptr;
+}
+
+void AYSPlayerCharacter::UpdateShipCamera(float DeltaSeconds)
+{
+	// en l'air (saut depuis le pont) : même référentiel jusqu'à ce qu'il retouche un sol
+	AYSPirateShip* Ship = !bCameraFollowsShip ? nullptr : (!IsValid(CurrentStation) && GetCharacterMovement()->IsFalling() ? CameraShip.Get() : GetShipUnderFeet());
+	const float TargetYaw = Ship ? Ship->GetActorRotation().Yaw + ShipCameraYawOffset : DefaultCameraYaw;
+
+	FRotator BoomRotation = CameraBoom->GetComponentRotation();
+	if (Ship != CameraShip.Get())
+	{
+		// changement de référentiel : l'écart avec l'angle affiché disparaît en douceur ; ensuite la caméra colle au bateau, sans retard
+		CameraYawError = FRotator::NormalizeAxis(BoomRotation.Yaw - TargetYaw);
+		CameraShip = Ship;
+		UE_LOG(LogTemp, Log, TEXT("[YSCamera] %s : caméra %s %s (yaw %.0f)"), *GetName(), Ship ? TEXT("relative à") : TEXT("relative au monde"), Ship ? *Ship->GetName() : TEXT(""), TargetYaw);
+	}
+	CameraYawError = ShipCameraBlendSpeed > 0.0f ? FMath::FInterpTo(CameraYawError, 0.0f, DeltaSeconds, ShipCameraBlendSpeed) : 0.0f;
+
+	const float NewYaw = FRotator::NormalizeAxis(TargetYaw + CameraYawError);
+	if (!FMath::IsNearlyEqual(FRotator::NormalizeAxis(BoomRotation.Yaw - NewYaw), 0.0f, 0.001f))
+	{
+		BoomRotation.Yaw = NewYaw;
+		CameraBoom->SetWorldRotation(BoomRotation);
+		UE_LOG(LogTemp, VeryVerbose, TEXT("[YSCamera] %s : yaw %.1f"), *GetName(), NewYaw);
+	}
 }
 
 TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickClassOffers() const
@@ -3050,7 +3088,11 @@ void AYSPlayerCharacter::TeleportToFeetLocation(const FVector& FeetLocation, con
 
 void AYSPlayerCharacter::ClientTeleportToFeet_Implementation(FVector_NetQuantize FeetLocation, FVector_NetQuantizeNormal Facing)
 {
-	TeleportToFeetLocation(FeetLocation, Facing);
+	// client déconnecté : le RPC s'exécute sur le serveur, déjà téléporté (sinon récursion infinie : l'hôte plantait quand un client partait du nid d'pie)
+	if (!HasAuthority())
+	{
+		TeleportToFeetLocation(FeetLocation, Facing);
+	}
 }
 
 void AYSPlayerCharacter::DebugTakeHelm(int32 Skip)

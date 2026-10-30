@@ -8,6 +8,7 @@ class UChildActorComponent;
 class AYSShipHelm;
 class AYSShipCore;
 class AYSShipStation;
+class AYSShipPath;
 
 /** État du déplacement d'un bateau pilotable, répliqué par le serveur (les clients l'extrapolent) */
 USTRUCT()
@@ -160,6 +161,29 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Network", meta=(ClampMin="0"))
 	float ClientCorrectionSpeed = 6.0f;
 
+	/**
+	 *  Mode playtest : à cocher sur le bateau posé dans la scène. Le bateau suit tout seul Playtest Path (mêmes commandes qu'un pilote :
+	 *  accélération, virages, inertie ; pas d'arrêt contre le fond). Un joueur qui prend la barre reprend la main le temps d'y rester.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category="Ship|Helm|Playtest")
+	bool bPlaytestMode = false;
+
+	/** Trajet à suivre (AYSShipPath posé dans la map) ; vide = le premier trouvé dans la map */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Playtest", meta=(EditCondition="bPlaytestMode"))
+	TObjectPtr<AYSShipPath> PlaytestPath;
+
+	/** Le bateau vise le point de la spline à cette distance devant lui (plus grand = virages plus doux, coupe plus les courbes) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Playtest", meta=(ClampMin="1", Units="Centimeters", EditCondition="bPlaytestMode"))
+	float PlaytestLookAhead = 2000.0f;
+
+	/** Vitesse max x ce multiplicateur pendant le pilote automatique */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Playtest", meta=(ClampMin="0", EditCondition="bPlaytestMode"))
+	float PlaytestSpeedMultiplier = 1.0f;
+
+	/** Écart d'angle avec le point visé à partir duquel la barre est à fond */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Playtest", meta=(ClampMin="1", Units="Degrees", EditCondition="bPlaytestMode"))
+	float PlaytestSteerFullAngle = 20.0f;
+
 	/** PV du bateau (max = Ship Max Health du core) ; pas encore de dégâts */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Ship")
 	float Health = 0.0f;
@@ -173,6 +197,15 @@ protected:
 
 	/** Serveur : la coque touche le fond (eau trop peu profonde), une fois par arrêt ; ex. chaloupe : éjection sur l'île */
 	virtual void OnHullBlocked() {}
+
+	/** Serveur, à chaque image : pilote automatique ; vrai = Throttle / Steer remplacent les commandes du pilote */
+	virtual bool ComputeAutoPilot(float& OutThrottle, float& OutSteer);
+
+	/** Commande de barre (-1..1) pour tourner vers cette direction, à fond à partir de FullSteerAngle ; arrondie : les commandes ne changent (et ne sont envoyées) que par crans */
+	float ComputeSteerTowards(const FVector& Direction, float FullSteerAngle) const;
+
+	/** Plus petite profondeur d'eau sous les points de la coque à cette position */
+	float GetHullMinDepth(const FVector& Location, float Yaw) const;
 
 	UChildActorComponent* GetHelmStationComponent() const { return HelmStation; }
 
@@ -189,6 +222,15 @@ public:
 	bool IsObjectiveShip() const { return bObjectiveShip; }
 
 	bool IsDrivable() const { return bDrivable; }
+
+	/** Bateau ennemi (NME Jolly Ship) : ni base de mouvement ni contact pour les chaloupes */
+	virtual bool IsFoeShip() const { return false; }
+
+	/** Mode playtest actif et personne à la barre : le bateau suit sa spline tout seul */
+	bool IsOnPlaytestAutoPilot() const;
+
+	/** Debug (serveur) : mode playtest changé en jeu */
+	void SetPlaytestMode(bool bEnabled);
 
 	/** Bateau présent (le bateau objectif est caché avant l'objectif de doublons) */
 	bool IsPresent() const { return AppliedPresence != 0; }
@@ -239,9 +281,6 @@ private:
 	/** Avance l'état d'un pas (vitesse, rotation) : même calcul sur le serveur et pour l'extrapolation des clients */
 	void StepMotion(FYSShipMotion& State, float DeltaSeconds) const;
 
-	/** Plus petite profondeur d'eau sous les points de la coque à cette position */
-	float GetHullMinDepth(const FVector& Location, float Yaw) const;
-
 	/** Le déplacement From -> To est permis : eau assez profonde, ou pas moins profonde qu'avant */
 	bool CanMoveHull(const FYSShipMotion& From, const FYSShipMotion& To) const;
 
@@ -271,6 +310,9 @@ private:
 
 	/** Bloqué contre le fond (log une fois) */
 	bool bGrounded = false;
+
+	/** Mode playtest sans trajet dans la map (log une fois) */
+	bool bPlaytestPathMissingLogged = false;
 
 	double LastMotionLogTime = -1.0e6;
 };

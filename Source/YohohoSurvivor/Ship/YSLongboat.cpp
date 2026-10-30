@@ -106,7 +106,7 @@ void AYSLongboat::Tick(float DeltaSeconds)
 
 	// plus de pilote : la chaloupe disparaît (le passager tombe à l'eau)
 	const AYSShipHelm* Helm = GetHelm();
-	if (!Helm || !Helm->GetOccupant())
+	if (DisappearsWithoutPilot() && (!Helm || !Helm->GetOccupant()))
 	{
 		const double Now = GetWorld()->GetTimeSeconds();
 		if (EmptySinceTime < 0.0)
@@ -163,7 +163,7 @@ AYSPirateShip* AYSLongboat::FindContactShip() const
 	for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
 	{
 		AYSPirateShip* Ship = *It;
-		if (Ship == this || !Ship->IsPresent() || Ship->IsActorBeingDestroyed())
+		if (Ship == this || Ship->IsFoeShip() || !Ship->IsPresent() || Ship->IsActorBeingDestroyed())
 		{
 			continue;
 		}

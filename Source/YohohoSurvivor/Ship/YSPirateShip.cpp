@@ -4,6 +4,7 @@
 #include "Components/SceneComponent.h"
 #include "Core/YSGameState.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/GameStateBase.h"
 #include "Map/YSOcean.h"
 #include "Net/UnrealNetwork.h"
@@ -13,6 +14,7 @@
 #include "Ship/YSShipCannon.h"
 #include "Ship/YSShipCore.h"
 #include "Ship/YSShipHelm.h"
+#include "Ship/YSShipPath.h"
 
 namespace YSPirateShip
 {
@@ -87,11 +89,15 @@ void AYSPirateShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 
 	DOREPLIFETIME(AYSPirateShip, Motion);
 	DOREPLIFETIME(AYSPirateShip, Health);
+	DOREPLIFETIME(AYSPirateShip, bPlaytestMode);
 }
 
 void AYSPirateShip::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// mode playtest : il se déplace comme un bateau pilotable
+	bDrivable |= bPlaytestMode;
 
 	// pilotable : les clients extrapolent Motion (mouvement fluide sous les pieds des persos) au lieu de recevoir la position brute
 	if (bDrivable)
@@ -160,6 +166,57 @@ void AYSPirateShip::SyncMotionToActor()
 	Motion.YawRate = 0.0f;
 	ForceNetUpdate();
 	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : pilotage recalé sur sa position (%s, yaw %.0f)"), *GetName(), *Motion.Location.ToCompactString(), Motion.Yaw);
+}
+
+bool AYSPirateShip::IsOnPlaytestAutoPilot() const
+{
+	const AYSShipHelm* Helm = GetHelm();
+	return bPlaytestMode && !(Helm && Helm->GetOccupant());
+}
+
+void AYSPirateShip::SetPlaytestMode(bool bEnabled)
+{
+	if (HasAuthority() && bDrivable)
+	{
+		bPlaytestMode = bEnabled;
+		ForceNetUpdate();
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : mode playtest %s"), *GetName(), bEnabled ? TEXT("activé") : TEXT("désactivé"));
+	}
+}
+
+bool AYSPirateShip::ComputeAutoPilot(float& OutThrottle, float& OutSteer)
+{
+	if (!IsOnPlaytestAutoPilot())
+	{
+		return false;
+	}
+
+	const AYSShipPath* Path = PlaytestPath;
+	if (!Path)
+	{
+		TActorIterator<AYSShipPath> It(GetWorld());
+		Path = It ? *It : nullptr;
+	}
+	FVector Ahead;
+	if (!Path || !Path->GetPointAhead(GetActorLocation(), PlaytestLookAhead, Ahead))
+	{
+		if (!bPlaytestPathMissingLogged)
+		{
+			bPlaytestPathMissingLogged = true;
+			UE_LOG(LogTemp, Warning, TEXT("[YSShip] %s : mode playtest sans trajet (poser un AYSShipPath dans la map)"), *GetName());
+		}
+		return false;
+	}
+
+	OutThrottle = 1.0f;
+	OutSteer = ComputeSteerTowards(Ahead - GetActorLocation(), PlaytestSteerFullAngle);
+	return true;
+}
+
+float AYSPirateShip::ComputeSteerTowards(const FVector& Direction, float FullSteerAngle) const
+{
+	const float Delta = FRotator::NormalizeAxis(Direction.Rotation().Yaw - Motion.Yaw);
+	return FMath::RoundToFloat(FMath::Clamp(Delta / FMath::Max(FullSteerAngle, 1.0f), -1.0f, 1.0f) * 10.0f) / 10.0f;
 }
 
 void AYSPirateShip::SetPilotInput(float Throttle, float Steer)
@@ -238,7 +295,7 @@ void AYSPirateShip::StepMotion(FYSShipMotion& State, float DeltaSeconds) const
 	const float SpeedMultiplier = Core ? Core->GetSpeedMultiplier() : 1.0f;
 	const float AccelerationMultiplier = Core ? Core->GetAccelerationMultiplier() : 1.0f;
 	const float TurnMultiplier = Core ? Core->GetTurnRateMultiplier() : 1.0f;
-	const float MaxForward = MaxForwardSpeed * SpeedMultiplier;
+	const float MaxForward = MaxForwardSpeed * SpeedMultiplier * (IsOnPlaytestAutoPilot() ? PlaytestSpeedMultiplier : 1.0f);
 	const float MaxReverse = MaxReverseSpeed * SpeedMultiplier;
 	const float ForwardRate = ForwardAcceleration * AccelerationMultiplier;
 	const float ReverseRate = ReverseAcceleration * AccelerationMultiplier;
@@ -323,12 +380,20 @@ bool AYSPirateShip::CanMoveHull(const FYSShipMotion& From, const FYSShipMotion& 
 
 void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 {
-	// le pilote parti, la barre ne commande plus
+	// pilote automatique (mode playtest, NME Jolly Ship) ; sinon, le pilote parti, la barre ne commande plus
 	const AYSShipHelm* Helm = GetHelm();
-	if (!Helm || !Helm->GetOccupant())
+	float AutoThrottle = 0.0f;
+	float AutoSteer = 0.0f;
+	if (ComputeAutoPilot(AutoThrottle, AutoSteer))
+	{
+		SetPilotInput(AutoThrottle, AutoSteer);
+	}
+	else if (!Helm || !Helm->GetOccupant())
 	{
 		SetPilotInput(0.0f, 0.0f);
 	}
+	// le trajet du mode playtest est réglé à la main : pas d'arrêt contre le fond (ponton, hauts-fonds)
+	const bool bCheckHull = !IsOnPlaytestAutoPilot();
 
 	const bool bWasMoving = !FMath::IsNearlyZero(Motion.Speed) || !FMath::IsNearlyZero(Motion.YawRate);
 	float Remaining = DeltaSeconds;
@@ -340,7 +405,7 @@ void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 		FYSShipMotion Next = Motion;
 		StepMotion(Next, Step);
 		// fond trop haut (plage, ponton) : le bateau s'arrête net ; il peut toujours repartir vers l'eau profonde
-		const bool bBlocked = !CanMoveHull(Motion, Next);
+		const bool bBlocked = bCheckHull && !CanMoveHull(Motion, Next);
 		if (bBlocked)
 		{
 			// la rotation seule passe peut-être encore

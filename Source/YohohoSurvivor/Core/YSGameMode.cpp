@@ -5,6 +5,7 @@
 #include "Core/YSPlayerState.h"
 #include "Enemies/YSEnemySpawnRule.h"
 #include "Enemies/YSFoeCharacter.h"
+#include "Enemies/YSFoeJollyShip.h"
 #include "Interaction/YSTreasureMap.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "Interaction/YSPlayerCorpse.h"
@@ -73,6 +74,49 @@ void AYSGameMode::Tick(float DeltaSeconds)
 
 	TickOvertime();
 	TickShipBoarding();
+	TickJollyShips();
+}
+
+void AYSGameMode::TickJollyShips()
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!bJollyShipWaves || !JollyShipClass || !YSGameState || !YSGameState->IsShipPresent())
+	{
+		return;
+	}
+	const float Now = YSGameState->GetMatchElapsedTime();
+	if (NextJollyShipWaveTime >= 0.0f && Now < NextJollyShipWaveTime)
+	{
+		return;
+	}
+	NextJollyShipWaveTime = Now + JollyShipWaveInterval;
+
+	int32 Count = ScaleEnemyCount(JollyShipsPerWave);
+	if (JollyShipMaxAlive > 0)
+	{
+		int32 Alive = 0;
+		for (TActorIterator<AYSFoeJollyShip> It(GetWorld()); It; ++It)
+		{
+			++Alive;
+		}
+		Count = FMath::Min(Count, JollyShipMaxAlive - Alive);
+	}
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		Spawned += SpawnJollyShip(TEXT("vague")) ? 1 : 0;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSJollyShip] Vague : %d / %d"), Spawned, Count);
+}
+
+AYSFoeJollyShip* AYSGameMode::SpawnJollyShip(const TCHAR* Reason)
+{
+	AYSFoeJollyShip* Ship = AYSFoeJollyShip::SpawnAtSea(GetWorld(), JollyShipClass, JollyShipMinSpawnDistance, JollyShipMaxSpawnDistance, JollyShipSpawnStep, JollyShipSpawnAttempts);
+	if (!Ship)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSJollyShip] Apparition (%s) : pas de classe ou pas d'emplacement"), Reason);
+	}
+	return Ship;
 }
 
 void AYSGameMode::OnDayStarted(int32 Day)
@@ -938,6 +982,14 @@ AYSFoeCharacter* AYSGameMode::SpawnNumpadFoe(const APlayerController* Player, in
 	const APawn* Pawn = Player ? Player->GetPawn() : nullptr;
 	if (!bNumpadFoeSpawn || !Pawn)
 	{
+		return nullptr;
+	}
+
+	// NME marin : sur l'eau, pas devant le personnage
+	if (Key == NumpadJollyShipKey)
+	{
+		const AYSFoeJollyShip* Ship = SpawnJollyShip(TEXT("pavé numérique"));
+		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Pavé numérique %d : %s"), Key, Ship ? *Ship->GetName() : TEXT("échec"));
 		return nullptr;
 	}
 

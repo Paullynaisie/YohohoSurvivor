@@ -23,6 +23,7 @@ class UYSWeaponSet;
 class UYSPassive;
 class AYSInteractiveObject;
 class AYSShipStation;
+class AYSPirateShip;
 class AYSPlayerCorpse;
 class UTexture2D;
 class UWidgetComponent;
@@ -377,6 +378,29 @@ protected:
 
 	/** Déplace la caméra vers le curseur (joueur local, Tick) */
 	void UpdateCursorCamera(float DeltaSeconds);
+
+	/**
+	 *  À bord d'un bateau (posé sur son pont ou à un poste), la caméra tourne avec lui : le bateau reste fixe à l'écran, c'est la mer
+	 *  qui tourne. ZQSD et le stick suivent la caméra. Hors du bateau : orientation du Blueprint (nord en haut)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camera|Ship")
+	bool bCameraFollowsShip = true;
+
+	/** Orientation de la caméra par rapport au bateau (0 = proue en haut de l'écran, 90 = proue à gauche) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camera|Ship", meta=(Units="Degrees", EditCondition="bCameraFollowsShip"))
+	float ShipCameraYawOffset = 0.0f;
+
+	/** Vitesse de la rotation en montant à bord / en descendant (0 = immédiat ; ensuite la caméra colle au bateau, sans retard) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camera|Ship", meta=(ClampMin="0", EditCondition="bCameraFollowsShip"))
+	float ShipCameraBlendSpeed = 3.0f;
+
+	/** Caméra relative au bateau sous les pieds (joueur local, Tick) */
+	void UpdateShipCamera(float DeltaSeconds);
+
+	/** Orientation de la caméra du Blueprint, bateau de référence, écart avec l'orientation visée (réduit à chaque image) */
+	float DefaultCameraYaw = 0.0f;
+	TWeakObjectPtr<AYSPirateShip> CameraShip;
+	float CameraYawError = 0.0f;
 
 	/** Progression de chaque variante d'upgrade obtenue (répliquée pour l'affichage du menu) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
@@ -1283,6 +1307,9 @@ public:
 	bool IsAtStation() const { return CurrentStation != nullptr; }
 
 	AYSShipStation* GetCurrentStation() const { return CurrentStation; }
+
+	/** Bateau sur lequel il est : à un poste, ou posé sur le pont (nullptr ailleurs, en l'air compris) */
+	AYSPirateShip* GetShipUnderFeet() const;
 
 	/** S'installe au poste (serveur) : actions interrompues, armes rangées, placé sur le poste */
 	void EnterStation(AYSShipStation* Station);

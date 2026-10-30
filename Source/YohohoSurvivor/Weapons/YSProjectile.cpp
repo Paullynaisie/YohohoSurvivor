@@ -101,6 +101,8 @@ void AYSProjectile::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 
 	DOREPLIFETIME_CONDITION(AYSProjectile, FlightIgnoredActor, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AYSProjectile, ForcedHeightAboveGround, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSProjectile, bFollowGround, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSProjectile, LifeTime, COND_InitialOnly);
 }
 
 void AYSProjectile::BeginPlay()

@@ -25,6 +25,28 @@ class UYSAutoSwingAbility;
 class UYSBossBigSlashAbility;
 class UYSGroundZoneComponent;
 class AYSProjectile;
+class AYSFoeJollyShip;
+
+/** Place à bord d'un NME Jolly Ship : position calculée sur chaque machine depuis le bateau (mouvement du personnage coupé) */
+USTRUCT()
+struct FYSFoeShipRide
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	bool bActive = false;
+
+	UPROPERTY()
+	TObjectPtr<AYSFoeJollyShip> Ship;
+
+	/** Poste sur le bateau (AYSFoeJollyShip::GetSeatFeetLocation) */
+	UPROPERTY()
+	int8 Seat = 0;
+
+	/** Il peut attaquer depuis sa place et regarde sa cible ; sinon il regarde devant le bateau */
+	UPROPERTY()
+	bool bCanAttack = false;
+};
 
 /** Bump en cours (Bumping Slash) : vol en cloche répliqué, recalculé à l'identique sur chaque machine */
 USTRUCT()
@@ -622,6 +644,23 @@ public:
 	/** Boss Big Slash en cours (préparation ou dash) */
 	bool IsBossDashing() const { return BossDash.bActive; }
 
+	/**
+	 *  Monte à bord d'un NME Jolly Ship (serveur, avant FinishSpawning) : plus de mouvement, gardé sur sa place, ni pushback ni bump ;
+	 *  portée d'attaque et durée de vie des AMMO multipliées tant qu'il est à bord
+	 */
+	void StartShipRide(AYSFoeJollyShip* Ship, int32 Seat, bool bCanAttack, float AttackRangeMultiplier, float AmmoLifeTimeMultiplier);
+
+	/** Quitte le bateau (serveur) : posé à FeetLocation, comportement normal. bExperienceInWater : il donne son XP même s'il meurt dans l'eau */
+	void EndShipRide(const FVector& FeetLocation, bool bInExperienceInWater);
+
+	bool IsRidingShip() const { return ShipRide.bActive; }
+
+	/** Durée de vie de ses AMMO x ce multiplicateur (à bord d'un Jolly Ship) */
+	float GetAmmoLifeTimeMultiplier() const { return RideAmmoLifeTimeMultiplier; }
+
+	/** Cible actuelle (serveur) */
+	APawn* GetCurrentTarget() const { return Target; }
+
 	/** Attaque à distance de l'arme tenue (la première trouvée, main droite d'abord), ou nullptr : le NME est alors au corps à corps */
 	UYSFoeRangedAction* GetRangedAction() const;
 
@@ -764,6 +803,30 @@ protected:
 
 	/** Bouclier actif, attaque rechargée et cible à portée : lance le Boss Big Slash (serveur) */
 	bool TryStartBossAttack();
+
+	/** Place à bord d'un Jolly Ship (serveur, répliquée) */
+	UPROPERTY(ReplicatedUsing=OnRep_ShipRide)
+	FYSFoeShipRide ShipRide;
+
+	/** Regard de celui qui attaque depuis sa place (serveur -> clients : plus de réplication du mouvement à bord) */
+	UPROPERTY(Replicated)
+	float RideYaw = 0.0f;
+
+	UFUNCTION()
+	void OnRep_ShipRide();
+
+	/** Début / position / fin de la place à bord sur cette machine (comme le bump : mouvement du personnage coupé) */
+	void BeginShipRideLocal();
+	void UpdateShipRide(float DeltaSeconds);
+	void EndShipRideLocal();
+
+	bool bLocalShipRide = false;
+	bool bRideTickLinked = false;
+	float RideAttackRangeMultiplier = 1.0f;
+	float RideAmmoLifeTimeMultiplier = 1.0f;
+
+	/** Parti d'un bateau détruit : donne son XP même s'il meurt dans l'eau */
+	bool bExperienceInWater = false;
 
 	/** Boss Big Slash en cours (serveur, répliqué) */
 	UPROPERTY(ReplicatedUsing=OnRep_BossDash)

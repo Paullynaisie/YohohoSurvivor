@@ -57,6 +57,16 @@ protected:
 	/** Touche le fond : éjection sur l'île devant */
 	virtual void OnHullBlocked() override;
 
+	/** Sans pilote, elle disparaît après Empty Lifetime (faux pour le NME Jolly Ship) */
+	virtual bool DisappearsWithoutPilot() const { return true; }
+
+	/** Joueurs reposés autour de Location (tournés vers Facing), chaloupe détruite (serveur) */
+	virtual void EjectAndDestroy(const FVector& Location, const FVector& Facing, const TCHAR* Reason);
+
+	UChildActorComponent* GetPassengerStationComponent() const { return PassengerStation; }
+
+	bool bEjected = false;
+
 public:
 
 	AYSLongboat(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
@@ -79,13 +89,9 @@ private:
 
 	double SpawnTime = 0.0;
 	double EmptySinceTime = -1.0;
-	bool bEjected = false;
 
 	/** Contact avec un autre bateau (serveur), ou nullptr */
 	AYSPirateShip* FindContactShip() const;
-
-	/** Joueurs reposés autour de Location (tournés vers Facing), chaloupe détruite (serveur) */
-	void EjectAndDestroy(const FVector& Location, const FVector& Facing, const TCHAR* Reason);
 
 	/** Sol d'un bateau sous Location (pont, gaillard) ; faux si rien */
 	bool FindShipLanding(const AYSPirateShip* Ship, FVector& OutLocation) const;

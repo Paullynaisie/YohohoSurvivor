@@ -18,6 +18,7 @@
 #include "Core/YSGameMode.h"
 #include "Core/YSGameState.h"
 #include "Enemies/YSFoeBomb.h"
+#include "Enemies/YSFoeJollyShip.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSPlayerCharacter.h"
@@ -324,7 +325,8 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 		const FVector Target = BodyTransform.TransformPosition(GetHandTargetLocation(bLeft) + Sway.GetClampedToMaxSize(HandSwayAmplitude));
 
 		// retard : la main rejoint sa cible progressivement (téléportation / première image : directement)
-		if (!bHandsInitialized || HandFollowSpeed <= 0.0f || FVector::DistSquared(WorldLocation, Target) > FMath::Square(YSFoe::HandSnapDistance))
+		// (à bord d'un bateau : sans retard, le bateau va trop vite)
+		if (!bHandsInitialized || bLocalShipRide || HandFollowSpeed <= 0.0f || FVector::DistSquared(WorldLocation, Target) > FMath::Square(YSFoe::HandSnapDistance))
 		{
 			WorldLocation = Target;
 		}
@@ -419,6 +421,8 @@ void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(AYSFoeCharacter, Shield);
 	DOREPLIFETIME(AYSFoeCharacter, MaxShield);
 	DOREPLIFETIME(AYSFoeCharacter, BossDash);
+	DOREPLIFETIME(AYSFoeCharacter, ShipRide);
+	DOREPLIFETIME(AYSFoeCharacter, RideYaw);
 }
 
 void AYSFoeCharacter::OnRep_Health()
@@ -514,9 +518,9 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	TryTriggerBossShield();
 
 	// coup qui bumpe (Bumping Slash) : NME lancé en cloche ; un élite seulement si l'Ability le permet (Bump Elites), sinon pushback normal
-	// ; jamais sous bouclier de boss ni pendant le Boss Big Slash
+	// ; jamais sous bouclier de boss, pendant le Boss Big Slash ni à bord d'un Jolly Ship
 	const FYSBumpDamageEvent* BumpEventPtr = DamageEvent.IsOfType(FYSBumpDamageEvent::ClassID) ? static_cast<const FYSBumpDamageEvent*>(&DamageEvent) : nullptr;
-	if (BumpEventPtr && (!bIsElite || BumpEventPtr->bBumpElites) && !HasBossShield() && !BossDash.bActive)
+	if (BumpEventPtr && (!bIsElite || BumpEventPtr->bBumpElites) && !HasBossShield() && !BossDash.bActive && !bLocalShipRide)
 	{
 		const FYSBumpDamageEvent& BumpEvent = *BumpEventPtr;
 		StartBump(BumpEvent.ShotDirection, BumpEvent.Distance, BumpEvent.ApexHeight, BumpEvent.Duration, BumpEvent.SpinTurns);
@@ -668,9 +672,9 @@ void AYSFoeCharacter::EndBumpLocal()
 void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator)
 {
 	// direction du coup portée par l'événement (hitbox de l'arme, vol du projectile) ; force réglée sur le personnage qui frappe
-	// Boss Big Slash en cours : trajet calculé, pas de pushback
+	// Boss Big Slash en cours : trajet calculé, pas de pushback ; à bord d'un Jolly Ship : gardé sur sa place
 	const AYSPlayerCharacter* Attacker = EventInstigator ? Cast<AYSPlayerCharacter>(EventInstigator->GetPawn()) : nullptr;
-	if (!Attacker || !DamageEvent.IsOfType(FPointDamageEvent::ClassID) || BossDash.bActive)
+	if (!Attacker || !DamageEvent.IsOfType(FPointDamageEvent::ClassID) || BossDash.bActive || bLocalShipRide)
 	{
 		return;
 	}
@@ -710,7 +714,8 @@ void AYSFoeCharacter::Die()
 		const float WaterDepth = AYSOcean::GetWaterDepth(GetWorld(), Feet);
 		// élite qui marche dans l'eau peu profonde (Elite Wade Depth) : XP gardée
 		const float MaxWaterDepth = bIsElite ? FMath::Max(NoExperienceWaterDepth, EliteWadeDepth) : NoExperienceWaterDepth;
-		if (bSkipDeathAnim || WaterDepth > MaxWaterDepth)
+		// tombé d'un Jolly Ship détruit : XP gardée (les joueurs ont gagné le combat)
+		if ((bSkipDeathAnim || WaterDepth > MaxWaterDepth) && !bExperienceInWater)
 		{
 			UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s meurt dans l'eau (%s, %.0f cm d'eau) : pas d'XP"), *GetName(), bSkipDeathAnim ? TEXT("deadzone") : TEXT("dans la mer"), WaterDepth);
 		}
@@ -796,6 +801,7 @@ void AYSFoeCharacter::BeginDeathLocal()
 	bLocalBumpActive = false;
 	bLocalRiseActive = false;
 	bLocalBossDashActive = false;
+	bLocalShipRide = false;
 	HealthBar->SetVisibility(false);
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	Movement->StopMovementImmediately();
@@ -940,6 +946,115 @@ void AYSFoeCharacter::EndRiseLocal()
 	}
 }
 
+void AYSFoeCharacter::StartShipRide(AYSFoeJollyShip* Ship, int32 Seat, bool bCanAttack, float AttackRangeMultiplier, float AmmoLifeTimeMultiplier)
+{
+	ShipRide.bActive = true;
+	ShipRide.Ship = Ship;
+	ShipRide.Seat = static_cast<int8>(Seat);
+	ShipRide.bCanAttack = bCanAttack;
+	RideAttackRangeMultiplier = AttackRangeMultiplier;
+	RideAmmoLifeTimeMultiplier = AmmoLifeTimeMultiplier;
+}
+
+void AYSFoeCharacter::EndShipRide(const FVector& FeetLocation, bool bInExperienceInWater)
+{
+	if (!HasAuthority() || !ShipRide.bActive)
+	{
+		return;
+	}
+	ShipRide = FYSFoeShipRide();
+	RideAttackRangeMultiplier = 1.0f;
+	RideAmmoLifeTimeMultiplier = 1.0f;
+	bExperienceInWater = bInExperienceInWater;
+	if (bAiming)
+	{
+		bAiming = false;
+		MulticastAimEnded();
+	}
+	// mort sur le bateau : le corps en ragdoll reste où il est
+	if (bLocalDeathStarted)
+	{
+		return;
+	}
+	SetActorLocation(FeetLocation + FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight()), false, nullptr, ETeleportType::TeleportPhysics);
+	EndShipRideLocal();
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSJollyShip] %s quitte le bateau en %s (XP dans l'eau : %d)"), *GetName(), *FeetLocation.ToCompactString(), bExperienceInWater);
+}
+
+void AYSFoeCharacter::OnRep_ShipRide()
+{
+	if (ShipRide.bActive && !bLocalShipRide && !bLocalDeathStarted)
+	{
+		BeginShipRideLocal();
+	}
+	else if (!ShipRide.bActive && bLocalShipRide)
+	{
+		EndShipRideLocal();
+	}
+}
+
+void AYSFoeCharacter::BeginShipRideLocal()
+{
+	bLocalShipRide = true;
+
+	// position et rotation calculées par UpdateShipRide sur chaque machine (le bateau est extrapolé chez les clients) : plus de
+	// mouvement du personnage ni de réplication du mouvement ; la capsule ne gêne personne
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->StopMovementImmediately();
+	Movement->SetComponentTickEnabled(false);
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (HasAuthority())
+	{
+		SetReplicateMovement(false);
+	}
+	UpdateShipRide(0.0f);
+}
+
+void AYSFoeCharacter::UpdateShipRide(float DeltaSeconds)
+{
+	const AYSFoeJollyShip* Ship = ShipRide.Ship;
+	if (!Ship)
+	{
+		return;
+	}
+	// après le bateau dans l'image, sinon il traîne d'une image derrière lui
+	if (!bRideTickLinked)
+	{
+		bRideTickLinked = true;
+		AddTickPrerequisiteActor(ShipRide.Ship);
+	}
+
+	FRotator Rotation(0.0f, Ship->GetActorRotation().Yaw, 0.0f);
+	if (ShipRide.bCanAttack)
+	{
+		// serveur : tourné vers sa cible par le comportement ; clients : suivent le regard reçu
+		Rotation = HasAuthority() ? GetActorRotation() : FMath::RInterpTo(GetActorRotation(), FRotator(0.0f, RideYaw, 0.0f), DeltaSeconds, TurnSpeed);
+	}
+	SetActorLocationAndRotation(Ship->GetSeatFeetLocation(ShipRide.Seat) + FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight()), Rotation);
+}
+
+void AYSFoeCharacter::EndShipRideLocal()
+{
+	if (!bLocalShipRide)
+	{
+		return;
+	}
+	bLocalShipRide = false;
+	bRideTickLinked = false;
+
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->SetComponentTickEnabled(true);
+	if (HasAuthority())
+	{
+		// se pose (pont, plage) ou tombe à l'eau
+		Movement->Velocity = FVector::ZeroVector;
+		Movement->SetMovementMode(MOVE_Falling);
+		SetReplicateMovement(true);
+	}
+}
+
 void AYSFoeCharacter::FinishRiseNow()
 {
 	if (!HasAuthority() || !bLocalRiseActive)
@@ -1059,11 +1174,16 @@ void AYSFoeCharacter::BeginPlay()
 			YSGameState->SetCurrentElite(this);
 		}
 
-		// apparition : sort du sol avant de démarrer son comportement
-		if (bSpawnRise)
+		// apparition : sort du sol avant de démarrer son comportement (pas l'équipage d'un Jolly Ship : déjà à bord)
+		if (bSpawnRise && !ShipRide.bActive)
 		{
 			StartRise();
 		}
+	}
+
+	if (ShipRide.bActive && !bLocalShipRide)
+	{
+		BeginShipRideLocal();
 	}
 
 	// élite : barre de vie sous lui (position relative, suit sa taille)
@@ -1093,6 +1213,12 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	{
 		UpdateDeath();
 		return;
+	}
+
+	// à bord d'un Jolly Ship : gardé sur sa place (avant les mains, qui suivent le corps)
+	if (bLocalShipRide)
+	{
+		UpdateShipRide(DeltaSeconds);
 	}
 
 	// perf : armes (re)créées optimisées, ticks ralentis loin des joueurs
@@ -1151,8 +1277,14 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// à bord d'un Jolly Ship : le pilote ne fait que piloter
+	if (bLocalShipRide && !ShipRide.bCanAttack)
+	{
+		return;
+	}
+
 	// bouclier de boss : son attaque en plus passe avant l'attaque de base
-	if (HasBossShield() && TryStartBossAttack())
+	if (HasBossShield() && !bLocalShipRide && TryStartBossAttack())
 	{
 		return;
 	}
@@ -1178,6 +1310,7 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	if (bAiming)
 	{
 		SetActorRotation(FRotator(0.0f, AimDirection.Rotation().Yaw, 0.0f));
+		RideYaw = bLocalShipRide ? GetActorRotation().Yaw : RideYaw;
 		AimTimeLeft -= DeltaSeconds;
 		if (AimTimeLeft <= 0.0f)
 		{
@@ -1187,7 +1320,7 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	}
 
 	// NME qui se traversent : écartés de leurs voisins (s'ajoute à la poursuite, l'input total est plafonné à 1)
-	if (!bFoesBlockEachOther && SeparationStrength > 0.0f)
+	if (!bFoesBlockEachOther && SeparationStrength > 0.0f && !bLocalShipRide)
 	{
 		const FVector Separation = ComputeSeparation();
 		if (!Separation.IsNearlyZero())
@@ -1217,7 +1350,14 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	{
 		ThrowTimer = FMath::Min(ThrowTimer + DeltaSeconds, Ranged->AttackInterval);
 	}
-	const bool bInRange = Ranged && ToTarget.SizeSquared() <= FMath::Square(Ranged->AttackRange);
+	// (à bord d'un Jolly Ship : portée multipliée, jusqu'à la coque du bateau où se trouve la cible : le tour se fait autour de sa coque)
+	float RangeDistanceSq = ToTarget.SizeSquared();
+	const AYSPlayerCharacter* RideTarget = bLocalShipRide ? Cast<AYSPlayerCharacter>(Target) : nullptr;
+	if (const AYSPirateShip* TargetShip = RideTarget ? RideTarget->GetShipUnderFeet() : nullptr)
+	{
+		RangeDistanceSq = FVector::DistSquared2D(TargetShip->GetClosestHullPoint(GetActorLocation()), GetActorLocation());
+	}
+	const bool bInRange = Ranged && RangeDistanceSq <= FMath::Square(Ranged->AttackRange * RideAttackRangeMultiplier);
 	if (bInRange)
 	{
 		if (ThrowTimer >= Ranged->AttackInterval && Ranged->StartAttack(this, Target, GetAttackOrigin(Ranged)))
@@ -1229,7 +1369,7 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 			}
 		}
 	}
-	else
+	else if (!bLocalShipRide)
 	{
 		// cible qui nage : le NME s'arrête au bord de l'eau (il attend qu'elle revienne à portée)
 		// élite : il entre dans la mer jusqu'à Elite Wade Depth (quelle que soit la cible)
@@ -1255,6 +1395,10 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 
 	const FRotator Desired(0.0f, ToTarget.Rotation().Yaw, 0.0f);
 	SetActorRotation(TurnSpeed > 0.0f ? FMath::RInterpTo(GetActorRotation(), Desired, DeltaSeconds, TurnSpeed) : Desired);
+	if (bLocalShipRide)
+	{
+		RideYaw = GetActorRotation().Yaw;
+	}
 }
 
 bool AYSFoeCharacter::IsWaterAhead(const FVector& Direction, float Distance, float MaxDepth) const

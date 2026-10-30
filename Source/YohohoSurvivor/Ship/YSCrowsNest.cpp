@@ -50,8 +50,20 @@ void AYSCrowsNest::OnOccupantChanged(AYSPlayerCharacter* Previous)
 
 void AYSCrowsNest::ServerHandleAction(AYSPlayerCharacter* Character, EYSStationAction Action, const FVector& AimLocation)
 {
-	if (!HasAuthority() || Action != EYSStationAction::Primary || !Character || Character != GetOccupant())
+	if (!HasAuthority() || !Character || Character != GetOccupant())
 	{
+		return;
+	}
+
+	// clic droit : le ping est simplement retiré
+	if (Action == EYSStationAction::Fire)
+	{
+		if (Ping.bActive)
+		{
+			Ping = FYSShipPing();
+			ForceNetUpdate();
+			UE_LOG(LogTemp, Log, TEXT("[YSCrowsNest] %s : ping retiré par %s"), *GetName(), *Character->GetName());
+		}
 		return;
 	}
 

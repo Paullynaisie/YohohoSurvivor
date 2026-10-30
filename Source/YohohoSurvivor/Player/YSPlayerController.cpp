@@ -47,6 +47,8 @@
 #include "Core/YSGameInstance.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Core/YSGameMode.h"
+#include "Enemies/YSFoeJollyShip.h"
+#include "Ship/YSPirateShip.h"
 #include "Components/InputComponent.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
@@ -1926,6 +1928,36 @@ void AYSPlayerController::YSTakeHelm(int32 Skip)
 	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
 	{
 		PlayerCharacter->DebugTakeHelm(Skip);
+	}
+}
+
+void AYSPlayerController::YSShipPlaytest(int32 bEnabled)
+{
+	for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
+	{
+		It->SetPlaytestMode(bEnabled != 0);
+	}
+}
+
+void AYSPlayerController::YSSpawnJollyShip(int32 Count)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			GameMode->SpawnJollyShip(TEXT("debug"));
+		}
+	}
+}
+
+void AYSPlayerController::YSDamageJollyHull(float Damage)
+{
+	if (HasAuthority())
+	{
+		for (TActorIterator<AYSFoeJollyHull> It(GetWorld()); It; ++It)
+		{
+			It->TakeDamage(Damage, FDamageEvent(), this, nullptr);
+		}
 	}
 }
 

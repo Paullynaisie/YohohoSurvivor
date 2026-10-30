@@ -298,6 +298,18 @@ public:
 	UFUNCTION(Exec)
 	void YSHelmInput(float Throttle = 0.0f, float Steer = 0.0f);
 
+	/** Debug (hôte) : mode playtest (spline) de tous les bateaux pilotables, comme la case à cocher.  Ex : YSShipPlaytest 1 */
+	UFUNCTION(Exec)
+	void YSShipPlaytest(int32 bEnabled = 1);
+
+	/** Debug (hôte) : NME Jolly Ship sur l'eau.  Ex : YSSpawnJollyShip 5 */
+	UFUNCTION(Exec)
+	void YSSpawnJollyShip(int32 Count = 1);
+
+	/** Debug (hôte) : dégâts à la coque de tous les Jolly Ships (pas à leur équipage).  Ex : YSDamageJollyHull 1000 */
+	UFUNCTION(Exec)
+	void YSDamageJollyHull(float Damage = 1000.0f);
+
 	/** Debug : utilise le poste de bateau libre le plus proche de ce type (Helm, Nest, Cannon, Longboat = chalouperie, Seat = passager de la chaloupe).  Ex : YSUseStation Cannon */
 	UFUNCTION(Exec)
 	void YSUseStation(const FString& Kind, int32 Skip = 0);

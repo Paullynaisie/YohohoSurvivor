@@ -33,8 +33,8 @@ struct FYSShipPing
  *  Nid d'pie (acteur enfant CrowsNestStation du bateau, au pied du grand mât) : E au pied du mât -> le joueur monte dans le nid
  *  (Occupant Point, sur le plancher NestFloor), ne bouge plus et n'attaque plus, caméra encore plus dézoomée ; E le redescend au
  *  pied du mât (Exit Point). Clic gauche = PING : l'icône du joueur (couleur + visage) s'affiche là où il a cliqué chez les autres
- *  joueurs, qui clignote ; hors écran, au bord de l'écran dans sa direction. Un nouveau ping remplace l'ancien ; quitter le nid
- *  l'arrête. Un seul joueur à la fois.
+ *  joueurs, qui clignote ; hors écran, au bord de l'écran dans sa direction. Un nouveau ping remplace l'ancien ; clic droit le
+ *  retire, quitter le nid aussi. Un seul joueur à la fois.
  */
 UCLASS(meta=(PrioritizeCategories="Crow's Nest Station Interaction"))
 class AYSCrowsNest : public AYSShipStation
@@ -86,9 +86,9 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	virtual bool HandlesAction(EYSStationAction Action) const override { return Action == EYSStationAction::Primary; }
+	virtual bool HandlesAction(EYSStationAction Action) const override { return true; }
 
-	/** Clic gauche : ping au point visé */
+	/** Clic gauche : ping au point visé ; clic droit : ping retiré */
 	virtual void ServerHandleAction(AYSPlayerCharacter* Character, EYSStationAction Action, const FVector& AimLocation) override;
 
 	/** Ping en cours (toutes machines) : point de l'icône et joueur qui l'a placé */

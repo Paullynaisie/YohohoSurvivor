@@ -5,6 +5,8 @@
 #include "Enemies/YSFoeCharacter.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "Map/YSOcean.h"
+#include "Player/YSPlayerCharacter.h"
+#include "Ship/YSPirateShip.h"
 #include "Weapons/YSProjectile.h"
 
 UYSFoeRangedAction::UYSFoeRangedAction()
@@ -180,11 +182,30 @@ void UYSFoeShotAction::Fire(AYSFoeCharacter* Foe, const FVector& Origin, const F
 		return;
 	}
 
-	const FTransform SpawnTransform(Direction.Rotation(), Origin);
+	// à bord d'un Jolly Ship : tir en ligne droite jusqu'à la hauteur de la cible (sinon la balle, à hauteur d'homme au-dessus de la mer,
+	// s'arrête dans la coque d'un bateau ; la coque de la cible ne l'arrête pas non plus : elle vise le joueur sur le pont)
+	FVector FireDirection = Direction;
+	AActor* IgnoredShip = nullptr;
+	const APawn* Aimed = Foe->IsRidingShip() ? Foe->GetCurrentTarget() : nullptr;
+	if (Aimed)
+	{
+		const float Distance = FVector::Dist2D(Aimed->GetActorLocation(), Origin);
+		FireDirection = FVector(Direction.X, Direction.Y, 0.0f).GetSafeNormal() * Distance + FVector(0.0f, 0.0f, Aimed->GetActorLocation().Z - Origin.Z);
+		const AYSPlayerCharacter* AimedCharacter = Cast<AYSPlayerCharacter>(Aimed);
+		IgnoredShip = AimedCharacter ? AimedCharacter->GetShipUnderFeet() : nullptr;
+	}
+
+	const FTransform SpawnTransform(FireDirection.Rotation(), Origin);
 	AYSProjectile* Projectile = World->SpawnActorDeferred<AYSProjectile>(ProjectileClass, SpawnTransform, Foe, Foe, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (Projectile)
 	{
 		Projectile->SetDamage(GetDamage(Foe));
+		Projectile->MultiplyLifeTime(Foe->GetAmmoLifeTimeMultiplier());
+		if (Foe->IsRidingShip())
+		{
+			Projectile->SetStraightFlight();
+			Projectile->SetFlightOverrides(IgnoredShip, -1.0f);
+		}
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s tire (%.0f dégâts) depuis (%.0f, %.0f, %.0f)"), *Foe->GetName(), GetDamage(Foe), Origin.X, Origin.Y, Origin.Z);
