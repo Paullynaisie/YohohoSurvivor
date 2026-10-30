@@ -310,6 +310,34 @@ public:
 	UFUNCTION(Exec)
 	void YSDamageJollyHull(float Damage = 1000.0f);
 
+	/** Debug (hôte) : NME Galion sur l'eau.  Ex : YSSpawnGalion */
+	UFUNCTION(Exec)
+	void YSSpawnGalion();
+
+	/** Debug (hôte) : téléporte le joueur sur le pont du Galion le plus proche (0) ou sur l'accès de son flanc (1) */
+	UFUNCTION(Exec)
+	void YSGoToGalion(int32 bAtAccess = 0);
+
+	/** Debug (hôte) : dégâts à un module (Kind : Cannon, Longboat) du bateau le plus proche du camp demandé (0 joueurs, 1 NME), index dans ce type */
+	UFUNCTION(Exec)
+	void YSDamageModule(const FString& Kind, float Damage, int32 bFoeShip = 0, int32 Index = 0);
+
+	/** Debug (hôte) : dégâts au core du bateau le plus proche du camp demandé (0 joueurs, 1 NME) */
+	UFUNCTION(Exec)
+	void YSDamageCore(float Damage, int32 bFoeShip = 0);
+
+	/** Debug : le joueur s'installe pour réparer le module à 0 PV le plus proche (comme E, sans la portée) */
+	UFUNCTION(Exec)
+	void YSRepairModule();
+
+	/** Debug (hôte) : tue les matelots du Galion qui ne sont pas à un poste */
+	UFUNCTION(Exec)
+	void YSKillFreeCrew();
+
+	/** Debug (hôte) : état de tous les bateaux dans le log (PV, modules, équipage) */
+	UFUNCTION(Exec)
+	void YSShipStatus();
+
 	/** Debug : utilise le poste de bateau libre le plus proche de ce type (Helm, Nest, Cannon, Longboat = chalouperie, Seat = passager de la chaloupe).  Ex : YSUseStation Cannon */
 	UFUNCTION(Exec)
 	void YSUseStation(const FString& Kind, int32 Skip = 0);

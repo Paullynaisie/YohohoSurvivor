@@ -12,6 +12,7 @@
 #include "Core/YSDamageTypes.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Ship/YSPirateShip.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -100,6 +101,7 @@ void AYSProjectile::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME_CONDITION(AYSProjectile, FlightIgnoredActor, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSProjectile, bShipShot, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AYSProjectile, ForcedHeightAboveGround, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AYSProjectile, bFollowGround, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AYSProjectile, LifeTime, COND_InitialOnly);
@@ -126,6 +128,21 @@ void AYSProjectile::BeginPlay()
 		for (AActor* Actor : Attached)
 		{
 			Collision->IgnoreActorWhenMoving(Actor, true);
+		}
+	}
+
+	// AMMO de canon : aucun bateau ne l'arrête, elle vole sous les ponts (leurs modules ont des hurtbox jusqu'au niveau de la mer)
+	if (bShipShot)
+	{
+		for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
+		{
+			Collision->IgnoreActorWhenMoving(*It, true);
+			TArray<AActor*> Attached;
+			It->GetAttachedActors(Attached, true, true);
+			for (AActor* Actor : Attached)
+			{
+				Collision->IgnoreActorWhenMoving(Actor, true);
+			}
 		}
 	}
 
@@ -168,6 +185,7 @@ bool AYSProjectile::FindGroundZ(const FVector2D& Point, float ReferenceZ, float 
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSProjectileGround), false, this);
 	Params.AddIgnoredActor(GetInstigator());
+	Params.AddIgnoredActors(Collision->GetMoveIgnoreActors());
 	const FVector Start(Point.X, Point.Y, ReferenceZ + MaxStepUp);
 	const FVector End(Point.X, Point.Y, ReferenceZ - MaxStepDown);
 	if (!GetWorld()->LineTraceSingleByObjectType(Hit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params))
@@ -234,6 +252,15 @@ void AYSProjectile::Tick(float DeltaSeconds)
 	if (HasAuthority() && !bHasHit && !bRicochetPaused)
 	{
 		CheckBumpedFoeHits();
+		if (bHasHit || IsActorBeingDestroyed())
+		{
+			return;
+		}
+	}
+
+	if (bShipShot && HasAuthority() && !bRicochetPaused)
+	{
+		CheckDisabledShipHits();
 		if (bHasHit || IsActorBeingDestroyed())
 		{
 			return;
@@ -340,6 +367,36 @@ void AYSProjectile::CheckBumpedFoeHits()
 			UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s passe sous %s (bumpé)"), *GetName(), *Foe->GetName());
 			HitTarget(Foe, FHitResult(Foe, Foe->GetHurtbox(), Foe->GetActorLocation(), FVector::UpVector));
 			if (bHasHit || bRicochetPaused)
+			{
+				return;
+			}
+		}
+	}
+}
+
+void AYSProjectile::CheckDisabledShipHits()
+{
+	const FVector Location = GetActorLocation();
+	const float Radius = Collision->GetScaledSphereRadius();
+	for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
+	{
+		const AYSPirateShip* Ship = *It;
+		if (!Ship->IsDisabled() || !Ship->IsInsideHull(Location, Radius))
+		{
+			continue;
+		}
+		for (TActorIterator<ACharacter> CharacterIt(GetWorld()); CharacterIt; ++CharacterIt)
+		{
+			ACharacter* Character = *CharacterIt;
+			const UPrimitiveComponent* Base = Character->GetMovementBase();
+			if (!Base || AYSPirateShip::GetShipOf(Base->GetOwner()) != Ship || HitActors.Contains(Character) || !CanHit(Character)
+				|| FVector::DistSquared2D(Character->GetActorLocation(), Location) > FMath::Square(Radius + Character->GetSimpleCollisionRadius()))
+			{
+				continue;
+			}
+			UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s touche %s sur le pont de %s (hors d'usage)"), *GetName(), *Character->GetName(), *Ship->GetName());
+			HitTarget(Character, FHitResult(Character, nullptr, Character->GetActorLocation(), FVector::UpVector));
+			if (bHasHit || IsActorBeingDestroyed())
 			{
 				return;
 			}
@@ -635,6 +692,15 @@ bool AYSProjectile::CanHit(const AActor* Target) const
 	if (const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Target); Character && Character->IsPassingThroughPawns())
 	{
 		return false;
+	}
+	// AMMO de canon : un joueur sur un bateau n'est touché que si ce bateau est hors d'usage
+	if (const AYSPlayerCharacter* Character = bShipShot ? Cast<AYSPlayerCharacter>(Target) : nullptr)
+	{
+		const AYSPirateShip* Deck = Character->GetShipUnderFeet();
+		if (Deck && !Deck->IsDisabled())
+		{
+			return false;
+		}
 	}
 	const IGameplayTagAssetInterface* TagInterface = Cast<IGameplayTagAssetInterface>(Target);
 	return TagInterface && TagInterface->HasAnyMatchingGameplayTags(HitTags);

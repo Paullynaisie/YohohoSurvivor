@@ -1,4 +1,5 @@
 #include "Weapons/YSPlayerBomb.h"
+#include "Ship/YSShipStation.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSCombat.h"
 #include "Core/YSDamageTypes.h"
@@ -396,6 +397,7 @@ void AYSPlayerBomb::Explode()
 		}
 		Foe->TakeDamage(FoeDamage, DamageEvent, GetInstigatorController(), nullptr);
 	}
+	AYSShipStation::DamageModulesInRadius(GetWorld(), Center, GetExplosionRadius(), HitTags, HitDamage, GetInstigatorController());
 	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s %s%s en (%.0f, %.0f) : %d NME touché(s), %.0f dégâts, pushback en plus %.0f"), *GetName(), bMine ? TEXT("(mine) explose") : TEXT("explose"),
 		bCriticalExplosion ? TEXT(" (CRITIQUE)") : TEXT(""), Center.X, Center.Y, Foes.Num(), HitDamage, ExtraPushback);
 

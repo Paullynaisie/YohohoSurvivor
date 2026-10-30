@@ -14,10 +14,6 @@
 
 namespace YSJollyShip
 {
-	/** Recherche du fond à l'apparition : depuis au-dessus des collines (une trace partie de plus bas ne voit pas le Landscape au-dessus d'elle) jusqu'à loin sous la mer */
-	constexpr float DepthTraceUp = 2000.0f;
-	constexpr float DepthTraceDown = 3000.0f;
-
 	/** Apparition : profondeur en plus du tirant d'eau, distance minimale à la coque d'un autre bateau */
 	constexpr float SpawnExtraDepth = 100.0f;
 	constexpr float SpawnShipMargin = 500.0f;
@@ -67,7 +63,7 @@ void AYSFoeJollyHull::BeginPlay()
 
 void AYSFoeJollyHull::Die()
 {
-	AYSFoeJollyShip* Ship = ShipRide.Ship;
+	AYSFoeJollyShip* Ship = Cast<AYSFoeJollyShip>(ShipRide.Ship);
 	Super::Die();
 	if (Ship)
 	{
@@ -351,92 +347,14 @@ bool AYSFoeJollyShip::ComputeAutoPilot(float& OutThrottle, float& OutSteer)
 
 AYSFoeJollyShip* AYSFoeJollyShip::SpawnAtSea(UWorld* World, TSubclassOf<AYSFoeJollyShip> ShipClass, float MinDistance, float MaxDistance, float Step, int32 Attempts)
 {
-	const AYSOcean* Ocean = AYSOcean::Find(World);
-	const AGameStateBase* GameState = World ? World->GetGameState() : nullptr;
-	if (!Ocean || !GameState || !ShipClass)
-	{
-		return nullptr;
-	}
-
-	TArray<const APawn*> Players;
-	for (const APlayerState* Player : GameState->PlayerArray)
-	{
-		const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
-		if (Character && Character->IsAlive())
-		{
-			Players.Add(Character);
-		}
-	}
-	if (Players.Num() == 0)
-	{
-		return nullptr;
-	}
-
-	const float Sea = Ocean->GetSeaLevel();
-	const float RequiredDepth = ShipClass->GetDefaultObject<AYSFoeJollyShip>()->MinWaterDepth + YSJollyShip::SpawnExtraDepth;
-	bool bFound = false;
-	FVector BestPoint = FVector::ZeroVector;
-	FVector BestDirection = FVector::ForwardVector;
-	for (int32 Attempt = 0; Attempt < Attempts; ++Attempt)
-	{
-		const APawn* Reference = Players[FMath::RandHelper(Players.Num())];
-		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
-		const FVector Direction(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f);
-		for (float Distance = MinDistance; Distance <= MaxDistance; Distance += FMath::Max(Step, 10.0f))
-		{
-			const FVector Point = Reference->GetActorLocation() + Direction * Distance;
-			// assez d'eau (ni l'île, ni un pont)
-			FHitResult Hit;
-			FCollisionQueryParams Params(SCENE_QUERY_STAT(YSJollyShipSpawn), false);
-			if (World->LineTraceSingleByObjectType(Hit, FVector(Point.X, Point.Y, Sea + YSJollyShip::DepthTraceUp), FVector(Point.X, Point.Y, Sea - YSJollyShip::DepthTraceDown),
-				FCollisionObjectQueryParams(ECC_WorldStatic), Params) && Sea - Hit.ImpactPoint.Z < RequiredDepth)
-			{
-				continue;
-			}
-			// loin de tous les joueurs (autre joueur plus près que le joueur de référence)
-			if (Players.ContainsByPredicate([&Point, MinDistance](const APawn* Player) { return FVector::DistSquared2D(Player->GetActorLocation(), Point) < FMath::Square(MinDistance); }))
-			{
-				continue;
-			}
-			// pas dans un autre bateau
-			bool bInsideShip = false;
-			for (TActorIterator<AYSPirateShip> It(World); It && !bInsideShip; ++It)
-			{
-				bInsideShip = !It->IsFoeShip() && It->IsPresent() && It->IsInsideHull(Point, YSJollyShip::SpawnShipMargin);
-			}
-			if (bInsideShip)
-			{
-				continue;
-			}
-
-			// de préférence avec de l'eau jusqu'au joueur (sinon il s'échoue sur l'île sans jamais atteindre le bateau où il se trouve) ;
-			// aucune direction comme ça (joueur à terre) : le premier emplacement trouvé
-			bool bClearWater = true;
-			for (float Along = Step; Along < Distance && bClearWater; Along += FMath::Max(Step, 10.0f))
-			{
-				const FVector Between = Reference->GetActorLocation() + Direction * Along;
-				bClearWater = !World->LineTraceSingleByObjectType(Hit, FVector(Between.X, Between.Y, Sea + YSJollyShip::DepthTraceUp), FVector(Between.X, Between.Y, Sea - YSJollyShip::DepthTraceDown),
-					FCollisionObjectQueryParams(ECC_WorldStatic), Params) || AYSPirateShip::GetShipOf(Hit.GetActor()) || Sea - Hit.ImpactPoint.Z >= RequiredDepth;
-			}
-			if (!bFound || bClearWater)
-			{
-				bFound = true;
-				BestPoint = Point;
-				BestDirection = Direction;
-			}
-			if (bClearWater)
-			{
-				Attempt = Attempts;
-			}
-			break;
-		}
-	}
-	if (!bFound)
+	FVector Point;
+	float Yaw = 0.0f;
+	if (!World || !ShipClass || !FindSeaSpawnPoint(World, ShipClass->GetDefaultObject<AYSFoeJollyShip>()->MinWaterDepth + YSJollyShip::SpawnExtraDepth, MinDistance, MaxDistance, Step, Attempts, YSJollyShip::SpawnShipMargin, 0.0f, Point, Yaw))
 	{
 		return nullptr;
 	}
 
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	return World->SpawnActor<AYSFoeJollyShip>(ShipClass, FVector(BestPoint.X, BestPoint.Y, Sea), FRotator(0.0f, (-BestDirection).Rotation().Yaw, 0.0f), SpawnParams);
+	return World->SpawnActor<AYSFoeJollyShip>(ShipClass, Point, FRotator(0.0f, Yaw, 0.0f), SpawnParams);
 }

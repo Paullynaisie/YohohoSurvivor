@@ -1,11 +1,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagAssetInterface.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "YSShipStation.generated.h"
 
 class AYSPirateShip;
+class UBoxComponent;
 class UTexture2D;
+class UWidgetComponent;
+class AYSFoeCharacter;
 
 /** Décalage de la caméra d'un joueur à un poste */
 UENUM(BlueprintType)
@@ -37,7 +41,7 @@ enum class EYSStationAction : uint8
  *  Serveur autoritaire ; occupant répliqué.
  */
 UCLASS(meta=(PrioritizeCategories="Station Interaction"))
-class AYSShipStation : public AYSInteractiveObject
+class AYSShipStation : public AYSInteractiveObject, public IGameplayTagAssetInterface
 {
 	GENERATED_BODY()
 
@@ -50,6 +54,25 @@ private:
 	/** Où le joueur est reposé en quittant le poste (Teleport On Leave) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USceneComponent> ExitPoint;
+
+	/**
+	 *  Hurtbox du module (Takes Damage) : subit les attaques du camp adverse. Haute : du niveau de la mer (les AMMO de canon volent sous le
+	 *  pont) jusqu'au-dessus du canon. À ajuster dans le Blueprint du poste.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UBoxComponent> ModuleHurtbox;
+
+	/** PV du module (Takes Damage) : à l'écran, affichée dès qu'il est abîmé ; progression pendant une réparation */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UWidgetComponent> ModuleHealthBar;
+
+	/** NME au poste (équipage d'un Galion ; nullptr = aucun) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Station", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<AYSFoeCharacter> FoeOccupant;
+
+	/** Heure serveur de la fin de la réparation (0 = pas de réparation en cours) */
+	UPROPERTY(Replicated, Transient)
+	double RepairEndServerTime = 0.0;
 
 	/** Joueur au poste (nullptr = personne) */
 	UPROPERTY(ReplicatedUsing=OnRep_Occupant, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Station", meta=(AllowPrivateAccess="true"))
@@ -84,12 +107,27 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station", meta=(ClampMin="0", Units="Centimeters"))
 	float ReplacedOccupantOffset = 150.0f;
 
-	/** PV du poste (0 = pas de PV) ; pas encore de dégâts */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station", meta=(ClampMin="0"))
+	/** Le module a une hurtbox et subit les attaques du camp adverse (modules de combat, chalouperie) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health")
+	bool bTakesDamage = false;
+
+	/** PV du poste */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", EditCondition="bTakesDamage"))
 	float MaxHealth = 0.0f;
 
-	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Station")
+	/** Réparation (E sur un module à 0 PV) : le joueur reste au poste pendant cette durée ; E l'interrompt (à refaire depuis le début) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", Units="s", EditCondition="bTakesDamage"))
+	float RepairDuration = 10.0f;
+
+	/** Icône pendant la réparation (en bas de l'écran) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(EditCondition="bTakesDamage"))
+	TObjectPtr<UTexture2D> RepairIcon;
+
+	UPROPERTY(ReplicatedUsing=OnRep_Health, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Station|Health")
 	float Health = 0.0f;
+
+	UFUNCTION()
+	void OnRep_Health();
 
 	/** Caméra du joueur au poste : longueur du bras (à pied : 1680) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Camera", meta=(ClampMin="0", Units="Centimeters"))
@@ -117,6 +155,9 @@ protected:
 	/** Poste utilisable : bateau présent (le bateau objectif est caché avant l'objectif de doublons) */
 	bool IsShipAvailable() const;
 
+	/** Module tombé à 0 PV, ou réparé (toutes machines, visuel) */
+	virtual void OnBrokenChanged(bool bBroken) {}
+
 	/** Préfixe des logs */
 	virtual const TCHAR* GetLogTag() const { return TEXT("[YSStation]"); }
 
@@ -131,6 +172,41 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	virtual void Tick(float DeltaSeconds) override;
+
+	/** Camp du bateau : Team.Foe sur un bateau de NME, Team.Player sinon (les attaques filtrent sur ces tags) */
+	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override;
+
+	/**
+	 *  Coup reçu par le module (serveur) : PV du module ; à 0 PV (ou bateau hors d'usage) c'est le core qui prend le coup, et le joueur qui
+	 *  réparait le module aussi
+	 */
+	virtual float TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
+
+	/** Explosion : dégâts aux modules portant un de ces tags dont la hurtbox touche la sphère (serveur) */
+	static void DamageModulesInRadius(UWorld* World, const FVector& Center, float Radius, const FGameplayTagContainer& HitTags, float Damage, AController* EventInstigator);
+
+	/** Module à 0 PV : inutilisable, E le répare */
+	bool IsBroken() const { return bTakesDamage && Health <= 0.0f && bHealthInitialized; }
+
+	/** Le module a des PV (hurtbox) */
+	bool TakesDamage() const { return bTakesDamage; }
+
+	/** Un joueur le répare (toutes machines) */
+	bool IsRepairing() const { return RepairEndServerTime > 0.0; }
+
+	/** Secondes avant la fin de la réparation */
+	float GetRepairRemaining() const;
+
+	AYSFoeCharacter* GetFoeOccupant() const { return FoeOccupant; }
+
+	/** NME au poste (serveur) */
+	void SetFoeOccupant(AYSFoeCharacter* NewOccupant);
+
+	/** Poste libre : ni joueur ni NME */
+	bool IsFree() const { return !Occupant && !FoeOccupant; }
+
+	/** Utilisable : pas à 0 PV, bateau pas hors d'usage */
+	bool IsUsable() const;
 
 	/** Bateau présent, poste libre (ou tenu par un minion, si c'est un joueur qui veut sa place), joueur vivant aux mains libres (hors de l'eau sauf Allow Swimming Entry) et à aucun poste */
 	virtual bool CanInteract(const AYSPlayerCharacter* Character) const override;
@@ -186,8 +262,28 @@ public:
 	virtual bool GetCameraAimDirection(FVector& OutDirection) const { return false; }
 
 	/** Icône d'action du poste (en bas de l'écran, à la place de celles des armes) : faux = pas d'icône */
-	virtual bool GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const { return false; }
+	virtual bool GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const;
 
 	float GetHealth() const { return Health; }
 	float GetMaxHealth() const { return MaxHealth; }
+
+private:
+
+	/** PV du module affichés, réparation comprise (local) */
+	void UpdateModuleHealthBar();
+
+	/** Une réparation peut continuer : bateau pas hors d'usage */
+	bool IsUsableForRepair() const;
+
+	/** Serveur : réparation terminée (PV rendus, le joueur quitte le poste) */
+	void FinishRepair();
+
+	/** Visuel appliqué : à 0 PV ou non (local) */
+	bool bAppliedBroken = false;
+
+	/** Clients : PV reçus (avant : Health 0, ce n'est pas un module cassé) */
+	bool bHealthInitialized = false;
+
+	float DisplayedHealth = -1.0f;
+	float DisplayedRepairProgress = -1.0f;
 };

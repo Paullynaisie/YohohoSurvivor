@@ -148,7 +148,7 @@ private:
 	 */
 	bool UpdateShipCrew(class AAIController* AIController, float DeltaSeconds);
 
-	/** Au canon : vise le NME le plus proche à portée, tire dès que le canon est rechargé */
+	/** Au canon : vise le plus proche à portée (NME, module d'un bateau de NME), tire dès que le canon est rechargé */
 	void UpdateCannonFire(class AYSShipCannon* Cannon, AAIController* AIController);
 
 	/** Canon libre le plus proche, pas déjà visé par un autre minion (garde le sien s'il est encore libre), ou nullptr */

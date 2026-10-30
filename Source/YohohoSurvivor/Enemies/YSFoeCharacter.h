@@ -25,7 +25,9 @@ class UYSAutoSwingAbility;
 class UYSBossBigSlashAbility;
 class UYSGroundZoneComponent;
 class AYSProjectile;
-class AYSFoeJollyShip;
+class AYSFoeGalion;
+class AYSPirateShip;
+class AYSShipStation;
 
 /** Place à bord d'un NME Jolly Ship : position calculée sur chaque machine depuis le bateau (mouvement du personnage coupé) */
 USTRUCT()
@@ -37,9 +39,9 @@ struct FYSFoeShipRide
 	bool bActive = false;
 
 	UPROPERTY()
-	TObjectPtr<AYSFoeJollyShip> Ship;
+	TObjectPtr<AYSPirateShip> Ship;
 
-	/** Poste sur le bateau (AYSFoeJollyShip::GetSeatFeetLocation) */
+	/** Poste sur le bateau (AYSPirateShip::GetSeatFeetLocation) */
 	UPROPERTY()
 	int8 Seat = 0;
 
@@ -648,7 +650,24 @@ public:
 	 *  Monte à bord d'un NME Jolly Ship (serveur, avant FinishSpawning) : plus de mouvement, gardé sur sa place, ni pushback ni bump ;
 	 *  portée d'attaque et durée de vie des AMMO multipliées tant qu'il est à bord
 	 */
-	void StartShipRide(AYSFoeJollyShip* Ship, int32 Seat, bool bCanAttack, float AttackRangeMultiplier, float AmmoLifeTimeMultiplier);
+	void StartShipRide(AYSPirateShip* Ship, int32 Seat, bool bCanAttack, float AttackRangeMultiplier, float AmmoLifeTimeMultiplier);
+
+	/**
+	 *  Membre d'équipage d'un NME Galion (serveur, avant FinishSpawning) : ne quitte jamais le pont, ne vise que les joueurs qui y sont
+	 *  montés ; hors combat il marche vers le poste que lui donne le bateau. Son XP reste due s'il meurt dans l'eau. Élite : ni élite
+	 *  de la nuit (barre du HUD, fin de la nuit) ni Boss Big Slash (il sauterait du bateau).
+	 */
+	void SetCrewShip(AYSFoeGalion* Ship);
+
+	/** Bateau dont il fait partie de l'équipage (nullptr = NME normal) */
+	AYSFoeGalion* GetCrewShip() const { return CrewShip; }
+
+	/** Poste vers lequel marcher (serveur ; nullptr = aucun) */
+	void SetCrewPost(AYSShipStation* Post);
+	AYSShipStation* GetCrewPost() const;
+
+	/** Le bateau a coulé (serveur) : il n'est plus d'équipage et tombe à l'eau */
+	void ClearCrewShip();
 
 	/** Quitte le bateau (serveur) : posé à FeetLocation, comportement normal. bExperienceInWater : il donne son XP même s'il meurt dans l'eau */
 	void EndShipRide(const FVector& FeetLocation, bool bInExperienceInWater);
@@ -827,6 +846,24 @@ protected:
 
 	/** Parti d'un bateau détruit : donne son XP même s'il meurt dans l'eau */
 	bool bExperienceInWater = false;
+
+	/** Équipage d'un NME Galion (serveur) */
+	UPROPERTY(Transient)
+	TObjectPtr<AYSFoeGalion> CrewShip;
+
+	TWeakObjectPtr<AYSShipStation> CrewPost;
+
+	/** Bloqué en marchant sur le pont : temps sous Crew Stuck Speed, temps restant de contournement, côté, dernière position sur le pont */
+	float CrewStuckTime = 0.0f;
+	float CrewSidestepTime = 0.0f;
+	float CrewSidestepSide = 1.0f;
+	FVector CrewLastDeckLocation = FVector::ZeroVector;
+
+	/** Équipage : marche vers Goal sur le pont (escalier du gaillard si besoin), contourne ce qui le bloque, jamais hors du pont */
+	void WalkOnDeck(const FVector& Goal, float DeltaSeconds);
+
+	/** Équipage sans cible : va à son poste, s'y installe une fois arrivé */
+	void UpdateCrewPost(float DeltaSeconds);
 
 	/** Boss Big Slash en cours (serveur, répliqué) */
 	UPROPERTY(ReplicatedUsing=OnRep_BossDash)

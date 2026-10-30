@@ -140,8 +140,10 @@ public:
 
 	virtual bool IsFoeShip() const override { return true; }
 
+	virtual bool IsBoardable() const override { return false; }
+
 	/** Pieds du NME au poste Seat (SeatPilot, SeatLeft, SeatRight, SeatHull = origine du bateau) */
-	FVector GetSeatFeetLocation(int32 Seat) const;
+	virtual FVector GetSeatFeetLocation(int32 Seat) const override;
 
 	/** Coque détruite (serveur) : équipage à l'eau (il donne son XP en y mourant), chaloupe détruite */
 	void OnHullDestroyed();

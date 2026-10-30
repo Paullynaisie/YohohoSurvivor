@@ -1,4 +1,6 @@
 #include "Player/YSPlayerController.h"
+#include "Ship/YSShipCannon.h"
+#include "Ship/YSLongboatLauncher.h"
 #include "Core/YSGamepad.h"
 #include "Abilities/YSAbilityComponent.h"
 #include "Abilities/YSBombThrowerAbility.h"
@@ -47,6 +49,7 @@
 #include "Core/YSGameInstance.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Core/YSGameMode.h"
+#include "Enemies/YSFoeGalion.h"
 #include "Enemies/YSFoeJollyShip.h"
 #include "Ship/YSPirateShip.h"
 #include "Components/InputComponent.h"
@@ -1958,6 +1961,128 @@ void AYSPlayerController::YSDamageJollyHull(float Damage)
 		{
 			It->TakeDamage(Damage, FDamageEvent(), this, nullptr);
 		}
+	}
+}
+
+void AYSPlayerController::YSSpawnGalion()
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->SpawnGalion(TEXT("debug"));
+	}
+}
+
+namespace YSShipDebug
+{
+	/** Bateau le plus proche du pawn, du camp demandé (pas les chaloupes : sans core) */
+	static AYSPirateShip* FindNearestShip(const APlayerController* Controller, bool bFoeShip)
+	{
+		const APawn* Pawn = Controller->GetPawn();
+		AYSPirateShip* Best = nullptr;
+		float BestDistSq = TNumericLimits<float>::Max();
+		for (TActorIterator<AYSPirateShip> It(Controller->GetWorld()); It; ++It)
+		{
+			const float DistSq = Pawn ? FVector::DistSquared2D(Pawn->GetActorLocation(), It->GetActorLocation()) : 0.0f;
+			if (It->IsFoeShip() == bFoeShip && It->GetMaxHealth() > 0.0f && DistSq < BestDistSq)
+			{
+				BestDistSq = DistSq;
+				Best = *It;
+			}
+		}
+		return Best;
+	}
+}
+
+void AYSPlayerController::YSGoToGalion(int32 bAtAccess)
+{
+	AYSPirateShip* Ship = YSShipDebug::FindNearestShip(this, true);
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	if (!HasAuthority() || !Ship || !PlayerCharacter)
+	{
+		return;
+	}
+	if (bAtAccess && Ship->GetBoardingAccess())
+	{
+		Ship->GetBoardingAccess()->Interact(PlayerCharacter);
+		return;
+	}
+	PlayerCharacter->TeleportToFeetLocation(Ship->GetActorTransform().TransformPositionNoScale(FVector(1500.0f, 0.0f, 215.0f)), Ship->GetActorForwardVector());
+}
+
+void AYSPlayerController::YSDamageModule(const FString& Kind, float Damage, int32 bFoeShip, int32 Index)
+{
+	const AYSPirateShip* Ship = HasAuthority() ? YSShipDebug::FindNearestShip(this, bFoeShip != 0) : nullptr;
+	if (!Ship)
+	{
+		return;
+	}
+	int32 Found = 0;
+	for (AYSShipStation* Station : Ship->GetStations())
+	{
+		const bool bMatch = Kind == TEXT("Longboat") ? Station->IsA<AYSLongboatLauncher>() : Station->IsA<AYSShipCannon>();
+		if (bMatch && Found++ == Index)
+		{
+			Station->TakeDamage(Damage, FDamageEvent(), this, nullptr);
+			return;
+		}
+	}
+}
+
+void AYSPlayerController::YSDamageCore(float Damage, int32 bFoeShip)
+{
+	if (AYSPirateShip* Ship = HasAuthority() ? YSShipDebug::FindNearestShip(this, bFoeShip != 0) : nullptr)
+	{
+		Ship->TakeCoreDamage(Damage, this, Ship->GetActorLocation());
+	}
+}
+
+void AYSPlayerController::YSRepairModule()
+{
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSPirateShip* Ship = HasAuthority() ? YSShipDebug::FindNearestShip(this, false) : nullptr;
+	if (!PlayerCharacter || !Ship)
+	{
+		return;
+	}
+	for (AYSShipStation* Station : Ship->GetStations())
+	{
+		if (Station->IsBroken())
+		{
+			Station->Interact(PlayerCharacter);
+			return;
+		}
+	}
+}
+
+void AYSPlayerController::YSKillFreeCrew()
+{
+	if (HasAuthority())
+	{
+		for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
+		{
+			if (It->GetCrewShip() && !It->IsRidingShip())
+			{
+				It->TakeDamage(1.0e6f, FDamageEvent(), this, nullptr);
+			}
+		}
+	}
+}
+
+void AYSPlayerController::YSShipStatus()
+{
+	for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
+	{
+		FString Modules;
+		for (const AYSShipStation* Station : It->GetStations())
+		{
+			if (Station->TakesDamage() || Station->GetFoeOccupant() || Station->GetOccupant())
+			{
+				Modules += FString::Printf(TEXT(" %s=%.0f%s%s"), *Station->GetName(), Station->GetHealth(), Station->GetFoeOccupant() ? TEXT("(NME)") : TEXT(""), Station->GetOccupant() ? TEXT("(joueur)") : TEXT(""));
+			}
+		}
+		const FVector Location = It->GetActorLocation();
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] Statut %s (%.0f, %.0f) yaw %.0f vitesse %.0f : core %.0f / %.0f%s ;%s"), *It->GetName(), Location.X, Location.Y, It->GetActorRotation().Yaw, It->GetSpeed(),
+			It->GetHealth(), It->GetMaxHealth(), It->IsDisabled() ? TEXT(" HORS D'USAGE") : TEXT(""), *Modules);
 	}
 }
 

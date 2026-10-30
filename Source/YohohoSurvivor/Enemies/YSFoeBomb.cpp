@@ -1,4 +1,5 @@
 #include "Enemies/YSFoeBomb.h"
+#include "Ship/YSShipStation.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSGameplayTags.h"
 #include "Engine/DamageEvents.h"
@@ -210,6 +211,7 @@ void AYSFoeBomb::Explode()
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur le joueur
 		Player->TakeDamage(Throw.Damage, FDamageEvent(), GetInstigatorController(), nullptr);
 	}
+	AYSShipStation::DamageModulesInRadius(GetWorld(), Throw.Target, Throw.ExplosionRadius, HitTags, Throw.Damage, GetInstigatorController());
 	UE_LOG(LogTemp, Verbose, TEXT("[YSFoeBomb] %s explose en (%.0f, %.0f) : %d joueur(s) touché(s), %.0f dégâts"), *GetName(), Throw.Target.X, Throw.Target.Y, Damaged.Num(), Throw.Damage);
 	for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
 	{

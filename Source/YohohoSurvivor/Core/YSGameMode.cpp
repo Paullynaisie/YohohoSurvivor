@@ -5,6 +5,7 @@
 #include "Core/YSPlayerState.h"
 #include "Enemies/YSEnemySpawnRule.h"
 #include "Enemies/YSFoeCharacter.h"
+#include "Enemies/YSFoeGalion.h"
 #include "Enemies/YSFoeJollyShip.h"
 #include "Interaction/YSTreasureMap.h"
 #include "Interaction/YSInteractiveObject.h"
@@ -116,6 +117,13 @@ AYSFoeJollyShip* AYSGameMode::SpawnJollyShip(const TCHAR* Reason)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[YSJollyShip] Apparition (%s) : pas de classe ou pas d'emplacement"), Reason);
 	}
+	return Ship;
+}
+
+AYSFoeGalion* AYSGameMode::SpawnGalion(const TCHAR* Reason)
+{
+	AYSFoeGalion* Ship = AYSFoeGalion::SpawnAtSea(GetWorld(), GalionClass, GalionMinSpawnDistance, GalionMaxSpawnDistance);
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] Apparition (%s) : %s"), Reason, Ship ? *Ship->GetName() : TEXT("pas de classe ou pas d'emplacement"));
 	return Ship;
 }
 
@@ -990,6 +998,12 @@ AYSFoeCharacter* AYSGameMode::SpawnNumpadFoe(const APlayerController* Player, in
 	{
 		const AYSFoeJollyShip* Ship = SpawnJollyShip(TEXT("pavé numérique"));
 		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Pavé numérique %d : %s"), Key, Ship ? *Ship->GetName() : TEXT("échec"));
+		return nullptr;
+	}
+
+	if (Key == NumpadGalionKey)
+	{
+		SpawnGalion(TEXT("pavé numérique"));
 		return nullptr;
 	}
 

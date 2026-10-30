@@ -1,9 +1,11 @@
 #include "Ship/YSShipCannon.h"
 #include "Components/StaticMeshComponent.h"
+#include "Core/YSGameplayTags.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "Enemies/YSFoeCharacter.h"
+#include "Enemies/YSFoeGalion.h"
 #include "EngineUtils.h"
 #include "GameFramework/GameStateBase.h"
 #include "Materials/MaterialInterface.h"
@@ -22,6 +24,7 @@ namespace YSShipCannon
 AYSShipCannon::AYSShipCannon()
 {
 	DisplayName = NSLOCTEXT("YS", "ShipCannonName", "Cannonerie");
+	bTakesDamage = true;
 	MaxHealth = 1000.0f;
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -95,6 +98,7 @@ void AYSShipCannon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AYSShipCannon, ReadyServerTime);
+	DOREPLIFETIME(AYSShipCannon, FoeAimYaw);
 }
 
 float AYSShipCannon::ComputeAimYaw(const FVector& WorldTarget) const
@@ -110,6 +114,10 @@ float AYSShipCannon::ComputeAimYaw(const FVector& WorldTarget) const
 
 float AYSShipCannon::GetTargetAimYaw() const
 {
+	if (GetFoeOccupant())
+	{
+		return FoeAimYaw;
+	}
 	// regard du joueur (tourné vers son curseur, répliqué avec ses mouvements) : même angle sur toutes les machines
 	const AYSPlayerCharacter* Character = GetOccupant();
 	if (!IsValid(Character))
@@ -124,10 +132,15 @@ void AYSShipCannon::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	// visuel : le canon suit le regard du joueur (sans joueur : revient droit)
+	if (HasAuthority() && GetFoeOccupant())
+	{
+		UpdateFoeFire(DeltaSeconds);
+	}
+
+	// visuel : le canon suit le regard du joueur (sans joueur : revient droit) ; à 0 PV il penche
 	const float Target = GetTargetAimYaw();
 	CurrentAimYaw = AimFollowSpeed > 0.0f ? FMath::FInterpTo(CurrentAimYaw, Target, DeltaSeconds, AimFollowSpeed) : Target;
-	CannonPivot->SetRelativeRotation(FRotator(0.0f, CurrentAimYaw, 0.0f));
+	CannonPivot->SetRelativeRotation(FRotator(IsBroken() ? BrokenBarrelPitch : 0.0f, CurrentAimYaw, 0.0f));
 
 	// recul du fût : en arrière d'un coup, puis retour
 	if (BarrelRestLocation.IsZero())
@@ -141,7 +154,21 @@ void AYSShipCannon::Tick(float DeltaSeconds)
 
 void AYSShipCannon::ServerHandleAction(AYSPlayerCharacter* Character, EYSStationAction Action, const FVector& AimLocation)
 {
-	if (!HasAuthority() || Action != EYSStationAction::Fire || !Character || Character != GetOccupant() || !ProjectileClass)
+	if (!HasAuthority() || Action != EYSStationAction::Fire || !Character || Character != GetOccupant())
+	{
+		return;
+	}
+	Fire(Character, AimLocation, false);
+}
+
+void AYSShipCannon::OnBrokenChanged(bool bBroken)
+{
+	UE_LOG(LogTemp, Verbose, TEXT("[YSCannon] %s : %s"), *GetName(), bBroken ? TEXT("cassé") : TEXT("réparé"));
+}
+
+void AYSShipCannon::Fire(APawn* Shooter, const FVector& AimLocation, bool bFoeShooter)
+{
+	if (!HasAuthority() || !Shooter || !ProjectileClass || !IsUsable())
 	{
 		return;
 	}
@@ -164,13 +191,14 @@ void AYSShipCannon::ServerHandleAction(AYSPlayerCharacter* Character, EYSStation
 	{
 		const float Yaw = BaseYaw + (AmmoPerShot > 1 ? FMath::Lerp(-Spread, Spread, static_cast<float>(Index) / (AmmoPerShot - 1)) : 0.0f);
 		const FTransform SpawnTransform(FRotator(0.0f, Yaw, 0.0f), MuzzleLocation, FVector(ProjectileScale));
-		AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ProjectileClass, SpawnTransform, Character, Character, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ProjectileClass, SpawnTransform, Shooter, Shooter, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 		if (!Projectile)
 		{
 			continue;
 		}
 		Projectile->SetDamage(Damage);
 		Projectile->SetFlightOverrides(Ship ? static_cast<AActor*>(Ship) : this, YSShipCannon::ShotHeightAboveGround);
+		Projectile->SetShipShot(FGameplayTagContainer(bFoeShooter ? YSTags::Team_Player : YSTags::Team_Foe));
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 
@@ -178,7 +206,7 @@ void AYSShipCannon::ServerHandleAction(AYSPlayerCharacter* Character, EYSStation
 	ReadyServerTime = (GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds()) + Cooldown;
 	ForceNetUpdate();
 	MulticastFired();
-	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : tir de canon de %s, %d AMMO x %.0f dégâts (+/- %.0f°), angle %.0f°, recharge %.1f s"), *GetName(), *Character->GetName(),
+	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : tir de canon de %s, %d AMMO x %.0f dégâts (+/- %.0f°), angle %.0f°, recharge %.1f s"), *GetName(), *Shooter->GetName(),
 		AmmoPerShot, Damage, Spread, AimYaw, Cooldown);
 }
 
@@ -201,15 +229,61 @@ float AYSShipCannon::GetCooldownRemaining() const
 	return FMath::Max(0.0f, static_cast<float>(ReadyServerTime - Now));
 }
 
-AYSFoeCharacter* AYSShipCannon::FindAutoFireTarget() const
+AActor* AYSShipCannon::FindAutoFireTarget(bool bFoeShooter) const
 {
 	const AYSProjectile* Ammo = ProjectileClass ? ProjectileClass->GetDefaultObject<AYSProjectile>() : nullptr;
 	const float Range = AutoFireRange > 0.0f ? AutoFireRange : (Ammo ? Ammo->GetMaxRange() : 0.0f);
 	const FVector Origin = CannonPivot->GetComponentLocation();
 	const float BaseYaw = GetActorRotation().Yaw;
 
-	AYSFoeCharacter* Best = nullptr;
+	AActor* Best = nullptr;
 	float BestDistSq = FMath::Square(Range);
+	const auto Consider = [&](AActor* Candidate)
+	{
+		const FVector ToCandidate = (Candidate->GetActorLocation() - Origin) * FVector(1.0f, 1.0f, 0.0f);
+		const float DistSq = ToCandidate.SizeSquared();
+		if (DistSq < BestDistSq && FMath::Abs(FRotator::NormalizeAxis(ToCandidate.Rotation().Yaw - BaseYaw)) <= MaxAimAngle)
+		{
+			BestDistSq = DistSq;
+			Best = Candidate;
+		}
+	};
+
+	const AYSPirateShip* OwnShip = GetShip();
+	for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
+	{
+		AYSPirateShip* Ship = *It;
+		if (Ship == OwnShip || Ship->IsFoeShip() == bFoeShooter || !Ship->IsPresent() || Ship->IsActorBeingDestroyed())
+		{
+			// bateau du même camp (ou absent)
+			continue;
+		}
+		for (AYSShipStation* Station : Ship->GetStations())
+		{
+			if (Station->TakesDamage())
+			{
+				Consider(Station);
+			}
+		}
+	}
+
+	if (bFoeShooter)
+	{
+		for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
+		{
+			AYSPlayerCharacter* Character = *It;
+			if (Character->IsAlive() && !Character->IsActorBeingDestroyed() && !Character->IsDying())
+			{
+				const AYSPirateShip* Deck = Character->GetShipUnderFeet();
+				if (!Deck || Deck->IsDisabled())
+				{
+					Consider(Character);
+				}
+			}
+		}
+		return Best;
+	}
+
 	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
 	{
 		AYSFoeCharacter* Foe = *It;
@@ -217,15 +291,42 @@ AYSFoeCharacter* AYSShipCannon::FindAutoFireTarget() const
 		{
 			continue;
 		}
-		const FVector ToFoe = (Foe->GetActorLocation() - Origin) * FVector(1.0f, 1.0f, 0.0f);
-		const float DistSq = ToFoe.SizeSquared();
-		if (DistSq < BestDistSq && FMath::Abs(FRotator::NormalizeAxis(ToFoe.Rotation().Yaw - BaseYaw)) <= MaxAimAngle)
+		// équipage d'un Galion : sur le pont, hors d'atteinte tant que son bateau tient
+		const AYSFoeGalion* CrewShip = Foe->GetCrewShip();
+		if (!CrewShip || CrewShip->IsDisabled())
 		{
-			BestDistSq = DistSq;
-			Best = Foe;
+			Consider(Foe);
 		}
 	}
 	return Best;
+}
+
+void AYSShipCannon::UpdateFoeFire(float DeltaSeconds)
+{
+	if (!IsUsable())
+	{
+		return;
+	}
+	FoeTargetTimer -= DeltaSeconds;
+	if (FoeTargetTimer <= 0.0f)
+	{
+		FoeTargetTimer = FoeTargetInterval;
+		FoeTarget = FindAutoFireTarget(true);
+	}
+	if (!IsValid(FoeTarget))
+	{
+		FoeTarget = nullptr;
+		return;
+	}
+	const float Aim = ComputeAimYaw(FoeTarget->GetActorLocation());
+	if (!FMath::IsNearlyEqual(Aim, FoeAimYaw, 1.0f))
+	{
+		FoeAimYaw = Aim;
+	}
+	if (GetCooldownRemaining() <= 0.0f && IsAimedAt(FoeTarget))
+	{
+		Fire(GetFoeOccupant(), FoeTarget->GetActorLocation(), true);
+	}
 }
 
 bool AYSShipCannon::IsAimedAt(const AActor* Target) const

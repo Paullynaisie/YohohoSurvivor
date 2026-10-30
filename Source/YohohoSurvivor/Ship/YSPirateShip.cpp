@@ -2,12 +2,16 @@
 #include "Components/ChildActorComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/WidgetComponent.h"
 #include "Core/YSGameState.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerState.h"
+#include "Interaction/YSInteractiveObject.h"
 #include "Map/YSOcean.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/YSPlayerCharacter.h"
 #include "Ship/YSCrowsNest.h"
 #include "Ship/YSLongboatLauncher.h"
 #include "Ship/YSShipBoarding.h"
@@ -15,6 +19,8 @@
 #include "Ship/YSShipCore.h"
 #include "Ship/YSShipHelm.h"
 #include "Ship/YSShipPath.h"
+#include "UI/YSHealthBarWidget.h"
+#include "UObject/ConstructorHelpers.h"
 
 namespace YSPirateShip
 {
@@ -27,6 +33,12 @@ namespace YSPirateShip
 
 	/** Autres bateaux traversés par la recherche du fond (chaloupe sous la coque) */
 	constexpr int32 MaxIgnoredShips = 4;
+
+	/** Apparition sur l'eau : recherche du fond depuis au-dessus des collines (une trace partie de plus bas ne voit pas le Landscape au-dessus d'elle) */
+	constexpr float SpawnTraceUp = 2000.0f;
+
+	/** Apparition sur l'eau : points vérifiés autour du centre (Clearance Radius) */
+	constexpr int32 SpawnClearanceProbes = 8;
 
 	/** Poste créé par un composant optionnel (absent sur une chaloupe) */
 	UChildActorComponent* CreateStation(AYSPirateShip* Ship, const FObjectInitializer& ObjectInitializer, USceneComponent* Parent, const TCHAR* Name, UClass* StationClass, const FVector& Location, float Yaw)
@@ -61,25 +73,40 @@ AYSPirateShip::AYSPirateShip(const FObjectInitializer& ObjectInitializer)
 	HelmStation = CreateDefaultSubobject<UChildActorComponent>(TEXT("HelmStation"));
 	HelmStation->SetupAttachment(Root);
 	HelmStation->SetChildActorClass(AYSShipHelm::StaticClass());
-	HelmStation->SetRelativeLocation(FVector(-1020.0f, 0.0f, 582.0f));
+	HelmStation->SetRelativeLocation(FVector(-2040.0f, 0.0f, 582.0f));
 
 	// postes du grand bateau (pont à +210) ; placés sur les formes du BP par setup_ship_stations.py
-	CoreStation = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CoreStation"), AYSShipCore::StaticClass(), FVector(-250.0f, 0.0f, 210.0f), 0.0f);
-	CrowsNestStation = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CrowsNestStation"), AYSCrowsNest::StaticClass(), FVector(100.0f, 0.0f, 210.0f), 0.0f);
-	LongboatStation = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("LongboatStation"), AYSLongboatLauncher::StaticClass(), FVector(-660.0f, -180.0f, 210.0f), 180.0f);
-	CannonFront = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonFront"), AYSShipCannon::StaticClass(), FVector(1450.0f, 0.0f, 210.0f), 0.0f);
-	CannonLeft = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonLeft"), AYSShipCannon::StaticClass(), FVector(450.0f, -380.0f, 210.0f), -90.0f);
-	CannonRight = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonRight"), AYSShipCannon::StaticClass(), FVector(450.0f, 380.0f, 210.0f), 90.0f);
+	CoreStation = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CoreStation"), AYSShipCore::StaticClass(), FVector(-600.0f, 0.0f, 210.0f), 0.0f);
+	CrowsNestStation = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CrowsNestStation"), AYSCrowsNest::StaticClass(), FVector(200.0f, 0.0f, 210.0f), 0.0f);
+	LongboatStation = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("LongboatStation"), AYSLongboatLauncher::StaticClass(), FVector(-1355.0f, -360.0f, 210.0f), 180.0f);
+	CannonFront = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonFront"), AYSShipCannon::StaticClass(), FVector(3296.0f, 0.0f, 210.0f), 0.0f);
+	CannonLeft = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonLeft"), AYSShipCannon::StaticClass(), FVector(900.0f, -933.0f, 210.0f), -90.0f);
+	CannonRight = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonRight"), AYSShipCannon::StaticClass(), FVector(900.0f, 933.0f, 210.0f), 90.0f);
+	CannonLeft2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonLeft2"), AYSShipCannon::StaticClass(), FVector(-700.0f, -933.0f, 210.0f), -90.0f);
+	CannonRight2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonRight2"), AYSShipCannon::StaticClass(), FVector(-700.0f, 933.0f, 210.0f), 90.0f);
 	// accès : flanc bâbord (-Y), à l'ouverture du bastingage et de la planche d'embarquement, au niveau de la mer
-	BoardingAccess = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccess"), AYSShipBoarding::StaticClass(), FVector(0.0f, -500.0f, 0.0f), -90.0f);
+	BoardingAccess = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccess"), AYSShipBoarding::StaticClass(), FVector(0.0f, -1000.0f, 0.0f), -90.0f);
+
+	// barre de vie du bateau : à l'écran, au-dessus du pont ; rien tant qu'il n'est pas abîmé
+	ShipHealthBar = ObjectInitializer.CreateOptionalDefaultSubobject<UWidgetComponent>(this, TEXT("ShipHealthBar"));
+	if (ShipHealthBar)
+	{
+		ShipHealthBar->SetupAttachment(Root);
+		ShipHealthBar->SetRelativeLocation(FVector(-600.0f, 0.0f, 800.0f));
+		ShipHealthBar->SetWidgetSpace(EWidgetSpace::Screen);
+		ShipHealthBar->SetDrawAtDesiredSize(true);
+		ShipHealthBar->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		static ConstructorHelpers::FClassFinder<UUserWidget> HealthBarFinder(TEXT("/Game/Core/UI/WBP_FoeHealthBar"));
+		ShipHealthBar->SetWidgetClass(HealthBarFinder.Succeeded() ? HealthBarFinder.Class : TSubclassOf<UUserWidget>(UYSHealthBarWidget::StaticClass()));
+	}
 
 	ShipName = NSLOCTEXT("YS", "PirateShipName", "Bateau pirate");
 
-	// coque de BP_PirateShip : partie droite de -1200 à 1200, proue arrondie jusqu'à 1700, largeur 1000
+	// coque de BP_PirateShip : partie droite de -2400 à 2400, proue arrondie jusqu'à 3400, largeur 2000
 	HullProbePoints = {
-		FVector2D(1700.0f, 0.0f), FVector2D(1550.0f, -350.0f), FVector2D(1550.0f, 350.0f),
-		FVector2D(1200.0f, -500.0f), FVector2D(1200.0f, 500.0f), FVector2D(0.0f, -500.0f), FVector2D(0.0f, 500.0f),
-		FVector2D(-1200.0f, -500.0f), FVector2D(-1200.0f, 500.0f), FVector2D(-1200.0f, 0.0f)
+		FVector2D(3400.0f, 0.0f), FVector2D(3100.0f, -700.0f), FVector2D(3100.0f, 700.0f),
+		FVector2D(2400.0f, -1000.0f), FVector2D(2400.0f, 1000.0f), FVector2D(0.0f, -1000.0f), FVector2D(0.0f, 1000.0f),
+		FVector2D(-2400.0f, -1000.0f), FVector2D(-2400.0f, 1000.0f), FVector2D(-2400.0f, 0.0f)
 	};
 }
 
@@ -89,6 +116,7 @@ void AYSPirateShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 
 	DOREPLIFETIME(AYSPirateShip, Motion);
 	DOREPLIFETIME(AYSPirateShip, Health);
+	DOREPLIFETIME(AYSPirateShip, bDisabled);
 	DOREPLIFETIME(AYSPirateShip, bPlaytestMode);
 }
 
@@ -114,6 +142,15 @@ void AYSPirateShip::BeginPlay()
 	if (HasAuthority())
 	{
 		Health = GetMaxHealth();
+	}
+	if (ShipHealthBar)
+	{
+		ShipHealthBar->InitWidget();
+		if (UYSHealthBarWidget* Bar = Cast<UYSHealthBarWidget>(ShipHealthBar->GetUserWidgetObject()))
+		{
+			Bar->SetSizeMultiplier(ShipHealthBarScale);
+		}
+		UpdateShipHealthBar();
 	}
 
 	FString StationNames;
@@ -178,6 +215,94 @@ TArray<AYSShipStation*> AYSPirateShip::GetStations() const
 		}
 	}
 	return Stations;
+}
+
+TArray<UChildActorComponent*, TInlineAllocator<8>> AYSPirateShip::GetCannonComponents() const
+{
+	TArray<UChildActorComponent*, TInlineAllocator<8>> Cannons;
+	for (UChildActorComponent* Component : { CannonFront.Get(), CannonLeft.Get(), CannonRight.Get(), CannonLeft2.Get(), CannonRight2.Get() })
+	{
+		if (Component)
+		{
+			Cannons.Add(Component);
+		}
+	}
+	return Cannons;
+}
+
+void AYSPirateShip::UpdateShipHealthBar()
+{
+	const float MaxHealth = GetMaxHealth();
+	if (!ShipHealthBar || FMath::IsNearlyEqual(Health, DisplayedShipHealth) || MaxHealth <= 0.0f)
+	{
+		return;
+	}
+	DisplayedShipHealth = Health;
+	if (UYSHealthBarWidget* Bar = Cast<UYSHealthBarWidget>(ShipHealthBar->GetUserWidgetObject()))
+	{
+		// PV reçus du serveur (clients : 0 avant le premier envoi) ; hors d'usage : affichée même à 0 et en négatif
+		Bar->SetHealth(Health, MaxHealth, bDisabled);
+	}
+}
+
+void AYSPirateShip::TakeCoreDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation)
+{
+	const float MaxHealth = GetMaxHealth();
+	if (!HasAuthority() || Damage <= 0.0f || MaxHealth <= 0.0f || IsActorBeingDestroyed())
+	{
+		return;
+	}
+
+	Health -= Damage;
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : core -%.0f -> %.0f / %.0f"), *GetName(), Damage, Health, MaxHealth);
+	ForceNetUpdate();
+	AYSGameState::ReportDamage(this, Damage, ImpactLocation, EventInstigator);
+
+	if (!bDisabled && Health <= 0.0f)
+	{
+		bDisabled = true;
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : core à 0 PV, bateau hors d'usage"), *GetName());
+		OnShipDisabled();
+	}
+	if (Health <= -MaxHealth)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s détruit (core %.0f / -%.0f) : tout le monde à l'eau"), *GetName(), Health, MaxHealth);
+		OnShipDestroyedByDamage();
+
+		// objets posés sur le pont : un cadavre flotte, le reste coule avec le bateau
+		TArray<AActor*> Attached;
+		GetAttachedActors(Attached, true, true);
+		for (AActor* Actor : Attached)
+		{
+			AYSInteractiveObject* Object = Cast<AYSInteractiveObject>(Actor);
+			if (!Object || Object->GetParentActor())
+			{
+				continue;
+			}
+			if (Object->FloatsOnWater())
+			{
+				Object->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+				const FVector Location = Object->GetActorLocation();
+				Object->SetActorLocation(FVector(Location.X, Location.Y, AYSOcean::ClampAboveSea(GetWorld(), -1.0e6f)));
+			}
+			else
+			{
+				Object->Destroy();
+			}
+		}
+		Destroy();
+	}
+}
+
+void AYSPirateShip::OnShipDisabled()
+{
+	for (AYSShipStation* Station : GetStations())
+	{
+		if (AYSPlayerCharacter* Occupant = Station->GetOccupant())
+		{
+			Occupant->LeaveStation(TEXT("bateau hors d'usage"), true);
+		}
+	}
 }
 
 float AYSPirateShip::GetMaxHealth() const
@@ -289,6 +414,8 @@ void AYSPirateShip::Tick(float DeltaSeconds)
 			UE_LOG(LogTemp, Log, TEXT("[YSShip] %s %s"), *GetName(), Presence ? TEXT("présent") : TEXT("absent (caché, sans collision)"));
 		}
 	}
+
+	UpdateShipHealthBar();
 
 	if (bDrivable && !IsHidden())
 	{
@@ -416,11 +543,11 @@ void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 	const AYSShipHelm* Helm = GetHelm();
 	float AutoThrottle = 0.0f;
 	float AutoSteer = 0.0f;
-	if (ComputeAutoPilot(AutoThrottle, AutoSteer))
+	if (!bDisabled && ComputeAutoPilot(AutoThrottle, AutoSteer))
 	{
 		SetPilotInput(AutoThrottle, AutoSteer);
 	}
-	else if (!Helm || !Helm->GetOccupant())
+	else if (bDisabled || !Helm || !Helm->GetOccupant())
 	{
 		SetPilotInput(0.0f, 0.0f);
 	}
@@ -542,6 +669,100 @@ void AYSPirateShip::TickClientMotion(float DeltaSeconds)
 	{
 		SetActorLocationAndRotation(Location, Rotation);
 	}
+}
+
+bool AYSPirateShip::FindSeaSpawnPoint(UWorld* World, float RequiredDepth, float MinDistance, float MaxDistance, float Step, int32 Attempts, float ShipMargin, float ClearanceRadius, FVector& OutPoint, float& OutYaw)
+{
+	const AYSOcean* Ocean = AYSOcean::Find(World);
+	const AGameStateBase* GameState = World ? World->GetGameState() : nullptr;
+	if (!Ocean || !GameState)
+	{
+		return false;
+	}
+
+	TArray<const APawn*> Players;
+	for (const APlayerState* Player : GameState->PlayerArray)
+	{
+		const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
+		if (Character && Character->IsAlive())
+		{
+			Players.Add(Character);
+		}
+	}
+	if (Players.Num() == 0)
+	{
+		return false;
+	}
+
+	const float Sea = Ocean->GetSeaLevel();
+	const float Stride = FMath::Max(Step, 10.0f);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSShipSeaSpawn), false);
+	const auto IsDeepEnough = [World, Sea, RequiredDepth, &Params](const FVector& Point)
+	{
+		// assez d'eau (ni l'île, ni un pont : un bateau au-dessus compte pour de l'eau, son emprise est vérifiée à part)
+		FHitResult Hit;
+		return !World->LineTraceSingleByObjectType(Hit, FVector(Point.X, Point.Y, Sea + YSPirateShip::SpawnTraceUp), FVector(Point.X, Point.Y, Sea - YSPirateShip::DepthTraceDown),
+			FCollisionObjectQueryParams(ECC_WorldStatic), Params) || GetShipOf(Hit.GetActor()) || Sea - Hit.ImpactPoint.Z >= RequiredDepth;
+	};
+
+	bool bFound = false;
+	FVector BestDirection = FVector::ForwardVector;
+	for (int32 Attempt = 0; Attempt < Attempts; ++Attempt)
+	{
+		const APawn* Reference = Players[FMath::RandHelper(Players.Num())];
+		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const FVector Direction(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f);
+		for (float Distance = MinDistance; Distance <= MaxDistance; Distance += Stride)
+		{
+			const FVector Point = Reference->GetActorLocation() + Direction * Distance;
+			bool bDeep = IsDeepEnough(Point);
+			for (int32 Probe = 0; bDeep && ClearanceRadius > 0.0f && Probe < YSPirateShip::SpawnClearanceProbes; ++Probe)
+			{
+				const float ProbeAngle = 2.0f * PI * Probe / YSPirateShip::SpawnClearanceProbes;
+				bDeep = IsDeepEnough(Point + FVector(FMath::Cos(ProbeAngle), FMath::Sin(ProbeAngle), 0.0f) * ClearanceRadius);
+			}
+			if (!bDeep)
+			{
+				continue;
+			}
+			// loin de tous les joueurs (autre joueur plus près que le joueur de référence)
+			if (Players.ContainsByPredicate([&Point, MinDistance](const APawn* Player) { return FVector::DistSquared2D(Player->GetActorLocation(), Point) < FMath::Square(MinDistance); }))
+			{
+				continue;
+			}
+			// pas dans un bateau des joueurs
+			bool bInsideShip = false;
+			for (TActorIterator<AYSPirateShip> It(World); It && !bInsideShip; ++It)
+			{
+				bInsideShip = !It->IsFoeShip() && It->IsPresent() && It->IsInsideHull(Point, ShipMargin);
+			}
+			if (bInsideShip)
+			{
+				continue;
+			}
+
+			// de préférence avec de l'eau jusqu'au joueur (sinon il s'échoue sur l'île sans jamais atteindre le bateau où il se trouve) ;
+			// aucune direction comme ça (joueur à terre) : le premier emplacement trouvé
+			bool bClearWater = true;
+			for (float Along = Stride; Along < Distance && bClearWater; Along += Stride)
+			{
+				bClearWater = IsDeepEnough(Reference->GetActorLocation() + Direction * Along);
+			}
+			if (!bFound || bClearWater)
+			{
+				bFound = true;
+				OutPoint = FVector(Point.X, Point.Y, Sea);
+				BestDirection = Direction;
+			}
+			if (bClearWater)
+			{
+				Attempt = Attempts;
+			}
+			break;
+		}
+	}
+	OutYaw = (-BestDirection).Rotation().Yaw;
+	return bFound;
 }
 
 AYSPirateShip* AYSPirateShip::FindShipBelow(const UWorld* World, const FVector& Location, const AActor* IgnoredActor)

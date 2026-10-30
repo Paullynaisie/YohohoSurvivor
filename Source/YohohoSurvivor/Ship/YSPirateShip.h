@@ -5,6 +5,7 @@
 #include "YSPirateShip.generated.h"
 
 class UChildActorComponent;
+class UWidgetComponent;
 class AYSShipHelm;
 class AYSShipCore;
 class AYSShipStation;
@@ -92,6 +93,17 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UChildActorComponent> CannonRight;
+
+	/** Seconds canons de bâbord et de tribord */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> CannonLeft2;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> CannonRight2;
+
+	/** Barre de vie du bateau (PV du core), au-dessus du pont, affichée dès qu'il est abîmé (hauteur = position du composant) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UWidgetComponent> ShipHealthBar;
 
 	/** Accès (AYSShipBoarding) : E pour monter sur le pont, même en nageant ; à l'ouverture du bastingage, +X vers le large */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
@@ -185,9 +197,26 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Playtest", meta=(ClampMin="1", Units="Degrees", EditCondition="bPlaytestMode"))
 	float PlaytestSteerFullAngle = 20.0f;
 
-	/** PV du bateau (max = Ship Max Health du core) ; pas encore de dégâts */
+	/** PV du bateau (max = Ship Max Health du core) : le core prend les coups reçus par un module à 0 PV ; peut descendre sous 0 une fois le bateau hors d'usage */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Ship")
 	float Health = 0.0f;
+
+	/** Barre de vie du bateau x ce multiplicateur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship", meta=(ClampMin="0.1"))
+	float ShipHealthBarScale = 3.0f;
+
+	/** Core à 0 PV : tous les modules désactivés, le bateau ne peut plus bouger (serveur -> clients) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Ship")
+	bool bDisabled = false;
+
+	/** Serveur : le core vient de passer à 0 PV ; postes libérés */
+	virtual void OnShipDisabled();
+
+	/** Serveur : PV sous -PV max, le bateau va être détruit ; ce qui est à bord tombe à l'eau */
+	virtual void OnShipDestroyedByDamage() {}
+
+	/** Canons dans un ordre fixe (le même sur toutes les machines) ; absents sur une chaloupe */
+	TArray<UChildActorComponent*, TInlineAllocator<8>> GetCannonComponents() const;
 
 	/** Déplacement du bateau pilotable (serveur -> clients) */
 	UPROPERTY(ReplicatedUsing=OnRep_Motion)
@@ -198,6 +227,9 @@ protected:
 
 	/** Serveur : la coque touche le fond (eau trop peu profonde), une fois par arrêt ; ex. chaloupe : éjection sur l'île */
 	virtual void OnHullBlocked() {}
+
+	/** Rectangle local (X / Y) des Hull Probe Points */
+	FBox2D GetHullBounds() const;
 
 	/** Serveur, à chaque image : pilote automatique ; vrai = Throttle / Steer remplacent les commandes du pilote */
 	virtual bool ComputeAutoPilot(float& OutThrottle, float& OutSteer);
@@ -224,8 +256,17 @@ public:
 
 	bool IsDrivable() const { return bDrivable; }
 
-	/** Bateau ennemi (NME Jolly Ship) : ni base de mouvement ni contact pour les chaloupes */
+	/** Bateau du camp des NME (NME Jolly Ship, NME Galion) : ses modules sont Team.Foe, les joueurs n'utilisent pas ses postes */
 	virtual bool IsFoeShip() const { return false; }
+
+	/** On peut monter dessus (pont solide) ; faux : NME Jolly Ship, sans collision, ni base de mouvement ni contact pour les chaloupes */
+	virtual bool IsBoardable() const { return true; }
+
+	/** Pieds du NME à ce poste (NME à bord, position calculée sur chaque machine) */
+	virtual FVector GetSeatFeetLocation(int32 Seat) const { return GetActorLocation(); }
+
+	/** Regard du NME à ce poste */
+	virtual float GetSeatYaw(int32 Seat) const { return GetActorRotation().Yaw; }
 
 	/** Mode playtest actif et personne à la barre : le bateau suit sa spline tout seul */
 	bool IsOnPlaytestAutoPilot() const;
@@ -265,6 +306,22 @@ public:
 	float GetHealth() const { return Health; }
 	float GetMaxHealth() const;
 
+	/** Core à 0 PV (ou moins) : modules désactivés, bateau immobile */
+	bool IsDisabled() const { return bDisabled; }
+
+	/**
+	 *  Dégâts au core (serveur) : un module à 0 PV en a pris. À 0 PV le bateau est hors d'usage ; les PV peuvent alors passer en
+	 *  négatif ; sous -PV max, il est détruit et tout ce qui est à bord tombe à l'eau.
+	 */
+	void TakeCoreDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation);
+
+	/**
+	 *  Point sur l'eau pour un bateau (serveur) : direction au hasard autour d'un joueur tiré au hasard, premier point à partir de MinDistance
+	 *  (loin de tous les joueurs, jusqu'à MaxDistance) avec assez de fond sur ClearanceRadius autour, hors de l'emprise (+ ShipMargin) des
+	 *  bateaux des joueurs, de préférence sans terre jusqu'au joueur. OutYaw = tourné vers le joueur. Faux si rien.
+	 */
+	static bool FindSeaSpawnPoint(UWorld* World, float RequiredDepth, float MinDistance, float MaxDistance, float Step, int32 Attempts, float ShipMargin, float ClearanceRadius, FVector& OutPoint, float& OutYaw);
+
 	/** Bateau objectif : présence (AYSGameState::IsShipPresent), absent = caché, sans collision. Pilotable : déplacement */
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -303,8 +360,10 @@ private:
 	/** Bateau et postes cachés / montrés (présence du bateau objectif) */
 	void ApplyPresence(bool bPresent);
 
-	/** Rectangle local (X / Y) des Hull Probe Points */
-	FBox2D GetHullBounds() const;
+	/** Barre de vie du bateau (local, chaque image si elle a changé) */
+	void UpdateShipHealthBar();
+
+	float DisplayedShipHealth = -1.0e9f;
 
 	/** Dernier état reçu (clients), extrapolé à chaque image */
 	FYSShipMotion ClientPredicted;

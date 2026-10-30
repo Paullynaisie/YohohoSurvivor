@@ -99,7 +99,7 @@ void UYSHealthBarWidget::SetHealth(float Current, float Max, bool bShowWhenFull)
 	}
 
 	// PV pleins (ou pas encore reçus du serveur) : pas de barre
-	bBarVisible = Current > 0.0f && Max > 0.0f && (Current < Max || bShowWhenFull);
+	bBarVisible = Max > 0.0f && (bShowWhenFull || (Current > 0.0f && Current < Max));
 	if (bBarVisible)
 	{
 		FNumberFormattingOptions Format;

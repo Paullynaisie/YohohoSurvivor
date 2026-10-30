@@ -21,6 +21,9 @@ AYSLongboat::AYSLongboat(const FObjectInitializer& ObjectInitializer)
 		.DoNotCreateDefaultSubobject(TEXT("CannonFront"))
 		.DoNotCreateDefaultSubobject(TEXT("CannonLeft"))
 		.DoNotCreateDefaultSubobject(TEXT("CannonRight"))
+		.DoNotCreateDefaultSubobject(TEXT("CannonLeft2"))
+		.DoNotCreateDefaultSubobject(TEXT("CannonRight2"))
+		.DoNotCreateDefaultSubobject(TEXT("ShipHealthBar"))
 		.DoNotCreateDefaultSubobject(TEXT("BoardingAccess")))
 {
 	ShipName = NSLOCTEXT("YS", "LongboatName", "Chaloupe");
@@ -163,7 +166,7 @@ AYSPirateShip* AYSLongboat::FindContactShip() const
 	for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
 	{
 		AYSPirateShip* Ship = *It;
-		if (Ship == this || Ship->IsFoeShip() || !Ship->IsPresent() || Ship->IsActorBeingDestroyed())
+		if (Ship == this || !Ship->IsBoardable() || (IsFoeShip() && Ship->IsFoeShip()) || !Ship->IsPresent() || Ship->IsActorBeingDestroyed())
 		{
 			continue;
 		}

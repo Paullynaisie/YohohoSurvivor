@@ -9,6 +9,7 @@ class AYSPlayerCharacter;
 class UYSEnemySpawnRule;
 class AYSFoeCharacter;
 class AYSFoeJollyShip;
+class AYSFoeGalion;
 class AYSTreasureMap;
 class AYSPlayerCorpse;
 class UTexture2D;
@@ -180,6 +181,21 @@ protected:
 	/** Touche du pavé numérique qui fait apparaître un NME Jolly Ship (Jolly Ship Class) sur l'eau ; -1 = aucune */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn", ClampMin="-1", ClampMax="9"))
 	int32 NumpadJollyShipKey = 7;
+
+	/** Touche du pavé numérique qui fait apparaître un NME Galion sur l'eau (Galion Class ; -1 = aucune) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn", ClampMin="-1", ClampMax="9"))
+	int32 NumpadGalionKey = 8;
+
+	/** NME Galion (BP_NME_Galion) : pas de vagues pour l'instant, seulement le pavé numérique et YSSpawnGalion */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion")
+	TSubclassOf<AYSFoeGalion> GalionClass;
+
+	/** Apparition sur l'eau, à au moins cette distance de tous les joueurs */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion", meta=(ClampMin="0", Units="Centimeters"))
+	float GalionMinSpawnDistance = 8000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion", meta=(ClampMin="0", Units="Centimeters"))
+	float GalionMaxSpawnDistance = 25000.0f;
 
 	/** NME Jolly Ship : vagues sur l'eau à partir du moment où le bateau est là (objectif de doublons atteint) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship")
@@ -402,6 +418,9 @@ public:
 
 	/** Un NME Jolly Ship sur l'eau, hors écran (serveur) ; nullptr si pas de classe ou pas d'emplacement */
 	AYSFoeJollyShip* SpawnJollyShip(const TCHAR* Reason);
+
+	/** Un NME Galion sur l'eau, loin des joueurs (serveur) ; nullptr si pas de classe ou pas d'emplacement */
+	AYSFoeGalion* SpawnGalion(const TCHAR* Reason);
 
 	/** Circle spawn : Count NME (tirés dans Classes selon leur Spawn Weight) répartis à intervalles réguliers sur le contour de la plage, tournés vers le centre */
 	int32 SpawnCircle(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, int32 Count, const FString& Reason, int32 ForcedLevel = INDEX_NONE, int32 LevelBonus = 0);

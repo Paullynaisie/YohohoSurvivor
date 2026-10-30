@@ -9,6 +9,7 @@
 AYSLongboatLauncher::AYSLongboatLauncher()
 {
 	DisplayName = NSLOCTEXT("YS", "LongboatLauncherName", "Chalouperie");
+	bTakesDamage = true;
 	MaxHealth = 1000.0f;
 	LongboatClass = TSoftClassPtr<AYSLongboat>(FSoftObjectPath(TEXT("/Game/Placeable/Ship/BP_Longboat.BP_Longboat_C")));
 }
@@ -22,11 +23,17 @@ void AYSLongboatLauncher::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 
 bool AYSLongboatLauncher::CanInteract(const AYSPlayerCharacter* Character) const
 {
-	return !IsValid(ActiveLongboat) && Super::CanInteract(Character);
+	return (!IsValid(ActiveLongboat) || IsBroken()) && Super::CanInteract(Character);
 }
 
 void AYSLongboatLauncher::Interact(AYSPlayerCharacter* Character)
 {
+	// à 0 PV : E le répare
+	if (IsBroken())
+	{
+		Super::Interact(Character);
+		return;
+	}
 	AYSPirateShip* Ship = GetShip();
 	if (!HasAuthority() || !CanInteract(Character) || !Ship)
 	{

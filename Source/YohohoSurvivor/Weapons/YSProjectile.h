@@ -256,6 +256,13 @@ private:
 	UPROPERTY(Replicated)
 	TObjectPtr<AActor> FlightIgnoredActor;
 
+	/** AMMO de canon de bateau (SetShipShot) ; répliqué à l'apparition */
+	UPROPERTY(Replicated)
+	bool bShipShot = false;
+
+	/** Serveur : AMMO de canon sur un bateau hors d'usage : touche ceux qui sont sur son pont, vu de dessus (elle vole sous le pont) */
+	void CheckDisabledShipHits();
+
 	/** Hauteur au-dessus du sol imposée (canon) ; négatif = prise au tir ; répliquée à l'apparition */
 	UPROPERTY(Replicated)
 	float ForcedHeightAboveGround = -1.0f;
@@ -278,6 +285,12 @@ public:
 
 	/** Avant FinishSpawning : acteur traversé (et ce qui y est accroché), hauteur au-dessus du sol imposée (négatif = prise au tir) */
 	void SetFlightOverrides(AActor* IgnoredActor, float HeightAboveGroundOverride) { FlightIgnoredActor = IgnoredActor; ForcedHeightAboveGround = HeightAboveGroundOverride; }
+
+	/**
+	 *  Avant FinishSpawning : AMMO de canon de bateau : traverse tous les bateaux (coques, postes) en volant sous les ponts, touche les hurtbox
+	 *  des modules du camp adverse ; les personnages sur un pont ne sont touchés que si ce bateau est hors d'usage. HitTags = camp visé.
+	 */
+	void SetShipShot(const FGameplayTagContainer& InHitTags) { bShipShot = true; HitTags = InHitTags; }
 
 	/** Avant FinishSpawning : ligne droite dans la direction du tir, sans suivre le relief (NME à bord d'un Jolly Ship) */
 	void SetStraightFlight() { bFollowGround = false; }

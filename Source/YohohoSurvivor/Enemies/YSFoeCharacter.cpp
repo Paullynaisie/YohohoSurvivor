@@ -1,4 +1,6 @@
 #include "Enemies/YSFoeCharacter.h"
+#include "Enemies/YSFoeGalion.h"
+#include "Ship/YSShipStation.h"
 #include "AIController.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -731,8 +733,8 @@ void AYSFoeCharacter::Die()
 			UE_LOG(LogTemp, Log, TEXT("[YSFoe] %s laisse %s"), *GetName(), Loot ? *Loot->GetName() : TEXT("(échec)"));
 		}
 
-		// la mort de l'élite termine la nuit
-		if (bIsElite)
+		// la mort de l'élite termine la nuit (pas le capitaine d'un Galion)
+		if (bIsElite && !CrewShip)
 		{
 			GameMode->OnEliteKilled(this);
 		}
@@ -946,7 +948,7 @@ void AYSFoeCharacter::EndRiseLocal()
 	}
 }
 
-void AYSFoeCharacter::StartShipRide(AYSFoeJollyShip* Ship, int32 Seat, bool bCanAttack, float AttackRangeMultiplier, float AmmoLifeTimeMultiplier)
+void AYSFoeCharacter::StartShipRide(AYSPirateShip* Ship, int32 Seat, bool bCanAttack, float AttackRangeMultiplier, float AmmoLifeTimeMultiplier)
 {
 	ShipRide.bActive = true;
 	ShipRide.Ship = Ship;
@@ -954,6 +956,104 @@ void AYSFoeCharacter::StartShipRide(AYSFoeJollyShip* Ship, int32 Seat, bool bCan
 	ShipRide.bCanAttack = bCanAttack;
 	RideAttackRangeMultiplier = AttackRangeMultiplier;
 	RideAmmoLifeTimeMultiplier = AmmoLifeTimeMultiplier;
+
+	// en cours de partie (équipage qui s'installe à un poste) ; à l'apparition : BeginPlay
+	if (HasActorBegunPlay() && !bLocalShipRide)
+	{
+		BeginShipRideLocal();
+		ForceNetUpdate();
+	}
+}
+
+void AYSFoeCharacter::SetCrewShip(AYSFoeGalion* Ship)
+{
+	CrewShip = Ship;
+	bExperienceInWater = Ship != nullptr;
+}
+
+void AYSFoeCharacter::SetCrewPost(AYSShipStation* Post)
+{
+	CrewPost = Post;
+}
+
+AYSShipStation* AYSFoeCharacter::GetCrewPost() const
+{
+	return CrewPost.Get();
+}
+
+void AYSFoeCharacter::ClearCrewShip()
+{
+	CrewShip = nullptr;
+	CrewPost = nullptr;
+	bExperienceInWater = true;
+}
+
+void AYSFoeCharacter::WalkOnDeck(const FVector& Goal, float DeltaSeconds)
+{
+	if (!CrewShip)
+	{
+		return;
+	}
+	const FVector Location = GetActorLocation();
+	const FVector Waypoint = CrewShip->GetDeckRoute(Location, Goal);
+	FVector Direction = FVector(Waypoint.X - Location.X, Waypoint.Y - Location.Y, 0.0f).GetSafeNormal();
+	if (Direction.IsNearlyZero())
+	{
+		return;
+	}
+
+	// bloqué (mât, canon, autre NME) : un moment sur le côté, de l'autre côté à chaque fois ; vitesse mesurée sur le pont (le bateau avance)
+	const FVector DeckLocation = CrewShip->GetActorTransform().InverseTransformPositionNoScale(Location);
+	const float DeckSpeed = DeltaSeconds > 0.0f ? FVector::Dist2D(DeckLocation, CrewLastDeckLocation) / DeltaSeconds : 0.0f;
+	CrewLastDeckLocation = DeckLocation;
+	if (CrewSidestepTime > 0.0f)
+	{
+		CrewSidestepTime -= DeltaSeconds;
+		Direction = (Direction + FVector::CrossProduct(FVector::UpVector, Direction) * CrewSidestepSide * 2.0f).GetSafeNormal();
+	}
+	else if (DeckSpeed < CrewShip->GetCrewStuckSpeed())
+	{
+		CrewStuckTime += DeltaSeconds;
+		if (CrewStuckTime >= CrewShip->GetCrewStuckDelay())
+		{
+			CrewStuckTime = 0.0f;
+			CrewSidestepTime = CrewShip->GetCrewSidestepDuration();
+			CrewSidestepSide = -CrewSidestepSide;
+			UE_LOG(LogTemp, Verbose, TEXT("[YSGalion] %s bloqué en (%.0f, %.0f) : contourne"), *GetName(), DeckLocation.X, DeckLocation.Y);
+		}
+	}
+	else
+	{
+		CrewStuckTime = 0.0f;
+	}
+
+	// jamais hors du pont (ouverture du bastingage, planche d'embarquement)
+	if (!CrewShip->IsOnDeck(Location + Direction * CrewShip->GetDeckEdgeLookAhead()))
+	{
+		return;
+	}
+	AddMovementInput(Direction);
+	if (!Target)
+	{
+		const FRotator Desired(0.0f, Direction.Rotation().Yaw, 0.0f);
+		SetActorRotation(TurnSpeed > 0.0f ? FMath::RInterpTo(GetActorRotation(), Desired, DeltaSeconds, TurnSpeed) : Desired);
+	}
+}
+
+void AYSFoeCharacter::UpdateCrewPost(float DeltaSeconds)
+{
+	AYSShipStation* Post = CrewPost.Get();
+	if (!CrewShip || !IsValid(Post))
+	{
+		return;
+	}
+	const FVector Seat = Post->GetOccupantFeetLocation();
+	if (FVector::Dist2D(GetActorLocation(), Seat) <= CrewShip->GetPostReachDistance())
+	{
+		CrewShip->SeatCrewMember(this, Post);
+		return;
+	}
+	WalkOnDeck(Seat, DeltaSeconds);
 }
 
 void AYSFoeCharacter::EndShipRide(const FVector& FeetLocation, bool bInExperienceInWater)
@@ -1013,7 +1113,7 @@ void AYSFoeCharacter::BeginShipRideLocal()
 
 void AYSFoeCharacter::UpdateShipRide(float DeltaSeconds)
 {
-	const AYSFoeJollyShip* Ship = ShipRide.Ship;
+	const AYSPirateShip* Ship = ShipRide.Ship;
 	if (!Ship)
 	{
 		return;
@@ -1025,7 +1125,7 @@ void AYSFoeCharacter::UpdateShipRide(float DeltaSeconds)
 		AddTickPrerequisiteActor(ShipRide.Ship);
 	}
 
-	FRotator Rotation(0.0f, Ship->GetActorRotation().Yaw, 0.0f);
+	FRotator Rotation(0.0f, Ship->GetSeatYaw(ShipRide.Seat), 0.0f);
 	if (ShipRide.bCanAttack)
 	{
 		// serveur : tourné vers sa cible par le comportement ; clients : suivent le regard reçu
@@ -1169,13 +1269,13 @@ void AYSFoeCharacter::BeginPlay()
 		ContactDamage = (BaseContactDamage + ContactDamagePerLevel * Level) * DamageMultiplier;
 		Health = MaxHealth;
 
-		if (bIsElite && YSGameState)
+		if (bIsElite && YSGameState && !CrewShip)
 		{
 			YSGameState->SetCurrentElite(this);
 		}
 
 		// apparition : sort du sol avant de démarrer son comportement (pas l'équipage d'un Jolly Ship : déjà à bord)
-		if (bSpawnRise && !ShipRide.bActive)
+		if (bSpawnRise && !ShipRide.bActive && !CrewShip)
 		{
 			StartRise();
 		}
@@ -1284,7 +1384,7 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	}
 
 	// bouclier de boss : son attaque en plus passe avant l'attaque de base
-	if (HasBossShield() && !bLocalShipRide && TryStartBossAttack())
+	if (HasBossShield() && !bLocalShipRide && !CrewShip && TryStartBossAttack())
 	{
 		return;
 	}
@@ -1330,10 +1430,12 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	}
 
 	// NME à distance : les joueurs qui nagent restent des cibles ; élite : aussi (il entre dans l'eau peu profonde)
-	const bool bWades = bIsElite && EliteWadeDepth > 0.0f;
+	const bool bWades = bIsElite && EliteWadeDepth > 0.0f && !CrewShip;
 	Target = FindNearestPlayer(Ranged != nullptr || bWades);
 	if (!Target)
 	{
+		// équipage d'un Galion : personne à bord, il va à son poste
+		UpdateCrewPost(DeltaSeconds);
 		return;
 	}
 
@@ -1367,6 +1469,13 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 			{
 				return;
 			}
+		}
+	}
+	else if (CrewShip)
+	{
+		if (!bLocalShipRide)
+		{
+			WalkOnDeck(Target->GetActorLocation(), DeltaSeconds);
 		}
 	}
 	else if (!bLocalShipRide)
@@ -1435,6 +1544,11 @@ APawn* AYSFoeCharacter::FindNearestPlayer(bool bIncludeSwimmers) const
 		{
 			continue;
 		}
+		// équipage d'un Galion : seulement les joueurs montés à bord
+		if (CrewShip && (!PlayerCharacter || PlayerCharacter->GetShipUnderFeet() != CrewShip))
+		{
+			continue;
+		}
 
 		// toujours le plus proche (distance au bord de sa capsule : un gros personnage collé au NME est bien le plus proche),
 		// mais un joueur qui porte un objet (coffre) compte comme N fois plus proche
@@ -1452,7 +1566,7 @@ APawn* AYSFoeCharacter::FindNearestPlayer(bool bIncludeSwimmers) const
 	for (TActorIterator<AYSCaptainMinion> It(GetWorld()); It; ++It)
 	{
 		AYSCaptainMinion* Minion = *It;
-		if (!Minion->IsAlive() || Minion->IsActorBeingDestroyed() || (Minion->IsSwimming() && !bIncludeSwimmers))
+		if (!Minion->IsAlive() || Minion->IsActorBeingDestroyed() || (Minion->IsSwimming() && !bIncludeSwimmers) || (CrewShip && Minion->GetShipUnderFeet() != CrewShip))
 		{
 			continue;
 		}
@@ -1518,7 +1632,8 @@ void AYSFoeCharacter::GetPlayersInHitbox(TArray<AYSPlayerCharacter*>& OutPlayers
 void AYSFoeCharacter::UpdateFarTicking()
 {
 	// loin = hors écran (ici) et à plus de Far Tick Distance de tout personnage joueur (minions compris : ils se battent aussi)
-	bool bFar = FarTickInterval > 0.0f && !bLocalDeathStarted && !WasRecentlyRendered(FarTickCheckInterval);
+	// (équipage d'un Galion : le pont bouge, un déplacement ralenti le laisse derrière lui et il passe à travers)
+	bool bFar = FarTickInterval > 0.0f && !bLocalDeathStarted && !CrewShip && !WasRecentlyRendered(FarTickCheckInterval);
 	if (bFar)
 	{
 		const float FarDistanceSq = FMath::Square(FarTickDistance);

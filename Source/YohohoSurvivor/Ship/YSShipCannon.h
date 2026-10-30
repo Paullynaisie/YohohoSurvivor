@@ -100,6 +100,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Minion", meta=(ClampMin="0", Units="Degrees"))
 	float AutoFireAimTolerance = 5.0f;
 
+	/** NME au canon : recherche de sa cible toutes les ... */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Foe", meta=(ClampMin="0", Units="s"))
+	float FoeTargetInterval = 0.25f;
+
+	/** Canon à 0 PV : le fût penche de cet angle (visuel) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Broken", meta=(Units="Degrees"))
+	float BrokenBarrelPitch = -25.0f;
+
+	virtual void OnBrokenChanged(bool bBroken) override;
+
 	/** Recul joué sur toutes les machines */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastFired();
@@ -114,7 +124,7 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
-	virtual bool HandlesAction(EYSStationAction Action) const override { return Action == EYSStationAction::Fire; }
+	virtual bool HandlesAction(EYSStationAction Action) const override { return Action == EYSStationAction::Fire && IsUsable(); }
 
 	/** Clic droit : tir de canon vers AimLocation (dans les limites du canon) */
 	virtual void ServerHandleAction(AYSPlayerCharacter* Character, EYSStationAction Action, const FVector& AimLocation) override;
@@ -127,8 +137,14 @@ public:
 	/** Secondes avant que le canon soit rechargé */
 	float GetCooldownRemaining() const;
 
-	/** Tir automatique d'un minion : NME le plus proche à portée et dans l'angle du canon, ou nullptr */
-	AYSFoeCharacter* FindAutoFireTarget() const;
+	/**
+	 *  Tir automatique, le plus proche à portée et dans l'angle du canon, ou nullptr : modules des bateaux du camp adverse, NME (minion du
+	 *  Captain) ou joueurs (NME au canon). Ceux qui sont sur un bateau ne sont visés que si ce bateau est hors d'usage.
+	 */
+	AActor* FindAutoFireTarget(bool bFoeShooter) const;
+
+	/** Tir de canon par Shooter vers AimLocation (serveur) : minion, joueur ou NME */
+	void Fire(APawn* Shooter, const FVector& AimLocation, bool bFoeShooter);
 
 	/** Le canon pointe sur ce NME, à Auto Fire Aim Tolerance près */
 	bool IsAimedAt(const AActor* Target) const;
@@ -143,6 +159,18 @@ private:
 
 	/** Angle (relatif, limité) vers le regard de l'occupant */
 	float GetTargetAimYaw() const;
+
+	/** NME au canon (serveur) : cible, visée, tir */
+	void UpdateFoeFire(float DeltaSeconds);
+
+	/** NME au canon : angle visé (serveur -> clients : il n'a pas de regard répliqué au poste) */
+	UPROPERTY(Replicated)
+	float FoeAimYaw = 0.0f;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> FoeTarget;
+
+	float FoeTargetTimer = 0.0f;
 
 	/** Temps local du dernier tir (recul) */
 	double LastFireTime = -1.0e6;

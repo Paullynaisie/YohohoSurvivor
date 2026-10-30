@@ -350,7 +350,7 @@ AYSShipCannon* AYSCaptainMinion::FindFreeCannon(const AYSPirateShip* Ship) const
 	for (AYSShipStation* Station : Ship->GetStations())
 	{
 		AYSShipCannon* Cannon = Cast<AYSShipCannon>(Station);
-		if (!Cannon || Cannon->GetOccupant() || !Cannon->CanInteract(this))
+		if (!Cannon || !Cannon->IsFree() || !Cannon->IsUsable() || !Cannon->CanInteract(this))
 		{
 			continue;
 		}
@@ -380,7 +380,7 @@ AYSShipCannon* AYSCaptainMinion::FindFreeCannon(const AYSPirateShip* Ship) const
 
 void AYSCaptainMinion::UpdateCannonFire(AYSShipCannon* Cannon, AAIController* AIController)
 {
-	const AYSFoeCharacter* CannonTarget = Cannon->FindAutoFireTarget();
+	const AActor* CannonTarget = Cannon->FindAutoFireTarget(false);
 	if (!CannonTarget)
 	{
 		// sans cible : droit devant le canon

@@ -69,7 +69,7 @@ bool AYSShipCore::AcceptsObject(const AYSInteractiveObject* Object) const
 bool AYSShipCore::IsAvailable() const
 {
 	const AYSPirateShip* Ship = AYSPirateShip::GetShipOf(this);
-	return !Ship || Ship->IsPresent();
+	return !Ship || (Ship->IsPresent() && !Ship->IsFoeShip());
 }
 
 void AYSShipCore::ReceiveObject(AYSInteractiveObject* Object)
