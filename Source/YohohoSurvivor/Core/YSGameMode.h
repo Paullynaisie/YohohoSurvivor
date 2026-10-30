@@ -186,9 +186,32 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn", ClampMin="-1", ClampMax="9"))
 	int32 NumpadGalionKey = 8;
 
-	/** NME Galion (BP_NME_Galion) : pas de vagues pour l'instant, seulement le pavé numérique et YSSpawnGalion */
+	/** NME Galion (BP_NME_Galion) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion")
 	TSubclassOf<AYSFoeGalion> GalionClass;
+
+	/**
+	 *  Dès que le bateau est là : un Galion apparaît régulièrement, et il n'y a plus de nuit (une nuit en cours se termine, son élite reste un
+	 *  NME normal ; plus d'overtime s'il n'a pas commencé). Décoché sur TestMap (pavé numérique seulement).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion")
+	bool bGalionWaves = true;
+
+	/** Premier Galion : ce délai après l'arrivée du bateau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion", meta=(ClampMin="0", Units="s", EditCondition="bGalionWaves"))
+	float GalionFirstDelay = 10.0f;
+
+	/** Secondes entre deux Galions */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion", meta=(ClampMin="1", Units="s", EditCondition="bGalionWaves"))
+	float GalionWaveInterval = 60.0f;
+
+	/** Pas d'emplacement libre sur l'eau : nouvel essai après ce délai */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion", meta=(ClampMin="0.1", Units="s", EditCondition="bGalionWaves"))
+	float GalionRetryDelay = 2.0f;
+
+	/** Chaque Galion apparu fait passer au jour suivant (nouvelle carte au trésor, niveau des NME) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion", meta=(EditCondition="bGalionWaves"))
+	bool bGalionAdvancesDay = true;
 
 	/** Apparition sur l'eau, à au moins cette distance de tous les joueurs */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion", meta=(ClampMin="0", Units="Centimeters"))
@@ -210,7 +233,7 @@ protected:
 
 	/** Jolly Ships par vague pour 1 joueur (x Spawn Multiplier du nombre de joueurs, comme tous les NME) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="0", EditCondition="bJollyShipWaves"))
-	int32 JollyShipsPerWave = 5;
+	int32 JollyShipsPerWave = 3;
 
 	/** Nombre max de Jolly Ships à flot (0 = illimité) : les apparitions au-delà sont ignorées */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="0", EditCondition="bJollyShipWaves"))
@@ -512,6 +535,17 @@ protected:
 
 	/** Temps de partie de la prochaine vague de Jolly Ships (< 0 = pas encore commencé) */
 	float NextJollyShipWaveTime = -1.0f;
+
+	/** Temps de partie du prochain Galion (< 0 = pas encore commencé) */
+	float NextGalionTime = -1.0f;
+
+	/** Galions réguliers actifs : le bateau est là et Galion Waves est coché (plus de nuit) */
+	bool IsGalionPhase() const;
+
+	void TickGalions();
+
+	/** Jour suivant (serveur) : nouvelle carte au trésor, règles de spawn prévenues */
+	void AdvanceDay();
 
 	/** Temps de partie du début de l'overtime (< 0 = pas d'overtime) et prochaine vague d'overtime */
 	float OvertimeStartTime = -1.0f;

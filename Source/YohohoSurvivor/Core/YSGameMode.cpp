@@ -60,7 +60,7 @@ void AYSGameMode::Tick(float DeltaSeconds)
 	}
 
 	// fin du jour : la nuit commence (elle ne se termine qu'à la mort de l'élite)
-	if (bDayNightCycle && !YSGameState->IsNight() && YSGameState->GetDayElapsedTime() >= DayDuration)
+	if (bDayNightCycle && !YSGameState->IsNight() && !IsGalionPhase() && YSGameState->GetDayElapsedTime() >= DayDuration)
 	{
 		StartNight();
 	}
@@ -76,6 +76,43 @@ void AYSGameMode::Tick(float DeltaSeconds)
 	TickOvertime();
 	TickShipBoarding();
 	TickJollyShips();
+	TickGalions();
+}
+
+bool AYSGameMode::IsGalionPhase() const
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	return bGalionWaves && GalionClass && YSGameState && YSGameState->IsShipPresent();
+}
+
+void AYSGameMode::TickGalions()
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!IsGalionPhase())
+	{
+		return;
+	}
+	const float Now = YSGameState->GetMatchElapsedTime();
+	if (NextGalionTime < 0.0f)
+	{
+		NextGalionTime = Now + GalionFirstDelay;
+		return;
+	}
+	if (Now < NextGalionTime)
+	{
+		return;
+	}
+	if (!SpawnGalion(TEXT("vague")))
+	{
+		NextGalionTime = Now + GalionRetryDelay;
+		return;
+	}
+	NextGalionTime = Now + GalionWaveInterval;
+	if (bGalionAdvancesDay)
+	{
+		AdvanceDay();
+		UE_LOG(LogTemp, Log, TEXT("[YSGalion] Nouveau Galion : jour %d"), YSGameState->GetDayNumber());
+	}
 }
 
 void AYSGameMode::TickJollyShips()
@@ -195,6 +232,19 @@ void AYSGameMode::ShipArrives(const TCHAR* Reason)
 	if (YSGameState && !YSGameState->IsShipPresent())
 	{
 		YSGameState->SetShipPresent(true);
+		// plus de nuit avec le bateau : celle en cours se termine (même jour), son élite reste un NME normal ; un overtime commencé continue
+		if (IsGalionPhase() && YSGameState->IsNight() && OvertimeStartTime < 0.0f)
+		{
+			YSGameState->StartDay(YSGameState->GetDayNumber());
+			for (UYSEnemySpawnRule* Rule : SpawnRules)
+			{
+				if (Rule)
+				{
+					Rule->NotifyPhaseChanged(false);
+				}
+			}
+			UE_LOG(LogTemp, Log, TEXT("[YSGalion] Le bateau arrive pendant la nuit : elle se termine"));
+		}
 		// arrivé sans l'objectif (debug) : niveau 1, seuil du niveau suivant
 		if (YSGameState->GetShipLevel() == 0)
 		{
@@ -712,8 +762,18 @@ void AYSGameMode::OnEliteKilled(AYSFoeCharacter* Elite)
 		return;
 	}
 
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Élite %s tué : jour %d"), Elite ? *Elite->GetName() : TEXT("?"), YSGameState->GetDayNumber() + 1);
+	AdvanceDay();
+}
+
+void AYSGameMode::AdvanceDay()
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState)
+	{
+		return;
+	}
 	YSGameState->StartDay(YSGameState->GetDayNumber() + 1);
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Élite %s tué : jour %d"), Elite ? *Elite->GetName() : TEXT("?"), YSGameState->GetDayNumber());
 	// nouveau jour : nouvelle carte au trésor (si la précédente est finie) ; overtime à partir de Overtime Day
 	SpawnDailyTreasureMap();
 	OnDayStarted(YSGameState->GetDayNumber());

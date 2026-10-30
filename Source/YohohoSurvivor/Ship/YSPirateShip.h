@@ -318,7 +318,7 @@ public:
 	/**
 	 *  Point sur l'eau pour un bateau (serveur) : direction au hasard autour d'un joueur tiré au hasard, premier point à partir de MinDistance
 	 *  (loin de tous les joueurs, jusqu'à MaxDistance) avec assez de fond sur ClearanceRadius autour, hors de l'emprise (+ ShipMargin) des
-	 *  bateaux des joueurs, de préférence sans terre jusqu'au joueur. OutYaw = tourné vers le joueur. Faux si rien.
+	 *  bateaux à pont, de préférence sans terre jusqu'au joueur. OutYaw = tourné vers le joueur. Faux si rien.
 	 */
 	static bool FindSeaSpawnPoint(UWorld* World, float RequiredDepth, float MinDistance, float MaxDistance, float Step, int32 Attempts, float ShipMargin, float ClearanceRadius, FVector& OutPoint, float& OutYaw);
 

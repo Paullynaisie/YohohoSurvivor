@@ -730,11 +730,11 @@ bool AYSPirateShip::FindSeaSpawnPoint(UWorld* World, float RequiredDepth, float 
 			{
 				continue;
 			}
-			// pas dans un bateau des joueurs
+			// pas dans un autre bateau à pont (Jolly Ships : sans collision, ils peuvent se croiser)
 			bool bInsideShip = false;
 			for (TActorIterator<AYSPirateShip> It(World); It && !bInsideShip; ++It)
 			{
-				bInsideShip = !It->IsFoeShip() && It->IsPresent() && It->IsInsideHull(Point, ShipMargin);
+				bInsideShip = It->IsBoardable() && It->IsPresent() && It->IsInsideHull(Point, ShipMargin);
 			}
 			if (bInsideShip)
 			{
