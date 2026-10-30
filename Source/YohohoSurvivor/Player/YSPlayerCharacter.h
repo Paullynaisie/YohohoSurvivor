@@ -381,7 +381,7 @@ protected:
 
 	/**
 	 *  À bord d'un bateau (posé sur son pont ou à un poste), la caméra tourne avec lui : le bateau reste fixe à l'écran, c'est la mer
-	 *  qui tourne. ZQSD et le stick suivent la caméra. Hors du bateau : orientation du Blueprint (nord en haut)
+	 *  qui tourne. ZQSD et le stick suivent la caméra. Hors du bateau et en pilotant (barre, chaloupe) : orientation du Blueprint (nord en haut)
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camera|Ship")
 	bool bCameraFollowsShip = true;

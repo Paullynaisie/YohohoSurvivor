@@ -2096,7 +2096,9 @@ AYSPirateShip* AYSPlayerCharacter::GetShipUnderFeet() const
 void AYSPlayerCharacter::UpdateShipCamera(float DeltaSeconds)
 {
 	// en l'air (saut depuis le pont) : même référentiel jusqu'à ce qu'il retouche un sol
-	AYSPirateShip* Ship = !bCameraFollowsShip ? nullptr : (!IsValid(CurrentStation) && GetCharacterMovement()->IsFalling() ? CameraShip.Get() : GetShipUnderFeet());
+	// celui qui pilote (barre, chaloupe) garde le nord en haut de l'écran
+	const bool bPiloting = IsValid(CurrentStation) && CurrentStation->UsesPilotInput();
+	AYSPirateShip* Ship = !bCameraFollowsShip || bPiloting ? nullptr : (!IsValid(CurrentStation) && GetCharacterMovement()->IsFalling() ? CameraShip.Get() : GetShipUnderFeet());
 	const float TargetYaw = Ship ? Ship->GetActorRotation().Yaw + ShipCameraYawOffset : DefaultCameraYaw;
 
 	FRotator BoomRotation = CameraBoom->GetComponentRotation();
