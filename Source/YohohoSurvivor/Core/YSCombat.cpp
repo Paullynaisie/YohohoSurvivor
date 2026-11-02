@@ -3,6 +3,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
+#include "Island/YSIsland.h"
 #include "LandscapeProxy.h"
 #include "Map/YSOcean.h"
 
@@ -14,6 +15,11 @@ namespace YSCombat
 
 	/** Props traversés au plus pour trouver l'île sous un point */
 	constexpr int32 MaxIgnoredActors = 8;
+
+	bool IsIslandGroundActor(const AActor* Actor)
+	{
+		return Actor && (Actor->IsA<ALandscapeProxy>() || Actor->IsA<AYSIsland>());
+	}
 
 	bool FindIslandGround(const UWorld* World, const FVector& Point, float ReferenceZ, const AActor* IgnoredActor, FVector& OutGround)
 	{
@@ -32,7 +38,7 @@ namespace YSCombat
 			{
 				return false;
 			}
-			if (Hit.GetActor() && Hit.GetActor()->IsA<ALandscapeProxy>())
+			if (IsIslandGroundActor(Hit.GetActor()))
 			{
 				// pas dans l'eau
 				OutGround = Hit.ImpactPoint;

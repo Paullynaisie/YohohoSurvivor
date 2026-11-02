@@ -173,6 +173,11 @@ public:
 	/** Fait apparaître un objet posé au sol sous Location (serveur) */
 	static AYSInteractiveObject* SpawnOnGround(UWorld* World, TSubclassOf<AYSInteractiveObject> ObjectClass, const FVector& Location, float Yaw);
 
+	/** Posé dans la zone de dépôt qui l'attendait (serveur) : avec une valeur en doublons, il est vendu ; sinon il y reste et ne se porte plus */
+	virtual void OnDelivered();
+
+	bool IsDelivered() const { return bDelivered; }
+
 	/** Dernier sol sûr (hors de l'eau) où l'objet a été posé ou porté (serveur) : il y revient s'il est lâché dans la mer */
 	void SetLastSafeLocation(const FVector& Location) { LastSafeLocation = Location; }
 	const FVector& GetLastSafeLocation() const { return LastSafeLocation; }
@@ -184,6 +189,9 @@ public:
 	void AttachToShipBelow();
 
 private:
+
+	UPROPERTY(Replicated)
+	bool bDelivered = false;
 
 	FVector LastSafeLocation = FVector::ZeroVector;
 

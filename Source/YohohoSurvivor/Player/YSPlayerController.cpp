@@ -1,4 +1,6 @@
 #include "Player/YSPlayerController.h"
+#include "Island/YSIsland.h"
+#include "Island/YSIslandNPC.h"
 #include "Ship/YSShipCannon.h"
 #include "Ship/YSLongboatLauncher.h"
 #include "Core/YSGamepad.h"
@@ -907,6 +909,56 @@ void AYSPlayerController::YSStartOvertime()
 void AYSPlayerController::YSSinkIsland()
 {
 	ServerLoopDebug(2);
+}
+
+void AYSPlayerController::YSIslandStatus()
+{
+	if (const AYSIsland* Island = AYSIsland::FindAt(GetWorld(), GetPawn() ? GetPawn()->GetActorLocation() : FVector::ZeroVector))
+	{
+		Island->LogStatus();
+	}
+}
+
+void AYSPlayerController::YSIslandSkip(float Seconds)
+{
+	if (AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), FVector::ZeroVector) : nullptr)
+	{
+		Island->DebugSkipTime(Seconds);
+	}
+}
+
+void AYSPlayerController::YSIslandCarry(int32 ObjectiveIndex)
+{
+	AYSPlayerCharacter* MyCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), FVector::ZeroVector) : nullptr;
+	AYSInteractiveObject* Item = Island ? Island->GetObjectiveItem(ObjectiveIndex) : nullptr;
+	if (MyCharacter && Item && !Item->GetCarrier())
+	{
+		MyCharacter->TeleportTo(Item->GetActorLocation() + FVector(0.0f, 0.0f, 120.0f), MyCharacter->GetActorRotation());
+		MyCharacter->StartCarrying(Item);
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] Debug : %s porte %s"), *MyCharacter->GetName(), *Item->GetName());
+	}
+}
+
+void AYSPlayerController::YSIslandKillElite()
+{
+	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); HasAuthority() && It; ++It)
+	{
+		if (It->IsElite() && !It->IsDying())
+		{
+			It->DebugKill();
+		}
+	}
+}
+
+void AYSPlayerController::YSIslandGoToBoat()
+{
+	const AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), FVector::ZeroVector) : nullptr;
+	const AActor* Boat = Island ? Island->GetStartBoat() : nullptr;
+	if (GetPawn() && Boat)
+	{
+		GetPawn()->TeleportTo(Boat->GetActorLocation() + FVector(300.0f, 300.0f, 150.0f), GetPawn()->GetActorRotation());
+	}
 }
 
 void AYSPlayerController::YSTeleport(float X, float Y, float Z)

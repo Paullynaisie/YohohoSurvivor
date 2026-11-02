@@ -490,6 +490,26 @@ public:
 	UFUNCTION(Exec)
 	void YSSinkIsland();
 
+	/** Debug : état de l'île dans le log */
+	UFUNCTION(Exec)
+	void YSIslandStatus();
+
+	/** Debug (hôte) : avance le temps de la phase de l'île */
+	UFUNCTION(Exec)
+	void YSIslandSkip(float Seconds);
+
+	/** Debug (hôte) : téléporté sur l'objet de cet objectif (0, 1... : principaux puis secondaires) et le prend dans ses mains */
+	UFUNCTION(Exec)
+	void YSIslandCarry(int32 ObjectiveIndex);
+
+	/** Debug (hôte) : tue les élites vivants */
+	UFUNCTION(Exec)
+	void YSIslandKillElite();
+
+	/** Debug (hôte) : téléporté à côté du bateau de départ */
+	UFUNCTION(Exec)
+	void YSIslandGoToBoat();
+
 	/** Debug (console) : téléporte son personnage (ex. sur le pont du bateau de GameMap : YSTeleport -6050 550 300) */
 	UFUNCTION(Exec)
 	void YSTeleport(float X, float Y, float Z);

@@ -3,6 +3,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Interaction/YSInteractiveObject.h"
+#include "Island/YSIsland.h"
 #include "Map/YSGroundZoneComponent.h"
 #include "NPC/YSMedicNPC.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -92,6 +93,11 @@ bool AYSBrookerNPC::TryBuy(AYSInteractiveObject* Object)
 		return false;
 	}
 
+	// objectif d'une île générée (avant que l'objet disparaisse)
+	if (AYSIsland* Island = AYSIsland::FindAt(GetWorld(), GetActorLocation()))
+	{
+		Island->NotifyObjectDelivered(Object);
+	}
 	ReceiveObject(Object);
 	return true;
 }

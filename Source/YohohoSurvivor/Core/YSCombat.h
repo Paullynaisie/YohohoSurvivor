@@ -41,6 +41,9 @@ namespace YSCombat
 	 */
 	FVector GetBellLocation(const FVector& Start, const FVector& Target, float Duration, float ApexHeight, float Time);
 
+	/** Cet acteur est le sol d'une île : Landscape (maps fixes) ou île générée (AYSIsland) */
+	bool IsIslandGroundActor(const AActor* Actor);
+
 	/** Sol de l'île (Landscape seul : les props touchés sont traversés) sous Point, hors de l'eau ; faux sinon */
 	bool FindIslandGround(const UWorld* World, const FVector& Point, float ReferenceZ, const AActor* IgnoredActor, FVector& OutGround);
 

@@ -2250,7 +2250,7 @@ void AYSPlayerCharacter::UpdateDayNight(float DeltaSeconds)
 	}
 
 	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
-	const float Target = YSGameState && YSGameState->IsNight() ? 1.0f : 0.0f;
+	const float Target = YSGameState && YSGameState->IsNightAt(GetActorLocation()) ? 1.0f : 0.0f;
 	NightBlend = DayNightBlendDuration > 0.0f ? FMath::FInterpConstantTo(NightBlend, Target, DeltaSeconds, 1.0f / DayNightBlendDuration) : Target;
 
 	TopDownCamera->PostProcessSettings = NightPostProcess;

@@ -439,8 +439,11 @@ public:
 	/** Fin du jour : la nuit commence (élite et vagues de nuit via les règles de spawn) */
 	void StartNight();
 
+	/** Jour suivant (serveur) : nouvelle carte au trésor, règles de spawn prévenues */
+	void AdvanceDay();
+
 	/** Mort de l'élite : la nuit se termine, jour suivant */
-	void OnEliteKilled(AYSFoeCharacter* Elite);
+	virtual void OnEliteKilled(AYSFoeCharacter* Elite);
 
 	/** Pavé numérique (map de test) : NME dont le Numpad Spawn Key vaut Key, devant le personnage du joueur ; nullptr si rien */
 	AYSFoeCharacter* SpawnNumpadFoe(const APlayerController* Player, int32 Key);
@@ -543,7 +546,7 @@ protected:
 	int32 PendingLevelUps = 0;
 
 	/** Début d'un jour (partie, mort de l'élite) : overtime à partir de Overtime Day */
-	void OnDayStarted(int32 Day);
+	virtual void OnDayStarted(int32 Day);
 
 	/** Overtime : circle spawns dus (Overtime Waves) */
 	void TickOvertime();
@@ -570,9 +573,6 @@ protected:
 
 	/** Sol où ressusciter : à côté du Brooker du bateau, sinon de celui de l'île */
 	bool FindPhoenixRevivePoint(const AActor* Body, int32 Index, FVector& OutGround) const;
-
-	/** Jour suivant (serveur) : nouvelle carte au trésor, règles de spawn prévenues */
-	void AdvanceDay();
 
 	/** Temps de partie du début de l'overtime (< 0 = pas d'overtime) et prochaine vague d'overtime */
 	float OvertimeStartTime = -1.0f;

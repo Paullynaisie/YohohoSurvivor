@@ -690,6 +690,9 @@ public:
 
 	bool IsElite() const { return bIsElite; }
 
+	/** Debug (serveur) : meurt tout de suite, sans passer par son armure */
+	void DebugKill() { Die(); }
+
 	float GetMaxHealth() const { return MaxHealth; }
 
 	float GetSizeMultiplier() const { return SizeMultiplier; }

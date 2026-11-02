@@ -10,6 +10,7 @@
 #include "Interaction/YSTreasureMap.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "Interaction/YSPlayerCorpse.h"
+#include "Core/YSCombat.h"
 #include "LandscapeProxy.h"
 #include "Map/YSOcean.h"
 #include "NPC/YSBrookerNPC.h"
@@ -1298,7 +1299,8 @@ AYSFoeCharacter* AYSGameMode::SpawnFoeOnGround(UClass* FoeClass, const FVector& 
 		Foe->SetLevelBonus(LevelBonus);
 		Foe->FinishSpawning(SpawnTransform);
 	}
-	return Foe;
+	// place prise : FinishSpawning le détruit
+	return IsValid(Foe) ? Foe : nullptr;
 }
 
 bool AYSGameMode::FindIslandGround(const FVector& Point, FVector& OutGround) const
@@ -1314,7 +1316,7 @@ bool AYSGameMode::FindIslandGround(const FVector& Point, FVector& OutGround) con
 		{
 			return false;
 		}
-		if (Hit.GetActor() && Hit.GetActor()->IsA<ALandscapeProxy>())
+		if (YSCombat::IsIslandGroundActor(Hit.GetActor()))
 		{
 			OutGround = Hit.ImpactPoint;
 			return !AYSOcean::IsUnderwater(GetWorld(), OutGround);

@@ -7,6 +7,7 @@
 #include "UI/YSDamageNumber.h"
 #include "Net/UnrealNetwork.h"
 #include "EngineUtils.h"
+#include "Island/YSIsland.h"
 #include "LandscapeProxy.h"
 #include "Core/YSPlayerState.h"
 #include "NPC/YSBrookerNPC.h"
@@ -190,6 +191,10 @@ void AYSGameState::UpdateIslandSink()
 		{
 			Roots.Add(*It);
 		}
+		for (TActorIterator<AYSIsland> It(GetWorld()); It; ++It)
+		{
+			Roots.Add(*It);
+		}
 		for (AActor* Root : Roots)
 		{
 			TArray<AActor*> Attached;
@@ -224,6 +229,13 @@ void AYSGameState::UpdateIslandSink()
 			}
 		}
 	}
+}
+
+bool AYSGameState::IsNightAt(const FVector& Location) const
+{
+	// îles générées : chacune a sa phase ; maps fixes : la nuit est globale
+	const AYSIsland* Island = AYSIsland::FindAt(GetWorld(), Location);
+	return Island ? Island->IsNight() : bNight;
 }
 
 void AYSGameState::SetMatchStarted()

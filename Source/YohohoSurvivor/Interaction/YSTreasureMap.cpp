@@ -4,6 +4,7 @@
 #include "Core/YSGameMode.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Island/YSIsland.h"
 #include "LandscapeProxy.h"
 #include "Map/YSOcean.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -13,6 +14,8 @@
 
 namespace YSTreasureMap
 {
+	/** Distance gardée avec les massifs d'une île générée */
+	constexpr float MassifMargin = 200.0f;
 	/** Recherche du sol : depuis loin au-dessus (dessus des obstacles compris) jusqu'à loin en dessous */
 	constexpr float GroundTraceRange = 5000.0f;
 
@@ -115,7 +118,8 @@ bool AYSTreasureMap::FindPathGround(const UWorld* World, const FVector& Location
 	const FVector End(Location.X, Location.Y, ReferenceZ - YSTreasureMap::GroundTraceRange);
 	if (!World->LineTraceSingleByObjectType(Hit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params)
 		|| FMath::Abs(Hit.ImpactPoint.Z - ReferenceZ) > MaxHeight
-		|| AYSOcean::IsUnderwater(World, Hit.ImpactPoint))
+		|| AYSOcean::IsUnderwater(World, Hit.ImpactPoint)
+		|| AYSIsland::IsBlockedAt(World, Hit.ImpactPoint, YSTreasureMap::MassifMargin))
 	{
 		return false;
 	}

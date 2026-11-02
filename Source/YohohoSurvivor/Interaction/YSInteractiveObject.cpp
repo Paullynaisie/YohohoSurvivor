@@ -1,4 +1,5 @@
 #include "Interaction/YSInteractiveObject.h"
+#include "Core/YSGameMode.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
@@ -48,6 +49,7 @@ void AYSInteractiveObject::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AYSInteractiveObject, Carrier);
+	DOREPLIFETIME(AYSInteractiveObject, bDelivered);
 }
 
 void AYSInteractiveObject::BeginPlay()
@@ -66,7 +68,7 @@ void AYSInteractiveObject::BeginPlay()
 
 bool AYSInteractiveObject::CanInteract(const AYSPlayerCharacter* Character) const
 {
-	return bCarriable && !Carrier && Character && Character->IsAlive() && !Character->IsCarrying();
+	return !bDelivered && bCarriable && !Carrier && Character && Character->IsAlive() && !Character->IsCarrying();
 }
 
 void AYSInteractiveObject::Interact(AYSPlayerCharacter* Character)
@@ -168,6 +170,24 @@ AYSInteractiveObject* AYSInteractiveObject::SpawnOnGround(UWorld* World, TSubcla
 		Object->AttachToShipBelow();
 	}
 	return Object;
+}
+
+void AYSInteractiveObject::OnDelivered()
+{
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	if (GameMode && DoubloonValue > 0)
+	{
+		GameMode->AddDoubloons(DoubloonValue);
+		if (PhoenixFeatherValue > 0)
+		{
+			GameMode->AddPhoenixFeathers(PhoenixFeatherValue);
+		}
+		Destroy();
+		return;
+	}
+	bDelivered = true;
+	SetPromptVisible(false);
+	ForceNetUpdate();
 }
 
 void AYSInteractiveObject::AttachToShipBelow()

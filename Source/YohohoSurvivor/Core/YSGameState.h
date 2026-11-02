@@ -199,6 +199,10 @@ public:
 
 	int32 GetDayNumber() const { return DayNumber; }
 	bool IsNight() const { return bNight; }
+
+	/** Nuit à cet endroit (une île générée a sa propre phase) */
+	bool IsNightAt(const FVector& Location) const;
+
 	AYSFoeCharacter* GetCurrentElite() const { return CurrentElite; }
 
 	/** Secondes écoulées depuis le début du jour en cours */
