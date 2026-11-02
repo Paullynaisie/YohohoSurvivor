@@ -50,6 +50,24 @@ struct FYSFoeShipRide
 	bool bCanAttack = false;
 };
 
+/** Hit reaction : inclinaison du corps à chaque coup (la dernière reçue suffit : purement visuel) */
+USTRUCT()
+struct FYSFoeHitReaction
+{
+	GENERATED_BODY()
+
+	/** Yaw de la direction du coup */
+	UPROPERTY()
+	float DirectionYaw = 0.0f;
+
+	UPROPERTY()
+	float Angle = 0.0f;
+
+	/** Incrémenté à chaque coup : deux coups identiques sont vus par les clients */
+	UPROPERTY()
+	uint8 Counter = 0;
+};
+
 /** Bump en cours (Bumping Slash) : vol en cloche répliqué, recalculé à l'identique sur chaque machine */
 USTRUCT()
 struct FYSFoeBump
@@ -216,9 +234,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(ClampMin="0.1"))
 	float SizeMultiplier = 1.0f;
 
-	/** Élite : barre de vie aussi affichée sous lui (en plus de celle du HUD), même PV pleins */
+	/** Élite : barre de vie affichée sous lui, même PV pleins (faux : seulement celle du HUD ; vrai pour un élite sans barre de HUD, ex. capitaine de Galion) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(EditCondition="bIsElite"))
-	bool bEliteHealthBarUnder = true;
+	bool bEliteHealthBarUnder = false;
 
 	/** Position de cette barre par rapport au centre du NME (x sa taille ; -110 = juste sous les pieds) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite", meta=(EditCondition="bIsElite && bEliteHealthBarUnder"))
@@ -229,7 +247,7 @@ protected:
 	float EliteHealthBarScale = 2.0f;
 
 	/**
-	 *  Boss armor (élites) : un coup dont les dégâts HORS CRITIQUE dépassent Rage Cap est réduit : Rage Cap + excès x
+	 *  Boss armor (élites) : un coup dont les dégâts HORS CRITIQUE dépassent Rage Cap (part des PV max) est réduit : Rage Cap + excès x
 	 *  Dmg Reduce Factor / (Dmg Reduce Factor + excès), puis le critique est réappliqué. Rage gagnée = dégâts hors critique,
 	 *  au plus Rage Cap. Barre de rage pleine (Max Rage) ou PV sous Shield Health Threshold (une fois) : bouclier de boss.
 	 */
@@ -237,14 +255,19 @@ protected:
 	bool bBossArmor = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="0", EditCondition="bIsElite && bBossArmor"))
-	float RageCap = 50.0f;
+	float RageCapHealthRatio = 0.02f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="1", EditCondition="bIsElite && bBossArmor"))
-	float DmgReduceFactor = 150.0f;
+	/** Dmg Reduce Factor = cette part des PV max du boss (0.1 : 200 pour un boss à 2000 PV) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="0.001", EditCondition="bIsElite && bBossArmor"))
+	float DmgReduceFactorHealthRatio = 0.1f;
 
-	/** Barre de rage : pleine = bouclier de boss (la barre se vide) */
+	/** Barre de rage : pleine = bouclier de boss (la barre se vide) ; x le multiplicateur de PV des élites pour le nombre de joueurs si Scale Rage With Player Count */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="1", EditCondition="bIsElite && bBossArmor"))
 	float MaxRage = 650.0f;
+
+	/** Max Rage suit le multiplicateur de PV des élites pour le nombre de joueurs (Elite Health Multiplier du GameMode) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(EditCondition="bIsElite && bBossArmor"))
+	bool bScaleRageWithPlayerCount = true;
 
 	/**
 	 *  Bouclier de boss : prend les dégâts à la place des PV (dégâts bruts, sans Boss armor), ne génère pas de rage,
@@ -331,6 +354,48 @@ protected:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Pushback", meta=(ClampMin="0", ClampMax="1"))
 	float PushbackMinDamageRatio = 0.05f;
+
+	/** Hit reaction : à chaque coup le corps (pas les mains) s'incline dans la direction du coup puis se replace ; pas pendant un bump */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction")
+	bool bHitReaction = true;
+
+	/** Inclinaison minimum, jusqu'à ce rapport dégâts / PV max (même principe que le pushback) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction", meta=(ClampMin="0", ClampMax="1"))
+	float HitReactionMinDamageRatio = 0.05f;
+
+	/** Inclinaison maximum, à partir de ce rapport dégâts / PV max */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction", meta=(ClampMin="0", ClampMax="1"))
+	float HitReactionMaxDamageRatio = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction", meta=(ClampMin="0", ClampMax="90", Units="Degrees"))
+	float HitReactionMinAngle = 10.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction", meta=(ClampMin="0", ClampMax="90", Units="Degrees"))
+	float HitReactionMaxAngle = 45.0f;
+
+	/** Durée de l'inclinaison */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction", meta=(ClampMin="0.01", Units="s"))
+	float HitReactionInclineDuration = 0.1f;
+
+	/** Durée du retour à la position d'origine */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction", meta=(ClampMin="0.01", Units="s"))
+	float HitReactionRecoverDuration = 0.25f;
+
+	/** Bump, part de sa durée : backflip (vol, finit sur le dos) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Bump", meta=(ClampMin="0", ClampMax="1"))
+	float BumpBackflipRatio = 0.5f;
+
+	/** Bump, part de sa durée : allongé sur le dos, immobile */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Bump", meta=(ClampMin="0", ClampMax="1"))
+	float BumpGroundRatio = 0.3f;
+
+	/** Bump, part de sa durée : se relève */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Bump", meta=(ClampMin="0", ClampMax="1"))
+	float BumpRiseRatio = 0.2f;
+
+	/** Élite : pas de vol ni de backflip, il tombe sur place sur le dos en cette part de la durée du bump, puis les mêmes phases au sol et de relevée */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Bump", meta=(ClampMin="0", ClampMax="1"))
+	float EliteBumpFallRatio = 0.1f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Pushback", meta=(ClampMin="0", ClampMax="1"))
 	float PushbackMaxDamageRatio = 0.5f;
@@ -631,7 +696,11 @@ public:
 
 	float GetRage() const { return Rage; }
 
-	float GetMaxRage() const { return MaxRage; }
+	float GetMaxRage() const { return ScaledMaxRage > 0.0f ? ScaledMaxRage : MaxRage; }
+
+	float GetRageCap() const { return MaxHealth * RageCapHealthRatio; }
+
+	float GetDmgReduceFactor() const { return FMath::Max(MaxHealth * DmgReduceFactorHealthRatio, 1.0f); }
 
 	float GetBossShield() const { return Shield; }
 
@@ -801,6 +870,10 @@ protected:
 	UPROPERTY(Replicated)
 	float Rage = 0.0f;
 
+	/** Max Rage après le nombre de joueurs (serveur, répliqué : HUD) */
+	UPROPERTY(Replicated)
+	float ScaledMaxRage = 0.0f;
+
 	/** Bouclier de boss restant et valeur au déclenchement (serveur, répliqués : HUD) */
 	UPROPERTY(ReplicatedUsing=OnRep_Health)
 	float Shield = 0.0f;
@@ -892,16 +965,46 @@ protected:
 	UFUNCTION()
 	void OnRep_Bump();
 
-	/** Début du vol sur cette machine : mouvement du personnage coupé (la position est calculée par UpdateBump), attaque en cours arrêtée */
+	/** Hit reaction en cours (serveur, répliquée) */
+	UPROPERTY(ReplicatedUsing=OnRep_HitReaction)
+	FYSFoeHitReaction HitReaction;
+
+	UFUNCTION()
+	void OnRep_HitReaction();
+
+	/** Coup reçu (serveur) : angle selon la part de vie retirée, direction du coup ; rien pendant un bump */
+	void StartHitReaction(float Damage, const FDamageEvent& DamageEvent);
+
+	/** Démarre l'inclinaison sur cette machine, depuis l'inclinaison actuelle */
+	void BeginHitReactionLocal();
+
+	/** Inclinaison puis retour (toutes machines) */
+	void UpdateHitReaction();
+
+	/** Incline le corps et le visage autour des pieds (rotation dans le repère du monde ; identité = position d'origine) */
+	void ApplyBodyTilt(const FQuat& WorldTilt);
+
+	/** Plus d'inclinaison : corps remis à sa place */
+	void CancelHitReaction();
+
+	bool bHitReactionActive = false;
+	double HitReactionStartTime = 0.0;
+	FQuat HitTiltFrom = FQuat::Identity;
+	FQuat HitTiltTarget = FQuat::Identity;
+	FQuat HitTiltCurrent = FQuat::Identity;
+	FTransform BodyRestTransform = FTransform::Identity;
+	FTransform FaceRestTransform = FTransform::Identity;
+
+	/** Début du bump sur cette machine : mouvement du personnage coupé (la position est calculée par UpdateBump), attaque en cours arrêtée */
 	void BeginBumpLocal();
 
 	/** Attaques des armes en cours arrêtées sur cette machine (coup d'épée, lancer de bombe ; la visée du Skull Gun est arrêtée par StartBump) */
 	void CancelWeaponAttacks();
 
-	/** Position et rotation du vol (toutes machines) ; fin du vol à la durée écoulée */
+	/** Position et rotation du bump (toutes machines) : backflip (élite : chute sur place), au sol sur le dos, relevée ; fin à la somme des phases */
 	void UpdateBump();
 
-	/** Fin du vol sur cette machine : posé à l'arrivée, mouvement rétabli (serveur : il retombe s'il n'y a pas de sol) */
+	/** Fin du bump sur cette machine : posé à l'arrivée, mouvement rétabli (serveur : il retombe s'il n'y a pas de sol) */
 	void EndBumpLocal();
 
 	/** Sortie du sol (serveur, répliquée) */
@@ -957,6 +1060,8 @@ protected:
 	/** Compteur du bump déjà commencé sur cette machine */
 	uint8 LocalBumpCounter = 0;
 	bool bLocalBumpActive = false;
+	/** Phase du bump déjà annoncée dans le log (0 vol / chute, 1 au sol, 2 relevée) */
+	int32 LocalBumpPhase = -1;
 
 	/** Armes des mains selon le set (ou les armes par main) et gaucher / droitier */
 	void ApplyWeaponClasses();

@@ -433,7 +433,7 @@ protected:
 
 	/** Orientation de la caméra par rapport au bateau (0 = proue en haut de l'écran, 90 = proue à gauche) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camera|Ship", meta=(Units="Degrees", EditCondition="bCameraFollowsShip"))
-	float ShipCameraYawOffset = 0.0f;
+	float ShipCameraYawOffset = 90.0f;
 
 	/** Vitesse de la rotation en montant à bord / en descendant (0 = immédiat ; ensuite la caméra colle au bateau, sans retard) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camera|Ship", meta=(ClampMin="0", EditCondition="bCameraFollowsShip"))

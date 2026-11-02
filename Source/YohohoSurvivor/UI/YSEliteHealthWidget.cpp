@@ -43,7 +43,7 @@ void UYSEliteHealthWidget::BuildWidgetTree()
 	NameLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Name"));
 	YSEliteHealth::StyleText(NameLabel, 18);
 	UVerticalBoxSlot* NameSlot = Column->AddChildToVerticalBox(NameLabel);
-	NameSlot->SetHorizontalAlignment(HAlign_Right);
+	NameSlot->SetHorizontalAlignment(HAlign_Center);
 	NameSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 2.0f));
 
 	USizeBox* Box = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("BarBox"));

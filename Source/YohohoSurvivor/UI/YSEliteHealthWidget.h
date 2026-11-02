@@ -10,8 +10,8 @@ class UVerticalBox;
 class UTextBlock;
 
 /**
- *  Barre de vie de l'élite dans le HUD (haut droite, symétrique des PV du joueur) : nom + barre « X / Y ».
- *  Affichée par AYSPlayerController quand l'élite est hors de l'écran (sinon sa barre est au-dessus de sa tête).
+ *  Barre de vie de l'élite dans le HUD (bas de l'écran au milieu, juste au-dessus des icônes d'actions) : nom + barre « X / Y ».
+ *  Affichée par AYSPlayerController tant que l'élite est en vie.
  *  Sous les PV : bouclier de boss et rage (Boss armor). Arbre construit en C++ ; réglages dans WBP_EliteHealth (Layout).
  */
 UCLASS()
@@ -20,6 +20,10 @@ class UYSEliteHealthWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
+
+	/** Distance entre le bas du widget et le bas de l'écran (par défaut : juste au-dessus des icônes d'actions) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
+	float BottomMargin = 148.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="HUD")
 	FVector2D BarSize = FVector2D(320.0f, 26.0f);

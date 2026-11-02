@@ -203,11 +203,12 @@ void AYSShipCannon::Fire(APawn* Shooter, const FVector& AimLocation, bool bFoeSh
 	}
 
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
-	ReadyServerTime = (GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds()) + Cooldown;
+	const float ShotCooldown = Cooldown * (Shooter->IsPlayerControlled() ? 1.0f : NonPlayerCooldownMultiplier);
+	ReadyServerTime = (GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds()) + ShotCooldown;
 	ForceNetUpdate();
 	MulticastFired();
 	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : tir de canon de %s, %d AMMO x %.0f dégâts (+/- %.0f°), angle %.0f°, recharge %.1f s"), *GetName(), *Shooter->GetName(),
-		AmmoPerShot, Damage, Spread, AimYaw, Cooldown);
+		AmmoPerShot, Damage, Spread, AimYaw, ShotCooldown);
 }
 
 void AYSShipCannon::MulticastFired_Implementation()

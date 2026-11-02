@@ -78,6 +78,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0", Units="s"))
 	float Cooldown = 2.0f;
 
+	/** Recharge x ce multiplicateur quand le tireur n'est pas un joueur (NME, minion du Captain) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0"))
+	float NonPlayerCooldownMultiplier = 2.0f;
+
 	/** Icône du tir de canon (en bas de l'écran) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot")
 	TObjectPtr<UTexture2D> Icon;

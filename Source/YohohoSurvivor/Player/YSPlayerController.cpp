@@ -178,13 +178,13 @@ void AYSPlayerController::BeginPlay()
 			IndicatorsSlot.ZOrder = 2;
 			ViewportSubsystem->AddWidgetForPlayer(OffscreenIndicators, GetLocalPlayer(), IndicatorsSlot);
 
-			// barre de l'élite : haut droite (symétrique du HUD du joueur)
+			// barre de l'élite : bas de l'écran au milieu, juste au-dessus des icônes d'actions
 			EliteHealth = CreateWidget<UYSEliteHealthWidget>(this, EliteHealthWidgetClass ? EliteHealthWidgetClass.Get() : UYSEliteHealthWidget::StaticClass());
 			EliteHealth->SetVisibility(ESlateVisibility::Collapsed);
 			FGameViewportWidgetSlot EliteSlot;
-			EliteSlot.Anchors = FAnchors(1.0f, 0.0f);
-			EliteSlot.Alignment = FVector2D(1.0f, 0.0f);
-			EliteSlot.Offsets = FMargin(-24.0f, 24.0f, 0.0f, 0.0f);
+			EliteSlot.Anchors = FAnchors(0.5f, 1.0f);
+			EliteSlot.Alignment = FVector2D(0.5f, 1.0f);
+			EliteSlot.Offsets = FMargin(0.0f, -EliteHealth->BottomMargin, 0.0f, 0.0f);
 			EliteSlot.ZOrder = 1;
 			ViewportSubsystem->AddWidgetForPlayer(EliteHealth, GetLocalPlayer(), EliteSlot);
 

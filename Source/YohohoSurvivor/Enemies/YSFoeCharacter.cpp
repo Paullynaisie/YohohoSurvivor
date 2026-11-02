@@ -417,6 +417,8 @@ void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(AYSFoeCharacter, Level);
 	DOREPLIFETIME(AYSFoeCharacter, bLeftHanded);
 	DOREPLIFETIME(AYSFoeCharacter, Bump);
+	DOREPLIFETIME(AYSFoeCharacter, HitReaction);
+	DOREPLIFETIME(AYSFoeCharacter, ScaledMaxRage);
 	DOREPLIFETIME(AYSFoeCharacter, Rise);
 	DOREPLIFETIME(AYSFoeCharacter, Death);
 	DOREPLIFETIME(AYSFoeCharacter, Rage);
@@ -553,6 +555,12 @@ void AYSFoeCharacter::StartBump(const FVector& Direction, float Distance, float 
 		Landing.Z = Hit.ImpactPoint.Z + GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 	}
 
+	// élite : pas de vol, il tombe sur place
+	if (bIsElite)
+	{
+		Landing = Start;
+	}
+
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	Bump.bActive = true;
 	Bump.Start = Start;
@@ -560,7 +568,8 @@ void AYSFoeCharacter::StartBump(const FVector& Direction, float Distance, float 
 	Bump.Duration = FMath::Max(Duration, 0.05f);
 	Bump.ApexHeight = ApexHeight;
 	Bump.SpinTurns = SpinTurns;
-	Bump.StartYaw = GetActorRotation().Yaw;
+	// backflip : de face au coup, le vol part dans son dos et il finit sur le dos ; élite : tombe en arrière, là où il regarde
+	Bump.StartYaw = bIsElite ? GetActorRotation().Yaw : (-FlatDirection).Rotation().Yaw;
 	Bump.StartServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
 	++Bump.Counter;
 
@@ -593,6 +602,8 @@ void AYSFoeCharacter::BeginBumpLocal()
 {
 	bLocalBumpActive = true;
 	LocalBumpCounter = Bump.Counter;
+	LocalBumpPhase = -1;
+	CancelHitReaction();
 
 	// attaque en cours arrêtée (élites compris) : coup d'épée, lancer de bombe ; armes locales, chaque machine arrête la sienne
 	CancelWeaponAttacks();
@@ -631,21 +642,135 @@ void AYSFoeCharacter::UpdateBump()
 {
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
-	const float Elapsed = static_cast<float>(Now - Bump.StartServerTime);
-	if (Elapsed >= Bump.Duration)
+	// client : l'horloge synchronisée peut être un peu en retard sur le début du bump
+	const float Elapsed = FMath::Max(0.0f, static_cast<float>(Now - Bump.StartServerTime));
+	const float FirstTime = Bump.Duration * (bIsElite ? EliteBumpFallRatio : BumpBackflipRatio);
+	const float GroundTime = Bump.Duration * BumpGroundRatio;
+	const float RiseTime = Bump.Duration * BumpRiseRatio;
+	if (Elapsed >= FirstTime + GroundTime + RiseTime)
 	{
 		EndBumpLocal();
 		return;
 	}
 
-	SetActorLocation(YSCombat::GetBellLocation(Bump.Start, Bump.Target, Bump.Duration, Bump.ApexHeight, Elapsed));
+	// allongé : centre de la capsule à son rayon au-dessus du sol
+	const UCapsuleComponent* Capsule = GetCapsuleComponent();
+	const FVector Standing = Bump.Target;
+	const FVector Lying = Standing - FVector(0.0f, 0.0f, FMath::Max(0.0f, Capsule->GetScaledCapsuleHalfHeight() - Capsule->GetScaledCapsuleRadius()));
 
-	// rotation complète sur lui-même, basculé dans le sens du vol (le haut part vers l'avant du vol)
-	const FVector Direction = (FVector(Bump.Target) - FVector(Bump.Start)).GetSafeNormal2D();
-	const FVector Axis = FVector::CrossProduct(FVector::UpVector, Direction).GetSafeNormal();
-	const float Angle = 2.0f * PI * Bump.SpinTurns * FMath::Clamp(Elapsed / Bump.Duration, 0.0f, 1.0f);
+	FVector Location = Lying;
+	float AngleDegrees = 90.0f;
+	int32 Phase = 1;
+	if (Elapsed < FirstTime)
+	{
+		Phase = 0;
+		const float Alpha = Elapsed / FirstTime;
+		if (bIsElite)
+		{
+			// chute sur place, de plus en plus vite
+			const float Fall = FMath::InterpEaseIn(0.0f, 1.0f, Alpha, 2.0f);
+			Location = FMath::Lerp(FVector(Bump.Start), Lying, Fall);
+			AngleDegrees = 90.0f * Fall;
+		}
+		else
+		{
+			// backflip : vol en cloche, tours complets + le quart de tour qui le pose sur le dos
+			Location = YSCombat::GetBellLocation(Bump.Start, Lying, FirstTime, Bump.ApexHeight, Elapsed);
+			AngleDegrees = (360.0f * Bump.SpinTurns + 90.0f) * Alpha;
+		}
+	}
+	else if (Elapsed >= FirstTime + GroundTime)
+	{
+		Phase = 2;
+		const float StandAlpha = FMath::InterpEaseInOut(0.0f, 1.0f, (Elapsed - FirstTime - GroundTime) / RiseTime, 2.0f);
+		Location = FMath::Lerp(Lying, Standing, StandAlpha);
+		AngleDegrees = 90.0f * (1.0f - StandAlpha);
+	}
+	if (Phase != LocalBumpPhase)
+	{
+		LocalBumpPhase = Phase;
+		UE_LOG(LogTemp, Verbose, TEXT("[YSBump] %s phase %d à %.2f s (%.0f, %.0f, %.0f)"), *GetName(), Phase, Elapsed, Location.X, Location.Y, Location.Z);
+	}
+	SetActorLocation(Location);
+
+	// le haut du corps part vers l'arrière du NME (axe calculé depuis son regard) : à +90° il est sur le dos, le visage vers le ciel
 	const FQuat BaseRotation = FRotator(0.0f, Bump.StartYaw, 0.0f).Quaternion();
-	SetActorRotation(Axis.IsNearlyZero() ? BaseRotation : FQuat(Axis, Angle) * BaseRotation);
+	const FVector Axis = FVector::CrossProduct(FVector::UpVector, -BaseRotation.GetForwardVector()).GetSafeNormal();
+	SetActorRotation(FQuat(Axis, FMath::DegreesToRadians(AngleDegrees)) * BaseRotation);
+}
+
+void AYSFoeCharacter::StartHitReaction(float Damage, const FDamageEvent& DamageEvent)
+{
+	if (!bHitReaction || bLocalBumpActive || MaxHealth <= 0.0f || !DamageEvent.IsOfType(FPointDamageEvent::ClassID))
+	{
+		return;
+	}
+	const FVector Direction = static_cast<const FPointDamageEvent&>(DamageEvent).ShotDirection.GetSafeNormal2D();
+	if (Direction.IsNearlyZero())
+	{
+		return;
+	}
+	// jamais moins que l'angle minimum, prorata entre les deux rapports (comme le pushback)
+	HitReaction.DirectionYaw = Direction.Rotation().Yaw;
+	HitReaction.Angle = FMath::GetMappedRangeValueClamped(FVector2D(HitReactionMinDamageRatio, HitReactionMaxDamageRatio), FVector2D(HitReactionMinAngle, HitReactionMaxAngle), Damage / MaxHealth);
+	++HitReaction.Counter;
+	BeginHitReactionLocal();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSHitReaction] %s : %.0f dégâts sur %.0f PV max -> %.1f°, direction %.0f"), *GetName(), Damage, MaxHealth, HitReaction.Angle, HitReaction.DirectionYaw);
+}
+
+void AYSFoeCharacter::OnRep_HitReaction()
+{
+	if (!bLocalBumpActive && !bLocalDeathStarted)
+	{
+		BeginHitReactionLocal();
+	}
+}
+
+void AYSFoeCharacter::BeginHitReactionLocal()
+{
+	const FVector Direction = FRotator(0.0f, HitReaction.DirectionYaw, 0.0f).Vector();
+	bHitReactionActive = true;
+	HitReactionStartTime = GetWorld()->GetTimeSeconds();
+	HitTiltFrom = HitTiltCurrent;
+	// le haut du corps part dans la direction du coup
+	HitTiltTarget = FQuat(FVector::CrossProduct(FVector::UpVector, Direction).GetSafeNormal(), FMath::DegreesToRadians(HitReaction.Angle));
+}
+
+void AYSFoeCharacter::UpdateHitReaction()
+{
+	const float Elapsed = static_cast<float>(GetWorld()->GetTimeSeconds() - HitReactionStartTime);
+	if (Elapsed < HitReactionInclineDuration)
+	{
+		ApplyBodyTilt(FQuat::Slerp(HitTiltFrom, HitTiltTarget, FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / HitReactionInclineDuration, 2.0f)));
+	}
+	else if (Elapsed < HitReactionInclineDuration + HitReactionRecoverDuration)
+	{
+		ApplyBodyTilt(FQuat::Slerp(HitTiltTarget, FQuat::Identity, FMath::InterpEaseInOut(0.0f, 1.0f, (Elapsed - HitReactionInclineDuration) / HitReactionRecoverDuration, 2.0f)));
+	}
+	else
+	{
+		CancelHitReaction();
+	}
+}
+
+void AYSFoeCharacter::ApplyBodyTilt(const FQuat& WorldTilt)
+{
+	HitTiltCurrent = WorldTilt;
+	// dans le repère de l'acteur (il peut tourner pendant la réaction), autour des pieds
+	const FQuat ActorRotation = GetActorQuat();
+	const FQuat RelativeTilt = ActorRotation.Inverse() * WorldTilt * ActorRotation;
+	const FVector Feet(0.0f, 0.0f, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight());
+	BodyMesh->SetRelativeLocationAndRotation(Feet + RelativeTilt.RotateVector(BodyRestTransform.GetLocation() - Feet), RelativeTilt * BodyRestTransform.GetRotation());
+	FaceDecal->SetRelativeLocationAndRotation(Feet + RelativeTilt.RotateVector(FaceRestTransform.GetLocation() - Feet), RelativeTilt * FaceRestTransform.GetRotation());
+}
+
+void AYSFoeCharacter::CancelHitReaction()
+{
+	if (bHitReactionActive)
+	{
+		bHitReactionActive = false;
+		ApplyBodyTilt(FQuat::Identity);
+	}
 }
 
 void AYSFoeCharacter::EndBumpLocal()
@@ -673,6 +798,8 @@ void AYSFoeCharacter::EndBumpLocal()
 
 void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator)
 {
+	StartHitReaction(Damage, DamageEvent);
+
 	// direction du coup portée par l'événement (hitbox de l'arme, vol du projectile) ; force réglée sur le personnage qui frappe
 	// Boss Big Slash en cours : trajet calculé, pas de pushback ; à bord d'un Jolly Ship : gardé sur sa place
 	const AYSPlayerCharacter* Attacker = EventInstigator ? Cast<AYSPlayerCharacter>(EventInstigator->GetPawn()) : nullptr;
@@ -804,6 +931,7 @@ void AYSFoeCharacter::BeginDeathLocal()
 	bLocalRiseActive = false;
 	bLocalBossDashActive = false;
 	bLocalShipRide = false;
+	bHitReactionActive = false;
 	HealthBar->SetVisibility(false);
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	Movement->StopMovementImmediately();
@@ -1190,6 +1318,9 @@ void AYSFoeCharacter::BeginPlay()
 	// réappliqué en jeu : les collisions de combat ne dépendent pas de réglages sauvegardés dans le Blueprint
 	YSCombat::ConfigureHurtbox(BodyMesh);
 	YSCombat::ConfigureHitbox(Hitbox);
+	// position d'origine du corps et du visage (Hit reaction)
+	BodyRestTransform = BodyMesh->GetRelativeTransform();
+	FaceRestTransform = FaceDecal->GetRelativeTransform();
 
 	// perf (foules) : aucun overlap entretenu par les NME. La hurtbox reste une cible de requêtes (coups, explosions, balles :
 	// AYSProjectile::SweepPawnHits) ; la Hitbox de contact est testée à la main contre les joueurs (GetPlayersInHitbox)
@@ -1263,6 +1394,7 @@ void AYSFoeCharacter::BeginPlay()
 		const FYSPlayerCountScaling PlayerScaling = YSGameMode ? YSGameMode->GetPlayerCountScaling() : FYSPlayerCountScaling();
 		const float PlayerHealthMultiplier = bIsElite ? PlayerScaling.EliteHealthMultiplier : PlayerScaling.HealthMultiplier;
 		PlayerCountHealthMultiplier = PlayerHealthMultiplier;
+		ScaledMaxRage = FMath::RoundToFloat(MaxRage * (bScaleRageWithPlayerCount ? PlayerCountHealthMultiplier : 1.0f));
 		MaxHealth = FMath::RoundToFloat((BaseHealth + HealthPerLevel * Level) * HealthMultiplier * PlayerHealthMultiplier);
 		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau %d, %.0f PV (x%.2f pour %d joueur(s)), %.1f XP"), *GetName(), Level, MaxHealth, PlayerHealthMultiplier,
 			YSGameMode ? YSGameMode->GetPlayersInMatchCount() : 0, GetExperienceReward());
@@ -1332,6 +1464,12 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 
 	// mains : visuel local sur toutes les machines
 	UpdateHands(DeltaSeconds);
+
+	// hit reaction : le corps seul, visuel local
+	if (bHitReactionActive)
+	{
+		UpdateHitReaction();
+	}
 
 	// arme cachée un moment (bombe partie de la main, pas encore revenue) : visuel local
 	for (AYSWeapon* Weapon : { GetLeftHandWeapon(), GetRightHandWeapon() })
@@ -1996,15 +2134,17 @@ float AYSFoeCharacter::ApplyBossArmor(float Damage, const FDamageEvent& DamageEv
 	// sous Rage Cap : dégâts normaux, rage = dégâts ; au-delà : l'excès est réduit, rage = Rage Cap
 	float Reduced = Base;
 	float RageGain = Base;
+	const float RageCap = GetRageCap();
 	if (Base > RageCap)
 	{
+		const float DmgReduceFactor = GetDmgReduceFactor();
 		const float Excess = Base - RageCap;
 		Reduced = RageCap + Excess * DmgReduceFactor / (DmgReduceFactor + Excess);
 		RageGain = RageCap;
 	}
-	Rage = FMath::Min(Rage + RageGain, MaxRage);
+	Rage = FMath::Min(Rage + RageGain, GetMaxRage());
 	UE_LOG(LogTemp, Verbose, TEXT("[YSBoss] %s : coup %.1f (hors critique %.1f, x%.2f) -> %.1f, rage +%.0f = %.0f / %.0f"), *GetName(), Damage, Base, CriticalMultiplier,
-		Reduced * CriticalMultiplier, RageGain, Rage, MaxRage);
+		Reduced * CriticalMultiplier, RageGain, Rage, GetMaxRage());
 	return Reduced * CriticalMultiplier;
 }
 
@@ -2014,7 +2154,7 @@ void AYSFoeCharacter::TryTriggerBossShield()
 	{
 		return;
 	}
-	const bool bRageFull = Rage >= MaxRage;
+	const bool bRageFull = Rage >= GetMaxRage();
 	const bool bLowHealth = !bHealthShieldTriggered && Health <= MaxHealth * ShieldHealthThreshold;
 	if (!bRageFull && !bLowHealth)
 	{
@@ -2038,8 +2178,8 @@ void AYSFoeCharacter::DebugAddRage(float Amount)
 	{
 		return;
 	}
-	Rage = FMath::Clamp(Rage + Amount, 0.0f, MaxRage);
-	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : rage %.0f / %.0f (debug)"), *GetName(), Rage, MaxRage);
+	Rage = FMath::Clamp(Rage + Amount, 0.0f, GetMaxRage());
+	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : rage %.0f / %.0f (debug)"), *GetName(), Rage, GetMaxRage());
 	TryTriggerBossShield();
 	ForceNetUpdate();
 }
