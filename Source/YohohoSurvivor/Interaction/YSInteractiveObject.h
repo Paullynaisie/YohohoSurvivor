@@ -85,6 +85,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Brooker", meta=(ClampMin="0"))
 	int32 DoubloonValue = 0;
 
+	/** Plumes de phoenix ajoutées au stock de l'équipe quand un Brooker le rachète (coffre de boss : 1) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Brooker", meta=(ClampMin="0"))
+	int32 PhoenixFeatherValue = 0;
+
 	/** Bulle d'indication (comme celle du Brooker) : au bord de l'écran quand l'objet posé est hors écran (coffres : pour ne pas les perdre) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator")
 	bool bShowIndicator = false;
@@ -153,6 +157,7 @@ public:
 	bool FloatsOnWater() const { return bFloatsOnWater; }
 
 	int32 GetDoubloonValue() const { return DoubloonValue; }
+	int32 GetPhoenixFeatherValue() const { return PhoenixFeatherValue; }
 
 	bool ShowsIndicator() const { return bShowIndicator; }
 	bool ShowsIndicatorOnScreen() const { return bIndicatorOnScreen; }

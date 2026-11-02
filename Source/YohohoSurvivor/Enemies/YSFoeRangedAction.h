@@ -53,7 +53,7 @@ public:
 	float GetDamage(const AYSFoeCharacter* Foe) const;
 
 	/** Lance l'attaque vers la cible (serveur) ; vrai si elle part. Origin = Muzzle de l'arme */
-	virtual bool StartAttack(AYSFoeCharacter* Foe, const APawn* Target, const FVector& Origin) { return false; }
+	virtual bool StartAttack(AYSFoeCharacter* Foe, const AActor* Target, const FVector& Origin) { return false; }
 
 	/** Moment visible de l'attaque (début du lancer, tir) sur cette machine : animations locales (NetMulticast du NME) */
 	void PlayAttackLocally();
@@ -191,7 +191,7 @@ public:
 	UYSFoeBombAction();
 
 	/** Démarre l'animation de lancer (serveur) ; la bombe part au lâcher (fin de ThrowDuration), vers le point visé au début */
-	virtual bool StartAttack(AYSFoeCharacter* Foe, const APawn* Target, const FVector& Origin) override;
+	virtual bool StartAttack(AYSFoeCharacter* Foe, const AActor* Target, const FVector& Origin) override;
 
 	virtual bool EvaluateHandPose(float& OutIdleWeight, FVector& OutLocation, FQuat& OutRotation) const override;
 
@@ -264,7 +264,7 @@ public:
 	virtual bool IsAnimating() const override { return GetTimeSinceAttack() < RecoilKickDuration + RecoilRecoverDuration; }
 
 	/** Démarre la visée du NME (le tir part à la fin, AYSFoeCharacter::FireShot) */
-	virtual bool StartAttack(AYSFoeCharacter* Foe, const APawn* Target, const FVector& Origin) override;
+	virtual bool StartAttack(AYSFoeCharacter* Foe, const AActor* Target, const FVector& Origin) override;
 
 	/** Tire la balle (serveur) */
 	void Fire(AYSFoeCharacter* Foe, const FVector& Origin, const FVector& Direction) const;

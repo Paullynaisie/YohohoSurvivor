@@ -96,14 +96,7 @@ void AYSLongboat::Tick(float DeltaSeconds)
 	// foncé sur un bateau : joueurs posés sur son pont
 	if (AYSPirateShip* Ship = FindContactShip())
 	{
-		FVector Landing;
-		if (!FindShipLanding(Ship, Landing))
-		{
-			Landing = Ship->GetClosestHullPoint(GetActorLocation(), ShipLandingInset) + FVector(0.0f, 0.0f, 250.0f);
-		}
-		const FVector Facing = (Ship->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
-		UE_LOG(LogTemp, Log, TEXT("[YSLongboat] %s fonce sur %s : éjection sur le pont"), *GetName(), *Ship->GetName());
-		EjectAndDestroy(Landing, Facing, TEXT("bateau"));
+		BoardShip(Ship);
 		return;
 	}
 
@@ -130,6 +123,28 @@ void AYSLongboat::Tick(float DeltaSeconds)
 	else
 	{
 		EmptySinceTime = -1.0;
+	}
+}
+
+void AYSLongboat::BoardShip(AYSPirateShip* Ship)
+{
+	FVector Landing;
+	if (!FindShipLanding(Ship, Landing))
+	{
+		Landing = Ship->GetClosestHullPoint(GetActorLocation(), ShipLandingInset) + FVector(0.0f, 0.0f, 250.0f);
+	}
+	const FVector Facing = (Ship->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
+	UE_LOG(LogTemp, Log, TEXT("[YSLongboat] %s fonce sur %s : éjection sur le pont"), *GetName(), *Ship->GetName());
+	EjectAndDestroy(Landing, Facing, TEXT("bateau"));
+}
+
+void AYSLongboat::OnShipCollision(AYSPirateShip* Other)
+{
+	// arrêtée par la coque avant d'y entrer (grosse image, vitesse) : le contact compte ici aussi
+	if (!bEjected && Other->IsBoardable() && GetWorld()->GetTimeSeconds() - SpawnTime >= ShipContactGraceTime
+		&& Other->CanBoardAt(Other->GetClosestHullPoint(GetActorLocation()), IsFoeShip()))
+	{
+		BoardShip(Other);
 	}
 }
 
@@ -170,9 +185,10 @@ AYSPirateShip* AYSLongboat::FindContactShip() const
 		{
 			continue;
 		}
+		// anti-abordage : ailleurs, la coque l'arrête simplement (FindBlockingShip)
 		for (const FVector& Point : Points)
 		{
-			if (Ship->IsInsideHull(Point, ShipContactMargin))
+			if (Ship->IsInsideHull(Point, ShipContactMargin) && Ship->CanBoardAt(Point, IsFoeShip()))
 			{
 				return Ship;
 			}

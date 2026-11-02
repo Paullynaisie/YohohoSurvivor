@@ -62,6 +62,10 @@ protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Aim")
 	FVector AimLocation = FVector::ZeroVector;
 
+	/** Écran de mort et de spectateur (réglages : WBP_DeathScreen) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<UYSDeathScreenWidget> DeathScreenClass;
+
 	/** Widget de l'icône de capacité (en bas au centre de l'écran) */
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSAbilityIconWidget> AbilityIconClass;
@@ -312,6 +316,14 @@ public:
 	UFUNCTION(Exec)
 	void YSMoveAction();
 
+	/** Debug (console) : comme le bouton Revive du spectateur */
+	UFUNCTION(Exec)
+	void YSPhoenixRevive();
+
+	/** Debug (console, hôte) : ajoute (ou retire) des plumes de phoenix au stock */
+	UFUNCTION(Exec)
+	void YSAddFeathers(int32 Amount);
+
 	/** Debug (console) : fixe la stamina du personnage (serveur).  Ex : YSSetStamina 40 */
 	UFUNCTION(Exec)
 	void YSSetStamina(float Value);
@@ -359,6 +371,10 @@ public:
 	/** Debug (hôte) : NME Galion sur l'eau.  Ex : YSSpawnGalion */
 	UFUNCTION(Exec)
 	void YSSpawnGalion();
+
+	/** Debug (hôte) : le Galion le plus proche, placé à Distance devant la proue du bateau du joueur, en travers (test des collisions) */
+	UFUNCTION(Exec)
+	void YSPlaceGalionAhead(float Distance = 500.0f);
 
 	/** Debug (hôte) : téléporte le joueur sur le pont du Galion le plus proche (0) ou sur l'accès de son flanc (1) */
 	UFUNCTION(Exec)
@@ -624,6 +640,10 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerStartNight();
+
+	/** Bouton Revive : une plume de phoenix pour ressusciter ce joueur */
+	UFUNCTION(Server, Reliable)
+	void ServerPhoenixRevive();
 
 	/** Debug : 0 = bateau, 1 = overtime, 2 = l'île coule */
 	UFUNCTION(Server, Reliable)

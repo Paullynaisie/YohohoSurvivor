@@ -1,8 +1,10 @@
 #include "UI/YSDeathScreenWidget.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/Button.h"
 #include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
+#include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -21,8 +23,9 @@ bool UYSDeathScreenWidget::Initialize()
 {
 	const bool bSuperInitialized = Super::Initialize();
 
-	// pas de Widget Blueprint : l'arbre est construit dès la création
-	if (bSuperInitialized && WidgetTree && !WidgetTree->RootWidget)
+	// arbre construit en C++ ; la racine vide d'un Widget Blueprint enfant (WBP_DeathScreen) est remplacée
+	const UPanelWidget* DesignerRoot = WidgetTree ? Cast<UPanelWidget>(WidgetTree->RootWidget) : nullptr;
+	if (bSuperInitialized && WidgetTree && (!WidgetTree->RootWidget || (DesignerRoot && DesignerRoot->GetChildrenCount() == 0)))
 	{
 		BuildWidgetTree();
 	}
@@ -34,6 +37,8 @@ void UYSDeathScreenWidget::BuildWidgetTree()
 {
 	UOverlay* Root = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("Root"));
 	WidgetTree->RootWidget = Root;
+	// seul le bouton de réanimation reçoit les clics
+	Root->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 
 	BackgroundImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Background"));
 	BackgroundImage->SetColorAndOpacity(BackgroundColor);
@@ -42,6 +47,7 @@ void UYSDeathScreenWidget::BuildWidgetTree()
 	BackgroundSlot->SetVerticalAlignment(VAlign_Fill);
 
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
+	Column->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	UOverlaySlot* ColumnSlot = Root->AddChildToOverlay(Column);
 	ColumnSlot->SetHorizontalAlignment(HAlign_Center);
 	ColumnSlot->SetVerticalAlignment(VAlign_Center);
@@ -72,6 +78,36 @@ void UYSDeathScreenWidget::BuildWidgetTree()
 	UVerticalBoxSlot* SpectateSlot = Column->AddChildToVerticalBox(SpectateText);
 	SpectateSlot->SetHorizontalAlignment(HAlign_Center);
 	SpectateSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 0.0f));
+
+	USizeBox* ReviveSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ReviveBox"));
+	ReviveSize->SetWidthOverride(ReviveButtonSize.X);
+	ReviveSize->SetHeightOverride(ReviveButtonSize.Y);
+	ReviveSize->SetVisibility(ESlateVisibility::Collapsed);
+	ReviveBox = ReviveSize;
+	UButton* ReviveButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Revive"));
+	ReviveButton->SetBackgroundColor(ReviveButtonColor);
+	ReviveButton->OnClicked.AddDynamic(this, &UYSDeathScreenWidget::HandleReviveClicked);
+	UTextBlock* ReviveLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ReviveLabel"));
+	ReviveLabel->SetText(ReviveText);
+	YSDeathScreen::SetFontSize(ReviveLabel, ReviveFontSize);
+	ReviveButton->AddChild(ReviveLabel);
+	ReviveSize->AddChild(ReviveButton);
+	UVerticalBoxSlot* ReviveSlot = Column->AddChildToVerticalBox(ReviveSize);
+	ReviveSlot->SetHorizontalAlignment(HAlign_Center);
+	ReviveSlot->SetPadding(FMargin(0.0f, ReviveTopSpacing, 0.0f, 0.0f));
+}
+
+void UYSDeathScreenWidget::HandleReviveClicked()
+{
+	OnReviveClicked.ExecuteIfBound();
+}
+
+void UYSDeathScreenWidget::SetReviveAvailable(bool bAvailable)
+{
+	if (ReviveBox)
+	{
+		ReviveBox->SetVisibility(bAvailable ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
 }
 
 void UYSDeathScreenWidget::SetSpectating(bool bSpectating, const FText& TargetName)

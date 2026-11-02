@@ -137,6 +137,9 @@ protected:
 	/** Échoué : il recule et repart dans l'autre sens */
 	virtual void OnHullBlocked() override;
 
+	/** Autre bateau : comme échoué */
+	virtual void OnShipCollision(AYSPirateShip* Other) override { OnHullBlocked(); }
+
 	/** Core à 0 PV : plus personne aux postes, plus de poste à occuper */
 	virtual void OnShipDisabled() override;
 

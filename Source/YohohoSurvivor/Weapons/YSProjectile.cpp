@@ -13,6 +13,7 @@
 #include "Enemies/YSFoeCharacter.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Ship/YSPirateShip.h"
+#include "Ship/YSShipCore.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -690,6 +691,11 @@ bool AYSProjectile::CanHit(const AActor* Target) const
 {
 	// joueur qui traverse les NME (roulade, dash, saut) : la balle passe à travers sans disparaître
 	if (const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Target); Character && Character->IsPassingThroughPawns())
+	{
+		return false;
+	}
+	// AMMO de canon : passe sous le pont, sans toucher le core (seuls les modules la prennent)
+	if (bShipShot && Target && Target->IsA<AYSShipCore>())
 	{
 		return false;
 	}

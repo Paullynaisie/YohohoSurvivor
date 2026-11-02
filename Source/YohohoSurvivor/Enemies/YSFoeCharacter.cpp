@@ -1,7 +1,9 @@
 #include "Enemies/YSFoeCharacter.h"
 #include "Enemies/YSFoeGalion.h"
+#include "Ship/YSShipCore.h"
 #include "Ship/YSShipStation.h"
 #include "AIController.h"
+#include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -1569,7 +1571,14 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 
 	// NME à distance : les joueurs qui nagent restent des cibles ; élite : aussi (il entre dans l'eau peu profonde)
 	const bool bWades = bIsElite && EliteWadeDepth > 0.0f && !CrewShip;
-	Target = FindNearestPlayer(Ranged != nullptr || bWades);
+	const bool bIncludeSwimmers = Ranged != nullptr || bWades;
+	const double TargetCheckNow = GetWorld()->GetTimeSeconds();
+	if (TargetCheckNow >= NextTargetCheckTime || !IsTargetStillValid(bIncludeSwimmers))
+	{
+		Target = FindBestTarget(bIncludeSwimmers);
+		// premier choix : décalé au hasard, tous les NME d'une vague ne cherchent pas à la même image
+		NextTargetCheckTime = TargetCheckNow + (NextTargetCheckTime < 0.0 ? FMath::FRand() : 1.0f) * TargetCheckInterval;
+	}
 	if (!Target)
 	{
 		// équipage d'un Galion : personne à bord, il va à son poste
@@ -1593,7 +1602,8 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	// (à bord d'un Jolly Ship : portée multipliée, jusqu'à la coque du bateau où se trouve la cible : le tour se fait autour de sa coque)
 	float RangeDistanceSq = ToTarget.SizeSquared();
 	const AYSPlayerCharacter* RideTarget = bLocalShipRide ? Cast<AYSPlayerCharacter>(Target) : nullptr;
-	if (const AYSPirateShip* TargetShip = RideTarget ? RideTarget->GetShipUnderFeet() : nullptr)
+	const AYSShipCore* TargetCore = Cast<AYSShipCore>(Target);
+	if (const AYSPirateShip* TargetShip = RideTarget ? RideTarget->GetShipUnderFeet() : bLocalShipRide && TargetCore ? AYSPirateShip::GetShipOf(TargetCore) : nullptr)
 	{
 		RangeDistanceSq = FVector::DistSquared2D(TargetShip->GetClosestHullPoint(GetActorLocation()), GetActorLocation());
 	}
@@ -1622,7 +1632,7 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		// élite : il entre dans la mer jusqu'à Elite Wade Depth (quelle que soit la cible)
 		const AYSPlayerCharacter* TargetCharacter = Cast<AYSPlayerCharacter>(Target);
 		const bool bBlockedByWater = bWades ? IsWaterAhead(ToTarget, WaterStopDistance * GetActorScale3D().X, EliteWadeDepth)
-			: TargetCharacter && TargetCharacter->IsSwimming() && IsWaterAhead(ToTarget, WaterStopDistance);
+			: ((TargetCharacter && TargetCharacter->IsSwimming()) || TargetCore) && IsWaterAhead(ToTarget, WaterStopDistance);
 		if (!bBlockedByWater)
 		{
 			AddMovementInput(ToTarget.GetSafeNormal());
@@ -1630,7 +1640,7 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	}
 
 	// attaque de mêlée en cours : reste tourné vers le joueur qui l'a déclenchée
-	const APawn* Victim = MeleeVictim.Get();
+	const AActor* Victim = MeleeVictim.Get();
 	if (Victim && IsMeleeAttacking())
 	{
 		const FVector ToVictim = Victim->GetActorLocation() - GetActorLocation();
@@ -1662,7 +1672,64 @@ bool AYSFoeCharacter::IsWaterAhead(const FVector& Direction, float Distance, flo
 	return MaxDepth > 0.0f ? AYSOcean::GetWaterDepth(World, Hit.ImpactPoint) > MaxDepth : AYSOcean::IsUnderwater(World, Hit.ImpactPoint);
 }
 
-APawn* AYSFoeCharacter::FindNearestPlayer(bool bIncludeSwimmers) const
+bool AYSFoeCharacter::CanTargetCore(const AYSShipCore* Core) const
+{
+	const AYSPirateShip* Ship = AYSPirateShip::GetShipOf(Core);
+	// équipage d'un Galion : il garde son pont
+	if (!Ship || Ship->IsFoeShip() || !Ship->IsPresent() || Ship->IsActorBeingDestroyed() || CrewShip)
+	{
+		return false;
+	}
+	if (const UYSFoeRangedAction* Ranged = GetRangedAction())
+	{
+		return bLocalShipRide || FVector::DistSquared2D(Core->GetActorLocation(), GetActorLocation()) <= FMath::Square(Ranged->AttackRange);
+	}
+	const UPrimitiveComponent* Base = GetMovementBase();
+	return Base && AYSPirateShip::GetShipOf(Base->GetOwner()) == Ship;
+}
+
+AActor* AYSFoeCharacter::FindBestTarget(bool bIncludeSwimmers) const
+{
+	float BestScoreSq = TNumericLimits<float>::Max();
+	AActor* Best = FindNearestPlayer(bIncludeSwimmers, &BestScoreSq);
+	for (TActorIterator<AYSShipCore> It(GetWorld()); It; ++It)
+	{
+		AYSShipCore* Core = *It;
+		const float ScoreSq = FVector::DistSquared2D(Core->GetActorLocation(), GetActorLocation()) * FMath::Square(CoreTargetDistanceMultiplier);
+		if (ScoreSq < BestScoreSq && CanTargetCore(Core))
+		{
+			BestScoreSq = ScoreSq;
+			Best = Core;
+		}
+	}
+	if (Best != Target)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s cible %s"), *GetName(), Best ? *Best->GetName() : TEXT("personne"));
+	}
+	return Best;
+}
+
+bool AYSFoeCharacter::IsTargetStillValid(bool bIncludeSwimmers) const
+{
+	if (!IsValid(Target) || Target->IsActorBeingDestroyed())
+	{
+		return false;
+	}
+	if (const AYSShipCore* Core = Cast<AYSShipCore>(Target))
+	{
+		return CanTargetCore(Core);
+	}
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Target);
+	return !Character || (Character->IsAlive() && !Character->IsDying() && (bIncludeSwimmers || !Character->IsSwimming()) && (!CrewShip || Character->GetShipUnderFeet() == CrewShip));
+}
+
+AYSShipCore* AYSFoeCharacter::GetCoreInHitbox() const
+{
+	AYSShipCore* Core = Cast<AYSShipCore>(Target);
+	return Core && Core->GetHurtbox()->OverlapComponent(Hitbox->GetComponentLocation(), Hitbox->GetComponentQuat(), Hitbox->GetCollisionShape()) ? Core : nullptr;
+}
+
+APawn* AYSFoeCharacter::FindNearestPlayer(bool bIncludeSwimmers, float* OutScoreSq) const
 {
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	if (!GameState)
@@ -1716,6 +1783,10 @@ APawn* AYSFoeCharacter::FindNearestPlayer(bool bIncludeSwimmers) const
 		}
 	}
 
+	if (OutScoreSq)
+	{
+		*OutScoreSq = NearestDistSq;
+	}
 	return Nearest;
 }
 
@@ -1727,6 +1798,13 @@ void AYSFoeCharacter::ApplyContactDamage()
 	}
 
 	const double Now = GetWorld()->GetTimeSeconds();
+	AYSShipCore* TouchedCore = GetCoreInHitbox();
+	if (TouchedCore && Now >= NextCoreContactTime)
+	{
+		NextCoreContactTime = Now + ContactDamageInterval;
+		TouchedCore->TakeDamage(ContactDamage, FDamageEvent(), GetController(), nullptr);
+	}
+
 	TArray<AYSPlayerCharacter*> Touching;
 	GetPlayersInHitbox(Touching);
 
@@ -1948,13 +2026,18 @@ void AYSFoeCharacter::TriggerMeleeAttack()
 	// (le plus proche s'il y en a plusieurs : c'est vers lui que part le coup)
 	TArray<AYSPlayerCharacter*> Touching;
 	GetPlayersInHitbox(Touching);
-	AYSPlayerCharacter* Victim = nullptr;
+	AActor* Victim = nullptr;
 	for (AYSPlayerCharacter* Player : Touching)
 	{
 		if (!Victim || FVector::DistSquared2D(Player->GetActorLocation(), GetActorLocation()) < FVector::DistSquared2D(Victim->GetActorLocation(), GetActorLocation()))
 		{
 			Victim = Player;
 		}
+	}
+	// personne au contact : le core visé, s'il le touche
+	if (!Victim)
+	{
+		Victim = GetCoreInHitbox();
 	}
 	if (!Victim)
 	{
@@ -2037,7 +2120,7 @@ FVector AYSFoeCharacter::GetAttackOrigin(const UYSFoeRangedAction* Action) const
 	return GetActorLocation() + FVector(0.0f, 0.0f, YSFoe::DefaultAttackHeight);
 }
 
-bool AYSFoeCharacter::StartAim(const APawn* AimTarget, float AimDuration, float YawOffset)
+bool AYSFoeCharacter::StartAim(const AActor* AimTarget, float AimDuration, float YawOffset)
 {
 	if (!AimTarget)
 	{

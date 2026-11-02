@@ -1,9 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagAssetInterface.h"
 #include "NPC/YSMedicNPC.h"
 #include "YSShipCore.generated.h"
 
+class UBoxComponent;
 class UStaticMeshComponent;
 
 /**
@@ -13,11 +15,15 @@ class UStaticMeshComponent;
  *  réglages Brooker / Medic hérités. Indisponible tant que le bateau est absent.
  */
 UCLASS(meta=(PrioritizeCategories="Core Brooker Medic"))
-class AYSShipCore : public AYSMedicNPC
+class AYSShipCore : public AYSMedicNPC, public IGameplayTagAssetInterface
 {
 	GENERATED_BODY()
 
 private:
+
+	/** Bateau des joueurs : hurtbox ciblée par les NME (haute : de la mer au-dessus du core), ses dégâts vont aux PV du bateau */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UBoxComponent> CoreHurtbox;
 
 	/** Visuel du core (primitives, à retoucher dans le Blueprint) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
@@ -51,6 +57,14 @@ protected:
 public:
 
 	AYSShipCore();
+
+	virtual void BeginPlay() override;
+
+	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override;
+
+	virtual float TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
+
+	UBoxComponent* GetHurtbox() const { return CoreHurtbox; }
 
 	/** Coffre (valeur en doublons) ou cadavre */
 	virtual bool AcceptsObject(const AYSInteractiveObject* Object) const override;

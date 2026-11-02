@@ -119,8 +119,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Jolly Ship|Routine", meta=(ClampMin="0", Units="Centimeters"))
 	float RushReachDistance = 300.0f;
 
+	/** Heurte un bateau qu'il ne peut pas aborder : marche arrière pendant cette durée, puis il reprend son tour */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Jolly Ship|Routine", meta=(ClampMin="0", Units="s"))
+	float CollisionReverseDuration = 1.0f;
+
 	/** Pilote automatique : la routine */
 	virtual bool ComputeAutoPilot(float& OutThrottle, float& OutSteer) override;
+
+	virtual void OnShipCollision(AYSPirateShip* Other) override;
+
+	virtual bool IgnoresAlliedShips() const override { return true; }
 
 	/** Pas de barre : la chaloupe reste sans pilote */
 	virtual bool DisappearsWithoutPilot() const override { return false; }
@@ -178,6 +186,7 @@ private:
 	double LastFlipTime = -1.0e6;
 	double NextShoreCheckTime = 0.0;
 	double LastRoutineLogTime = -1.0e6;
+	double ReverseUntilTime = -1.0;
 
 	/** Sens du tour : 1 ou -1 */
 	float CircleSide = 1.0f;

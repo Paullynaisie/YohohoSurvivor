@@ -30,6 +30,8 @@ namespace YSPirateShip
 
 	/** Pas de simulation max (une grosse image est découpée) */
 	constexpr float MaxStep = 1.0f / 30.0f;
+	/** Sous cette vitesse (cm/s), bloqué contre un bateau : pas un nouveau choc */
+	constexpr float MinImpactSpeed = 50.0f;
 
 	/** Autres bateaux traversés par la recherche du fond (chaloupe sous la coque) */
 	constexpr int32 MaxIgnoredShips = 4;
@@ -530,6 +532,128 @@ float AYSPirateShip::GetHullMinDepth(const FVector& Location, float Yaw) const
 	return MinDepth;
 }
 
+float AYSPirateShip::GetHullPenetration(const FVector& Location, float Yaw, const AYSPirateShip* Other) const
+{
+	const FBox2D BoundsA = GetHullBounds();
+	const FBox2D BoundsB = Other->GetHullBounds();
+	if (!BoundsA.bIsValid || !BoundsB.bIsValid)
+	{
+		return 0.0f;
+	}
+	const FVector LocationB = Other->GetActorLocation();
+	const float Reach = BoundsA.GetExtent().Size() + BoundsB.GetExtent().Size() + BoundsA.GetCenter().Size() + BoundsB.GetCenter().Size();
+	if (FVector::DistSquared2D(Location, LocationB) > FMath::Square(Reach))
+	{
+		return 0.0f;
+	}
+
+	// deux rectangles orientés : séparés si un axe de l'un ou de l'autre les sépare ; enfoncement = le plus petit recouvrement
+	const auto GetCorners = [](const FBox2D& Bounds, const FVector& Origin, float CornersYaw, FVector2D (&OutCorners)[4])
+	{
+		const FRotator Rotation(0.0f, CornersYaw, 0.0f);
+		const FVector2D Local[4] = { Bounds.Min, FVector2D(Bounds.Min.X, Bounds.Max.Y), Bounds.Max, FVector2D(Bounds.Max.X, Bounds.Min.Y) };
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			const FVector World = Origin + Rotation.RotateVector(FVector(Local[Index].X, Local[Index].Y, 0.0f));
+			OutCorners[Index] = FVector2D(World.X, World.Y);
+		}
+	};
+	FVector2D CornersA[4];
+	FVector2D CornersB[4];
+	GetCorners(BoundsA, Location, Yaw, CornersA);
+	GetCorners(BoundsB, LocationB, Other->GetActorRotation().Yaw, CornersB);
+
+	float Penetration = TNumericLimits<float>::Max();
+	for (const FVector2D* Corners : { &CornersA[0], &CornersB[0] })
+	{
+		for (int32 Edge = 0; Edge < 2; ++Edge)
+		{
+			const FVector2D Axis = (Corners[Edge + 1] - Corners[Edge]).GetSafeNormal();
+			float MinA = TNumericLimits<float>::Max();
+			float MaxA = -MinA;
+			float MinB = MinA;
+			float MaxB = -MinA;
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				const float ProjectionA = FVector2D::DotProduct(CornersA[Index], Axis);
+				const float ProjectionB = FVector2D::DotProduct(CornersB[Index], Axis);
+				MinA = FMath::Min(MinA, ProjectionA);
+				MaxA = FMath::Max(MaxA, ProjectionA);
+				MinB = FMath::Min(MinB, ProjectionB);
+				MaxB = FMath::Max(MaxB, ProjectionB);
+			}
+			const float Overlap = FMath::Min(MaxA, MaxB) - FMath::Max(MinA, MinB);
+			if (Overlap <= 0.0f)
+			{
+				return 0.0f;
+			}
+			Penetration = FMath::Min(Penetration, Overlap);
+		}
+	}
+	return Penetration;
+}
+
+AYSPirateShip* AYSPirateShip::FindBlockingShip(const FYSShipMotion& From, const FYSShipMotion& To) const
+{
+	for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
+	{
+		AYSPirateShip* Other = *It;
+		if (Other == this || !Other->IsPresent() || Other->IsActorBeingDestroyed()
+			|| (IsFoeShip() == Other->IsFoeShip() && (IgnoresAlliedShips() || Other->IgnoresAlliedShips())))
+		{
+			continue;
+		}
+		const float ToPenetration = GetHullPenetration(To.Location, To.Yaw, Other);
+		if (ToPenetration > 0.0f && ToPenetration >= GetHullPenetration(From.Location, From.Yaw, Other) - KINDA_SMALL_NUMBER)
+		{
+			return Other;
+		}
+	}
+	return nullptr;
+}
+
+bool AYSPirateShip::FindBoardingPoint(const FVector& From, FVector& OutPoint) const
+{
+	if (Health < 0.0f)
+	{
+		OutPoint = GetClosestHullPoint(From);
+		return true;
+	}
+	bool bFound = false;
+	float BestDistSq = TNumericLimits<float>::Max();
+	for (const AYSShipStation* Station : GetStations())
+	{
+		if (Station->IsBroken())
+		{
+			const FVector Point = GetClosestHullPoint(Station->GetActorLocation());
+			const float DistSq = FVector::DistSquared2D(Point, From);
+			if (DistSq < BestDistSq)
+			{
+				BestDistSq = DistSq;
+				OutPoint = Point;
+				bFound = true;
+			}
+		}
+	}
+	return bFound;
+}
+
+bool AYSPirateShip::CanBoardAt(const FVector& ContactPoint, bool bFoeBoarder) const
+{
+	if (bFoeBoarder == IsFoeShip() || Health < 0.0f)
+	{
+		return true;
+	}
+	for (const AYSShipStation* Station : GetStations())
+	{
+		if (Station->IsBroken() && FVector::DistSquared2D(GetClosestHullPoint(Station->GetActorLocation()), ContactPoint) <= FMath::Square(BoardingStationRadius))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 bool AYSPirateShip::CanMoveHull(const FYSShipMotion& From, const FYSShipMotion& To) const
 {
 	// eau assez profonde partout, ou au moins pas moins profonde qu'avant (un bateau posé trop près du bord peut s'en éloigner)
@@ -563,8 +687,9 @@ void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 
 		FYSShipMotion Next = Motion;
 		StepMotion(Next, Step);
-		// fond trop haut (plage, ponton) : le bateau s'arrête net ; il peut toujours repartir vers l'eau profonde
-		const bool bBlocked = bCheckHull && !CanMoveHull(Motion, Next);
+		// fond trop haut (plage, ponton) ou autre bateau : le bateau s'arrête net ; il peut toujours repartir vers l'eau profonde / se dégager
+		AYSPirateShip* BlockingShip = FindBlockingShip(Motion, Next);
+		const bool bBlocked = BlockingShip || (bCheckHull && !CanMoveHull(Motion, Next));
 		if (bBlocked)
 		{
 			// la rotation seule passe peut-être encore
@@ -572,16 +697,28 @@ void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 			Turned.Yaw = Next.Yaw;
 			Turned.YawRate = Next.YawRate;
 			Turned.Speed = 0.0f;
-			const bool bTurnOk = CanMoveHull(Motion, Turned);
+			const bool bTurnOk = !FindBlockingShip(Motion, Turned) && (!bCheckHull || CanMoveHull(Motion, Turned));
+			// gaz maintenu contre un obstacle : il repart à peine et se rebloque, un seul choc
+			if (FMath::Abs(Motion.Speed) < YSPirateShip::MinImpactSpeed)
+			{
+				bGrounded = bGrounded || BlockingShip != nullptr;
+			}
 			Motion.Speed = 0.0f;
 			Motion.YawRate = bTurnOk ? Next.YawRate : 0.0f;
 			Motion.Yaw = bTurnOk ? Next.Yaw : Motion.Yaw;
 			if (!bGrounded)
 			{
 				bGrounded = true;
-				UE_LOG(LogTemp, Log, TEXT("[YSShip] %s s'arrête : eau trop peu profonde devant (%s)"), *GetName(), *Motion.Location.ToCompactString());
+				UE_LOG(LogTemp, Log, TEXT("[YSShip] %s s'arrête : %s (%s)"), *GetName(), BlockingShip ? *FString::Printf(TEXT("percute %s"), *BlockingShip->GetName()) : TEXT("eau trop peu profonde devant"), *Motion.Location.ToCompactString());
 				ForceNetUpdate();
-				OnHullBlocked();
+				if (BlockingShip)
+				{
+					OnShipCollision(BlockingShip);
+				}
+				else
+				{
+					OnHullBlocked();
+				}
 				if (!IsValid(this) || IsActorBeingDestroyed())
 				{
 					return;

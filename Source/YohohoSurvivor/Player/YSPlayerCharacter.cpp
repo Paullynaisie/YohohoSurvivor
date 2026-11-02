@@ -390,6 +390,7 @@ void AYSPlayerCharacter::Die()
 	if (AYSPlayerState* YSPlayerState = GetPlayerState<AYSPlayerState>())
 	{
 		YSPlayerState->SetDead();
+		YSPlayerState->SetDeadBody(this);
 	}
 
 	// ragdoll : le corps vole puis rétrécit (UpdateDeath -> FinishDeath) ; deadzone : tout de suite
@@ -422,6 +423,23 @@ void AYSPlayerCharacter::FinishDeath(bool bKeepActor)
 	if (PlayerController)
 	{
 		PlayerController->ClientPlayerDied(TopDownCamera->GetComponentLocation(), TopDownCamera->GetComponentRotation(), TopDownCamera->FieldOfView);
+	}
+
+	// joueur sans cadavre possible (deadzone, pas de sol) : le personnage reste caché, il garde les upgrades pour une plume de phoenix
+	if (!bKeepActor && bKeepCorpse && GetPlayerState())
+	{
+		bKeepActor = true;
+		HideCorpseWeapons();
+		for (AYSWeapon* Weapon : GetHeldWeapons())
+		{
+			Weapon->SetActorTickEnabled(false);
+		}
+		SetActorHiddenInGame(true);
+		SetActorEnableCollision(false);
+		SetActorTickEnabled(false);
+		GetCharacterMovement()->DisableMovement();
+		GetCharacterMovement()->SetComponentTickEnabled(false);
+		ForceNetUpdate();
 	}
 
 	// cadavre : le personnage reste (son corps, ses armes) mais le joueur le quitte et passe en spectateur
@@ -795,7 +813,7 @@ void AYSPlayerCharacter::FinishRiseNow()
 void AYSPlayerCharacter::FellOutOfWorld(const UDamageType& DamageType)
 {
 	// le serveur décide de la mort (le personnage répliqué ne doit pas être détruit par un client) ; pas de ragdoll sous la map
-	if (!HasAuthority() || IsActorBeingDestroyed() || IsDying())
+	if (!HasAuthority() || IsActorBeingDestroyed() || IsDying() || !IsAlive())
 	{
 		return;
 	}

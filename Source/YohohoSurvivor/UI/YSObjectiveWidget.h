@@ -55,9 +55,25 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
 	float TitleSpacing = 2.0f;
 
+	/** Stock de plumes de phoenix, sous la jauge ({0} = nombre) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Phoenix")
+	FText FeatherFormat = NSLOCTEXT("YS", "ObjectiveFeathers", "Plumes de phoenix : {0}");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Phoenix", meta=(ClampMin="1"))
+	int32 FeatherFontSize = 16;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Phoenix")
+	FLinearColor FeatherColor = FLinearColor(1.0f, 0.55f, 0.15f);
+
+	/** Espace entre la jauge et le stock de plumes */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Phoenix")
+	float FeatherSpacing = 4.0f;
+
 	virtual bool Initialize() override;
 
 	void SetProgress(int32 Doubloons, int32 Goal);
+
+	void SetPhoenixFeathers(int32 Feathers);
 
 	/** Niveau du bateau (0 = pas encore arrivé : titre Title) */
 	void SetShipLevel(int32 Level);
@@ -74,6 +90,11 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> TitleLabel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> FeatherLabel;
+
+	int32 DisplayedFeathers = INDEX_NONE;
 
 	int32 DisplayedShipLevel = INDEX_NONE;
 

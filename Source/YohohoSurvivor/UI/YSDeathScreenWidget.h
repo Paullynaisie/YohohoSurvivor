@@ -6,7 +6,7 @@
 
 /**
  *  Écran plein écran affiché quand le personnage du joueur est mort (AYSPlayerState::IsDead).
- *  Construit en C++ (pas de Widget Blueprint) ; affiché / caché par AYSPlayerController.
+ *  Arbre construit en C++ ; réglages (Layout) dans WBP_DeathScreen (Class Defaults) choisi par AYSPlayerController::DeathScreenClass, qui l'affiche / le cache.
  */
 UCLASS()
 class UYSDeathScreenWidget : public UUserWidget
@@ -50,14 +50,43 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
 	int32 HintFontSize = 20;
 
+	/** Bouton de réanimation (plume de phoenix), sous la ligne du spectateur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Revive")
+	FText ReviveText = NSLOCTEXT("YS", "DeathRevive", "Revive");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Revive")
+	FVector2D ReviveButtonSize = FVector2D(260.0f, 64.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Revive")
+	FLinearColor ReviveButtonColor = FLinearColor(1.0f, 0.55f, 0.15f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Revive", meta=(ClampMin="1"))
+	int32 ReviveFontSize = 28;
+
+	/** Espace entre la ligne du spectateur et le bouton */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Revive")
+	float ReviveTopSpacing = 16.0f;
+
+	/** Clic sur le bouton de réanimation */
+	FSimpleDelegate OnReviveClicked;
+
 	virtual bool Initialize() override;
 
 	/** Mort pendant le ragdoll (titre + voile) ou spectateur (message au milieu + joueur regardé) */
 	void SetSpectating(bool bSpectating, const FText& TargetName);
 
+	/** Bouton de réanimation affiché (spectateur, plume en stock) */
+	void SetReviveAvailable(bool bAvailable);
+
 private:
 
 	void BuildWidgetTree();
+
+	UFUNCTION()
+	void HandleReviveClicked();
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UWidget> ReviveBox;
 
 	UPROPERTY(Transient)
 	TObjectPtr<class UImage> BackgroundImage;

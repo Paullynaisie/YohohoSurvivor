@@ -5,6 +5,8 @@
 #include "Upgrades/YSUpgrade.h"
 #include "YSPlayerState.generated.h"
 
+class AYSPlayerCharacter;
+
 /**
  *  État d'un joueur partagé avec tout le monde : personnage choisi dans le menu de sélection
  *  (index dans AYSGameState::SelectableCharacters, INDEX_NONE tant qu'aucun choix).
@@ -22,6 +24,8 @@ protected:
 	/** Le personnage du joueur est mort (pas de réapparition) : écran « You're dead », compte toujours pour les vagues */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Health")
 	bool bIsDead = false;
+
+	TWeakObjectPtr<AYSPlayerCharacter> DeadBody;
 
 	/** Le joueur a cliqué sur « Prêt » (la partie démarre quand tout le monde est prêt) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
@@ -80,8 +84,12 @@ public:
 	/** Serveur uniquement */
 	void SetDead() { bIsDead = true; }
 
-	/** Serveur uniquement : ressuscité (Medic) */
-	void SetAlive() { bIsDead = false; ForceNetUpdate(); }
+	/** Serveur uniquement : ressuscité (Medic, plume de phoenix) */
+	void SetAlive() { bIsDead = false; DeadBody = nullptr; ForceNetUpdate(); }
+
+	/** Serveur uniquement : personnage mort qui garde les upgrades du joueur, repris par une réanimation */
+	void SetDeadBody(AYSPlayerCharacter* Body) { DeadBody = Body; }
+	AYSPlayerCharacter* GetDeadBody() const { return DeadBody.Get(); }
 
 	const TArray<FYSUpgradeOffer>& GetUpgradeOffers() const { return UpgradeOffers; }
 

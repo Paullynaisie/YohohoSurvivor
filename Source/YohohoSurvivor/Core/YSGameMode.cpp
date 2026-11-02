@@ -12,6 +12,7 @@
 #include "Interaction/YSPlayerCorpse.h"
 #include "LandscapeProxy.h"
 #include "Map/YSOcean.h"
+#include "NPC/YSBrookerNPC.h"
 #include "Ship/YSPirateShip.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -77,6 +78,7 @@ void AYSGameMode::Tick(float DeltaSeconds)
 	TickShipBoarding();
 	TickJollyShips();
 	TickGalions();
+	TickPhoenixAutoRevive();
 }
 
 bool AYSGameMode::IsGalionPhase() const
@@ -295,6 +297,11 @@ void AYSGameMode::TickShipBoarding()
 void AYSGameMode::InitGameState()
 {
 	Super::InitGameState();
+
+	if (AYSGameState* FeatherState = GetGameState<AYSGameState>())
+	{
+		FeatherState->SetPhoenixFeathers(StartingPhoenixFeathers);
+	}
 
 	// personnalisation : les Data Tables (ordre des lignes) remplacent les listes
 	if (CustomizationColorTable)
@@ -889,6 +896,134 @@ bool AYSGameMode::RevivePlayer(AYSPlayerCorpse* Corpse, const FVector& Ground, f
 	}
 	Corpse->Destroy();
 	return true;
+}
+
+void AYSGameMode::AddPhoenixFeathers(int32 Amount)
+{
+	if (AYSGameState* YSGameState = GetGameState<AYSGameState>())
+	{
+		YSGameState->SetPhoenixFeathers(YSGameState->GetPhoenixFeathers() + Amount);
+		UE_LOG(LogTemp, Log, TEXT("[YSPhoenix] Plumes %+d -> %d"), Amount, YSGameState->GetPhoenixFeathers());
+	}
+}
+
+bool AYSGameMode::FindPhoenixRevivePoint(const AActor* Body, int32 Index, FVector& OutGround) const
+{
+	const FVector From = Body->GetActorLocation();
+
+	// le Brooker du bateau (core) ; bateau absent, de NME ou hors d'usage : le Brooker de l'île ; à défaut (TestMap) tout PNJ qui soigne
+	const AYSBrookerNPC* ShipBrooker = nullptr;
+	const AYSBrookerNPC* IslandBrooker = nullptr;
+	const AYSBrookerNPC* OtherNPC = nullptr;
+	for (TActorIterator<AYSBrookerNPC> It(GetWorld()); It; ++It)
+	{
+		const AYSBrookerNPC* NPC = *It;
+		if (!NPC->IsAvailable())
+		{
+			continue;
+		}
+		const AYSPirateShip* Ship = AYSPirateShip::GetShipOf(NPC);
+		if (Ship && Ship->IsDisabled())
+		{
+			continue;
+		}
+		const AYSBrookerNPC*& Slot = Ship ? ShipBrooker : NPC->IsBrooker() ? IslandBrooker : OtherNPC;
+		if (!Slot || FVector::DistSquared2D(NPC->GetActorLocation(), From) < FVector::DistSquared2D(Slot->GetActorLocation(), From))
+		{
+			Slot = NPC;
+		}
+	}
+	const AYSBrookerNPC* Brooker = ShipBrooker ? ShipBrooker : IslandBrooker ? IslandBrooker : OtherNPC;
+	if (!Brooker)
+	{
+		return false;
+	}
+	const FVector Side = FVector::ForwardVector.RotateAngleAxis(Index * 90.0f, FVector::UpVector);
+	OutGround = AYSInteractiveObject::FindGround(GetWorld(), Brooker->GetActorLocation() + Side * PhoenixReviveDistance, Brooker);
+	UE_LOG(LogTemp, Log, TEXT("[YSPhoenix] Réanimation chez %s, en %s"), *Brooker->GetName(), *OutGround.ToCompactString());
+	return true;
+}
+
+bool AYSGameMode::PhoenixRevivePlayer(AController* Controller, int32 Index)
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	AYSPlayerState* PlayerState = Controller ? Controller->GetPlayerState<AYSPlayerState>() : nullptr;
+	if (!YSGameState || !PlayerState || !PlayerState->IsDead() || YSGameState->GetPhoenixFeathers() <= 0 || Cast<AYSPlayerCharacter>(Controller->GetPawn()))
+	{
+		return false;
+	}
+
+	AYSPlayerCorpse* Corpse = nullptr;
+	for (TActorIterator<AYSPlayerCorpse> It(GetWorld()); It && !Corpse; ++It)
+	{
+		Corpse = It->GetOwnerPlayerState() == PlayerState ? *It : nullptr;
+	}
+	// porté par un joueur : lâché d'abord (dans la zone d'un Medic, il vient de le ressusciter : la plume reste)
+	if (AYSPlayerCharacter* Carrier = Corpse ? Corpse->GetCarrier() : nullptr)
+	{
+		Carrier->DropCarriedObject(TEXT("réanimation par plume de phoenix"));
+		if (!PlayerState->IsDead())
+		{
+			return false;
+		}
+	}
+
+	AYSPlayerCharacter* Body = PlayerState->GetDeadBody();
+	FVector Ground;
+	if (!IsValid(Body) || !FindPhoenixRevivePoint(Body, Index, Ground))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSPhoenix] %s : réanimation impossible (corps %d)"), *PlayerState->GetPlayerName(), IsValid(Body));
+		return false;
+	}
+
+	// vivant avant la possession (HUD, écran de mort, spectateur)
+	PlayerState->SetAlive();
+	if (!Body->Revive(Controller, Ground, PhoenixReviveHealthRatio))
+	{
+		PlayerState->SetDead();
+		PlayerState->SetDeadBody(Body);
+		return false;
+	}
+	if (Corpse)
+	{
+		Corpse->Destroy();
+	}
+	YSGameState->SetPhoenixFeathers(YSGameState->GetPhoenixFeathers() - 1);
+	UE_LOG(LogTemp, Log, TEXT("[YSPhoenix] %s ressuscité : reste %d plume(s)"), *PlayerState->GetPlayerName(), YSGameState->GetPhoenixFeathers());
+	return true;
+}
+
+void AYSGameMode::TickPhoenixAutoRevive()
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || YSGameState->GetPhoenixFeathers() <= 0 || GetWorld()->IsPaused())
+	{
+		return;
+	}
+
+	// tout le monde est mort (corps au sol : la dernière mort a fini son ragdoll) : autant de joueurs que de plumes, dans l'ordre d'arrivée
+	TArray<AController*> DeadPlayers;
+	for (const APlayerState* Player : YSGameState->PlayerArray)
+	{
+		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player);
+		if (Player && Cast<AYSPlayerCharacter>(Player->GetPawn()))
+		{
+			return;
+		}
+		if (YSPlayer && YSPlayer->IsDead() && YSPlayer->GetOwningController())
+		{
+			DeadPlayers.Add(YSPlayer->GetOwningController());
+		}
+	}
+	int32 Revived = 0;
+	for (AController* Controller : DeadPlayers)
+	{
+		Revived += PhoenixRevivePlayer(Controller, Revived) ? 1 : 0;
+	}
+	if (Revived > 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSPhoenix] Tous les joueurs étaient morts : %d / %d ressuscité(s) automatiquement"), Revived, DeadPlayers.Num());
+	}
 }
 
 void AYSGameMode::AddDoubloons(int32 Amount)

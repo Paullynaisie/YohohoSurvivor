@@ -299,13 +299,34 @@ bool AYSFoeJollyShip::ComputeAutoPilot(float& OutThrottle, float& OutSteer)
 	const FVector Inward = ToPoint.GetSafeNormal();
 	const double Now = GetWorld()->GetTimeSeconds();
 
+	// heurté un bateau qu'il ne peut pas aborder : il recule un moment
+	if (Now < ReverseUntilTime)
+	{
+		OutThrottle = -1.0f;
+		OutSteer = 0.0f;
+		return true;
+	}
+
+	// anti-abordage : cible sur un bateau = il tourne autour tant qu'aucun poste n'est détruit (ni le core en négatif) ;
+	// il ne fonce qu'une fois en face du poste détruit (sinon il heurterait la coque ailleurs)
+	const AYSPlayerCharacter* TargetOnDeck = Cast<AYSPlayerCharacter>(ShipTarget);
+	const AYSPirateShip* DeckShip = TargetOnDeck ? TargetOnDeck->GetShipUnderFeet() : nullptr;
+	FVector BoardingPoint = Point;
+	const bool bCanBoard = !DeckShip || DeckShip->FindBoardingPoint(Location, BoardingPoint);
+	const bool bFacingBoardingPoint = !DeckShip || (bCanBoard && FVector::DistSquared2D(Point, BoardingPoint) <= FMath::Square(DeckShip->GetBoardingStationRadius()));
+
 	if (Phase == EYSJollyShipPhase::Approach && Distance <= EngageDistance)
 	{
 		SetPhase(EYSJollyShipPhase::Circle);
 	}
-	else if (Phase == EYSJollyShipPhase::Circle && Now - PhaseStartTime >= CircleDuration)
+	else if (Phase == EYSJollyShipPhase::Circle && Now - PhaseStartTime >= CircleDuration && bFacingBoardingPoint)
 	{
 		SetPhase(EYSJollyShipPhase::Rush);
+	}
+	else if (Phase == EYSJollyShipPhase::Rush && !bCanBoard)
+	{
+		// poste réparé avant le choc
+		SetPhase(EYSJollyShipPhase::Circle);
 	}
 	else if (Phase == EYSJollyShipPhase::Rush && !bTargetOnShip && Distance <= RushReachDistance)
 	{
@@ -319,7 +340,7 @@ bool AYSFoeJollyShip::ComputeAutoPilot(float& OutThrottle, float& OutSteer)
 		UE_LOG(LogTemp, Verbose, TEXT("[YSJollyShip] %s en (%.0f, %.0f) : phase %d, à %.0f cm de sa cible, vitesse %.0f"), *GetName(), Location.X, Location.Y, static_cast<int32>(Phase), Distance, GetSpeed());
 	}
 
-	FVector Desired = Inward;
+	FVector Desired = Phase == EYSJollyShipPhase::Rush && DeckShip ? FVector(BoardingPoint.X - Location.X, BoardingPoint.Y - Location.Y, 0.0f) : Inward;
 	if (Phase == EYSJollyShipPhase::Circle)
 	{
 		// la plage devant : demi-tour plutôt que de s'échouer pendant le tour
@@ -343,6 +364,19 @@ bool AYSFoeJollyShip::ComputeAutoPilot(float& OutThrottle, float& OutSteer)
 	OutThrottle = 1.0f;
 	OutSteer = ComputeSteerTowards(Desired, SteerFullAngle);
 	return true;
+}
+
+void AYSFoeJollyShip::OnShipCollision(AYSPirateShip* Other)
+{
+	Super::OnShipCollision(Other);
+	if (bEjected)
+	{
+		return;
+	}
+	ReverseUntilTime = GetWorld()->GetTimeSeconds() + CollisionReverseDuration;
+	CircleSide = -CircleSide;
+	SetPhase(EYSJollyShipPhase::Circle);
+	UE_LOG(LogTemp, Log, TEXT("[YSJollyShip] %s heurte %s sans pouvoir l'aborder : recule, reprend son tour"), *GetName(), *Other->GetName());
 }
 
 AYSFoeJollyShip* AYSFoeJollyShip::SpawnAtSea(UWorld* World, TSubclassOf<AYSFoeJollyShip> ShipClass, float MinDistance, float MaxDistance, float Step, int32 Attempts)

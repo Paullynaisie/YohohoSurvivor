@@ -17,6 +17,7 @@ class AYSInteractiveObject;
 class AYSFoeBomb;
 class AYSWeapon;
 class AYSPlayerCharacter;
+class AYSShipCore;
 class UChildActorComponent;
 class UYSWeaponSet;
 class UMaterialInterface;
@@ -417,6 +418,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Movement", meta=(ClampMin="1"))
 	float MinionTargetDistanceMultiplier = 2.0f;
 
+	/** Choix de la cible : le core du bateau des joueurs compte ce nombre de fois plus loin qu'un joueur à la même distance */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Movement", meta=(ClampMin="1"))
+	float CoreTargetDistanceMultiplier = 2.0f;
+
+	/** Le NME ne change de cible qu'une fois par ... (cible morte ou devenue hors d'atteinte : tout de suite) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Movement", meta=(ClampMin="0", Units="s"))
+	float TargetCheckInterval = 3.0f;
+
 	/** Tags portés par l'ennemi (camp, etc.), lus par les projectiles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Tags")
 	FGameplayTagContainer GameplayTags;
@@ -614,9 +623,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Mark", meta=(ClampMin="1", Units="Centimeters"))
 	float MarkRebuildDistance = 15.0f;
 
-	/** Joueur actuellement ciblé (renseigné sur le serveur uniquement) */
+	/** Cible actuelle : joueur, minion ou core du bateau des joueurs (renseignée sur le serveur uniquement) */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Foe")
-	TObjectPtr<APawn> Target;
+	TObjectPtr<AActor> Target;
 
 public:
 
@@ -747,13 +756,13 @@ public:
 	float GetAmmoLifeTimeMultiplier() const { return RideAmmoLifeTimeMultiplier; }
 
 	/** Cible actuelle (serveur) */
-	APawn* GetCurrentTarget() const { return Target; }
+	AActor* GetCurrentTarget() const { return Target; }
 
 	/** Attaque à distance de l'arme tenue (la première trouvée, main droite d'abord), ou nullptr : le NME est alors au corps à corps */
 	UYSFoeRangedAction* GetRangedAction() const;
 
 	/** Tir (NME shot) : début de la visée dans la direction de sa cible décalée de YawOffset degrés (serveur) ; tir à la fin de AimDuration */
-	bool StartAim(const APawn* AimTarget, float AimDuration, float YawOffset);
+	bool StartAim(const AActor* AimTarget, float AimDuration, float YawOffset);
 
 	/** Point de départ d'une attaque à distance : Muzzle de l'arme qui la porte, sinon au-dessus du NME */
 	FVector GetAttackOrigin(const UYSFoeRangedAction* Action) const;
@@ -804,7 +813,25 @@ protected:
 	void UpdateHealthBar();
 
 	/** Retourne le pawn joueur le plus proche (sur le plan horizontal), ou nullptr ; ceux qui nagent seulement si bIncludeSwimmers (NME à distance) */
-	APawn* FindNearestPlayer(bool bIncludeSwimmers = false) const;
+	APawn* FindNearestPlayer(bool bIncludeSwimmers = false, float* OutScoreSq = nullptr) const;
+
+	/** Meilleure cible : le joueur ou minion le plus proche, ou le core du bateau des joueurs (à portée, compté plus loin) */
+	AActor* FindBestTarget(bool bIncludeSwimmers) const;
+
+	/** Ce NME peut s'en prendre à ce core : à distance s'il est à portée, au corps à corps seulement sur le pont du même bateau */
+	bool CanTargetCore(const AYSShipCore* Core) const;
+
+	/** La cible actuelle reste valable (vivante, à bord pour l'équipage d'un Galion, pas à la nage pour un NME de mêlée...) */
+	bool IsTargetStillValid(bool bIncludeSwimmers) const;
+
+	/** Heure du prochain choix de cible */
+	double NextTargetCheckTime = -1.0;
+
+	/** La cible est un core dont la hurtbox touche la Hitbox */
+	AYSShipCore* GetCoreInHitbox() const;
+
+	/** Prochain coup de contact sur un core */
+	double NextCoreContactTime = 0.0;
 
 	/** Le sol devant le NME (Distance dans Direction) est la mer : il s'arrête au bord au lieu d'y entrer (cible qui nage) */
 	bool IsWaterAhead(const FVector& Direction, float Distance, float MaxDepth = 0.0f) const;
@@ -837,7 +864,7 @@ protected:
 	 *  Joueur qui a déclenché l'attaque de mêlée en cours (serveur) : le NME reste tourné vers lui pendant l'attaque, même si sa
 	 *  cible de déplacement est un autre joueur (porteur d'objet attiré, joueur plus petit dont le centre est plus proche)
 	 */
-	TWeakObjectPtr<APawn> MeleeVictim;
+	TWeakObjectPtr<AActor> MeleeVictim;
 
 	/** Une attaque de mêlée est en cours sur cette machine (animation) */
 	bool IsMeleeAttacking() const;

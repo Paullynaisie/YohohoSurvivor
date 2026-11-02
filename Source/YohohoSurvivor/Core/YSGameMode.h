@@ -203,7 +203,7 @@ protected:
 
 	/** Secondes entre deux Galions */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion", meta=(ClampMin="1", Units="s", EditCondition="bGalionWaves"))
-	float GalionWaveInterval = 60.0f;
+	float GalionWaveInterval = 120.0f;
 
 	/** Pas d'emplacement libre sur l'eau : nouvel essai après ce délai */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion", meta=(ClampMin="0.1", Units="s", EditCondition="bGalionWaves"))
@@ -229,7 +229,7 @@ protected:
 
 	/** Secondes entre deux vagues (la première part dès que le bateau arrive) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="0.1", Units="s", EditCondition="bJollyShipWaves"))
-	float JollyShipWaveInterval = 10.0f;
+	float JollyShipWaveInterval = 20.0f;
 
 	/** Jolly Ships par vague pour 1 joueur (x Spawn Multiplier du nombre de joueurs, comme tous les NME) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Jolly Ship", meta=(ClampMin="0", EditCondition="bJollyShipWaves"))
@@ -332,6 +332,18 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="0"))
 	int32 DoubloonGoalPerShipLevel = 50;
+
+	/** Plumes de phoenix dans le stock de l'équipe au début de la partie */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Phoenix", meta=(ClampMin="0"))
+	int32 StartingPhoenixFeathers = 1;
+
+	/** Part des PV max rendue par une plume */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Phoenix", meta=(ClampMin="0.01", ClampMax="1"))
+	float PhoenixReviveHealthRatio = 1.0f;
+
+	/** Le joueur réapparaît à cette distance du Brooker (plusieurs à la fois : tout autour) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Phoenix", meta=(ClampMin="0", Units="Centimeters"))
+	float PhoenixReviveDistance = 200.0f;
 
 	/** Carte au trésor qui apparaît au hasard au début de chaque jour (vide = aucune) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap")
@@ -486,6 +498,15 @@ public:
 	 */
 	bool RevivePlayer(AYSPlayerCorpse* Corpse, const FVector& Ground, float HealthRatio);
 
+	/** Ajoute des plumes de phoenix au stock de l'équipe (serveur) */
+	void AddPhoenixFeathers(int32 Amount);
+
+	/**
+	 *  Consomme une plume de phoenix pour ressusciter ce joueur mort (serveur) : même personnage, set d'arme et upgrades, au Brooker du
+	 *  bateau (core), sans bateau au Brooker de l'île ; Index = rang dans une réanimation groupée. Faux si rien n'a été consommé.
+	 */
+	bool PhoenixRevivePlayer(AController* Controller, int32 Index = 0);
+
 	/** Vague supplémentaire hors écran : EnemiesPerPlayer (1 joueur) × Spawn Multiplier du nombre de joueurs (NME de la première règle de spawn active) */
 	int32 SpawnBonusWave(int32 EnemiesPerPlayer, const TCHAR* Reason);
 
@@ -543,6 +564,12 @@ protected:
 	bool IsGalionPhase() const;
 
 	void TickGalions();
+
+	/** Tous les joueurs morts : les plumes en stock les ressuscitent automatiquement */
+	void TickPhoenixAutoRevive();
+
+	/** Sol où ressusciter : à côté du Brooker du bateau, sinon de celui de l'île */
+	bool FindPhoenixRevivePoint(const AActor* Body, int32 Index, FVector& OutGround) const;
 
 	/** Jour suivant (serveur) : nouvelle carte au trésor, règles de spawn prévenues */
 	void AdvanceDay();

@@ -57,6 +57,12 @@ protected:
 	/** Touche le fond : éjection sur l'île devant */
 	virtual void OnHullBlocked() override;
 
+	/** Arrêtée par la coque d'un autre bateau : abordage s'il est permis */
+	virtual void OnShipCollision(AYSPirateShip* Other) override;
+
+	/** Joueurs (équipage) posés sur le pont de Ship, chaloupe détruite (serveur) */
+	void BoardShip(AYSPirateShip* Ship);
+
 	/** Sans pilote, elle disparaît après Empty Lifetime (faux pour le NME Jolly Ship) */
 	virtual bool DisappearsWithoutPilot() const { return true; }
 

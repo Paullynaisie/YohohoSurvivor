@@ -228,6 +228,22 @@ protected:
 	/** Serveur : la coque touche le fond (eau trop peu profonde), une fois par arrêt ; ex. chaloupe : éjection sur l'île */
 	virtual void OnHullBlocked() {}
 
+	/** Serveur : la coque en percute une autre et s'arrête, une fois par arrêt */
+	virtual void OnShipCollision(AYSPirateShip* Other) {}
+
+	/** Abordage : la chaloupe qui percute la coque près d'un poste à 0 PV (mesuré sur la coque, en face du poste) peut aborder */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding", meta=(ClampMin="0", Units="Centimeters"))
+	float BoardingStationRadius = 600.0f;
+
+	/** Bateau qui bloque le passage de From à To (la coque ne s'enfonce pas plus dans un autre bateau ; s'en dégager reste possible) */
+	AYSPirateShip* FindBlockingShip(const FYSShipMotion& From, const FYSShipMotion& To) const;
+
+	/** Enfoncement (cm, 0 = pas de contact) de cette coque, placée là, dans celle d'Other */
+	float GetHullPenetration(const FVector& Location, float Yaw, const AYSPirateShip* Other) const;
+
+	/** Ne percute pas les bateaux de son camp (Jolly Ships, nombreux, ils se bloqueraient entre eux) */
+	virtual bool IgnoresAlliedShips() const { return false; }
+
 	/** Rectangle local (X / Y) des Hull Probe Points */
 	FBox2D GetHullBounds() const;
 
@@ -330,6 +346,17 @@ public:
 
 	/** Bateau auquel appartient cet acteur (lui-même, ou un de ses postes / acteurs accrochés), ou nullptr */
 	static AYSPirateShip* GetShipOf(const AActor* Actor);
+
+	/**
+	 *  Anti-abordage : un point de la coque où l'autre camp peut aborder, le plus proche de From : celui en face d'un poste à 0 PV,
+	 *  n'importe lequel si le core est en négatif. Faux = pas d'abordage possible.
+	 */
+	bool FindBoardingPoint(const FVector& From, FVector& OutPoint) const;
+
+	/** Un bateau du camp bFoeBoarder qui percute la coque à ce point peut l'aborder (son propre camp : toujours) */
+	bool CanBoardAt(const FVector& ContactPoint, bool bFoeBoarder) const;
+
+	float GetBoardingStationRadius() const { return BoardingStationRadius; }
 
 	/** Le point (monde) est dans l'emprise de la coque (rectangle des Hull Probe Points, agrandi de Margin), à plat */
 	bool IsInsideHull(const FVector& WorldLocation, float Margin = 0.0f) const;

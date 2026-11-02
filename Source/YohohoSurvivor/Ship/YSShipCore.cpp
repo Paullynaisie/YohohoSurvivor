@@ -1,5 +1,8 @@
 #include "Ship/YSShipCore.h"
+#include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Core/YSCombat.h"
+#include "Core/YSGameplayTags.h"
 #include "Engine/StaticMesh.h"
 #include "Interaction/YSPlayerCorpse.h"
 #include "Materials/MaterialInterface.h"
@@ -58,6 +61,48 @@ AYSShipCore::AYSShipCore()
 	{
 		CoreOrb->SetMaterial(0, OrbMaterialFinder.Object);
 	}
+
+	// origine du core = pont (+210 au-dessus de la mer)
+	CoreHurtbox = CreateDefaultSubobject<UBoxComponent>(TEXT("CoreHurtbox"));
+	CoreHurtbox->SetupAttachment(GetRootComponent());
+	CoreHurtbox->InitBoxExtent(FVector(120.0f, 120.0f, 300.0f));
+	CoreHurtbox->SetRelativeLocation(FVector(0.0f, 0.0f, 90.0f));
+	CoreHurtbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	CoreHurtbox->SetGenerateOverlapEvents(false);
+	CoreHurtbox->SetCanEverAffectNavigation(false);
+}
+
+void AYSShipCore::BeginPlay()
+{
+	Super::BeginPlay();
+
+	const AYSPirateShip* Ship = AYSPirateShip::GetShipOf(this);
+	if (Ship && !Ship->IsFoeShip())
+	{
+		YSCombat::ConfigureHurtbox(CoreHurtbox);
+		// la hurtbox ne suit que les requêtes de combat : aucun overlap entretenu
+		CoreHurtbox->SetGenerateOverlapEvents(false);
+	}
+}
+
+void AYSShipCore::GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const
+{
+	const AYSPirateShip* Ship = AYSPirateShip::GetShipOf(this);
+	if (Ship && !Ship->IsFoeShip())
+	{
+		TagContainer.AddTag(YSTags::Team_Player);
+	}
+}
+
+float AYSShipCore::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+	AYSPirateShip* Ship = AYSPirateShip::GetShipOf(this);
+	if (!HasAuthority() || !Ship || Ship->IsFoeShip() || DamageAmount <= 0.0f)
+	{
+		return 0.0f;
+	}
+	Ship->TakeCoreDamage(DamageAmount, EventInstigator, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation());
+	return DamageAmount;
 }
 
 bool AYSShipCore::AcceptsObject(const AYSInteractiveObject* Object) const

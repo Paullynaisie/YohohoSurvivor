@@ -39,6 +39,12 @@ bool AYSShipBoarding::CanInteract(const AYSPlayerCharacter* Character) const
 	{
 		return false;
 	}
+	// anti-abordage : bateau de NME accessible seulement une fois un poste détruit ou son core en négatif
+	FVector BoardingPoint;
+	if (Ship->IsFoeShip() && !Ship->FindBoardingPoint(GetActorLocation(), BoardingPoint))
+	{
+		return false;
+	}
 	// déjà sur ce bateau (pont, planche d'embarquement) : rien à faire
 	const UPrimitiveComponent* Base = Character->GetCharacterMovement() ? Cast<UPrimitiveComponent>(Character->GetCharacterMovement()->GetMovementBaseObject()) : nullptr;
 	return !Base || AYSPirateShip::GetShipOf(Base->GetOwner()) != Ship;

@@ -74,7 +74,24 @@ void UYSObjectiveWidget::BuildWidgetTree()
 	LabelSlot->SetHorizontalAlignment(HAlign_Center);
 	LabelSlot->SetVerticalAlignment(VAlign_Center);
 
+	FeatherLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Feathers"));
+	YSObjective::StyleText(FeatherLabel, FeatherFontSize);
+	FeatherLabel->SetColorAndOpacity(FSlateColor(FeatherColor));
+	UVerticalBoxSlot* FeatherSlot = Column->AddChildToVerticalBox(FeatherLabel);
+	FeatherSlot->SetHorizontalAlignment(HAlign_Right);
+	FeatherSlot->SetPadding(FMargin(0.0f, FeatherSpacing, 0.0f, 0.0f));
+
 	SetProgress(0, 0);
+}
+
+void UYSObjectiveWidget::SetPhoenixFeathers(int32 Feathers)
+{
+	if (!FeatherLabel || Feathers == DisplayedFeathers)
+	{
+		return;
+	}
+	DisplayedFeathers = Feathers;
+	FeatherLabel->SetText(FText::Format(FeatherFormat, FText::AsNumber(Feathers)));
 }
 
 void UYSObjectiveWidget::SetProgress(int32 Doubloons, int32 Goal)

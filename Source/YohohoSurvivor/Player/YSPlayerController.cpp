@@ -156,7 +156,8 @@ void AYSPlayerController::BeginPlay()
 			MenuSlot.ZOrder = 10;
 			ViewportSubsystem->AddWidgetForPlayer(CharacterSelectMenu, GetLocalPlayer(), MenuSlot);
 
-			DeathScreen = CreateWidget<UYSDeathScreenWidget>(this, UYSDeathScreenWidget::StaticClass());
+			DeathScreen = CreateWidget<UYSDeathScreenWidget>(this, DeathScreenClass ? DeathScreenClass.Get() : UYSDeathScreenWidget::StaticClass());
+			DeathScreen->OnReviveClicked.BindUObject(this, &AYSPlayerController::ServerPhoenixRevive);
 			DeathScreen->SetVisibility(ESlateVisibility::Collapsed);
 			FGameViewportWidgetSlot DeathSlot;
 			DeathSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
@@ -495,7 +496,7 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	const bool bDead = MyPlayerState && MyPlayerState->IsDead();
 	if (DeathScreen)
 	{
-		DeathScreen->SetVisibility(bDead ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		DeathScreen->SetVisibility(bDead ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 	}
 
 	// le menu disparaît dès que le joueur a son personnage
@@ -974,6 +975,7 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 	{
 		Objective->SetProgress(YSGameState->GetDoubloons(), YSGameState->GetDoubloonGoal());
 		Objective->SetShipLevel(YSGameState->GetShipLevel());
+		Objective->SetPhoenixFeathers(YSGameState->GetPhoenixFeathers());
 		Objective->SetVisibility(YSGameState->IsMatchStarted() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 }
@@ -1722,6 +1724,7 @@ void AYSPlayerController::UpdateSpectating()
 		if (DeathScreen)
 		{
 			DeathScreen->SetSpectating(false, FText::GetEmpty());
+			DeathScreen->SetReviveAvailable(false);
 		}
 		return;
 	}
@@ -1760,6 +1763,30 @@ void AYSPlayerController::UpdateSpectating()
 			TargetName = FText::Format(NSLOCTEXT("YS", "SpectateCorpse", "{0} (ton cadavre)"), OwnerState ? FText::FromString(OwnerState->GetDisplayName()) : FText::GetEmpty());
 		}
 		DeathScreen->SetSpectating(true, TargetName);
+		const AYSGameState* FeatherState = GetWorld()->GetGameState<AYSGameState>();
+		DeathScreen->SetReviveAvailable(FeatherState && FeatherState->GetPhoenixFeathers() > 0 && !IsPaused());
+	}
+}
+
+void AYSPlayerController::ServerPhoenixRevive_Implementation()
+{
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	if (GameMode && !IsPaused())
+	{
+		GameMode->PhoenixRevivePlayer(this);
+	}
+}
+
+void AYSPlayerController::YSPhoenixRevive()
+{
+	ServerPhoenixRevive();
+}
+
+void AYSPlayerController::YSAddFeathers(int32 Amount)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->AddPhoenixFeathers(Amount);
 	}
 }
 
@@ -2106,6 +2133,31 @@ void AYSPlayerController::YSSpawnGalion()
 	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
 	{
 		GameMode->SpawnGalion(TEXT("debug"));
+	}
+}
+
+void AYSPlayerController::YSPlaceGalionAhead(float Distance)
+{
+	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSPirateShip* Ship = PlayerCharacter ? PlayerCharacter->GetShipUnderFeet() : nullptr;
+	if (!HasAuthority() || !Ship)
+	{
+		return;
+	}
+	AYSFoeGalion* Galion = nullptr;
+	for (TActorIterator<AYSFoeGalion> It(GetWorld()); It && !Galion; ++It)
+	{
+		Galion = *It;
+	}
+	if (Galion)
+	{
+		// la proue est le point de la coque le plus loin devant ; le Galion en travers : moitié de sa largeur en plus
+		const FVector Forward = Ship->GetActorForwardVector().GetSafeNormal2D();
+		const FVector Bow = Ship->GetClosestHullPoint(Ship->GetActorLocation() + Forward * 100000.0f);
+		const FVector Location = Bow + Forward * (Distance + 1000.0f);
+		Galion->SetActorLocationAndRotation(FVector(Location.X, Location.Y, Galion->GetActorLocation().Z), FRotator(0.0f, Ship->GetActorRotation().Yaw + 90.0f, 0.0f));
+		Galion->SyncMotionToActor();
+		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s placé en %s, devant %s"), *Galion->GetName(), *Location.ToCompactString(), *Ship->GetName());
 	}
 }
 

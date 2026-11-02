@@ -53,7 +53,7 @@ UYSFoeBombAction::UYSFoeBombAction()
 	BombClass = AYSFoeBomb::StaticClass();
 }
 
-bool UYSFoeBombAction::StartAttack(AYSFoeCharacter* Foe, const APawn* Target, const FVector& Origin)
+bool UYSFoeBombAction::StartAttack(AYSFoeCharacter* Foe, const AActor* Target, const FVector& Origin)
 {
 	UWorld* World = Foe ? Foe->GetWorld() : nullptr;
 	if (!World || !BombClass || !Target || IsAnimating())
@@ -168,7 +168,7 @@ bool UYSFoeBombAction::IsWeaponHidden() const
 	return SinceRelease >= 0.0f && SinceRelease < BombReappearDelay;
 }
 
-bool UYSFoeShotAction::StartAttack(AYSFoeCharacter* Foe, const APawn* Target, const FVector& Origin)
+bool UYSFoeShotAction::StartAttack(AYSFoeCharacter* Foe, const AActor* Target, const FVector& Origin)
 {
 	// imprécision : direction décalée au hasard, ligne de visée comprise
 	return Foe && Target && Foe->StartAim(Target, AimDuration, FMath::FRandRange(-AimSpread, AimSpread));
@@ -186,13 +186,13 @@ void UYSFoeShotAction::Fire(AYSFoeCharacter* Foe, const FVector& Origin, const F
 	// s'arrête dans la coque d'un bateau ; la coque de la cible ne l'arrête pas non plus : elle vise le joueur sur le pont)
 	FVector FireDirection = Direction;
 	AActor* IgnoredShip = nullptr;
-	const APawn* Aimed = Foe->IsRidingShip() ? Foe->GetCurrentTarget() : nullptr;
+	const AActor* Aimed = Foe->IsRidingShip() ? Foe->GetCurrentTarget() : nullptr;
 	if (Aimed)
 	{
 		const float Distance = FVector::Dist2D(Aimed->GetActorLocation(), Origin);
 		FireDirection = FVector(Direction.X, Direction.Y, 0.0f).GetSafeNormal() * Distance + FVector(0.0f, 0.0f, Aimed->GetActorLocation().Z - Origin.Z);
 		const AYSPlayerCharacter* AimedCharacter = Cast<AYSPlayerCharacter>(Aimed);
-		IgnoredShip = AimedCharacter ? AimedCharacter->GetShipUnderFeet() : nullptr;
+		IgnoredShip = AimedCharacter ? AimedCharacter->GetShipUnderFeet() : AYSPirateShip::GetShipOf(Aimed);
 	}
 
 	const FTransform SpawnTransform(FireDirection.Rotation(), Origin);

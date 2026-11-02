@@ -14,6 +14,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Ship/YSPirateShip.h"
+#include "Ship/YSShipCore.h"
 #include "Enemies/YSFoeGalion.h"
 #include "Summons/YSCaptainMinion.h"
 #include "UI/YSHealthBarWidget.h"
@@ -146,6 +147,7 @@ void AYSShipStation::DamageModulesInRadius(UWorld* World, const FVector& Center,
 	TArray<FOverlapResult> Overlaps;
 	World->OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeSphere(Radius));
 	TSet<AYSShipStation*> Damaged;
+	TSet<AYSShipCore*> DamagedCores;
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		AYSShipStation* Station = Cast<AYSShipStation>(Overlap.GetActor());
@@ -153,6 +155,13 @@ void AYSShipStation::DamageModulesInRadius(UWorld* World, const FVector& Center,
 		{
 			Damaged.Add(Station);
 			Station->TakeDamage(Damage, FDamageEvent(), EventInstigator, nullptr);
+		}
+		// core du bateau des joueurs (explosion d'un NME)
+		AYSShipCore* Core = Cast<AYSShipCore>(Overlap.GetActor());
+		if (Core && !DamagedCores.Contains(Core) && Core->HasAnyMatchingGameplayTags(HitTags))
+		{
+			DamagedCores.Add(Core);
+			Core->TakeDamage(Damage, FDamageEvent(), EventInstigator, nullptr);
 		}
 	}
 }

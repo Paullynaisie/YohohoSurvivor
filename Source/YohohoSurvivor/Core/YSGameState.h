@@ -90,6 +90,10 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Objective")
 	int32 Doubloons = 0;
 
+	/** Stock commun de plumes de phoenix : une plume = une réanimation */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Objective")
+	int32 PhoenixFeathers = 0;
+
 	/** Niveau du bateau (0 = pas encore arrivé ; 1 = arrivé au premier objectif de doublons) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Objective")
 	int32 ShipLevel = 0;
@@ -211,6 +215,11 @@ public:
 	/** Serveur uniquement (AYSGameMode) */
 	void SetDoubloons(int32 Amount, int32 Goal) { Doubloons = Amount; DoubloonGoal = Goal; ForceNetUpdate(); }
 	void SetShipLevel(int32 Level) { ShipLevel = Level; ForceNetUpdate(); }
+
+	int32 GetPhoenixFeathers() const { return PhoenixFeathers; }
+
+	/** Serveur uniquement (AYSGameMode) */
+	void SetPhoenixFeathers(int32 Amount) { PhoenixFeathers = FMath::Max(0, Amount); ForceNetUpdate(); }
 
 	int32 GetShipLevel() const { return ShipLevel; }
 
