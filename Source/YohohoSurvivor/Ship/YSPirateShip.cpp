@@ -488,6 +488,20 @@ void AYSPirateShip::StepMotion(FYSShipMotion& State, float DeltaSeconds) const
 	State.Location += FRotator(0.0f, State.Yaw, 0.0f).Vector() * State.Speed * DeltaSeconds;
 }
 
+bool AYSPirateShip::FindWaterPlacement(const FVector& From, const FVector& Direction, float Yaw, float MaxDistance, float Step, FVector& OutLocation) const
+{
+	for (float Distance = 0.0f; Distance <= MaxDistance; Distance += FMath::Max(Step, 1.0f))
+	{
+		const FVector Location = From + Direction * Distance;
+		if (GetHullMinDepth(Location, Yaw) >= MinWaterDepth)
+		{
+			OutLocation = Location;
+			return true;
+		}
+	}
+	return false;
+}
+
 float AYSPirateShip::GetHullMinDepth(const FVector& Location, float Yaw) const
 {
 	const UWorld* World = GetWorld();

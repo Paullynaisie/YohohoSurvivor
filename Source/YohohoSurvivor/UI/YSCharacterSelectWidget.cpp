@@ -69,11 +69,41 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	UOverlaySlot* BackgroundSlot = Root->AddChildToOverlay(Background);
 	BackgroundSlot->SetHorizontalAlignment(HAlign_Fill);
 	BackgroundSlot->SetVerticalAlignment(VAlign_Fill);
+	BackgroundImage = Background;
 
 	UVerticalBox* Page = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Page"));
 	UOverlaySlot* PageSlot = Root->AddChildToOverlay(Page);
 	PageSlot->SetHorizontalAlignment(HAlign_Fill);
 	PageSlot->SetVerticalAlignment(VAlign_Fill);
+	PageWidget = Page;
+
+	// une fois prêt (GameBoat en fond) : « Annuler » en bas au milieu, le nombre de joueurs prêts dessous
+	UVerticalBox* ReadyBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ReadyPanel"));
+	UOverlaySlot* ReadyBoxSlot = Root->AddChildToOverlay(ReadyBox);
+	ReadyBoxSlot->SetHorizontalAlignment(HAlign_Center);
+	ReadyBoxSlot->SetVerticalAlignment(VAlign_Bottom);
+	ReadyBoxSlot->SetPadding(ReadyPanelPadding);
+	ReadyBox->SetVisibility(ESlateVisibility::Collapsed);
+	ReadyPanel = ReadyBox;
+
+	USizeBox* CancelSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("CancelRow"));
+	CancelSize->SetWidthOverride(CancelButtonSize.X);
+	CancelSize->SetHeightOverride(CancelButtonSize.Y);
+	CancelButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Cancel"));
+	CancelButton->SetBackgroundColor(CancelButtonColor);
+	CancelButton->AddChild(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "CancelReadyButton", "Annuler"), CancelFontSize));
+	CancelSize->AddChild(CancelButton);
+	UYSCharacterSelectButtonProxy* CancelProxy = NewObject<UYSCharacterSelectButtonProxy>(this);
+	CancelProxy->Group = 3;
+	CancelProxy->Menu = this;
+	CancelButton->OnClicked.AddDynamic(CancelProxy, &UYSCharacterSelectButtonProxy::HandleClicked);
+	ButtonProxies.Add(CancelProxy);
+	ReadyBox->AddChildToVerticalBox(CancelSize)->SetHorizontalAlignment(HAlign_Center);
+
+	ReadyStatusText = YSCharacterSelect::MakeLabel(WidgetTree, FText::GetEmpty(), ReadyStatusFontSize);
+	UVerticalBoxSlot* ReadyStatusSlot = ReadyBox->AddChildToVerticalBox(ReadyStatusText);
+	ReadyStatusSlot->SetHorizontalAlignment(HAlign_Center);
+	ReadyStatusSlot->SetPadding(FMargin(0.0f, ReadyStatusSpacing, 0.0f, 0.0f));
 
 	// pseudo : en haut au centre
 	USizeBox* NicknameSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("NicknameRow"));
@@ -251,6 +281,23 @@ void UYSCharacterSelectWidget::SetReady(bool bIsReady)
 	if (ReadyButton)
 	{
 		ReadyButton->SetBackgroundColor(bIsReady ? SelectedColor : NormalColor);
+	}
+}
+
+void UYSCharacterSelectWidget::SetBoatIntro(bool bBoatIntro, bool bIsReady)
+{
+	if (!BackgroundImage || !PageWidget || !ReadyPanel)
+	{
+		return;
+	}
+	BackgroundImage->SetColorAndOpacity(bBoatIntro ? BoatIntroBackgroundColor : BackgroundColor);
+	const bool bShowPanel = bBoatIntro && bIsReady;
+	if (bShowPanel != bShowingReadyPanel)
+	{
+		bShowingReadyPanel = bShowPanel;
+		BackgroundImage->SetVisibility(bShowPanel ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+		PageWidget->SetVisibility(bShowPanel ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+		ReadyPanel->SetVisibility(bShowPanel ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }
 
@@ -441,7 +488,7 @@ void UYSCharacterSelectWidget::NativeTick(const FGeometry& MyGeometry, float InD
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
 	// manette : focus sur le premier personnage, puis navigation au stick gauche
-	YSGamepad::UpdateMenuFocus(this, Buttons.Num() > 0 ? Buttons[0].Get() : nullptr, GamepadFocusScale);
+	YSGamepad::UpdateMenuFocus(this, bShowingReadyPanel ? CancelButton.Get() : Buttons.Num() > 0 ? Buttons[0].Get() : nullptr, GamepadFocusScale);
 
 	if (!NicknameBox)
 	{
@@ -544,6 +591,10 @@ void UYSCharacterSelectWidget::SetStatus(const FText& Status)
 	if (StatusText)
 	{
 		StatusText->SetText(Status);
+	}
+	if (ReadyStatusText)
+	{
+		ReadyStatusText->SetText(Status);
 	}
 }
 

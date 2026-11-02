@@ -318,6 +318,33 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ready")
 	FMargin ReadyPadding = FMargin(0.0f, 0.0f, 0.0f, 40.0f);
 
+	// ---- mise en scène du FlowMod : GameBoat en fond, écran dégrisé une fois prêt ----
+
+	/** Voile de l'écran de sélection quand le GameBoat est en fond (à la place de Background Color) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Boat Intro")
+	FLinearColor BoatIntroBackgroundColor = FLinearColor(0.0f, 0.0f, 0.0f, 0.55f);
+
+	/** Bouton « Annuler » une fois prêt */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Boat Intro")
+	FVector2D CancelButtonSize = FVector2D(260.0f, 64.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Boat Intro")
+	int32 CancelFontSize = 28;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Boat Intro")
+	FLinearColor CancelButtonColor = FLinearColor(0.35f, 0.08f, 0.08f, 1.0f);
+
+	/** « Joueurs prêts X / N » sous le bouton */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Boat Intro")
+	int32 ReadyStatusFontSize = 20;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Boat Intro")
+	float ReadyStatusSpacing = 10.0f;
+
+	/** Marges autour du bouton et du texte (bas = distance au bord de l'écran) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Boat Intro")
+	FMargin ReadyPanelPadding = FMargin(0.0f, 0.0f, 0.0f, 40.0f);
+
 	// ---- bouton « Inviter des amis (Steam) » (au-dessus de Prêt, seulement dans une partie Steam) ----
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Invite")
@@ -398,6 +425,9 @@ public:
 
 	/** Bouton « Prêt » illuminé quand le joueur est prêt */
 	void SetReady(bool bIsReady);
+
+	/** Mise en scène du FlowMod : voile plus léger avec le GameBoat en fond ; une fois prêt, plus de voile ni de boutons, seulement « Annuler » et le nombre de joueurs prêts */
+	void SetBoatIntro(bool bBoatIntro, bool bIsReady);
 
 	/** Couleurs prises par d'autres joueurs : grisées et non cliquables */
 	void SetTakenColors(const TArray<bool>& Taken);
@@ -490,6 +520,25 @@ private:
 	/** Bouton « Prêt » (en bas au centre) */
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> ReadyButton;
+
+	/** Voile, page de sélection, panneau une fois prêt (Annuler + nombre de joueurs prêts) */
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> BackgroundImage;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UWidget> PageWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UWidget> ReadyPanel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> CancelButton;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ReadyStatusText;
+
+	/** Mise en scène affichée */
+	bool bShowingReadyPanel = false;
 
 	/** Bouton « Inviter des amis (Steam) » (sa boîte de taille, cachée hors partie Steam) */
 	UPROPERTY(Transient)

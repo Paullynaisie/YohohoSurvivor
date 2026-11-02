@@ -145,6 +145,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI|Preview", meta=(ClampMin="5", ClampMax="170", Units="deg"))
 	float PreviewFOV = 40.0f;
 
+	/** Passage de la vue du GameBoat à la caméra du joueur quand tout le monde est prêt */
+	UPROPERTY(EditAnywhere, Category="UI|Boat Intro", meta=(ClampMin="0", Units="s"))
+	float BoatIntroCameraBlendTime = 1.5f;
+
 	/** Intensité de la lumière des aperçus */
 	UPROPERTY(EditAnywhere, Category="UI|Preview")
 	float PreviewLightIntensity = 20000.0f;
@@ -207,6 +211,13 @@ private:
 	/** Aperçus du choix de classe : une par proposition, le personnage avec son nouveau set */
 	UPROPERTY(Transient)
 	TArray<FYSCharacterPreviewScene> ClassPreviews;
+
+	/** FlowMod : personnages locaux sur les places de la chaloupe, un par joueur qui a choisi et n'a pas encore son personnage */
+	UPROPERTY(Transient)
+	TMap<TObjectPtr<APlayerState>, TObjectPtr<AYSPlayerCharacter>> BoatSeatPreviews;
+
+	/** La vue est sur le GameBoat (écran de sélection du FlowMod) */
+	bool bBoatIntroView = false;
 
 	/** Dernier jour vu (pour annoncer les nouveaux) et temps d'affichage restant de l'annonce */
 	int32 LastSeenDay = INDEX_NONE;
@@ -599,6 +610,10 @@ public:
 	UFUNCTION(Exec)
 	void YSReady();
 
+	/** Debug (console) : comme les boutons « Prêt » et « Annuler » */
+	UFUNCTION(Exec)
+	void YSToggleReady() { ToggleReady(); }
+
 	/** Debug (console) : inflige Amount dégâts à son propre personnage.  Ex : YSDamageSelf 25 */
 	UFUNCTION(Exec)
 	void YSDamageSelf(float Amount = 5.0f);
@@ -623,6 +638,12 @@ protected:
 	void UpdatePreviewScene(FYSCharacterPreviewScene& Scene, TSubclassOf<AYSPlayerCharacter> PreviewClass, UYSWeaponSet* PreviewWeaponSet, const FVector& Location, bool bPreviewLeftHanded, const FVector2D& Size);
 
 	void DestroyPreviewScene(FYSCharacterPreviewScene& Scene);
+
+	/** FlowMod : vue sur le GameBoat tant que le joueur n'a pas son personnage, puis passage en douceur à sa caméra */
+	void UpdateBoatIntroView();
+
+	/** FlowMod : personnages visibles sur les places de la chaloupe (mêmes personnages sur toutes les machines, chacun les crée localement) */
+	void UpdateBoatSeatPreviews();
 
 	/** Aperçus du choix de classe (bShow faux = détruits) */
 	void UpdateClassPreviews(bool bShow, const AYSPlayerCharacter* PlayerCharacter);

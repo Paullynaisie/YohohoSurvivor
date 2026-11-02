@@ -8,6 +8,7 @@
 class AYSDamageNumber;
 class AYSPlayerCharacter;
 class AYSFoeCharacter;
+class AYSPirateShip;
 class UTexture2D;
 class UMaterialInterface;
 
@@ -45,6 +46,14 @@ protected:
 	/** Vrai une fois que tous les joueurs ont choisi leur personnage */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
 	bool bMatchStarted = false;
+
+	/** FlowMod : sélection des personnages avec le GameBoat en fond */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
+	bool bBoatIntro = false;
+
+	/** FlowMod : le bateau des joueurs, à son étape actuelle */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Game Boat")
+	TObjectPtr<AYSPirateShip> GameBoat;
 
 	/** Temps serveur (GetServerWorldTimeSeconds) du démarrage de la partie */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Match")
@@ -173,6 +182,16 @@ public:
 	bool IsCharacterTaken(int32 CharacterIndex, const APlayerState* Except) const;
 
 	bool IsMatchStarted() const { return bMatchStarted; }
+
+	bool UsesBoatIntro() const { return bBoatIntro; }
+
+	AYSPirateShip* GetGameBoat() const { return GameBoat; }
+
+	/** Serveur uniquement */
+	void SetBoatIntro(bool bEnabled) { bBoatIntro = bEnabled; ForceNetUpdate(); }
+
+	/** Serveur uniquement */
+	void SetGameBoat(AYSPirateShip* Boat) { GameBoat = Boat; ForceNetUpdate(); }
 
 	/** Serveur uniquement (AYSGameMode) */
 	void SetSelectableCharacters(const TArray<TSubclassOf<AYSPlayerCharacter>>& Characters) { SelectableCharacters = Characters; }

@@ -239,6 +239,12 @@ public:
 	bool PutsHandsOnStation() const { return bHandsOnStation; }
 	bool LocksAim() const { return bLockAim; }
 
+	/** Les armes restent visibles à ce poste (toujours sans capacité) */
+	virtual bool KeepsWeaponsVisible() const { return false; }
+
+	/** La caméra garde le nord en haut de l'écran au lieu de tourner avec le bateau */
+	virtual bool KeepsCameraNorthUp() const { return false; }
+
 	/** ZQSD pilote un bateau (barre) au lieu de rien faire */
 	virtual bool UsesPilotInput() const { return false; }
 

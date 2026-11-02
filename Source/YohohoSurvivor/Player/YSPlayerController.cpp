@@ -57,6 +57,7 @@
 #include "Enemies/YSFoeGalion.h"
 #include "Enemies/YSFoeJollyShip.h"
 #include "Ship/YSPirateShip.h"
+#include "Ship/YSGameBoat.h"
 #include "Components/InputComponent.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
@@ -504,7 +505,11 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	// le menu disparaît dès que le joueur a son personnage
 	const bool bHasCharacter = Cast<AYSPlayerCharacter>(GetPawn()) != nullptr;
 	CharacterSelectMenu->SetVisibility(bHasCharacter || bDead ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
-	UpdateCharacterPreview(!bHasCharacter && !bDead);
+	// FlowMod : GameBoat en fond ; une fois prêt, plus de bouton ni d'aperçu, seulement la chaloupe et « Annuler »
+	const AYSGameState* IntroGameState = GetWorld()->GetGameState<AYSGameState>();
+	const bool bBoatIntro = IntroGameState && IntroGameState->UsesBoatIntro();
+	CharacterSelectMenu->SetBoatIntro(bBoatIntro, MyPlayerState && MyPlayerState->IsReady());
+	UpdateCharacterPreview(!bHasCharacter && !bDead && !(bBoatIntro && MyPlayerState && MyPlayerState->IsReady()));
 	if (bHasCharacter || bDead)
 	{
 		return;
@@ -659,6 +664,101 @@ void AYSPlayerController::UpdateCharacterPreview(bool bShow)
 	if (!bHadCapture && SelectPreview.Capture)
 	{
 		CharacterSelectMenu->SetPreviewTexture(SelectPreview.Target);
+	}
+}
+
+void AYSPlayerController::UpdateBoatIntroView()
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPlayerState* MyPlayerState = GetPlayerState<AYSPlayerState>();
+	AYSGameBoatLongboat* Boat = YSGameState ? Cast<AYSGameBoatLongboat>(YSGameState->GetGameBoat()) : nullptr;
+	APawn* MyPawn = GetPawn();
+
+	if (Boat && !MyPawn && !(MyPlayerState && MyPlayerState->IsDead()))
+	{
+		bBoatIntroView = true;
+		if (GetViewTarget() != Boat)
+		{
+			SetViewTarget(Boat);
+		}
+	}
+	else if (bBoatIntroView && MyPawn && GetViewTarget() == MyPawn)
+	{
+		// la possession vient de mettre la vue sur le personnage : on repart de la vue du bateau
+		bBoatIntroView = false;
+		if (Boat && BoatIntroCameraBlendTime > 0.0f)
+		{
+			SetViewTarget(Boat);
+			SetViewTargetWithBlend(MyPawn, BoatIntroCameraBlendTime, VTBlend_EaseInOut, 2.0f);
+		}
+	}
+}
+
+void AYSPlayerController::UpdateBoatSeatPreviews()
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSGameBoatLongboat* Boat = YSGameState ? Cast<AYSGameBoatLongboat>(YSGameState->GetGameBoat()) : nullptr;
+
+	TSet<const APlayerState*> Wanted;
+	if (Boat)
+	{
+		for (APlayerState* SeatPlayer : YSGameState->PlayerArray)
+		{
+			const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(SeatPlayer);
+			const TArray<TSubclassOf<AYSPlayerCharacter>>& Characters = YSGameState->GetSelectableCharacters();
+			if (!YSPlayer || YSPlayer->IsDead() || YSPlayer->GetPawn() || YSPlayer->GetBoatSeat() == INDEX_NONE || !Characters.IsValidIndex(YSPlayer->GetSelectedCharacterIndex()) || !Characters[YSPlayer->GetSelectedCharacterIndex()])
+			{
+				continue;
+			}
+			Wanted.Add(SeatPlayer);
+
+			// un autre personnage ou l'autre main : nouveau personnage
+			const TSubclassOf<AYSPlayerCharacter> PreviewClass = Characters[YSPlayer->GetSelectedCharacterIndex()];
+			TObjectPtr<AYSPlayerCharacter>& Preview = BoatSeatPreviews.FindOrAdd(SeatPlayer);
+			if (Preview && (Preview->GetClass() != PreviewClass || Preview->IsLeftHanded() != YSPlayer->IsLeftHanded()))
+			{
+				Preview->Destroy();
+				Preview = nullptr;
+			}
+			const FTransform Seat = Boat->GetSeatFeetTransform(YSPlayer->GetBoatSeat());
+			if (!Preview)
+			{
+				// local uniquement : ni répliqué (armes comprises : l'hôte les enverrait sinon aux clients), ni contrôlé, ni collision
+				const FTransform SpawnTransform(Seat.GetRotation(), Seat.GetLocation());
+				Preview = GetWorld()->SpawnActorDeferred<AYSPlayerCharacter>(PreviewClass, SpawnTransform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+				if (!Preview)
+				{
+					continue;
+				}
+				Preview->SetReplicates(false);
+				Preview->SetLeftHanded(YSPlayer->IsLeftHanded());
+				Preview->FinishSpawning(SpawnTransform);
+				Preview->GetCharacterMovement()->DisableMovement();
+				Preview->GetCharacterMovement()->GravityScale = 0.0f;
+				Preview->SetActorEnableCollision(false);
+				TArray<AActor*> Attached;
+				Preview->GetAttachedActors(Attached, true, true);
+				for (AActor* Actor : Attached)
+				{
+					Actor->SetReplicates(false);
+				}
+				UE_LOG(LogTemp, Verbose, TEXT("[YSGameBoat] %s : %s à la place %d (local)"), *YSPlayer->GetPlayerName(), *PreviewClass->GetName(), YSPlayer->GetBoatSeat());
+			}
+			Preview->SetActorLocationAndRotation(Seat.GetLocation() + FVector(0.0f, 0.0f, Preview->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()), FRotator(0.0f, Seat.Rotator().Yaw, 0.0f));
+			Preview->ApplyCustomization(YSGameState->GetCustomizationMaterial(YSPlayer->GetColorIndex()), YSGameState->GetCustomizationFace(YSPlayer->GetFaceIndex()));
+		}
+	}
+
+	for (auto It = BoatSeatPreviews.CreateIterator(); It; ++It)
+	{
+		if (!Wanted.Contains(It->Key))
+		{
+			if (It->Value)
+			{
+				It->Value->Destroy();
+			}
+			It.RemoveCurrent();
+		}
 	}
 }
 
@@ -860,6 +960,8 @@ void AYSPlayerController::Tick(float DeltaSeconds)
 	if (IsLocalController())
 	{
 		UpdateCharacterSelectMenu();
+		UpdateBoatIntroView();
+		UpdateBoatSeatPreviews();
 		UpdateMenuFocus();
 		UpdatePlayerHUD();
 		UpdateUpgradeMenu();

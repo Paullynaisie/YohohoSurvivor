@@ -51,6 +51,8 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, CustomizationColors);
 	DOREPLIFETIME(AYSGameState, CustomizationFaces);
 	DOREPLIFETIME(AYSGameState, bMatchStarted);
+	DOREPLIFETIME(AYSGameState, bBoatIntro);
+	DOREPLIFETIME(AYSGameState, GameBoat);
 	DOREPLIFETIME(AYSGameState, MatchStartServerTime);
 	DOREPLIFETIME(AYSGameState, TeamLevel);
 	DOREPLIFETIME(AYSGameState, TeamExperience);

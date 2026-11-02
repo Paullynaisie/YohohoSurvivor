@@ -69,6 +69,12 @@ protected:
 	/** Joueurs reposés autour de Location (tournés vers Facing), chaloupe détruite (serveur) */
 	virtual void EjectAndDestroy(const FVector& Location, const FVector& Facing, const TCHAR* Reason);
 
+	/** Joueurs reposés autour de Location, tournés vers Facing (serveur) */
+	void EjectOccupants(const FVector& Location, const FVector& Facing, const TCHAR* Reason);
+
+	/** Sol hors de l'eau devant la proue ; faux si rien */
+	bool FindLandLanding(FVector& OutLocation) const;
+
 	UChildActorComponent* GetPassengerStationComponent() const { return PassengerStation; }
 
 	bool bEjected = false;
@@ -101,9 +107,6 @@ private:
 
 	/** Sol d'un bateau sous Location (pont, gaillard) ; faux si rien */
 	bool FindShipLanding(const AYSPirateShip* Ship, FVector& OutLocation) const;
-
-	/** Sol hors de l'eau devant la proue ; faux si rien */
-	bool FindLandLanding(FVector& OutLocation) const;
 };
 
 /** Barre de la chaloupe : prise seulement en lançant la chaloupe (chalouperie), on ne la quitte pas avec E */

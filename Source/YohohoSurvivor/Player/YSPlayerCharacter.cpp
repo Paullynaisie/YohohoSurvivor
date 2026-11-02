@@ -1626,7 +1626,8 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 	// arme à deux mains (ex. Shotgun) : l'autre main toujours sur le socket de l'arme, sans retard, même pendant le recul
 	// (après la main qui la tient : l'arme, attachée à cette main, l'a déjà suivie) ; pas pendant le port d'un objet, la nage ni à la barre
 	const bool bShowcaseHandsFree = IsShowcasePose() && !WeaponSet->bShowcaseOffHandOnSocket;
-	if (!IsValid(CarriedObject) && !bSwimming && !IsAtStation() && !bShowcaseHandsFree)
+	const bool bHandsFreeAtStation = IsAtStation() && !(IsValid(CurrentStation) && CurrentStation->KeepsWeaponsVisible());
+	if (!IsValid(CarriedObject) && !bSwimming && !bHandsFreeAtStation && !bShowcaseHandsFree)
 	{
 		for (const bool bWeaponInLeft : { false, true })
 		{
@@ -2328,7 +2329,7 @@ void AYSPlayerCharacter::UpdateShipCamera(float DeltaSeconds)
 {
 	// en l'air (saut depuis le pont) : même référentiel jusqu'à ce qu'il retouche un sol
 	// celui qui pilote (barre, chaloupe) garde le nord en haut de l'écran
-	const bool bPiloting = IsValid(CurrentStation) && CurrentStation->UsesPilotInput();
+	const bool bPiloting = IsValid(CurrentStation) && (CurrentStation->UsesPilotInput() || CurrentStation->KeepsCameraNorthUp());
 	AYSPirateShip* Ship = !bCameraFollowsShip || bPiloting ? nullptr : (!IsValid(CurrentStation) && GetCharacterMovement()->IsFalling() ? CameraShip.Get() : GetShipUnderFeet());
 	const float TargetYaw = Ship ? Ship->GetActorRotation().Yaw + ShipCameraYawOffset : DefaultCameraYaw;
 
@@ -3262,7 +3263,7 @@ void AYSPlayerCharacter::ApplyCarryVisuals()
 	{
 		if (Weapon)
 		{
-			Weapon->SetActorHiddenInGame(AreWeaponsStowed());
+			Weapon->SetActorHiddenInGame(AreWeaponsStowed() && !(IsValid(CurrentStation) && CurrentStation->KeepsWeaponsVisible()));
 		}
 	}
 }

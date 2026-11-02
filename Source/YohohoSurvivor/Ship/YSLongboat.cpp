@@ -53,10 +53,13 @@ AYSLongboat::AYSLongboat(const FObjectInitializer& ObjectInitializer)
 	Helm->SetChildActorClass(AYSLongboatHelm::StaticClass());
 	Helm->SetRelativeLocation(FVector(-150.0f, 0.0f, 30.0f));
 
-	PassengerStation = CreateDefaultSubobject<UChildActorComponent>(TEXT("PassengerStation"));
-	PassengerStation->SetupAttachment(GetRootComponent());
-	PassengerStation->SetChildActorClass(AYSLongboatSeat::StaticClass());
-	PassengerStation->SetRelativeLocation(FVector(90.0f, 0.0f, 30.0f));
+	PassengerStation = ObjectInitializer.CreateOptionalDefaultSubobject<UChildActorComponent>(this, TEXT("PassengerStation"));
+	if (PassengerStation)
+	{
+		PassengerStation->SetupAttachment(GetRootComponent());
+		PassengerStation->SetChildActorClass(AYSLongboatSeat::StaticClass());
+		PassengerStation->SetRelativeLocation(FVector(90.0f, 0.0f, 30.0f));
+	}
 }
 
 void AYSLongboat::BeginPlay()
@@ -242,6 +245,12 @@ bool AYSLongboat::FindLandLanding(FVector& OutLocation) const
 void AYSLongboat::EjectAndDestroy(const FVector& Location, const FVector& Facing, const TCHAR* Reason)
 {
 	bEjected = true;
+	EjectOccupants(Location, Facing, Reason);
+	Destroy();
+}
+
+void AYSLongboat::EjectOccupants(const FVector& Location, const FVector& Facing, const TCHAR* Reason)
+{
 	const TArray<AYSPlayerCharacter*> Occupants = GetOccupants();
 	const FVector Side = FVector::CrossProduct(FVector::UpVector, Facing.IsNearlyZero() ? GetActorForwardVector() : Facing).GetSafeNormal2D();
 	for (int32 Index = 0; Index < Occupants.Num(); ++Index)
@@ -252,7 +261,6 @@ void AYSLongboat::EjectAndDestroy(const FVector& Location, const FVector& Facing
 		Character->TeleportToFeetLocation(Location + Side * Offset, Facing);
 		UE_LOG(LogTemp, Log, TEXT("[YSLongboat] %s éjecté (%s) en %s"), *Character->GetName(), Reason, *(Location + Side * Offset).ToCompactString());
 	}
-	Destroy();
 }
 
 AYSLongboatHelm::AYSLongboatHelm()

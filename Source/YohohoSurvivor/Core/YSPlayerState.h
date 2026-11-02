@@ -31,6 +31,10 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
 	bool bReady = false;
 
+	/** Place sur la chaloupe du GameBoat (FlowMod ; INDEX_NONE = aucune) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
+	int32 BoatSeat = INDEX_NONE;
+
 	/** Upgrades proposées pendant la sélection en cours (index dans l'UpgradePool du personnage + rareté ; vide = pas concerné) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Upgrades")
 	TArray<FYSUpgradeOffer> UpgradeOffers;
@@ -80,6 +84,11 @@ public:
 
 	/** Serveur uniquement */
 	void SetSelectedCharacterIndex(int32 Index) { SelectedCharacterIndex = Index; }
+
+	int32 GetBoatSeat() const { return BoatSeat; }
+
+	/** Serveur uniquement */
+	void SetBoatSeat(int32 Seat) { BoatSeat = Seat; ForceNetUpdate(); }
 
 	/** Serveur uniquement */
 	void SetDead() { bIsDead = true; }

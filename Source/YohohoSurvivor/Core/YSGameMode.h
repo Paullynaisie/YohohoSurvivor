@@ -548,6 +548,9 @@ protected:
 	/** Début d'un jour (partie, mort de l'élite) : overtime à partir de Overtime Day */
 	virtual void OnDayStarted(int32 Day);
 
+	/** Tout le monde est prêt, les personnages viennent d'apparaître */
+	virtual void OnAllPlayersReady() {}
+
 	/** Overtime : circle spawns dus (Overtime Waves) */
 	void TickOvertime();
 

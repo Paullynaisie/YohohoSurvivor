@@ -78,6 +78,12 @@ public:
 
 	EYSIslandPhase GetPhase() const { return Phase; }
 
+	/** Point de départ de la chaloupe du GameBoat : sur la mer, Distance au sud du bord de l'eau, en face de la plage */
+	FVector GetGameBoatStartLocation(float Distance) const;
+
+	/** Zone de dépôt des objectifs : Start Boat Class du Data Asset (serveur) */
+	void SpawnStartBoat(const FVector& Location, float Yaw);
+
 	/** Où apparaît le joueur Index de la partie */
 	FTransform GetPlayerSpawnTransform(int32 Index) const;
 

@@ -316,6 +316,9 @@ public:
 	/** Vitesse actuelle le long de la proue (cm/s) */
 	float GetSpeed() const { return Motion.Speed; }
 
+	/** Premier point depuis From, le long de Direction par pas de Step (jusqu'à MaxDistance), où cette coque tournée de Yaw a assez de fond ; faux si aucun */
+	bool FindWaterPlacement(const FVector& From, const FVector& Direction, float Yaw, float MaxDistance, float Step, FVector& OutLocation) const;
+
 	/** Bateau déplacé d'un coup par le jeu (placement du port) : le pilotage repart de sa position, à l'arrêt (serveur) */
 	void SyncMotionToActor();
 

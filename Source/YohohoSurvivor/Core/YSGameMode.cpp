@@ -730,6 +730,7 @@ void AYSGameMode::TryStartMatch()
 			RestartPlayer(Player);
 		}
 	}
+	OnAllPlayersReady();
 }
 
 bool AYSGameMode::HasCharacter(const AController* Controller)

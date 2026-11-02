@@ -1,5 +1,6 @@
 #include "Island/YSIsland.h"
 #include "Components/CapsuleComponent.h"
+#include "Core/YSFlowMode.h"
 #include "Core/YSGameMode.h"
 #include "Core/YSGameState.h"
 #include "Enemies/YSEnemySpawnRule.h"
@@ -238,22 +239,45 @@ void AYSIsland::AttachToIsland(AActor* Actor)
 	}
 }
 
+void AYSIsland::SpawnStartBoat(const FVector& Location, float Yaw)
+{
+	if (!Data->StartBoatClass || StartBoat)
+	{
+		return;
+	}
+	const FTransform Transform(FRotator(0.0f, Yaw, 0.0f), Location);
+	StartBoat = GetWorld()->SpawnActorDeferred<AYSStartBoat>(Data->StartBoatClass, Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (StartBoat)
+	{
+		StartBoat->InitBoat(this, Data->BoatZoneRadius);
+		StartBoat->FinishSpawning(Transform);
+		AttachToIsland(StartBoat);
+		ForceNetUpdate();
+	}
+}
+
+FVector AYSIsland::GetGameBoatStartLocation(float Distance) const
+{
+	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+	const float Sea = Ocean ? Ocean->GetSeaLevel() : 0.0f;
+	// depuis la plage, vers le sud (-X) jusqu'au bord de l'eau
+	float X = Plan.BoatLocation.X;
+	while (X > -2.0f * Terrain.GetHalfSize() && Terrain.Height(X, Plan.BoatLocation.Y) > Sea)
+	{
+		X -= YSIslandActor::CircleSearchStep;
+	}
+	return FVector(X - Distance, Plan.BoatLocation.Y, Sea);
+}
+
 void AYSIsland::SpawnGameplayActors()
 {
 	UWorld* World = GetWorld();
 
-	// bateau de départ échoué sur la plage
-	if (Data->StartBoatClass)
+	// GameBoat : la chaloupe attend sur l'eau, la zone de dépôt viendra à son arrivée ; sinon bateau de départ échoué sur la plage
+	AYSFlowMode* FlowMode = World->GetAuthGameMode<AYSFlowMode>();
+	if (!FlowMode || !FlowMode->SpawnGameBoat(this))
 	{
-		const FVector Location(Plan.BoatLocation.X, Plan.BoatLocation.Y, Terrain.Height(Plan.BoatLocation.X, Plan.BoatLocation.Y));
-		const FTransform Transform(FRotator(0.0f, Plan.BoatYaw, 0.0f), Location);
-		StartBoat = World->SpawnActorDeferred<AYSStartBoat>(Data->StartBoatClass, Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-		if (StartBoat)
-		{
-			StartBoat->InitBoat(this, Data->BoatZoneRadius);
-			StartBoat->FinishSpawning(Transform);
-			AttachToIsland(StartBoat);
-		}
+		SpawnStartBoat(FVector(Plan.BoatLocation.X, Plan.BoatLocation.Y, Terrain.Height(Plan.BoatLocation.X, Plan.BoatLocation.Y)), Plan.BoatYaw);
 	}
 
 	for (const FYSIslandObjectiveDef& Def : Data->MainObjectives)
@@ -757,6 +781,11 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 			RefreshOpenDeliveryClasses();
 			if (State.bMain && CountOpenMainObjectives() == 0 && Phase != EYSIslandPhase::Sinking)
 			{
+				// le GameBoat passe à l'étape suivante
+				if (AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())
+				{
+					FlowMode->UpgradeGameBoat();
+				}
 				// plus d'objectif principal : on passe au jour suivant, ce qui lance la routine de coulaison (OnGlobalDayChanged)
 				if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
 				{
