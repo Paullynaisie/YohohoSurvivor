@@ -22,6 +22,27 @@ class UTextureRenderTarget2D;
 class APointLight;
 class UYSDeathScreenWidget;
 class ACameraActor;
+class UYSWeaponSet;
+
+/** Aperçu d'un personnage : personnage local (non répliqué, non contrôlé) filmé par une capture */
+USTRUCT()
+struct FYSCharacterPreviewScene
+{
+	GENERATED_BODY()
+
+	UPROPERTY(Transient)
+	TObjectPtr<AYSPlayerCharacter> Character;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ASceneCapture2D> Capture;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextureRenderTarget2D> Target;
+
+	/** Lumière de l'aperçu (rien d'autre ne l'éclaire là-haut sans le ciel) */
+	UPROPERTY(Transient)
+	TObjectPtr<APointLight> Light;
+};
 
 /**
  *  Contrôleur joueur : affiche un curseur de visée, oriente le pawn vers le point visé au sol
@@ -109,17 +130,18 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSBloodlustStacksWidget> BloodlustWidgetClass;
 
-	/** Aperçu du personnage : distance et hauteur de la caméra, champ de vision */
+	/** Aperçu d'un personnage sans set d'arme (sinon : Showcase du set) : distance et hauteur de la caméra */
 	UPROPERTY(EditAnywhere, Category="UI|Preview", meta=(ClampMin="50", Units="cm"))
 	float PreviewCameraDistance = 450.0f;
 
 	UPROPERTY(EditAnywhere, Category="UI|Preview", meta=(Units="cm"))
 	float PreviewCameraHeight = 40.0f;
 
+	/** Champ de vision des aperçus */
 	UPROPERTY(EditAnywhere, Category="UI|Preview", meta=(ClampMin="5", ClampMax="170", Units="deg"))
 	float PreviewFOV = 40.0f;
 
-	/** Intensité de la lumière de l'aperçu du personnage (écran de sélection) */
+	/** Intensité de la lumière des aperçus */
 	UPROPERTY(EditAnywhere, Category="UI|Preview")
 	float PreviewLightIntensity = 20000.0f;
 
@@ -174,19 +196,13 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UYSDayBannerWidget> DayBanner;
 
-	/** Aperçu du personnage à l'écran de sélection : personnage local (non répliqué, non contrôlé) filmé par une capture */
+	/** Aperçu du personnage à l'écran de sélection */
 	UPROPERTY(Transient)
-	TObjectPtr<AYSPlayerCharacter> PreviewCharacter;
+	FYSCharacterPreviewScene SelectPreview;
 
+	/** Aperçus du choix de classe : une par proposition, le personnage avec son nouveau set */
 	UPROPERTY(Transient)
-	TObjectPtr<ASceneCapture2D> PreviewCapture;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UTextureRenderTarget2D> PreviewTarget;
-
-	/** Lumière de l'aperçu (rien d'autre ne l'éclaire là-haut sans le ciel) */
-	UPROPERTY(Transient)
-	TObjectPtr<APointLight> PreviewLight;
+	TArray<FYSCharacterPreviewScene> ClassPreviews;
 
 	/** Dernier jour vu (pour annoncer les nouveaux) et temps d'affichage restant de l'annonce */
 	int32 LastSeenDay = INDEX_NONE;
@@ -566,6 +582,14 @@ protected:
 
 	/** Crée / met à jour / détruit l'aperçu du personnage (bShow : menu de sélection affiché) */
 	void UpdateCharacterPreview(bool bShow);
+
+	/** Crée ou met à jour un aperçu (WeaponSet vide = celui de la classe) ; changement de classe, de set ou de main = nouveau personnage */
+	void UpdatePreviewScene(FYSCharacterPreviewScene& Scene, TSubclassOf<AYSPlayerCharacter> PreviewClass, UYSWeaponSet* PreviewWeaponSet, const FVector& Location, bool bPreviewLeftHanded, const FVector2D& Size);
+
+	void DestroyPreviewScene(FYSCharacterPreviewScene& Scene);
+
+	/** Aperçus du choix de classe (bShow faux = détruits) */
+	void UpdateClassPreviews(bool bShow, const AYSPlayerCharacter* PlayerCharacter);
 
 	/** Choix de couleur / visage / pseudo à l'écran de sélection */
 	void ChooseColor(int32 ColorIndex);

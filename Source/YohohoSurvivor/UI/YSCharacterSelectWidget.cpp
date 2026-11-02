@@ -392,6 +392,7 @@ void UYSCharacterSelectWidget::SetCharacterInfo(const FYSCharacterInfo& Info)
 	AddWidget(YSCharacterSelect::MakeLabel(WidgetTree, Info.Name, InfoNameFontSize), 0.0f);
 	AddLine(NSLOCTEXT("YS", "InfoMaxHealth", "PV max"), FText::AsNumber(Info.MaxHealth, &Format), InfoLineSpacing);
 	AddLine(NSLOCTEXT("YS", "InfoRegen", "Regen PV/s"), FText::AsNumber(Info.HealthRegenPerSecond, &Format), InfoLineSpacing);
+	AddLine(NSLOCTEXT("YS", "InfoMaxStamina", "Stamina max"), FText::AsNumber(Info.MaxStamina, &Format), InfoLineSpacing);
 	if (!FMath::IsNearlyEqual(Info.Size, 1.0f))
 	{
 		AddLine(NSLOCTEXT("YS", "InfoSize", "Taille"), FText::Format(NSLOCTEXT("YS", "InfoSizeValue", "x{0}"), FText::AsNumber(Info.Size, &Format)), InfoLineSpacing);
@@ -403,6 +404,7 @@ void UYSCharacterSelectWidget::SetCharacterInfo(const FYSCharacterInfo& Info)
 	AddLine(NSLOCTEXT("YS", "InfoWeaponSet", "Set d'arme"), Info.WeaponSetName, WeaponLineSpacing());
 	AddLine(NSLOCTEXT("YS", "InfoAutoAtk", "Auto atk"), Info.AutoAtkName, WeaponLineSpacing());
 	AddLine(NSLOCTEXT("YS", "InfoAbility", "Ability"), Info.AbilityName, WeaponLineSpacing());
+	AddLine(NSLOCTEXT("YS", "InfoMoveAction", "MoveAction"), Info.MoveActionName, WeaponLineSpacing());
 	AddLine(NSLOCTEXT("YS", "InfoPassive", "Passif"), Info.PassiveName, WeaponLineSpacing());
 	if (!Info.PassiveName.IsEmpty() && !Info.PassiveDescription.IsEmpty())
 	{

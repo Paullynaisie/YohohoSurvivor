@@ -9,6 +9,7 @@ class UButton;
 class UTextBlock;
 class UHorizontalBox;
 class UVerticalBox;
+class UTexture;
 class UYSUpgradeMenuWidget;
 
 DECLARE_DELEGATE_OneParam(FYSOnUpgradeCardChosen, int32 /*OfferIndex*/);
@@ -158,6 +159,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Cards")
 	float StatValueSpacing = 14.0f;
 
+	// ---- choix de classe : aperçus du personnage de part et d'autre des cartes ----
+
+	/** Taille de l'aperçu du personnage avec son nouveau set */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Class Preview")
+	FVector2D ClassPreviewSize = FVector2D(400.0f, 640.0f);
+
+	/** Espace entre un aperçu et les cartes */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Class Preview")
+	float ClassPreviewSpacing = 20.0f;
+
 	// ---- bas de l'écran : joueurs prêts, relance ----
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Bottom")
@@ -208,8 +219,11 @@ public:
 
 	void SetTitle(const FText& Title);
 
-	/** Remplace les cartes */
-	void SetCards(const TArray<FYSUpgradeCard>& Cards);
+	/**
+	 *  Remplace les cartes. SidePreviews (choix de classe) : un aperçu par carte, à l'extérieur des cartes pour rester symétrique :
+	 *  première moitié à gauche, seconde à droite, celui d'une carte du milieu (nombre impair) des deux côtés
+	 */
+	void SetCards(const TArray<FYSUpgradeCard>& Cards, const TArray<UTexture*>& SidePreviews = TArray<UTexture*>());
 
 	/** Carte sélectionnée sur cette machine (cliquée, pas encore validée ; INDEX_NONE = aucune) */
 	void SetSelectedIndex(int32 Index);
@@ -238,6 +252,9 @@ private:
 
 	/** Contenu d'une carte */
 	UWidget* MakeCardContent(const FYSUpgradeCard& Card);
+
+	/** Colonne d'aperçus, ajoutée à la ligne des cartes */
+	void AddPreviewColumn(const TArray<UTexture*>& Textures, const FMargin& ColumnPadding);
 
 	UTextBlock* MakeText(const FText& Text, int32 FontSize, const FLinearColor& Color, bool bBold, bool bWrap) const;
 

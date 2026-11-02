@@ -38,6 +38,9 @@ struct FYSCharacterInfo
 	UPROPERTY(BlueprintReadWrite, Category="Character Info")
 	float HealthRegenPerSecond = 0.0f;
 
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	float MaxStamina = 0.0f;
+
 	/** Taille (1 = normale : pas affichée) */
 	UPROPERTY(BlueprintReadWrite, Category="Character Info")
 	float Size = 1.0f;
@@ -53,6 +56,9 @@ struct FYSCharacterInfo
 	UPROPERTY(BlueprintReadWrite, Category="Character Info")
 	FText AbilityName;
 
+	UPROPERTY(BlueprintReadWrite, Category="Character Info")
+	FText MoveActionName;
+
 	/** Passif : nom et description (vide = pas affiché) */
 	UPROPERTY(BlueprintReadWrite, Category="Character Info")
 	FText PassiveName;
@@ -62,8 +68,8 @@ struct FYSCharacterInfo
 
 	bool operator==(const FYSCharacterInfo& Other) const
 	{
-		return Name.EqualTo(Other.Name) && MaxHealth == Other.MaxHealth && HealthRegenPerSecond == Other.HealthRegenPerSecond && Size == Other.Size
-			&& WeaponSetName.EqualTo(Other.WeaponSetName) && AutoAtkName.EqualTo(Other.AutoAtkName) && AbilityName.EqualTo(Other.AbilityName) && PassiveName.EqualTo(Other.PassiveName) && PassiveDescription.EqualTo(Other.PassiveDescription);
+		return Name.EqualTo(Other.Name) && MaxHealth == Other.MaxHealth && HealthRegenPerSecond == Other.HealthRegenPerSecond && MaxStamina == Other.MaxStamina && Size == Other.Size
+			&& WeaponSetName.EqualTo(Other.WeaponSetName) && AutoAtkName.EqualTo(Other.AutoAtkName) && AbilityName.EqualTo(Other.AbilityName) && MoveActionName.EqualTo(Other.MoveActionName) && PassiveName.EqualTo(Other.PassiveName) && PassiveDescription.EqualTo(Other.PassiveDescription);
 	}
 };
 

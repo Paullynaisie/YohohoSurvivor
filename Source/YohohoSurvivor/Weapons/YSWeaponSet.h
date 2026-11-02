@@ -67,4 +67,48 @@ public:
 	/** Vitesse verticale donnée en plus à chaque pushback (le NME décolle un peu du sol : moins de friction) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Pushback", meta=(ClampMin="0", Units="CentimetersPerSecond", EditCondition="bOverridePushback"))
 	float PushbackVerticalForce = 50.0f;
+
+	// ---- Showcase : mise en scène du personnage dans les aperçus (écran de sélection, upgrades de classe) ----
+	// Réglée pour un droitier, un gaucher en est le miroir. Rotations : X / Y / Z = Roll / Pitch / Yaw.
+
+	/** Voir la mise en scène sur le personnage dans l'éditeur (Blueprint, map), mise à jour à chaque changement ; sans effet en jeu */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Showcase")
+	bool bForceShowcaseParameter = false;
+
+	/** Position de la main droite dans le repère du corps (comme Hand Location) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Showcase", meta=(Units="cm"))
+	FVector ShowcaseRightHandLocation = FVector(0.0f, 55.0f, -10.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Showcase")
+	FRotator ShowcaseRightHandRotation = FRotator::ZeroRotator;
+
+	/** Position de la main gauche dans le repère du corps (pas de symétrie automatique avec la droite) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Showcase", meta=(Units="cm"))
+	FVector ShowcaseLeftHandLocation = FVector(0.0f, -55.0f, -10.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Showcase")
+	FRotator ShowcaseLeftHandRotation = FRotator::ZeroRotator;
+
+	/** Arme à deux mains : l'autre main reste sur l'Off Hand Socket de l'arme (sa position et sa rotation de showcase sont ignorées) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Showcase")
+	bool bShowcaseOffHandOnSocket = true;
+
+	/** Position du corps (Body Pivot) dans le repère du personnage */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Showcase", meta=(Units="cm"))
+	FVector ShowcaseBodyLocation = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Showcase")
+	FRotator ShowcaseBodyRotation = FRotator::ZeroRotator;
+
+	/** Position de la caméra de l'aperçu dans le repère du personnage (il regarde vers +X ; suit sa taille) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Showcase", meta=(Units="cm"))
+	FVector ShowcaseCameraLocation = FVector(450.0f, 0.0f, 40.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Showcase")
+	FRotator ShowcaseCameraRotation = FRotator(-5.08f, 180.0f, 0.0f);
+
+#if WITH_EDITOR
+	/** Force Showcase Parameter : les personnages de l'éditeur qui ont ce set suivent les réglages en direct */
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 };

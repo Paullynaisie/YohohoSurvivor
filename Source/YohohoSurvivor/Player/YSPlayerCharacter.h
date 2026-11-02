@@ -1285,6 +1285,18 @@ public:
 
 	UYSWeaponSet* GetWeaponSet() const { return WeaponSet; }
 
+	/** Aperçu (personnage local filmé) : mise en scène du set d'arme, avec ce set s'il est donné. À régler avant FinishSpawning (OnConstruction) */
+	void SetupShowcasePreview(UYSWeaponSet* PreviewWeaponSet);
+
+	/** Mise en scène du set active : aperçu, ou Force Showcase Parameter dans l'éditeur (jamais dans une partie) */
+	bool IsShowcasePose() const;
+
+	/** Position et rotation monde de la caméra de la mise en scène */
+	FTransform GetShowcaseCameraTransform() const;
+
+	/** Corps, mains et (dans l'éditeur) caméra remis à la mise en scène, ou à leur place normale si elle n'est pas active */
+	void RefreshShowcasePose();
+
 	/** Invulnérable en ce moment (action en cours : roulade du Rolling shot…) */
 	bool IsInvulnerable() const;
 
@@ -1611,6 +1623,12 @@ protected:
 
 	/** Position cible d'une main dans l'espace de BodyPivot (sans oscillation) */
 	FVector GetHandTargetLocation(bool bLeft) const;
+
+	/** Personnage d'aperçu : mise en scène du set d'arme toujours active */
+	bool bShowcasePreview = false;
+
+	/** Corps à sa place de mise en scène */
+	void ApplyShowcaseBody();
 
 	/** Rotation cible d'une main, relative à BodyPivot */
 	FRotator GetHandTargetRotation(bool bLeft) const;

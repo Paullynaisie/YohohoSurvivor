@@ -1157,6 +1157,80 @@ void AYSPlayerCharacter::OnConstruction(const FTransform& Transform)
 	UpdateWeaponColoration();
 
 	// mains à leur position cible (sans retard) : visible dans l'éditeur et point de départ en jeu
+	RefreshShowcasePose();
+}
+
+void AYSPlayerCharacter::SetupShowcasePreview(UYSWeaponSet* PreviewWeaponSet)
+{
+	bShowcasePreview = true;
+	if (PreviewWeaponSet)
+	{
+		WeaponSet = PreviewWeaponSet;
+	}
+}
+
+bool AYSPlayerCharacter::IsShowcasePose() const
+{
+	if (!WeaponSet)
+	{
+		return false;
+	}
+	const UWorld* World = GetWorld();
+	return bShowcasePreview || (WeaponSet->bForceShowcaseParameter && World && !World->IsGameWorld());
+}
+
+FTransform AYSPlayerCharacter::GetShowcaseCameraTransform() const
+{
+	// gaucher : miroir de la mise en scène
+	FVector Location = WeaponSet->ShowcaseCameraLocation;
+	FRotator Rotation = WeaponSet->ShowcaseCameraRotation;
+	if (bLeftHanded)
+	{
+		Location.Y = -Location.Y;
+		Rotation.Yaw = -Rotation.Yaw;
+		Rotation.Roll = -Rotation.Roll;
+	}
+	return FTransform(GetActorQuat() * Rotation.Quaternion(), GetActorTransform().TransformPosition(Location));
+}
+
+void AYSPlayerCharacter::ApplyShowcaseBody()
+{
+	FVector Location = WeaponSet->ShowcaseBodyLocation;
+	FRotator Rotation = WeaponSet->ShowcaseBodyRotation;
+	if (bLeftHanded)
+	{
+		Location.Y = -Location.Y;
+		Rotation.Yaw = -Rotation.Yaw;
+		Rotation.Roll = -Rotation.Roll;
+	}
+	BodyPivot->SetRelativeLocationAndRotation(Location, Rotation);
+}
+
+void AYSPlayerCharacter::RefreshShowcasePose()
+{
+	const UWorld* World = GetWorld();
+	const bool bShowcase = IsShowcasePose();
+	if (bShowcase)
+	{
+		ApplyShowcaseBody();
+	}
+
+	// éditeur (pas de Tick) : la caméra du personnage montre celle de l'aperçu ; décoché = tout reprend sa place du Blueprint
+	if (World && !World->IsGameWorld())
+	{
+		const AYSPlayerCharacter* Defaults = GetClass()->GetDefaultObject<AYSPlayerCharacter>();
+		if (bShowcase)
+		{
+			const FTransform CameraTransform = GetShowcaseCameraTransform();
+			TopDownCamera->SetWorldLocationAndRotation(CameraTransform.GetLocation(), CameraTransform.GetRotation());
+		}
+		else
+		{
+			BodyPivot->SetRelativeLocationAndRotation(Defaults->BodyPivot->GetRelativeLocation(), Defaults->BodyPivot->GetRelativeRotation());
+			TopDownCamera->SetRelativeLocationAndRotation(Defaults->TopDownCamera->GetRelativeLocation(), Defaults->TopDownCamera->GetRelativeRotation());
+		}
+	}
+
 	bHandsInitialized = false;
 	UpdateHands(0.0f);
 }
@@ -1329,6 +1403,14 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 
 FVector AYSPlayerCharacter::GetHandTargetLocation(bool bLeft) const
 {
+	// mise en scène : réglages du set, chaque main a les siens (gaucher : miroir, sa main gauche prend ceux de la droite)
+	if (IsShowcasePose())
+	{
+		FVector ShowcaseLocation = bLeft == bLeftHanded ? WeaponSet->ShowcaseRightHandLocation : WeaponSet->ShowcaseLeftHandLocation;
+		ShowcaseLocation.Y = bLeftHanded ? -ShowcaseLocation.Y : ShowcaseLocation.Y;
+		return ShowcaseLocation;
+	}
+
 	// l'arme tenue peut imposer sa position de main ; valeurs exprimées pour la main droite
 	FVector Location = HandLocation;
 	const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
@@ -1347,6 +1429,17 @@ FVector AYSPlayerCharacter::GetHandTargetLocation(bool bLeft) const
 
 FRotator AYSPlayerCharacter::GetHandTargetRotation(bool bLeft) const
 {
+	if (IsShowcasePose())
+	{
+		FRotator ShowcaseRotation = bLeft == bLeftHanded ? WeaponSet->ShowcaseRightHandRotation : WeaponSet->ShowcaseLeftHandRotation;
+		if (bLeftHanded)
+		{
+			ShowcaseRotation.Yaw = -ShowcaseRotation.Yaw;
+			ShowcaseRotation.Roll = -ShowcaseRotation.Roll;
+		}
+		return ShowcaseRotation;
+	}
+
 	FRotator Rotation = HandRotation;
 	const AYSWeapon* Weapon = bLeft ? GetLeftHandWeapon() : GetRightHandWeapon();
 	FRotator WeaponRotation;
@@ -1514,7 +1607,8 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 
 	// arme à deux mains (ex. Shotgun) : l'autre main toujours sur le socket de l'arme, sans retard, même pendant le recul
 	// (après la main qui la tient : l'arme, attachée à cette main, l'a déjà suivie) ; pas pendant le port d'un objet, la nage ni à la barre
-	if (!IsValid(CarriedObject) && !bSwimming && !IsAtStation())
+	const bool bShowcaseHandsFree = IsShowcasePose() && !WeaponSet->bShowcaseOffHandOnSocket;
+	if (!IsValid(CarriedObject) && !bSwimming && !IsAtStation() && !bShowcaseHandsFree)
 	{
 		for (const bool bWeaponInLeft : { false, true })
 		{
@@ -1548,6 +1642,12 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 
 void AYSPlayerCharacter::UpdateBodyPivot(float DeltaSeconds)
 {
+	if (IsShowcasePose())
+	{
+		ApplyShowcaseBody();
+		return;
+	}
+
 	const FVector Velocity = GetVelocity();
 	const FQuat LeanQuat = UpdateLean(DeltaSeconds, Velocity);
 	// pas de sautillement en nageant
@@ -3496,7 +3596,7 @@ void AYSPlayerCharacter::UpdateWeaponColoration()
 	// set différent de celui du Blueprint du personnage = obtenu par une upgrade de classe (joueurs seulement : le set d'un
 	// minion est tiré au hasard)
 	const AYSPlayerCharacter* Defaults = GetClass()->GetDefaultObject<AYSPlayerCharacter>();
-	const bool bClassUpgraded = GetPlayerState() && WeaponSet && Defaults && Defaults->WeaponSet && WeaponSet != Defaults->WeaponSet;
+	const bool bClassUpgraded = (GetPlayerState() || bShowcasePreview) && WeaponSet && Defaults && Defaults->WeaponSet && WeaponSet != Defaults->WeaponSet;
 
 	if (AYSWeapon* MainWeapon = GetMainHandWeapon())
 	{

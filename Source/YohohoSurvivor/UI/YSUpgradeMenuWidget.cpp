@@ -196,7 +196,25 @@ UWidget* UYSUpgradeMenuWidget::MakeCardContent(const FYSUpgradeCard& Card)
 	return Content;
 }
 
-void UYSUpgradeMenuWidget::SetCards(const TArray<FYSUpgradeCard>& Cards)
+void UYSUpgradeMenuWidget::AddPreviewColumn(const TArray<UTexture*>& Textures, const FMargin& ColumnPadding)
+{
+	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	for (UTexture* Texture : Textures)
+	{
+		USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		Size->SetWidthOverride(ClassPreviewSize.X);
+		Size->SetHeightOverride(ClassPreviewSize.Y);
+		UImage* Image = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Image->SetBrushResourceObject(Texture);
+		Size->AddChild(Image);
+		Column->AddChildToVerticalBox(Size);
+	}
+	UHorizontalBoxSlot* ColumnSlot = CardRow->AddChildToHorizontalBox(Column);
+	ColumnSlot->SetPadding(ColumnPadding);
+	ColumnSlot->SetVerticalAlignment(VAlign_Center);
+}
+
+void UYSUpgradeMenuWidget::SetCards(const TArray<FYSUpgradeCard>& Cards, const TArray<UTexture*>& SidePreviews)
 {
 	if (!CardRow)
 	{
@@ -206,6 +224,26 @@ void UYSUpgradeMenuWidget::SetCards(const TArray<FYSUpgradeCard>& Cards)
 	CardRow->ClearChildren();
 	CardButtons.Reset();
 	ButtonProxies.Reset();
+
+	// aperçus à l'extérieur des cartes : première moitié à gauche, seconde à droite (carte du milieu : des deux côtés)
+	TArray<UTexture*> LeftPreviews;
+	TArray<UTexture*> RightPreviews;
+	for (int32 Index = 0; Index < SidePreviews.Num(); ++Index)
+	{
+		if (Index <= (SidePreviews.Num() - 1) / 2)
+		{
+			LeftPreviews.Add(SidePreviews[Index]);
+		}
+		if (Index >= SidePreviews.Num() / 2)
+		{
+			RightPreviews.Add(SidePreviews[Index]);
+		}
+	}
+	if (LeftPreviews.Num() > 0)
+	{
+		AddPreviewColumn(LeftPreviews, FMargin(0.0f, 0.0f, ClassPreviewSpacing, 0.0f));
+	}
+
 	for (int32 Index = 0; Index < Cards.Num(); ++Index)
 	{
 		USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -243,6 +281,12 @@ void UYSUpgradeMenuWidget::SetCards(const TArray<FYSUpgradeCard>& Cards)
 		CardButtons.Add(Button);
 		ButtonProxies.Add(Proxy);
 	}
+
+	if (RightPreviews.Num() > 0)
+	{
+		AddPreviewColumn(RightPreviews, FMargin(ClassPreviewSpacing, 0.0f, 0.0f, 0.0f));
+	}
+
 	SelectedIndex = INDEX_NONE;
 	ValidatedIndex = INDEX_NONE;
 	RefreshSelection();

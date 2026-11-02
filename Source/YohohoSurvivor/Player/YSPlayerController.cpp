@@ -5,6 +5,7 @@
 #include "Abilities/YSAbilityComponent.h"
 #include "Abilities/YSBombThrowerAbility.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Player/YSDanglingChainComponent.h"
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
 #include "Upgrades/YSPassive.h"
@@ -507,12 +508,17 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	}
 
 	// fiche du personnage choisi, lue sur l'aperçu (même classe, mêmes armes)
-	if (PreviewCharacter)
+	if (const AYSPlayerCharacter* PreviewCharacter = SelectPreview.Character)
 	{
 		FYSCharacterInfo Info;
 		Info.Name = PreviewCharacter->GetCharacterName();
 		Info.MaxHealth = PreviewCharacter->GetMaxHealth();
 		Info.HealthRegenPerSecond = PreviewCharacter->GetBaseHealthRegenPerSecond();
+		Info.MaxStamina = PreviewCharacter->GetMaxStamina();
+		if (const UYSRollAbility* MoveAbility = PreviewCharacter->GetMoveActionAbility())
+		{
+			Info.MoveActionName = MoveAbility->DisplayName;
+		}
 		Info.Size = PreviewCharacter->GetCharacterSize();
 		Info.WeaponSetName = PreviewCharacter->GetWeaponSet() ? PreviewCharacter->GetWeaponSet()->DisplayName : FText::GetEmpty();
 		// noms des actions des deux armes, sans doublon (akimbo) : « Auto swing », « Auto shot & Auto swing »
@@ -636,21 +642,7 @@ void AYSPlayerController::UpdateCharacterPreview(bool bShow)
 
 	if (!bShow || !PreviewClass)
 	{
-		if (PreviewCharacter)
-		{
-			PreviewCharacter->Destroy();
-			PreviewCharacter = nullptr;
-		}
-		if (PreviewLight)
-		{
-			PreviewLight->Destroy();
-			PreviewLight = nullptr;
-		}
-		if (PreviewCapture)
-		{
-			PreviewCapture->Destroy();
-			PreviewCapture = nullptr;
-		}
+		DestroyPreviewScene(SelectPreview);
 		if (CharacterSelectMenu)
 		{
 			CharacterSelectMenu->SetPreviewTexture(nullptr);
@@ -658,49 +650,121 @@ void AYSPlayerController::UpdateCharacterPreview(bool bShow)
 		return;
 	}
 
-	// au-dessus de la map (rien ne lui fait d'ombre), loin de tout ; changement de personnage = nouvel aperçu
-	const FVector PreviewLocation(0.0f, 0.0f, 20000.0f);
-	const bool bPreviewLeftHanded = MyPlayerState && MyPlayerState->IsLeftHanded();
-	if (PreviewCharacter && (PreviewCharacter->GetClass() != PreviewClass || PreviewCharacter->IsLeftHanded() != bPreviewLeftHanded))
+	// au-dessus de la map (rien ne lui fait d'ombre), loin de tout
+	const bool bHadCapture = SelectPreview.Capture != nullptr;
+	UpdatePreviewScene(SelectPreview, PreviewClass, nullptr, FVector(0.0f, 0.0f, 20000.0f), MyPlayerState && MyPlayerState->IsLeftHanded(), CharacterSelectMenu->PreviewSize);
+	if (!bHadCapture && SelectPreview.Capture)
 	{
-		PreviewCharacter->Destroy();
-		PreviewCharacter = nullptr;
+		CharacterSelectMenu->SetPreviewTexture(SelectPreview.Target);
 	}
-	if (!PreviewCharacter)
+}
+
+void AYSPlayerController::DestroyPreviewScene(FYSCharacterPreviewScene& Scene)
+{
+	if (Scene.Character)
+	{
+		Scene.Character->Destroy();
+		Scene.Character = nullptr;
+	}
+	if (Scene.Light)
+	{
+		Scene.Light->Destroy();
+		Scene.Light = nullptr;
+	}
+	if (Scene.Capture)
+	{
+		Scene.Capture->Destroy();
+		Scene.Capture = nullptr;
+	}
+}
+
+void AYSPlayerController::UpdateClassPreviews(bool bShow, const AYSPlayerCharacter* PlayerCharacter)
+{
+	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
+	const int32 OfferCount = bShow && MyState && PlayerCharacter ? MyState->GetUpgradeOffers().Num() : 0;
+	while (ClassPreviews.Num() > OfferCount)
+	{
+		DestroyPreviewScene(ClassPreviews.Last());
+		ClassPreviews.Pop();
+	}
+	ClassPreviews.SetNum(OfferCount);
+
+	for (int32 Index = 0; Index < OfferCount; ++Index)
+	{
+		const int32 PoolIndex = MyState->GetUpgradeOffers()[Index].PoolIndex;
+		const UYSClassUpgrade* ClassUpgrade = PlayerCharacter->GetUpgradePool().IsValidIndex(PoolIndex) ? Cast<UYSClassUpgrade>(PlayerCharacter->GetUpgradePool()[PoolIndex].Get()) : nullptr;
+		if (ClassUpgrade)
+		{
+			// le même personnage avec le set obtenu (ancien mode : le personnage obtenu) ; à l'écart de l'aperçu de sélection
+			TSubclassOf<AYSPlayerCharacter> PreviewClass = !ClassUpgrade->TargetWeaponSet && ClassUpgrade->TargetClass ? ClassUpgrade->TargetClass : TSubclassOf<AYSPlayerCharacter>(PlayerCharacter->GetClass());
+			UpdatePreviewScene(ClassPreviews[Index], PreviewClass, ClassUpgrade->TargetWeaponSet, FVector(0.0f, 5000.0f * (Index + 1), 20000.0f), PlayerCharacter->IsLeftHanded(), UpgradeMenu->ClassPreviewSize);
+		}
+	}
+}
+
+void AYSPlayerController::UpdatePreviewScene(FYSCharacterPreviewScene& Scene, TSubclassOf<AYSPlayerCharacter> PreviewClass, UYSWeaponSet* PreviewWeaponSet, const FVector& Location, bool bPreviewLeftHanded, const FVector2D& Size)
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPlayerState* MyPlayerState = GetPlayerState<AYSPlayerState>();
+
+	if (Scene.Character && (Scene.Character->GetClass() != PreviewClass || Scene.Character->IsLeftHanded() != bPreviewLeftHanded || (PreviewWeaponSet && Scene.Character->GetWeaponSet() != PreviewWeaponSet)))
+	{
+		Scene.Character->Destroy();
+		Scene.Character = nullptr;
+	}
+	if (!Scene.Character)
 	{
 		// local uniquement : ni répliqué, ni contrôlé
-		const FTransform SpawnTransform(FRotator::ZeroRotator, PreviewLocation);
-		PreviewCharacter = GetWorld()->SpawnActorDeferred<AYSPlayerCharacter>(PreviewClass, SpawnTransform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-		if (!PreviewCharacter)
+		const FTransform SpawnTransform(FRotator::ZeroRotator, Location);
+		Scene.Character = GetWorld()->SpawnActorDeferred<AYSPlayerCharacter>(PreviewClass, SpawnTransform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (!Scene.Character)
 		{
 			return;
 		}
-		PreviewCharacter->SetReplicates(false);
-		PreviewCharacter->SetLeftHanded(bPreviewLeftHanded);
-		PreviewCharacter->FinishSpawning(SpawnTransform);
-		PreviewCharacter->GetCharacterMovement()->DisableMovement();
-		PreviewCharacter->GetCharacterMovement()->GravityScale = 0.0f;
+		Scene.Character->SetReplicates(false);
+		Scene.Character->SetLeftHanded(bPreviewLeftHanded);
+		Scene.Character->SetupShowcasePreview(PreviewWeaponSet);
+		Scene.Character->FinishSpawning(SpawnTransform);
+		Scene.Character->GetCharacterMovement()->DisableMovement();
+		Scene.Character->GetCharacterMovement()->GravityScale = 0.0f;
+
+		// le choix de classe a lieu en pause : le personnage, ses chaînes et sa capture continuent (pas ses actions)
+		Scene.Character->SetTickableWhenPaused(true);
+		TArray<UYSDanglingChainComponent*> Chains;
+		Scene.Character->GetComponents<UYSDanglingChainComponent>(Chains, true);
+		for (UYSDanglingChainComponent* Chain : Chains)
+		{
+			Chain->SetTickableWhenPaused(true);
+		}
 	}
 
-	if (!PreviewCapture)
+	// caméra de la mise en scène du set, suivie à chaque image (réglages modifiés en jeu) ; sans set : face au personnage (qui regarde vers +X), légèrement au-dessus
+	FVector CaptureLocation = Location + FVector(PreviewCameraDistance, 0.0f, PreviewCameraHeight);
+	FRotator CaptureRotation = (Location - CaptureLocation).Rotation();
+	if (Scene.Character->IsShowcasePose())
 	{
-		if (!PreviewTarget)
+		const FTransform CameraTransform = Scene.Character->GetShowcaseCameraTransform();
+		CaptureLocation = CameraTransform.GetLocation();
+		CaptureRotation = CameraTransform.Rotator();
+	}
+
+	if (!Scene.Capture)
+	{
+		if (!Scene.Target)
 		{
 			// même proportion que l'image de l'aperçu dans le menu
-			const FVector2D Size = CharacterSelectMenu->PreviewSize;
-			PreviewTarget = UKismetRenderingLibrary::CreateRenderTarget2D(this, FMath::Max(16, FMath::RoundToInt(Size.X)), FMath::Max(16, FMath::RoundToInt(Size.Y)), RTF_RGBA8, FLinearColor::Transparent);
+			Scene.Target = UKismetRenderingLibrary::CreateRenderTarget2D(this, FMath::Max(16, FMath::RoundToInt(Size.X)), FMath::Max(16, FMath::RoundToInt(Size.Y)), RTF_RGBA8, FLinearColor::Transparent);
 		}
 
-		// face au personnage (qui regarde vers +X), légèrement au-dessus
-		const FVector CaptureLocation = PreviewLocation + FVector(PreviewCameraDistance, 0.0f, PreviewCameraHeight);
-		const FRotator CaptureRotation = (PreviewLocation - CaptureLocation).Rotation();
-		PreviewCapture = GetWorld()->SpawnActor<ASceneCapture2D>(CaptureLocation, CaptureRotation);
-		if (!PreviewCapture)
+		Scene.Capture = GetWorld()->SpawnActor<ASceneCapture2D>(CaptureLocation, CaptureRotation);
+		if (!Scene.Capture)
 		{
 			return;
 		}
-		USceneCaptureComponent2D* Capture = PreviewCapture->GetCaptureComponent2D();
-		Capture->TextureTarget = PreviewTarget;
+		Scene.Capture->SetTickableWhenPaused(true);
+		USceneCaptureComponent2D* Capture = Scene.Capture->GetCaptureComponent2D();
+		Capture->SetTickableWhenPaused(true);
+		Capture->TextureTarget = Scene.Target;
 		Capture->FOVAngle = PreviewFOV;
 		Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
 		Capture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
@@ -712,30 +776,36 @@ void AYSPlayerController::UpdateCharacterPreview(bool bShow)
 		Capture->ShowFlags.SetCloud(false);
 		Capture->ShowFlags.SetEyeAdaptation(false);
 		Capture->ShowFlags.SetBloom(false);
-		CharacterSelectMenu->SetPreviewTexture(PreviewTarget);
 
-		// éclairage de face, un peu au-dessus de la capture
-		PreviewLight = GetWorld()->SpawnActor<APointLight>(CaptureLocation + FVector(0.0f, 150.0f, 200.0f), FRotator::ZeroRotator);
-		if (PreviewLight)
+		Scene.Light = GetWorld()->SpawnActor<APointLight>(CaptureLocation + FVector(0.0f, 150.0f, 200.0f), FRotator::ZeroRotator);
+		if (Scene.Light)
 		{
-			PreviewLight->PointLightComponent->SetIntensity(PreviewLightIntensity);
-			PreviewLight->PointLightComponent->SetAttenuationRadius(2000.0f);
-			PreviewLight->PointLightComponent->SetCastShadows(false);
+			Scene.Light->PointLightComponent->SetMobility(EComponentMobility::Movable);
+			Scene.Light->PointLightComponent->SetIntensity(PreviewLightIntensity);
+			Scene.Light->PointLightComponent->SetAttenuationRadius(2000.0f);
+			Scene.Light->PointLightComponent->SetCastShadows(false);
 		}
 	}
 
+	// éclairage du côté de la caméra, un peu au-dessus
+	Scene.Capture->SetActorLocationAndRotation(CaptureLocation, CaptureRotation);
+	if (Scene.Light)
+	{
+		Scene.Light->SetActorLocation(CaptureLocation + FVector(0.0f, 150.0f, 200.0f));
+	}
+
 	// seuls le personnage et ses armes (acteurs enfants) sont filmés
-	USceneCaptureComponent2D* Capture = PreviewCapture->GetCaptureComponent2D();
+	USceneCaptureComponent2D* Capture = Scene.Capture->GetCaptureComponent2D();
 	Capture->ShowOnlyActors.Reset();
-	Capture->ShowOnlyActors.Add(PreviewCharacter);
+	Capture->ShowOnlyActors.Add(Scene.Character);
 	TArray<AActor*> Attached;
-	PreviewCharacter->GetAttachedActors(Attached, true, true);
+	Scene.Character->GetAttachedActors(Attached, true, true);
 	Capture->ShowOnlyActors.Append(Attached);
 
 	// personnalisation choisie
 	if (YSGameState && MyPlayerState)
 	{
-		PreviewCharacter->ApplyCustomization(YSGameState->GetCustomizationMaterial(MyPlayerState->GetColorIndex()), YSGameState->GetCustomizationFace(MyPlayerState->GetFaceIndex()));
+		Scene.Character->ApplyCustomization(YSGameState->GetCustomizationMaterial(MyPlayerState->GetColorIndex()), YSGameState->GetCustomizationFace(MyPlayerState->GetFaceIndex()));
 	}
 }
 
@@ -1148,6 +1218,7 @@ void AYSPlayerController::UpdateUpgradeMenu()
 	UpgradeMenu->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	if (!bShow)
 	{
+		UpdateClassPreviews(false, nullptr);
 		DisplayedUpgradeOffers.Reset();
 		return;
 	}
@@ -1156,6 +1227,9 @@ void AYSPlayerController::UpdateUpgradeMenu()
 	const int32 TotalStacks = PlayerCharacter->GetTotalUpgradeStacks();
 	const UYSUpgrade* FirstUpgrade = MyState->GetUpgradeOffers().Num() > 0 && PlayerCharacter->GetUpgradePool().IsValidIndex(MyState->GetUpgradeOffers()[0].PoolIndex) ? PlayerCharacter->GetUpgradePool()[MyState->GetUpgradeOffers()[0].PoolIndex].Get() : nullptr;
 	const bool bClassChoice = FirstUpgrade && FirstUpgrade->GetUpgradeType() == EYSUpgradeType::Class;
+
+	// choix de classe : le personnage avec chaque nouveau set, de part et d'autre des cartes
+	UpdateClassPreviews(bClassChoice, PlayerCharacter);
 
 	if (DisplayedUpgradeOffers != MyState->GetUpgradeOffers() || (DisplayedUpgradeStacks != TotalStacks && MyState->IsChoosingUpgrade()))
 	{
@@ -1184,7 +1258,12 @@ void AYSPlayerController::UpdateUpgradeMenu()
 				Card.Name = FText::FromString(TEXT("?"));
 			}
 		}
-		UpgradeMenu->SetCards(Cards);
+		TArray<UTexture*> SidePreviews;
+		for (const FYSCharacterPreviewScene& Scene : ClassPreviews)
+		{
+			SidePreviews.Add(Scene.Target);
+		}
+		UpgradeMenu->SetCards(Cards, SidePreviews);
 	}
 
 	// carte validée (choix reçu du serveur) ; la sélection en cours reste locale jusqu'à « Valider »
