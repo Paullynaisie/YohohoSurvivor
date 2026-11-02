@@ -16,6 +16,7 @@ class UStaticMeshComponent;
 class UYSFaceDecalComponent;
 class UBlendSpace;
 class UInputAction;
+class UYSRollAbility;
 class UInputMappingContext;
 class UChildActorComponent;
 class AYSWeapon;
@@ -113,6 +114,14 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UInputAction> InteractAction;
 
+	/** MoveAction (touche Espace), créée à l'exécution */
+	UPROPERTY(Transient)
+	TObjectPtr<UInputAction> MoveActionInput;
+
+	/** MoveAction du personnage (de base : Roll) ; coût et réglages sur le composant */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UYSRollAbility> MoveActionAbility;
+
 	/** Contexte d'input clavier/souris par défaut, créé à l'exécution */
 	UPROPERTY(Transient)
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;
@@ -177,6 +186,42 @@ protected:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Health", meta=(ClampMin="0", ClampMax="1"))
 	float MinDamageRatioAfterArmor = 0.1f;
+
+	/** Stamina maximum de base (x shard Stamina max) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Stamina", meta=(ClampMin="1"))
+	float MaxStamina = 100.0f;
+
+	/** Stamina actuelle (gérée par le serveur, sans le coût prédit : voir GetStamina) */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, ReplicatedUsing=OnRep_Stamina, Category="3C|Stamina")
+	float Stamina = 100.0f;
+
+	/** Stamina max : x ce multiplicateur (shard Stamina max) */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Replicated, Category="3C|Stamina")
+	float StaminaMaxMultiplier = 1.0f;
+
+	/** Regen, consommation en portant / nageant et noyade : par pas de ce temps */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Stamina", meta=(ClampMin="0.02", Units="s"))
+	float StaminaStepInterval = 0.1f;
+
+	/** Regen : temps sans utiliser la stamina avant qu'elle remonte */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Stamina", meta=(ClampMin="0", Units="s"))
+	float StaminaRegenDelay = 3.0f;
+
+	/** Regen : stamina rendue par pas (x shard Stamina regen) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Stamina", meta=(ClampMin="0"))
+	float StaminaRegenAmount = 2.0f;
+
+	/** Porter un objet : stamina consommée par pas (pas de ralentissement tant qu'il en reste) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Stamina", meta=(ClampMin="0"))
+	float CarryStaminaCost = 2.0f;
+
+	/** Nager : stamina consommée par pas (pas de ralentissement tant qu'il en reste) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Stamina", meta=(ClampMin="0"))
+	float SwimStaminaCost = 4.0f;
+
+	/** Nager sans stamina : PV perdus par pas, jusqu'à la mort (sans armure) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Stamina", meta=(ClampMin="0"))
+	float DrownHealthCost = 4.0f;
 
 	/**
 	 *  BlendSpace 2D de strafe (X = direction -180..180 relative au regard, Y = vitesse).
@@ -1300,8 +1345,48 @@ public:
 	/** Nage (eau profonde) : calculé sur chaque machine depuis la position (pieds sous la surface) ; plus ciblé par les NME */
 	bool IsSwimming() const { return bSwimming; }
 
-	/** Armes rangées (objet porté, nage, poste de bateau) : cachées, ni Ability ni attaque auto */
-	bool AreWeaponsStowed() const { return IsCarrying() || bSwimming || IsAtStation(); }
+	/** Armes rangées (objet porté sauf passif du Quartermaster, nage, poste de bateau) : cachées, ni Ability ni attaque auto */
+	bool AreWeaponsStowed() const { return (IsCarrying() && !CanAttackWhileCarrying()) || bSwimming || IsAtStation(); }
+
+	/** Passif : garde ses armes en portant un objet (porté par l'autre main) */
+	bool CanAttackWhileCarrying() const;
+
+	/** Place de l'objet porté (relative au corps) si le passif l'impose (Quartermaster : sur le flanc de l'autre main) */
+	void GetCarryPlacement(FVector& InOutLocation, FRotator& InOutRotation) const;
+
+	/** Joueurs : la stamina compte (pas les minions : pas de consommation, toujours ralentis dans l'eau, jamais noyés) */
+	virtual bool UsesStamina() const { return true; }
+
+	/** Stamina vue par cette machine (coût de la MoveAction prédit déduit) */
+	float GetStamina() const { return FMath::Max(0.0f, Stamina - PredictedStaminaCost); }
+
+	float GetMaxStamina() const { return MaxStamina * StaminaMaxMultiplier; }
+
+	float GetBaseMaxStamina() const { return MaxStamina; }
+
+	float GetBaseStaminaRegenPerSecond() const { return StaminaStepInterval > 0.0f ? StaminaRegenAmount / StaminaStepInterval : StaminaRegenAmount; }
+
+	/** Shard Stamina max : la stamina gagnée s'ajoute à l'actuelle (serveur) */
+	void SetStaminaMaxMultiplier(float Multiplier);
+
+	/** Shard Stamina regen (serveur) */
+	void SetStaminaRegenMultiplier(float Multiplier) { StaminaRegenMultiplier = Multiplier; }
+
+	/** Retire de la stamina et relance le délai de regen (serveur) */
+	void ConsumeStamina(float Amount);
+
+	/** Fixe la stamina (serveur, debug) */
+	void SetStamina(float Value);
+
+	/** Client qui prédit la MoveAction : coût déduit de l'affichage jusqu'à la réponse du serveur */
+	void PredictStaminaCost(float Amount) { PredictedStaminaCost = Amount; }
+
+	void ClearPredictedStamina() { PredictedStaminaCost = 0.0f; }
+
+	UYSRollAbility* GetMoveActionAbility() const { return MoveActionAbility; }
+
+	/** Comme la touche Espace (debug YSMoveAction) */
+	void TriggerMoveAction() { OnMoveActionPressed(); }
 
 	/** À un poste de bateau (barre, nid d'pie, canonnerie, chaloupe) */
 	bool IsAtStation() const { return CurrentStation != nullptr; }
@@ -1364,6 +1449,9 @@ protected:
 	 *  Akimbo (même arme dans les deux mains) : la gauche tout de suite, la droite après son AkimboFireDelay.
 	 */
 	void Fire();
+
+	/** Touche Espace : lance la MoveAction (machine qui contrôle le personnage) */
+	void OnMoveActionPressed();
 
 	/** Clic gauche maintenu (machine qui contrôle, Tick) : envoyé au serveur quand il change */
 	void UpdateAutoAttackInput();
@@ -1458,6 +1546,26 @@ protected:
 	float GetSwimBodyOffset() const;
 
 	bool bSwimming = false;
+
+	/** Stamina (serveur) : un pas toutes les Stamina Step Interval : consommation en portant / nageant, noyade, sinon regen */
+	void UpdateStamina(float DeltaSeconds);
+
+	UFUNCTION()
+	void OnRep_Stamina(float OldStamina);
+
+	/** Stamina encore disponible pour ne pas subir les ralentissements (objet porté, nage) */
+	bool IgnoresPassiveSlowdown() const { return UsesStamina() && GetStamina() > 0.0f; }
+
+	/** Shard Stamina regen (serveur) */
+	float StaminaRegenMultiplier = 1.0f;
+
+	float StaminaStepTimer = 0.0f;
+
+	/** Dernière utilisation de la stamina (serveur) ; la regen attend Stamina Regen Delay */
+	double LastStaminaUseTime = -1.0e6;
+
+	/** Client qui prédit la MoveAction : son coût, déduit de Stamina jusqu'à ce que le serveur l'ait retiré */
+	float PredictedStaminaCost = 0.0f;
 
 	/** 0 = marche, 1 = nage (lissé) */
 	float SwimBlend = 0.0f;

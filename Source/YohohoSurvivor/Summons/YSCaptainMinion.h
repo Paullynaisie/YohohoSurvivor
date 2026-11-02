@@ -107,6 +107,8 @@ public:
 	/** Attaque auto toujours active (pas de clic gauche), sans ralentissement */
 	virtual bool UsesHeldAutoAttack() const override { return false; }
 
+	virtual bool UsesStamina() const override { return false; }
+
 	/** Toujours critique sur le NME marqué par la Captain Sword de son Captain */
 	virtual bool HasForcedCriticalAgainst(const AActor* Target) const override;
 

@@ -17,7 +17,9 @@
 #include "TimerManager.h"
 #include "Containers/Ticker.h"
 #include "GameFramework/Pawn.h"
+#include "Abilities/YSRollAbility.h"
 #include "UI/YSAbilityIconWidget.h"
+#include "UI/YSStaminaBarWidget.h"
 #include "Ship/YSCrowsNest.h"
 #include "Ship/YSShipBoarding.h"
 #include "Ship/YSShipStation.h"
@@ -62,6 +64,7 @@ AYSPlayerController::AYSPlayerController()
 	DefaultMouseCursor = EMouseCursor::Crosshairs;
 	AbilityIconClass = UYSAbilityIconWidget::StaticClass();
 	AutoAttackIconClass = UYSAbilityIconWidget::StaticClass();
+	MoveActionIconClass = UYSAbilityIconWidget::StaticClass();
 }
 
 void AYSPlayerController::BeginPlay()
@@ -98,6 +101,28 @@ void AYSPlayerController::BeginPlay()
 				AutoSlot.Offsets = FMargin(-(AbilityIcon->IconSize * 0.5f + AutoAttackIconSpacing), -AbilityIconBottomMargin, AutoAttackIcon->IconSize, AutoAttackIcon->IconSize);
 				ViewportSubsystem->AddWidgetForPlayer(AutoAttackIcon, GetLocalPlayer(), AutoSlot);
 			}
+
+			// MoveAction : à droite de l'icône d'Ability
+			if (MoveActionIconClass)
+			{
+				MoveActionIcon = CreateWidget<UYSAbilityIconWidget>(this, MoveActionIconClass);
+				FGameViewportWidgetSlot MoveSlot;
+				MoveSlot.Anchors = FAnchors(0.5f, 1.0f);
+				MoveSlot.Alignment = FVector2D(0.0f, 1.0f);
+				MoveSlot.Offsets = FMargin(AbilityIcon->IconSize * 0.5f + MoveActionIconSpacing, -AbilityIconBottomMargin, MoveActionIcon->IconSize, MoveActionIcon->IconSize);
+				ViewportSubsystem->AddWidgetForPlayer(MoveActionIcon, GetLocalPlayer(), MoveSlot);
+			}
+		}
+
+		// barre de stamina : sous les icônes (placement réglé dans le Widget Blueprint)
+		if (ViewportSubsystem)
+		{
+			StaminaBar = CreateWidget<UYSStaminaBarWidget>(this, StaminaBarClass ? StaminaBarClass.Get() : UYSStaminaBarWidget::StaticClass());
+			FGameViewportWidgetSlot StaminaSlot;
+			StaminaSlot.Anchors = FAnchors(0.5f, 1.0f);
+			StaminaSlot.Alignment = FVector2D(0.5f, 1.0f);
+			StaminaSlot.Offsets = FMargin(0.0f, -StaminaBar->BottomMargin, StaminaBar->BarSize.X, StaminaBar->BarSize.Y);
+			ViewportSubsystem->AddWidgetForPlayer(StaminaBar, GetLocalPlayer(), StaminaSlot);
 		}
 
 		// BL stacks : bas de l'écran, à droite de l'icône (placement réglé dans le Widget Blueprint)
@@ -1436,6 +1461,18 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 	// poste de bateau avec action (canonnerie : tir de canon) : une seule icône, à la place de celles des armes
 	const AYSPlayerCharacter* StationCharacter = Cast<AYSPlayerCharacter>(GetPawn());
 	const AYSShipStation* Station = StationCharacter ? StationCharacter->GetCurrentStation() : nullptr;
+
+	// MoveAction et stamina : cachées sans personnage vivant
+	const UYSRollAbility* MoveAbility = StationCharacter && StationCharacter->IsAlive() ? StationCharacter->GetMoveActionAbility() : nullptr;
+	if (MoveActionIcon)
+	{
+		MoveActionIcon->Refresh(MoveAbility, MoveAbility && MoveAbility->IsActivationBlocked());
+	}
+	if (StaminaBar)
+	{
+		StaminaBar->Refresh(MoveAbility ? StationCharacter->GetStamina() : 0.0f, MoveAbility ? StationCharacter->GetMaxStamina() : 0.0f, MoveAbility ? MoveAbility->StaminaCost : 0.0f);
+	}
+
 	UTexture2D* StationIcon = nullptr;
 	FLinearColor StationIconTint = FLinearColor::White;
 	float StationRemaining = 0.0f;
@@ -1838,6 +1875,27 @@ void AYSPlayerController::YSFire()
 	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
 	{
 		PlayerCharacter->TriggerFire();
+	}
+}
+
+void AYSPlayerController::YSMoveAction()
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->TriggerMoveAction();
+	}
+}
+
+void AYSPlayerController::YSSetStamina(float Value)
+{
+	ServerSetStamina(Value);
+}
+
+void AYSPlayerController::ServerSetStamina_Implementation(float Value)
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->SetStamina(Value);
 	}
 }
 

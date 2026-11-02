@@ -28,6 +28,8 @@ enum class EYSShardStat : uint8
 	ShootSystem		UMETA(DisplayName="Shoot system (Auto atk des Guns)"),
 	SummonSystem	UMETA(DisplayName="Summon system (minions max des armes d'invocation)"),
 	MeleeRange		UMETA(DisplayName="Melee Range (taille des armes de mêlée)"),
+	StaminaMax		UMETA(DisplayName="Stamina max"),
+	StaminaRegen	UMETA(DisplayName="Stamina regen"),
 	Luck			UMETA(DisplayName="Luck"),
 	MaxStats		UMETA(DisplayName="Max stats (spéciale)"),
 	MinStats		UMETA(DisplayName="Min stats (spéciale)"),

@@ -24,7 +24,7 @@ public:
 
 	/** Position : X = distance entre le centre de l'écran et le bord gauche du widget, Y = distance au bas de l'écran */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
-	FVector2D ScreenOffset = FVector2D(64.0f, 40.0f);
+	FVector2D ScreenOffset = FVector2D(176.0f, 40.0f);
 
 	/** Taille d'une pastille de stack */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")

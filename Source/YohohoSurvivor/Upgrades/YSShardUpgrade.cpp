@@ -175,6 +175,8 @@ void UYSUpShard::Apply(AYSPlayerCharacter* Character, int32 Level) const
 	case EYSShardStat::SummonSystem:	Character->SetSummonSystemBonus(YSShardUpgrades::Evaluate(this, 0.0f, Level, LevelIndex)); break;
 	// échelle des armes de mêlée (DA : Multiplicative, Base 1, Index 0.065 = x2.95 à 30 / 30, comme le rayon de l'Explosif)
 	case EYSShardStat::MeleeRange:		Character->SetMeleeRangeMultiplier(YSShardUpgrades::Evaluate(this, 1.0f, Level, LevelIndex)); break;
+	case EYSShardStat::StaminaMax:		Character->SetStaminaMaxMultiplier(YSShardUpgrades::Evaluate(this, 1.0f, Level, LevelIndex)); break;
+	case EYSShardStat::StaminaRegen:	Character->SetStaminaRegenMultiplier(YSShardUpgrades::Evaluate(this, 1.0f, Level, LevelIndex)); break;
 	case EYSShardStat::CritDamage:
 		// multiplicateur de base du personnage (1.5, Marksman : 2) à la place de Base : dégâts critiques = base + Index x Lvl
 		Character->SetCriticalDamageAdd(LevelIndex * Level);
@@ -284,6 +286,14 @@ bool UYSUpShard::GetDisplayValue(const AYSPlayerCharacter* Character, int32 Leve
 	case EYSShardStat::MeleeRange:
 		OutLabel = NSLOCTEXT("YS", "ShardMeleeRangeLabel", "Taille de l'arme (x)");
 		OutValue = YSShardUpgrades::Evaluate(this, 1.0f, Level, LevelIndex);
+		return true;
+	case EYSShardStat::StaminaMax:
+		OutLabel = NSLOCTEXT("YS", "ShardStaminaMaxLabel", "Stamina max");
+		OutValue = YSShardUpgrades::Evaluate(this, Character->GetBaseMaxStamina(), Level, LevelIndex);
+		return true;
+	case EYSShardStat::StaminaRegen:
+		OutLabel = NSLOCTEXT("YS", "ShardStaminaRegenLabel", "Regen stamina/s");
+		OutValue = YSShardUpgrades::Evaluate(this, Character->GetBaseStaminaRegenPerSecond(), Level, LevelIndex);
 		return true;
 	case EYSShardStat::Luck:
 		// une ligne de plus pour le Mythique dans la carte (UYSUpStats::GetOfferCard)

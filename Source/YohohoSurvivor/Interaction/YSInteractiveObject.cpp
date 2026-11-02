@@ -89,8 +89,12 @@ void AYSInteractiveObject::SetCarrier(AYSPlayerCharacter* NewCarrier, const FVec
 	{
 		// porté devant le corps : suit l'inclinaison et le sautillement du porteur
 		AttachToComponent(Carrier->GetBodyPivot(), FAttachmentTransformRules::KeepRelativeTransform);
-		SetActorRelativeLocation(CarryLocation);
-		SetActorRelativeRotation(CarryRotation);
+		// le passif du porteur peut imposer sa place (Quartermaster : sur le flanc)
+		FVector Location = CarryLocation;
+		FRotator Rotation = CarryRotation;
+		Carrier->GetCarryPlacement(Location, Rotation);
+		SetActorRelativeLocation(Location);
+		SetActorRelativeRotation(Rotation);
 		// échelle du monde inchangée : sinon elle est multipliée par celle du porteur (personnage x1.25), et le reste une fois posé
 		SetActorScale3D(OriginalScale);
 	}

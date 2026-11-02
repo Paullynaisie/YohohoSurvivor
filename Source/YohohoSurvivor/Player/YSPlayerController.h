@@ -6,6 +6,7 @@
 #include "YSPlayerController.generated.h"
 
 class UYSAbilityIconWidget;
+class UYSStaminaBarWidget;
 class UYSBloodlustStacksWidget;
 class UYSCharacterSelectWidget;
 class UYSUpgradeMenuWidget;
@@ -55,6 +56,18 @@ protected:
 	/** Espace entre l'icône de l'attaque auto et celle de l'Ability */
 	UPROPERTY(EditAnywhere, Category="UI")
 	float AutoAttackIconSpacing = 16.0f;
+
+	/** Widget de l'icône de la MoveAction (à droite de celle de l'Ability) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<UYSAbilityIconWidget> MoveActionIconClass;
+
+	/** Espace entre l'icône de l'Ability et celle de la MoveAction */
+	UPROPERTY(EditAnywhere, Category="UI")
+	float MoveActionIconSpacing = 16.0f;
+
+	/** Barre de stamina (sous les icônes) : Widget Blueprint enfant de YSStaminaBarWidget (WBP_StaminaBar, réglages Layout) ; vide = classe C++ */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<UYSStaminaBarWidget> StaminaBarClass;
 
 	/** Manette : zone morte du stick droit (visée) */
 	UPROPERTY(EditAnywhere, Category="Gamepad", meta=(ClampMin="0", ClampMax="1"))
@@ -117,6 +130,12 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UYSAbilityIconWidget> AutoAttackIcon;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UYSAbilityIconWidget> MoveActionIcon;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UYSStaminaBarWidget> StaminaBar;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UYSBloodlustStacksWidget> BloodlustStacks;
@@ -272,6 +291,17 @@ public:
 	/** Debug (console) : comme un clic droit = Ability (akimbo compris) */
 	UFUNCTION(Exec)
 	void YSFire();
+
+	/** Debug (console) : comme la touche Espace = MoveAction */
+	UFUNCTION(Exec)
+	void YSMoveAction();
+
+	/** Debug (console) : fixe la stamina du personnage (serveur).  Ex : YSSetStamina 40 */
+	UFUNCTION(Exec)
+	void YSSetStamina(float Value);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetStamina(float Value);
 
 	/** Debug (console) : clic gauche considéré comme maintenu (1) ou non (0) : attaque auto.  Ex : YSHoldAutoAttack 1 */
 	UFUNCTION(Exec)

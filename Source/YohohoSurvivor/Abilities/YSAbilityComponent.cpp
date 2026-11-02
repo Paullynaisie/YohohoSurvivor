@@ -20,11 +20,12 @@ namespace
 	{
 		Forced,
 		Ability,
+		MoveAction,
 		AutoAtk,
 	};
 
-	/** Priorités des actions d'une arme, de la plus prioritaire à la moins prioritaire (liste donnée par Paul) */
-	constexpr EYSActionPriority ActionPriority[] = { EYSActionPriority::Forced, EYSActionPriority::Ability, EYSActionPriority::AutoAtk };
+	/** Priorités des actions d'une arme, de la plus prioritaire à la moins prioritaire (liste donnée par Paul, MoveAction : choix de Claude) */
+	constexpr EYSActionPriority ActionPriority[] = { EYSActionPriority::Forced, EYSActionPriority::Ability, EYSActionPriority::MoveAction, EYSActionPriority::AutoAtk };
 
 	/** Délai pour utiliser une activation forcée accordée (aller-retour réseau compris) */
 	constexpr double ForcedGrantLifetime = 2.0;
@@ -404,6 +405,7 @@ bool UYSAbilityComponent::IsBlockingLowerPriority() const
 int32 UYSAbilityComponent::GetPriorityRank() const
 {
 	const EYSActionPriority Priority = IsForcedActionInProgress() ? EYSActionPriority::Forced
+		: IsMoveAction() ? EYSActionPriority::MoveAction
 		: GetActionSlot() == EYSActionSlot::Ability ? EYSActionPriority::Ability : EYSActionPriority::AutoAtk;
 	const int32 Rank = UE_ARRAY_COUNT(ActionPriority);
 	for (int32 Index = 0; Index < Rank; ++Index)
@@ -450,6 +452,19 @@ void UYSAbilityComponent::GetPriorityGroup(TArray<UYSAbilityComponent*>& OutActi
 			}
 		}
 	}
+
+	// MoveAction du personnage (composant du personnage, pas d'une arme)
+	if (Character && Character != GetOwner())
+	{
+		TInlineComponentArray<UYSAbilityComponent*> Actions(Character);
+		for (UYSAbilityComponent* Action : Actions)
+		{
+			if (BlocksAllWeapons() || Action->BlocksAllWeapons())
+			{
+				OutActions.Add(Action);
+			}
+		}
+	}
 }
 
 bool UYSAbilityComponent::CanStartByPriority() const
@@ -466,7 +481,7 @@ bool UYSAbilityComponent::CanStartByPriority() const
 	GetPriorityGroup(Group);
 	for (const UYSAbilityComponent* Other : Group)
 	{
-		if (Other != this && Other->GetPriorityRank() < Rank && Other->IsBlockingLowerPriority())
+		if (Other != this && (Other->GetPriorityRank() < Rank || Other->IsUninterruptible()) && Other->IsBlockingLowerPriority())
 		{
 			return false;
 		}

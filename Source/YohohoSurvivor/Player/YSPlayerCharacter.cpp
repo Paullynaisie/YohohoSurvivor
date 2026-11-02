@@ -17,6 +17,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Abilities/YSAutoSwingAbility.h"
+#include "Abilities/YSRollAbility.h"
 #include "Abilities/YSSummonCrewAbility.h"
 #include "Summons/YSCaptainMinion.h"
 #include "TimerManager.h"
@@ -85,6 +86,8 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	PrimaryActorTick.bCanEverTick = true;
 
 	CorpseClass = AYSPlayerCorpse::StaticClass();
+
+	MoveActionAbility = CreateDefaultSubobject<UYSRollAbility>(TEXT("MoveActionAbility"));
 
 	GetCapsuleComponent()->InitCapsuleSize(42.0f, 96.0f);
 
@@ -211,6 +214,8 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, SummonSystemBonus);
 	DOREPLIFETIME(AYSPlayerCharacter, MeleeRangeMultiplier);
+	DOREPLIFETIME(AYSPlayerCharacter, Stamina);
+	DOREPLIFETIME(AYSPlayerCharacter, StaminaMaxMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, MarkedFoe);
 	DOREPLIFETIME(AYSPlayerCharacter, Rise);
 	DOREPLIFETIME(AYSPlayerCharacter, Death);
@@ -1195,6 +1200,7 @@ void AYSPlayerCharacter::BeginPlay()
 	if (HasAuthority())
 	{
 		Health = GetMaxHealth();
+		Stamina = GetMaxStamina();
 		// regen de base ; les upgrades Hps regen (RestoreUpgrades au changement de classe) s'y ajoutent
 		HealthRegen = BaseHealthRegen;
 
@@ -1246,6 +1252,15 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateAutoAttackInput();
 	UpdateNameplate();
 	UpdateInteractPrompt();
+	if (HasAuthority())
+	{
+		UpdateStamina(DeltaSeconds);
+		// noyé dans ce pas : le personnage est mort, plus rien d'autre
+		if (bLocalDeathStarted || !IsAlive())
+		{
+			return;
+		}
+	}
 	// vitesse : peut dépendre d'une action en cours (visée du Rolling shot) ; serveur et client propriétaire
 	UpdateMaxWalkSpeed();
 
@@ -1382,9 +1397,11 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 	auto UpdateHand = [this, DeltaSeconds, &PivotTransform, &ProneHandOffset, ProneHandZ](USceneComponent* Hand, FVector& WorldLocation, float& CurrentYaw, bool bLeft, float NoiseSeed)
 	{
 		// objet porté, barre / canon : la main est sur son point de placement, sans retard (l'objet suit déjà le corps)
-		const AYSInteractiveObject* HandObject = IsValid(CarriedObject) ? CarriedObject.Get()
+		// passif du Quartermaster : seule l'autre main porte, sur le point de l'objet côté corps (objet sur son flanc)
+		const bool bCarryWithOffHand = IsValid(CarriedObject) && CanAttackWhileCarrying();
+		const AYSInteractiveObject* HandObject = IsValid(CarriedObject) ? (!bCarryWithOffHand || bLeft != bLeftHanded ? CarriedObject.Get() : nullptr)
 			: IsValid(CurrentStation) && CurrentStation->PutsHandsOnStation() ? static_cast<const AYSInteractiveObject*>(CurrentStation.Get()) : nullptr;
-		if (const USceneComponent* HandPoint = HandObject ? HandObject->GetHandPoint(bLeft) : nullptr)
+		if (const USceneComponent* HandPoint = HandObject ? HandObject->GetHandPoint(bCarryWithOffHand ? !bLeft : bLeft) : nullptr)
 		{
 			WorldLocation = HandPoint->GetComponentLocation();
 			Hand->SetWorldLocationAndRotation(WorldLocation, HandPoint->GetComponentQuat());
@@ -1686,12 +1703,13 @@ void AYSPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AYSPlayerCharacter::Move);
 		EnhancedInput->BindAction(FireAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Fire);
 		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Interact);
+		EnhancedInput->BindAction(MoveActionInput, ETriggerEvent::Started, this, &AYSPlayerCharacter::OnMoveActionPressed);
 	}
 }
 
 void AYSPlayerCharacter::CreateDefaultInput()
 {
-	if (MoveAction && FireAction && AutoAttackAction && InteractAction && DefaultMappingContext)
+	if (MoveAction && FireAction && AutoAttackAction && InteractAction && MoveActionInput && DefaultMappingContext)
 	{
 		return;
 	}
@@ -1708,11 +1726,15 @@ void AYSPlayerCharacter::CreateDefaultInput()
 	InteractAction = NewObject<UInputAction>(this, TEXT("IA_Interact"));
 	InteractAction->ValueType = EInputActionValueType::Boolean;
 
+	MoveActionInput = NewObject<UInputAction>(this, TEXT("IA_MoveAction"));
+	MoveActionInput->ValueType = EInputActionValueType::Boolean;
+
 	// clic droit = Ability ; clic gauche maintenu = attaque auto (lu à chaque image : UpdateAutoAttackInput)
 	DefaultMappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Default"));
 	DefaultMappingContext->MapKey(FireAction, EKeys::RightMouseButton);
 	DefaultMappingContext->MapKey(AutoAttackAction, EKeys::LeftMouseButton);
 	DefaultMappingContext->MapKey(InteractAction, EKeys::E);
+	DefaultMappingContext->MapKey(MoveActionInput, EKeys::SpaceBar);
 
 	// une touche renvoie (1,0) : Swizzle la passe sur Y, Negate l'inverse
 	auto MapKey = [this](const FKey& Key, bool bSwizzle, bool bNegate)
@@ -1744,7 +1766,7 @@ void AYSPlayerCharacter::CreateDefaultInput()
 	MapKey(EKeys::D, false, false);
 
 	// manette : stick gauche = déplacement (X droite, Y haut, comme ZQSD), gâchette gauche = clic droit (Ability),
-	// gâchette droite = clic gauche (attaque auto), A = interagir ; stick droit = visée (AYSPlayerController::UpdateGamepadAim)
+	// gâchette droite = clic gauche (attaque auto), A = interagir, B = MoveAction ; stick droit = visée (AYSPlayerController::UpdateGamepadAim)
 	FEnhancedActionKeyMapping& StickMapping = DefaultMappingContext->MapKey(MoveAction, EKeys::Gamepad_Left2D);
 	UInputModifierDeadZone* DeadZone = NewObject<UInputModifierDeadZone>(DefaultMappingContext);
 	DeadZone->LowerThreshold = GamepadMoveDeadZone;
@@ -1758,6 +1780,7 @@ void AYSPlayerCharacter::CreateDefaultInput()
 		TriggerMapping.Modifiers.Add(TriggerDeadZone);
 	}
 	DefaultMappingContext->MapKey(InteractAction, EKeys::Gamepad_FaceButton_Bottom);
+	DefaultMappingContext->MapKey(MoveActionInput, EKeys::Gamepad_FaceButton_Right);
 }
 
 void AYSPlayerCharacter::Move(const FInputActionValue& Value)
@@ -1803,8 +1826,8 @@ void AYSPlayerCharacter::Fire()
 		return;
 	}
 
-	// objet porté à deux mains : armes désactivées
-	if (IsCarrying())
+	// objet porté à deux mains : armes désactivées (sauf passif du Quartermaster)
+	if (AreWeaponsStowed())
 	{
 		return;
 	}
@@ -1847,6 +1870,14 @@ void AYSPlayerCharacter::Fire()
 		{
 			Action->TryActivate(GetAimLocation());
 		}
+	}
+}
+
+void AYSPlayerCharacter::OnMoveActionPressed()
+{
+	if (MoveActionAbility)
+	{
+		MoveActionAbility->TryActivate(GetAimLocation());
 	}
 }
 
@@ -1962,6 +1993,88 @@ void AYSPlayerCharacter::UpdateHealthRegen(float DeltaSeconds)
 		Health = FMath::Min(Health + HealthRegen, GetMaxHealth());
 		UE_LOG(LogTemp, Verbose, TEXT("[YSHealthRegen] %s +%.1f -> %.1f / %.1f"), *GetName(), HealthRegen, Health, GetMaxHealth());
 	}
+}
+
+void AYSPlayerCharacter::UpdateStamina(float DeltaSeconds)
+{
+	if (!UsesStamina() || !IsAlive() || IsDying())
+	{
+		return;
+	}
+
+	StaminaStepTimer += DeltaSeconds;
+	while (StaminaStepTimer >= StaminaStepInterval && IsAlive())
+	{
+		StaminaStepTimer -= StaminaStepInterval;
+		const double Now = GetWorld()->GetTimeSeconds();
+
+		// porter / nager : pas de regen, consommation (passif de Mouss : moins) ; à 0 le ralentissement s'applique
+		const bool bSwimDrain = bSwimming && !IsAtStation();
+		const float PassiveCost = (IsValid(CarriedObject) ? CarryStaminaCost : 0.0f) + (bSwimDrain ? SwimStaminaCost : 0.0f);
+		if (PassiveCost > 0.0f)
+		{
+			LastStaminaUseTime = Now;
+			const bool bHadStamina = Stamina > 0.0f;
+			Stamina = FMath::Max(0.0f, Stamina - PassiveCost * (Passive ? Passive->GetPassiveStaminaCostMultiplier() : 1.0f));
+			if (bHadStamina && Stamina <= 0.0f)
+			{
+				UE_LOG(LogTemp, Verbose, TEXT("[YSStamina] %s : plus de stamina (%s)"), *GetName(), bSwimDrain ? TEXT("nage") : TEXT("objet porté"));
+			}
+
+			// noyade : la nage consomme les PV une fois la stamina vide, jusqu'à la mort (god : rien)
+			if (bSwimDrain && !bHadStamina && CanBeDamaged())
+			{
+				Health = FMath::Max(0.0f, Health - DrownHealthCost);
+				LastDamageTime = Now;
+				HealthRegenTimer = 0.0f;
+				UE_LOG(LogTemp, Verbose, TEXT("[YSStamina] %s se noie : %.0f PV"), *GetName(), Health);
+				if (!IsAlive())
+				{
+					UE_LOG(LogTemp, Log, TEXT("[YSStamina] %s est mort noyé"), *GetName());
+					Die();
+				}
+			}
+			continue;
+		}
+
+		// regen après Stamina Regen Delay sans utilisation
+		if (Stamina < GetMaxStamina() && Now - LastStaminaUseTime >= StaminaRegenDelay)
+		{
+			Stamina = FMath::Min(GetMaxStamina(), Stamina + StaminaRegenAmount * StaminaRegenMultiplier);
+			UE_LOG(LogTemp, VeryVerbose, TEXT("[YSStamina] %s regen : %.1f / %.1f"), *GetName(), Stamina, GetMaxStamina());
+		}
+	}
+}
+
+void AYSPlayerCharacter::OnRep_Stamina(float OldStamina)
+{
+	// le coût prédit a été retiré par le serveur
+	if (Stamina < OldStamina)
+	{
+		PredictedStaminaCost = 0.0f;
+	}
+}
+
+void AYSPlayerCharacter::SetStaminaMaxMultiplier(float Multiplier)
+{
+	const float OldMax = GetMaxStamina();
+	StaminaMaxMultiplier = Multiplier;
+	Stamina = FMath::Clamp(Stamina + GetMaxStamina() - OldMax, 0.0f, GetMaxStamina());
+	ForceNetUpdate();
+}
+
+void AYSPlayerCharacter::ConsumeStamina(float Amount)
+{
+	Stamina = FMath::Max(0.0f, Stamina - Amount);
+	LastStaminaUseTime = GetWorld()->GetTimeSeconds();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSStamina] %s -%.1f : %.1f / %.1f"), *GetName(), Amount, Stamina, GetMaxStamina());
+}
+
+void AYSPlayerCharacter::SetStamina(float Value)
+{
+	Stamina = FMath::Clamp(Value, 0.0f, GetMaxStamina());
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSStamina] %s : %.1f / %.1f (debug)"), *GetName(), Stamina, GetMaxStamina());
 }
 
 float AYSPlayerCharacter::GetWeaponCooldownMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const
@@ -2153,6 +2266,7 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, U
 	const TArray<FYSUpgradeProgress> OldProgress = UpgradeProgress;
 	const TArray<FYSShardLevel> OldShards = ShardLevels;
 	const float HealthRatio = GetMaxHealth() > 0.0f ? Health / GetMaxHealth() : 1.0f;
+	const float OldStamina = Stamina;
 	const FTransform SpawnTransform(FRotator(0.0f, GetActorRotation().Yaw, 0.0f), GetActorLocation());
 	const FString OldName = GetName();
 	const bool bWasLeftHanded = bLeftHanded;
@@ -2207,6 +2321,7 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, U
 	NewCharacter->RestoreUpgrades(OldPool, OldProgress);
 	NewCharacter->RestoreShards(OldShards);
 	NewCharacter->Health = FMath::Max(1.0f, HealthRatio * NewCharacter->GetMaxHealth());
+	NewCharacter->Stamina = FMath::Min(OldStamina, NewCharacter->GetMaxStamina());
 	UE_LOG(LogTemp, Log, TEXT("[YSPlayerCharacter] Changement de classe : %s -> %s, set %s (%d upgrade(s) conservée(s), PV %.0f / %.0f)"),
 		*OldName, *NewCharacter->GetName(), NewCharacter->WeaponSet ? *NewCharacter->WeaponSet->GetName() : TEXT("aucun"), NewCharacter->UpgradeProgress.Num(), NewCharacter->Health, NewCharacter->GetMaxHealth());
 }
@@ -2503,6 +2618,7 @@ void AYSPlayerCharacter::RestoreOnLevelUp()
 		return;
 	}
 	Health = GetMaxHealth();
+	Stamina = GetMaxStamina();
 	for (const AYSWeapon* Weapon : { GetMainHandWeapon(), GetOffHandWeapon() })
 	{
 		// Ability et attaque auto
@@ -2791,6 +2907,27 @@ float AYSPlayerCharacter::GetArmorPercent() const
 	return Passive ? Passive->GetArmorPercent() : 0.0f;
 }
 
+bool AYSPlayerCharacter::CanAttackWhileCarrying() const
+{
+	return Passive && Passive->CanAttackWhileCarrying();
+}
+
+void AYSPlayerCharacter::GetCarryPlacement(FVector& InOutLocation, FRotator& InOutRotation) const
+{
+	if (!CanAttackWhileCarrying())
+	{
+		return;
+	}
+	Passive->GetCarryPlacement(InOutLocation, InOutRotation);
+	// gaucher : l'autre main est à droite, objet en miroir
+	if (bLeftHanded)
+	{
+		InOutLocation.Y = -InOutLocation.Y;
+		InOutRotation.Yaw = -InOutRotation.Yaw;
+		InOutRotation.Roll = -InOutRotation.Roll;
+	}
+}
+
 void AYSPlayerCharacter::SetPassive(UYSPassive* NewPassive)
 {
 	if (HasAuthority())
@@ -2803,8 +2940,8 @@ void AYSPlayerCharacter::SetPassive(UYSPassive* NewPassive)
 
 float AYSPlayerCharacter::GetUnmodifiedWalkSpeed() const
 {
-	// passif Larbin : pas de ralentissement en portant un objet
-	const bool bCarrySlowdown = IsValid(CarriedObject) && !(Passive && Passive->IgnoresCarrySlowdown());
+	// objet porté : ralentissement seulement quand la stamina est vide
+	const bool bCarrySlowdown = IsValid(CarriedObject) && !IgnoresPassiveSlowdown();
 	const float CarryMultiplier = bCarrySlowdown ? CarriedObject->GetCarrierSpeedMultiplier() : 1.0f;
 	return MoveSpeed * MoveSpeedMultiplier * CarryMultiplier;
 }
@@ -2828,9 +2965,8 @@ void AYSPlayerCharacter::UpdateMaxWalkSpeed()
 		});
 		ActionMultiplier *= AutoAttackMultiplier;
 	}
-	// nage : Swim Speed Multiplier, ou celui du passif (Larbin : nage moins ralentie)
-	const float PassiveSwim = Passive ? Passive->GetSwimSpeedMultiplierOverride() : 0.0f;
-	const float SwimMultiplier = bSwimming ? (PassiveSwim > 0.0f ? PassiveSwim : SwimSpeedMultiplier) : 1.0f;
+	// nage : Swim Speed Multiplier seulement quand la stamina est vide
+	const float SwimMultiplier = bSwimming && !IgnoresPassiveSlowdown() ? SwimSpeedMultiplier : 1.0f;
 	GetCharacterMovement()->MaxWalkSpeed = GetUnmodifiedWalkSpeed() * ActionMultiplier * SwimMultiplier;
 }
 
@@ -2945,15 +3081,18 @@ void AYSPlayerCharacter::StartCarrying(AYSInteractiveObject* Object)
 	}
 
 	// les armes sont désactivées : actions en cours interrompues (anim du sabre, main suivante de l'akimbo)
-	CancelAllActions();
+	if (!CanAttackWhileCarrying())
+	{
+		CancelAllActions();
+	}
 
 	CarriedObject = Object;
 	Object->SetCarrier(this);
 	ApplyCarryVisuals();
 	UpdateMaxWalkSpeed();
 	ForceNetUpdate();
-	UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s prend %s (vitesse %.0f%s)"), *GetName(), *Object->GetName(), GetCharacterMovement()->MaxWalkSpeed,
-		Passive && Passive->IgnoresCarrySlowdown() ? TEXT(", passif : pas de ralentissement") : TEXT(""));
+	UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s prend %s (vitesse %.0f, stamina %.0f%s)"), *GetName(), *Object->GetName(), GetCharacterMovement()->MaxWalkSpeed, Stamina,
+		CanAttackWhileCarrying() ? TEXT(", passif : garde ses armes") : TEXT(""));
 }
 
 void AYSPlayerCharacter::DropCarriedObject(const TCHAR* Reason)
@@ -3416,6 +3555,11 @@ void AYSPlayerCharacter::ForEachHeldAction(TFunctionRef<void(const UYSAbilityCom
 		{
 			Function(Action);
 		}
+	}
+	// la MoveAction n'est pas sur une arme
+	if (MoveActionAbility)
+	{
+		Function(MoveActionAbility);
 	}
 }
 

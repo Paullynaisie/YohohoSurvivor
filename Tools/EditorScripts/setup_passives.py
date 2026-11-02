@@ -1,8 +1,8 @@
 """
 Passifs des personnages (Data Assets dans /Game/Core/Passives, 3C > Passive des personnages) :
-  - DA_Passive_Larbin (Mouss, et JohnnyPlaytest, sa copie de test) : pas de ralentissement en portant un objet
+  - DA_Passive_Larbin (Mouss, et JohnnyPlaytest, sa copie de test) : 2x moins de stamina en portant un objet ou en nageant
   - DA_Passive_Marksman (Cannoneer) : critiques à 200 % au lieu de 150 %
-  - DA_Passive_ToughGuy (Quartermaster) : ignore 20 % des dégâts subis (%Armor, avant l'armure)
+  - DA_Passive_ToughGuyCarry (Quartermaster) : porte un objet et attaque en même temps (setup_stamina.py) ; DA_Passive_ToughGuy (%Armor) : ancien, plus porté
   - DA_Passive_ToiTaGueule (Captain) : sans effet pour l'instant (votes, plus tard)
 Ne recrée pas un passif qui existe (textes et valeurs de Paul conservés) ; ne remplace pas un passif déjà mis sur un personnage.
 
@@ -18,16 +18,16 @@ CHARACTER_DIR = "/Game/Placeable/Character/Player"
 
 # nom de l'asset, classe, nom affiché, description
 PASSIVES = [
-    ("DA_Passive_Larbin", unreal.YSCarrySpeedPassive, "Larbin", "Ne subit pas de perte de déplacement quand il porte un objet"),
+    ("DA_Passive_Larbin", unreal.YSPassiveStaminaPassive, "Larbin", "Consomme 2x moins de stamina quand il porte un objet ou qu'il nage"),
     ("DA_Passive_Marksman", unreal.YSCriticalDamagePassive, "Marksman", "Les critiques font 200 % de dégâts au lieu de 150 %"),
-    ("DA_Passive_ToughGuy", unreal.YSArmorPercentPassive, "Tough Guy", "Ignore 20 % des dégâts subis"),
+    ("DA_Passive_ToughGuyCarry", unreal.YSCarryAttackPassive, "Tough Guy", "Peut porter un objet et attaquer en même temps : son autre main porte l'objet sur son flanc"),
     ("DA_Passive_ToiTaGueule", unreal.YSPassive, "Toi ta gueule", "En cas de vote, le Captain décide qui n'a pas le droit de voter"),
 ]
 CHARACTERS = {
     "PlayerCharacter_mouss": "DA_Passive_Larbin",
     "PlayerCharacter_JohnnyPlaytest": "DA_Passive_Larbin",
     "PlayerCharacter_Cannoneer": "DA_Passive_Marksman",
-    "PlayerCharacter_Quartermaster": "DA_Passive_ToughGuy",
+    "PlayerCharacter_Quartermaster": "DA_Passive_ToughGuyCarry",
     "PlayerCharacter_Captain": "DA_Passive_ToiTaGueule",
 }
 

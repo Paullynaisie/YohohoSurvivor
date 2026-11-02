@@ -7,7 +7,7 @@
 /**
  *  Passif d'un personnage (3C > Passive) : un Data Asset par passif dans /Game/Core/Passives, jamais amélioré, seulement
  *  remplacé par un autre (AYSPlayerCharacter::SetPassive, serveur, répliqué). Ses effets sont lus là où ils s'appliquent
- *  (vitesse de port, dégâts critiques, dégâts subis), sur toutes les machines.
+ *  (stamina, port d'un objet, dégâts critiques, dégâts subis), sur toutes les machines.
  *  Classe de base = passif sans effet (ex. « Toi ta gueule » du Captain, qui servira plus tard).
  */
 UCLASS(BlueprintType, meta=(DisplayName="Passif sans effet"))
@@ -24,34 +24,60 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Passive", meta=(MultiLine="true"))
 	FText Description;
 
-	/** Pas de ralentissement quand le personnage porte un objet (coffre, carte au trésor…) */
-	virtual bool IgnoresCarrySlowdown() const { return false; }
+	/** Stamina consommée en portant un objet ou en nageant x ce multiplicateur */
+	virtual float GetPassiveStaminaCostMultiplier() const { return 1.0f; }
+
+	/** Le personnage garde ses armes en portant un objet ; l'objet est porté par l'autre main, placé par GetCarryPlacement */
+	virtual bool CanAttackWhileCarrying() const { return false; }
+
+	/** Can Attack While Carrying : position et rotation de l'objet porté (relatives au corps), pour un droitier */
+	virtual void GetCarryPlacement(FVector& OutLocation, FRotator& OutRotation) const {}
 
 	/** Multiplicateur de base des coups critiques à la place de celui du personnage (0 = celui du personnage) */
 	virtual float GetCriticalDamageMultiplierOverride() const { return 0.0f; }
 
 	/** %Armor : part des dégâts subis ignorée, appliquée avant l'armure (0.2 = 20 %) */
 	virtual float GetArmorPercent() const { return 0.0f; }
-
-	/** Vitesse de nage à la place de Swim Speed Multiplier du personnage (0 = celle du personnage) */
-	virtual float GetSwimSpeedMultiplierOverride() const { return 0.0f; }
 };
 
-/** « Larbin » (Mouss) : aucune perte de vitesse en portant un objet, et nage un peu moins ralentie (50 % au lieu de 30 %) */
-UCLASS(meta=(DisplayName="Passif : pas de ralentissement en portant un objet"))
-class UYSCarrySpeedPassive : public UYSPassive
+/** « Larbin » (Mouss) : consomme moins de stamina en portant un objet ou en nageant (le ralentissement arrive donc plus tard) */
+UCLASS(meta=(DisplayName="Passif : stamina des actions passives"))
+class UYSPassiveStaminaPassive : public UYSPassive
 {
 	GENERATED_BODY()
 
 public:
 
-	/** Vitesse de nage (x MoveSpeed) */
+	/** Stamina consommée en portant un objet ou en nageant x ce multiplicateur (0.5 = 2x moins) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Passive", meta=(ClampMin="0", ClampMax="1"))
-	float SwimSpeedMultiplier = 0.5f;
+	float PassiveStaminaCostMultiplier = 0.5f;
 
-	virtual bool IgnoresCarrySlowdown() const override { return true; }
+	virtual float GetPassiveStaminaCostMultiplier() const override { return PassiveStaminaCostMultiplier; }
+};
 
-	virtual float GetSwimSpeedMultiplierOverride() const override { return SwimSpeedMultiplier; }
+/** « Tough Guy » (Quartermaster) : porte un objet sur son flanc avec l'autre main (elle quitte l'arme à 2 mains) et continue d'attaquer */
+UCLASS(meta=(DisplayName="Passif : porter et attaquer"))
+class UYSCarryAttackPassive : public UYSPassive
+{
+	GENERATED_BODY()
+
+public:
+
+	/** Position de l'objet porté (son origine = son bas), relative au corps ; pour un droitier (flanc gauche), en miroir pour un gaucher */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Passive")
+	FVector CarryFlankLocation = FVector(0.0f, -100.0f, -30.0f);
+
+	/** Rotation de l'objet porté, relative au corps ; pour un droitier */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Passive")
+	FRotator CarryFlankRotation = FRotator::ZeroRotator;
+
+	virtual bool CanAttackWhileCarrying() const override { return true; }
+
+	virtual void GetCarryPlacement(FVector& OutLocation, FRotator& OutRotation) const override
+	{
+		OutLocation = CarryFlankLocation;
+		OutRotation = CarryFlankRotation;
+	}
 };
 
 /** « Marksman » (Cannoneer) : les critiques font Critical Damage Multiplier (200 %) au lieu de 150 % */
@@ -68,7 +94,7 @@ public:
 	virtual float GetCriticalDamageMultiplierOverride() const override { return CriticalDamageMultiplier; }
 };
 
-/** « Tough Guy » (Quartermaster) : ignore Armor Percent (20 %) des dégâts subis, avant l'armure */
+/** Ignore Armor Percent (20 %) des dégâts subis, avant l'armure (DA_Passive_ToughGuy : ancien passif du Quartermaster, plus porté par personne) */
 UCLASS(meta=(DisplayName="Passif : %Armor"))
 class UYSArmorPercentPassive : public UYSPassive
 {

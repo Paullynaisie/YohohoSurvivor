@@ -198,6 +198,12 @@ public:
 	/** Bloque les actions moins prioritaires sur cette machine (GetPriorityBlockDuration depuis l'activation, + AkimboFireDelay en akimbo) */
 	virtual bool IsBlockingLowerPriority() const;
 
+	/** MoveAction du personnage (ex. Roll) : rang de priorité entre l'Ability et l'attaque auto */
+	virtual bool IsMoveAction() const { return false; }
+
+	/** Une action plus prioritaire attend la fin de celle-ci au lieu de l'interrompre (ex. Roll : pas d'Ability pendant la roulade) */
+	virtual bool IsUninterruptible() const { return false; }
+
 	/** Rang de priorité du type de cette action (0 = la plus prioritaire) */
 	int32 GetPriorityRank() const;
 
