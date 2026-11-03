@@ -219,6 +219,12 @@ private:
 	/** La vue est sur le GameBoat (écran de sélection du FlowMod) */
 	bool bBoatIntroView = false;
 
+	/**
+	 *  Le joueur local a déjà eu son personnage : ni menu de sélection ni vue du GameBoat ensuite (chez un client, le PlayerState
+	 *  ressuscité arrive avant le nouveau personnage : le menu et la vue du bateau revenaient le temps d'une image)
+	 */
+	bool bHadPlayerCharacter = false;
+
 	/** Dernier jour vu (pour annoncer les nouveaux) et temps d'affichage restant de l'annonce */
 	int32 LastSeenDay = INDEX_NONE;
 	float DayBannerRemaining = 0.0f;

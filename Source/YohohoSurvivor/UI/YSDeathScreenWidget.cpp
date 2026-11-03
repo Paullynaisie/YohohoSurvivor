@@ -85,8 +85,7 @@ void UYSDeathScreenWidget::BuildWidgetTree()
 	ReviveSize->SetVisibility(ESlateVisibility::Collapsed);
 	ReviveBox = ReviveSize;
 	UButton* ReviveButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Revive"));
-	ReviveButton->SetBackgroundColor(ReviveButtonColor);
-	ReviveButton->OnClicked.AddDynamic(this, &UYSDeathScreenWidget::HandleReviveClicked);
+	ReviveButton->SetBackgroundColor(ReviveButtonColor);	ReviveButton->OnClicked.AddDynamic(this, &UYSDeathScreenWidget::HandleReviveClicked);
 	UTextBlock* ReviveLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ReviveLabel"));
 	ReviveLabel->SetText(ReviveText);
 	YSDeathScreen::SetFontSize(ReviveLabel, ReviveFontSize);

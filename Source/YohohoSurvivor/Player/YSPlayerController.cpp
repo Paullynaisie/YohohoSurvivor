@@ -502,8 +502,9 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 		DeathScreen->SetVisibility(bDead ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 	}
 
-	// le menu disparaît dès que le joueur a son personnage
-	const bool bHasCharacter = Cast<AYSPlayerCharacter>(GetPawn()) != nullptr;
+	// le menu disparaît dès que le joueur a son personnage (et ne revient plus : entre deux personnages, réanimation ou
+	// changement de classe, il n'y a rien à choisir)
+	const bool bHasCharacter = Cast<AYSPlayerCharacter>(GetPawn()) != nullptr || bHadPlayerCharacter;
 	CharacterSelectMenu->SetVisibility(bHasCharacter || bDead ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	// FlowMod : GameBoat en fond ; une fois prêt, plus de bouton ni d'aperçu, seulement la chaloupe et « Annuler »
 	const AYSGameState* IntroGameState = GetWorld()->GetGameState<AYSGameState>();
@@ -673,8 +674,12 @@ void AYSPlayerController::UpdateBoatIntroView()
 	const AYSPlayerState* MyPlayerState = GetPlayerState<AYSPlayerState>();
 	AYSGameBoatLongboat* Boat = YSGameState ? Cast<AYSGameBoatLongboat>(YSGameState->GetGameBoat()) : nullptr;
 	APawn* MyPawn = GetPawn();
+	if (Cast<AYSPlayerCharacter>(MyPawn))
+	{
+		bHadPlayerCharacter = true;
+	}
 
-	if (Boat && !MyPawn && !(MyPlayerState && MyPlayerState->IsDead()))
+	if (Boat && !MyPawn && !bHadPlayerCharacter && !(MyPlayerState && MyPlayerState->IsDead()))
 	{
 		bBoatIntroView = true;
 		if (GetViewTarget() != Boat)
@@ -2085,8 +2090,8 @@ void AYSPlayerController::UpdateGamepadAim(const APawn* ControlledPawn)
 
 void AYSPlayerController::UpdateMenuFocus()
 {
-	// menu caché alors qu'un de ses boutons avait le focus (navigation à la manette) : focus rendu au jeu
-	for (const UUserWidget* Menu : { static_cast<const UUserWidget*>(CharacterSelectMenu), static_cast<const UUserWidget*>(UpgradeMenu) })
+	// menu caché alors qu'un de ses boutons avait le focus (navigation à la manette, clic sur Revive de l'écran de mort) : focus rendu au jeu
+	for (const UUserWidget* Menu : { static_cast<const UUserWidget*>(CharacterSelectMenu), static_cast<const UUserWidget*>(UpgradeMenu), static_cast<const UUserWidget*>(DeathScreen) })
 	{
 		if (Menu && !Menu->IsVisible() && Menu->HasFocusedDescendants())
 		{
