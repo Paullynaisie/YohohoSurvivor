@@ -10,7 +10,9 @@ enum class EYSIslandPropType : uint8
 {
 	Tree,
 	Bush,
-	Rock
+	Rock,
+	SmallHouse,
+	BigHouse
 };
 
 /** Rôle d'un prop du plan */
@@ -41,6 +43,31 @@ struct FYSIslandMassif
 
 	UPROPERTY()
 	int32 Belt = INDEX_NONE;
+
+	/** Port Town : massif de la ville (maisons et palmiers) */
+	UPROPERTY()
+	bool bTown = false;
+};
+
+/** Un morceau de ponton : planche de A à B (dessus, coordonnées de l'île), largeur Pier Width */
+USTRUCT()
+struct FYSIslandPierSegment
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FVector3f A = FVector3f::ZeroVector;
+
+	UPROPERTY()
+	FVector3f B = FVector3f::ZeroVector;
+
+	/** Poteaux dessous (pas pour les pentes) */
+	UPROPERTY()
+	bool bPosts = false;
+
+	/** Morceaux qui se suivent le long d'une courbe : un peu plus longs pour que les joints se recouvrent */
+	UPROPERTY()
+	bool bOverlapEnds = false;
 };
 
 USTRUCT()
@@ -64,7 +91,11 @@ struct FYSIslandPropSpawn
 	EYSIslandPropRole Role = EYSIslandPropRole::Lining;
 };
 
-/** Résultat de la génération : calculé par le serveur, répliqué aux clients (qui en déduisent le terrain et posent les props) */
+/**
+ *  Résultat de la génération : calculé par le serveur, répliqué aux clients (qui en déduisent le terrain et posent les props).
+ *  Coordonnées de l'île (le terrain est tourné / déplacé avec l'acteur AYSIsland). Les props ne passent pas par ici (trop nombreux pour
+ *  une seule propriété répliquée) : AYSIslandPropChunk.
+ */
 USTRUCT()
 struct FYSIslandPlan
 {
@@ -74,11 +105,19 @@ struct FYSIslandPlan
 	UPROPERTY()
 	int32 Seed = 0;
 
+	/** Biome retenu */
+	UPROPERTY()
+	EYSIslandGeneration Biome = EYSIslandGeneration::Tropical;
+
 	UPROPERTY()
 	TArray<FYSIslandMassif> Massifs;
 
-	UPROPERTY()
+	UPROPERTY(NotReplicated)
 	TArray<FYSIslandPropSpawn> Props;
+
+	/** Port Town : pontons de la mer à la falaise */
+	UPROPERTY()
+	TArray<FYSIslandPierSegment> PierSegments;
 
 	/** Angle (radians) de chaque ouverture vers l'eau côté falaise */
 	UPROPERTY()
@@ -106,9 +145,14 @@ class FYSIslandTerrain
 public:
 
 	FYSIslandTerrain() = default;
-	FYSIslandTerrain(const FYSIslandGenerationRules& InRules, int32 Seed);
+	FYSIslandTerrain(const FYSIslandGenerationRules& InRules, int32 Seed, EYSIslandGeneration InBiome);
 
 	float CoastRadius(float Theta) const;
+
+	EYSIslandGeneration GetBiome() const { return Biome; }
+
+	/** Port Town : point dans le secteur de la ville (angle depuis le nord et distance au milieu) */
+	bool IsInTownSector(float X, float Y) const;
 
 	/** 1 sur la plage, 0 sur les falaises */
 	float BeachWeight(float Theta) const;
@@ -133,6 +177,7 @@ private:
 	float LandHeight(float X, float Y) const;
 
 	FYSIslandGenerationRules Rules;
+	EYSIslandGeneration Biome = EYSIslandGeneration::Tropical;
 	float CoastPhases[3] = { 0.0f, 0.0f, 0.0f };
 	float NoisePhases[3] = { 0.0f, 0.0f, 0.0f };
 	float HalfSize = 0.0f;
@@ -142,8 +187,11 @@ private:
 namespace YSIslandGenerator
 {
 	/** Premier plan qui respecte toutes les règles à partir de cette graine (la suivante sinon) ; si aucun, le dernier essayé (signalé dans le rapport) */
-	bool GeneratePlan(const FYSIslandGenerationRules& Rules, int32 Seed, FYSIslandPlan& OutPlan, FString& OutReport);
+	bool GeneratePlan(const FYSIslandGenerationRules& Rules, EYSIslandGeneration Biome, int32 Seed, FYSIslandPlan& OutPlan, FString& OutReport);
 
 	/** Distance à l'axe d'un massif moins son rayon : négative à l'intérieur */
 	float MassifDistance(const FYSIslandMassif& Massif, const FVector2f& Point);
+
+	/** Réglages d'un type de prop */
+	const FYSIslandPropDef& GetPropDef(const FYSIslandGenerationRules& Rules, EYSIslandPropType Type);
 }

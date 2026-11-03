@@ -56,11 +56,13 @@ void AYSFoeGalion::BeginPlay()
 
 void AYSFoeGalion::SpawnCrew()
 {
-	// capitaine à la barre
-	if (CaptainClass)
+	// capitaine à la barre (tiré au hasard s'il y a une liste)
+	const TSubclassOf<AYSFoeCharacter> Chosen = CaptainClasses.Num() > 0 ? CaptainClasses[FMath::RandRange(0, CaptainClasses.Num() - 1)] : CaptainClass;
+	if (Chosen)
 	{
 		const AYSShipStation* Helm = GetSeatStation(0);
-		Captain = SpawnCrewMember(CaptainClass, GetSeatFeetLocation(0), Helm ? 0 : INDEX_NONE);
+		Captain = SpawnCrewMember(Chosen, GetSeatFeetLocation(0), Helm ? 0 : INDEX_NONE);
+		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : capitaine %s"), *GetName(), *Chosen->GetName());
 	}
 
 	// matelots sur le pont, à distance les uns des autres

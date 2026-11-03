@@ -42,6 +42,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
 	TSubclassOf<AYSFoeCharacter> CaptainClass;
 
+	/** Non vide : le capitaine est tiré au hasard dans cette liste (ex. élite Skull ou élite Gun) ; Captain Class est alors ignoré */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
+	TArray<TSubclassOf<AYSFoeCharacter>> CaptainClasses;
+
 	/** Matelots : groupes (défaut : 6 Skull, 3 Skull Gun, 6 au hasard entre Skull, Skull Bomb et Skull Gun) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
 	TArray<FYSGalionCrewGroup> CrewGroups;

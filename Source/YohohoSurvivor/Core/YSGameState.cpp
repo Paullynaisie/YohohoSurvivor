@@ -168,6 +168,11 @@ void AYSGameState::UpdateHarborPlacement()
 		HasAuthority() ? TEXT("serveur") : TEXT("client"), HarborActors.Num(), HarborPivot.X, HarborPivot.Y, HarborYawDelta);
 }
 
+bool AYSGameState::IsSinkingAt(const FVector& Location) const
+{
+	return IsIslandSinking() || AYSIsland::IsSinkingAt(GetWorld(), Location);
+}
+
 void AYSGameState::StartIslandSink(float Duration, float Depth, float EaseExponent)
 {
 	IslandSinkDuration = FMath::Max(Duration, 0.1f);
@@ -185,15 +190,12 @@ void AYSGameState::UpdateIslandSink()
 	}
 
 	// une fois : l'île (Landscape) et tout ce qui y est accroché (props, ponton, Brooker), rendus mobiles
+	// (les îles générées AYSIsland coulent chacune de leur côté)
 	if (!bSinkingActorsGathered)
 	{
 		bSinkingActorsGathered = true;
 		TArray<AActor*> Roots;
 		for (TActorIterator<ALandscapeProxy> It(GetWorld()); It; ++It)
-		{
-			Roots.Add(*It);
-		}
-		for (TActorIterator<AYSIsland> It(GetWorld()); It; ++It)
 		{
 			Roots.Add(*It);
 		}

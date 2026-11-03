@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "NPC/YSBrookerNPC.h"
+#include "NPC/YSMedicNPC.h"
 #include "YSIslandNPC.generated.h"
 
 class AYSIsland;
@@ -16,6 +17,19 @@ class AYSIslandNPC : public AYSBrookerNPC
 public:
 
 	AYSIslandNPC();
+
+	virtual void BeginPlay() override;
+};
+
+/** Medic créé en jeu sur une île générée (ex. Medic de Port Town ramené au bateau) : répliqué, accroché à l'île, ressuscite comme le Medic d'une map */
+UCLASS()
+class AYSIslandMedicNPC : public AYSMedicNPC
+{
+	GENERATED_BODY()
+
+public:
+
+	AYSIslandMedicNPC();
 
 	virtual void BeginPlay() override;
 };
@@ -62,8 +76,9 @@ private:
 };
 
 /**
- *  Le Charpentier, à trouver et à ramener : se porte comme le cadavre d'un joueur, se pose et se reprend comme un objet (réglages Interaction|Carry du Blueprint).
- *  Il ne prend rien tant qu'il n'est pas au bateau ; posé dans la zone du bateau de départ, il y reste : Delivered NPC Class (Brooker) prend sa place.
+ *  Un PNJ à trouver et à ramener (le Charpentier, le Medic de Port Town) : se porte comme le cadavre d'un joueur, se pose et se reprend comme un objet
+ *  (réglages Interaction|Carry du Blueprint). Il ne prend rien tant qu'il n'est pas au bateau ; posé dans la zone du bateau, il y reste :
+ *  Delivered NPC Class (Brooker, Medic : PNJ répliqué d'île) prend sa place.
  */
 UCLASS()
 class AYSCarpenter : public AYSInteractiveObject
@@ -72,9 +87,9 @@ class AYSCarpenter : public AYSInteractiveObject
 
 public:
 
-	/** PNJ qui le remplace au bateau */
+	/** PNJ qui le remplace au bateau (AYSIslandNPC, AYSIslandMedicNPC : répliqués) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Carpenter")
-	TSubclassOf<AYSIslandNPC> DeliveredNPCClass;
+	TSubclassOf<AYSBrookerNPC> DeliveredNPCClass;
 
 	virtual void OnDelivered() override;
 };

@@ -10,11 +10,16 @@ class AYSInteractiveObject;
 class AYSStartBoat;
 class UMaterialInterface;
 
-/** Type de génération d'une île (règles dans FYSIslandGenerationRules) */
+/** Type de génération (biome) d'une île (règles dans FYSIslandGenerationRules) */
 UENUM(BlueprintType)
 enum class EYSIslandGeneration : uint8
 {
-	Tropical
+	/** Plage au sud, falaises ailleurs, jungle en massifs */
+	Tropical,
+	/** Plage tout autour, palmiers seuls ou en trio répartis régulièrement */
+	Desert,
+	/** Tropical + ville côté falaise à l'opposé de la plage (maisons à la place de la jungle) et réseau de pontons de la mer à la falaise */
+	PortTown
 };
 
 /** Où apparaît une vague de NME */
@@ -253,6 +258,84 @@ struct FYSIslandGenerationRules
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="9 Trios")
 	FYSIslandTrioDef BushTrio;
+
+	/** Désert : distance entre deux palmiers (ou trios) de la grille régulière */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="10 Desert", meta=(ClampMin="200", Units="Centimeters"))
+	float DesertPalmSpacing = 1600.0f;
+
+	/** Décalage au hasard de chaque point de la grille, en part de l'espacement */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="10 Desert", meta=(ClampMin="0", ClampMax="0.5"))
+	float DesertPalmJitter = 0.3f;
+
+	/** Chance qu'un point de la grille soit un trio plutôt qu'un palmier seul */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="10 Desert", meta=(ClampMin="0", ClampMax="1"))
+	float DesertTrioChance = 0.4f;
+
+	/** Pas de palmier à moins de cette distance du bord de l'eau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="10 Desert", meta=(ClampMin="0", Units="Centimeters"))
+	float DesertShoreMargin = 400.0f;
+
+	/** Port Town : la ville occupe les massifs dont le milieu est à moins de cet angle du nord (à l'opposé de la plage) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="11 Port Town", meta=(ClampMin="0", ClampMax="180", Units="Degrees"))
+	float TownHalfAngle = 65.0f;
+
+	/** ... et à plus de cette part du rayon du milieu de l'île (pas jusqu'au centre) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="11 Port Town", meta=(ClampMin="0", ClampMax="1"))
+	float TownInnerRatio = 0.3f;
+
+	/** Petite maison (~5 PJ de côté) : Radius = demi-diagonale (place), Collision Radius = demi-côté (contrôles de passage) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="11 Port Town")
+	FYSIslandPropDef SmallHouseProp;
+
+	/** Grande maison (~10 PJ de côté) ; Weight = part des grandes maisons dans les rangées du bord (avec celui des petites) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="11 Port Town")
+	FYSIslandPropDef BigHouseProp;
+
+	/** Espace minimal entre deux maisons */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="11 Port Town", meta=(ClampMin="0", Units="Centimeters"))
+	float HouseGap = 40.0f;
+
+	/** Pontons : largeur (5 PJ) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="50", Units="Centimeters"))
+	float PierWidth = 420.0f;
+
+	/** Dessus des pontons au-dessus de la mer */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(Units="Centimeters"))
+	float PierDeckHeight = 25.0f;
+
+	/** Épaisseur des planches */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="5", Units="Centimeters"))
+	float PierThickness = 30.0f;
+
+	/** Le ponton qui longe la côte (et relie les rampes) passe à cette distance du bord de la falaise */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="200", Units="Centimeters"))
+	float PierCoastOffset = 1000.0f;
+
+	/** Quai au pied de chaque rampe, vers le large */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="0", Units="Centimeters"))
+	float PierDockLength = 500.0f;
+
+	/** Accès depuis l'eau : pente qui descend du ponton jusqu'à cette profondeur sous la mer, sur cette longueur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="0", Units="Centimeters"))
+	float PierWaterRampDepth = 200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="100", Units="Centimeters"))
+	float PierWaterRampLength = 800.0f;
+
+	/** Accès depuis l'eau aussi tous les ... le long du ponton de la côte */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="500", Units="Centimeters"))
+	float PierWaterAccessSpacing = 3000.0f;
+
+	/** Longueur d'un morceau du ponton de la côte (il suit la courbe) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="100", Units="Centimeters"))
+	float PierStep = 400.0f;
+
+	/** Poteaux sous les pontons, tous les ... */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="100", Units="Centimeters"))
+	float PierPostSpacing = 400.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers")
+	TObjectPtr<UMaterialInterface> PierMaterial;
 };
 
 /** Un objectif : un objet à trouver sur l'île et à ramener dans la zone du bateau de départ */
@@ -275,6 +358,14 @@ struct FYSIslandObjectiveDef
 	/** Distance au bateau de départ (min, max) où l'objet apparaît */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(Units="Centimeters"))
 	FVector2D DistanceFromBoat = FVector2D(3000.0, 9000.0);
+
+	/** Jour de l'île où l'objet apparaît (1 = dès le début) ; tant qu'il n'est pas apparu, l'objectif compte comme ouvert */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="1"))
+	int32 SpawnDay = 1;
+
+	/** Apparaît seulement dans la ville (Port Town) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective")
+	bool bInTown = false;
 };
 
 /** Un type de NME d'une vague */
@@ -285,6 +376,10 @@ struct FYSIslandFoeEntry
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe")
 	TSubclassOf<AYSFoeCharacter> FoeClass;
+
+	/** Non vide : chaque NME est tiré au hasard dans cette liste (Foe Class est ignoré) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe")
+	TArray<TSubclassOf<AYSFoeCharacter>> RandomFoeClasses;
 
 	/** Nombre pour 1 joueur (x Spawn Multiplier du nombre de joueurs si Scale With Players) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe", meta=(ClampMin="0"))
@@ -300,6 +395,10 @@ struct FYSIslandSpawnEvent
 	/** Secondes après le début de la phase */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn", meta=(ClampMin="0", Units="s"))
 	float Time = 0.0f;
+
+	/** Seulement le jour (ou la nuit) N de l'île (0 = tous les jours) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn", meta=(ClampMin="0"))
+	int32 IslandDay = 0;
 
 	/** Nombre de fois que la vague part (0 = jusqu'à la fin de la phase) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn", meta=(ClampMin="0"))
@@ -348,6 +447,14 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Generation")
 	EYSIslandGeneration GenerationType = EYSIslandGeneration::Tropical;
+
+	/** Non vide : le biome est tiré au hasard dans cette liste à chaque génération (Generation Type est ignoré) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Generation")
+	TArray<EYSIslandGeneration> RandomGenerationTypes;
+
+	/** L'île est tournée au hasard autour de son centre : la plage n'est pas forcément au sud (jamais pour l'île de départ) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Generation")
+	bool bRandomRotation = false;
 
 	/** Graine fixe de la génération (0 = une île différente à chaque partie) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Generation")

@@ -20,6 +20,23 @@ void AYSIslandNPC::BeginPlay()
 	Super::BeginPlay();
 }
 
+AYSIslandMedicNPC::AYSIslandMedicNPC()
+{
+	bReplicates = true;
+	bAlwaysRelevant = true;
+}
+
+void AYSIslandMedicNPC::BeginPlay()
+{
+	// posé puis accroché à l'île, qui peut couler : tout doit pouvoir bouger
+	TInlineComponentArray<USceneComponent*> Components(this);
+	for (USceneComponent* Component : Components)
+	{
+		Component->SetMobility(EComponentMobility::Movable);
+	}
+	Super::BeginPlay();
+}
+
 void AYSStartBoat::InitBoat(AYSIsland* InIsland, float InZoneRadius)
 {
 	Island = InIsland;
@@ -65,7 +82,7 @@ void AYSCarpenter::OnDelivered()
 {
 	UWorld* World = GetWorld();
 	const FTransform Transform(FRotator(0.0f, GetActorRotation().Yaw, 0.0f), GetActorLocation());
-	AYSIslandNPC* NPC = DeliveredNPCClass ? World->SpawnActorDeferred<AYSIslandNPC>(DeliveredNPCClass, Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn) : nullptr;
+	AYSBrookerNPC* NPC = DeliveredNPCClass ? World->SpawnActorDeferred<AYSBrookerNPC>(DeliveredNPCClass, Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn) : nullptr;
 	if (NPC)
 	{
 		NPC->FinishSpawning(Transform);
@@ -74,6 +91,6 @@ void AYSCarpenter::OnDelivered()
 			Island->AttachToIsland(NPC);
 		}
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSIsland] Le Charpentier reste au bateau : %s"), NPC ? *NPC->GetName() : TEXT("(pas de PNJ)"));
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s reste au bateau : %s"), *GetName(), NPC ? *NPC->GetName() : TEXT("(pas de PNJ)"));
 	Destroy();
 }

@@ -3556,9 +3556,9 @@ void AYSPlayerCharacter::UpdateStation()
 
 void AYSPlayerCharacter::UpdateSwimming(float DeltaSeconds)
 {
-	// pendant que l'île coule, plus de sol de nage : tout le monde coule avec elle (seuls ceux du bateau survivent)
+	// pendant que l'île coule, plus de sol de nage autour d'elle : tout le monde coule avec elle (seuls ceux du bateau survivent)
 	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
-	const bool bFloorActive = !(YSGameState && YSGameState->IsIslandSinking());
+	const bool bFloorActive = !(YSGameState && YSGameState->IsSinkingAt(GetActorLocation()));
 	if (bFloorActive != bSwimFloorBlocked)
 	{
 		bSwimFloorBlocked = bFloorActive;

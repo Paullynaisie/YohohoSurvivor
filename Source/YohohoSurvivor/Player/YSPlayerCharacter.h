@@ -1429,6 +1429,9 @@ public:
 	/** Debug (YSLeaveStation) : quitte le poste comme avec E */
 	void DebugLeaveStation();
 
+	/** Debug : longueur du bras de caméra à pied (vues d'ensemble) */
+	void DebugSetCameraArmLength(float Length) { DefaultCameraArmLength = Length; }
+
 	/** Debug (YSHelmInput) : commandes de la barre tenues (X = Q / D, Y = Z / S) quand aucune touche n'est enfoncée */
 	void SetDebugHelmInput(const FVector2D& Input) { DebugHelmInput = Input; }
 

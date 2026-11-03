@@ -13,11 +13,13 @@
 #include "Interaction/YSTreasureMap.h"
 #include "Island/YSIslandData.h"
 #include "Island/YSIslandNPC.h"
+#include "Island/YSIslandParts.h"
 #include "Map/YSOcean.h"
 #include "Net/UnrealNetwork.h"
 #include "NPC/YSBrookerNPC.h"
 #include "Player/YSPlayerCharacter.h"
 #include "ProceduralMeshComponent.h"
+#include "Async/Async.h"
 
 namespace YSIslandActor
 {
@@ -36,6 +38,14 @@ namespace YSIslandActor
 	constexpr int32 CenterRingCount = 4;
 	constexpr int32 CenterRingSpots = 8;
 	constexpr float CenterRetryInterval = 0.5f;
+	/** Props par part répliquée (une propriété répliquée tient au plus 2048 éléments et 64 Ko) */
+	constexpr int32 PropsPerChunk = 1000;
+
+	double GetServerTime(const UWorld* World)
+	{
+		const AGameStateBase* GameState = World ? World->GetGameState() : nullptr;
+		return GameState ? GameState->GetServerWorldTimeSeconds() : (World ? World->GetTimeSeconds() : 0.0);
+	}
 }
 
 AYSIsland::AYSIsland()
@@ -57,10 +67,11 @@ AYSIsland::AYSIsland()
 	TerrainMesh->SetMobility(EComponentMobility::Static);
 }
 
-void AYSIsland::InitIsland(UYSIslandData* InData, int32 InSeed)
+void AYSIsland::InitIsland(UYSIslandData* InData, int32 InSeed, bool bInStartIsland)
 {
 	Data = InData;
 	RequestedSeed = InSeed;
+	bStartIsland = bInStartIsland;
 }
 
 void AYSIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -72,6 +83,23 @@ void AYSIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	DOREPLIFETIME(AYSIsland, Phase);
 	DOREPLIFETIME(AYSIsland, OpenDeliveryClasses);
 	DOREPLIFETIME(AYSIsland, StartBoat);
+	DOREPLIFETIME(AYSIsland, SinkStartServerTime);
+}
+
+FVector AYSIsland::LocalToWorld(const FVector2f& Local, float LocalZ) const
+{
+	return GetActorTransform().TransformPosition(FVector(Local.X, Local.Y, LocalZ));
+}
+
+FVector2f AYSIsland::WorldToLocal(const FVector& World) const
+{
+	const FVector Local = GetActorTransform().InverseTransformPosition(World);
+	return FVector2f(Local.X, Local.Y);
+}
+
+float AYSIsland::GetRadius() const
+{
+	return Data ? Data->Generation.Radius : 0.0f;
 }
 
 void AYSIsland::BeginPlay()
@@ -102,17 +130,71 @@ void AYSIsland::BeginPlay()
 	}
 	ServerRng.Initialize(Seed);
 
-	FString Report;
-	if (!YSIslandGenerator::GeneratePlan(Data->Generation, Seed, Plan, Report))
+	// biome : tiré au hasard si le Data Asset en propose plusieurs
+	const EYSIslandGeneration Biome = Data->RandomGenerationTypes.Num() > 0
+		? Data->RandomGenerationTypes[ServerRng.RandRange(0, Data->RandomGenerationTypes.Num() - 1)] : Data->GenerationType;
+
+	// île de départ : tout de suite (le GameBoat et l'apparition des joueurs en dépendent) ; les autres : sur un autre fil, la partie ne gèle pas
+	if (bStartIsland)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[YSIsland] %s : %s"), *Data->GetName(), *Report);
+		FString Report;
+		YSIslandGenerator::GeneratePlan(Data->Generation, Biome, Seed, Plan, Report);
+		OnPlanReady(Report);
 		return;
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s générée : %s"), *Data->GetName(), *Report);
+	AsyncPlanStartTime = FPlatformTime::Seconds();
+	AsyncPlan = Async(EAsyncExecution::ThreadPool, [Rules = Data->Generation, Biome, Seed]()
+	{
+		FAsyncPlanResult Result;
+		YSIslandGenerator::GeneratePlan(Rules, Biome, Seed, Result.Plan, Result.Report);
+		return Result;
+	});
+}
 
+void AYSIsland::OnPlanReady(const FString& Report)
+{
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s générée en %s (yaw %.0f°, biome %s) : %s"), *Data->GetName(), *GetActorLocation().ToCompactString(), GetActorRotation().Yaw,
+		*StaticEnum<EYSIslandGeneration>()->GetNameStringByValue(static_cast<int64>(Plan.Biome)), *Report);
 	BuildLocally();
+	SpawnPropChunks();
 	SpawnGameplayActors();
 	ForceNetUpdate();
+}
+
+void AYSIsland::TickPendingProps()
+{
+	if (PendingPropIndex >= PendingProps.Num())
+	{
+		return;
+	}
+	constexpr int32 PropsPerTick = 120;
+	const int32 End = FMath::Min(PendingPropIndex + PropsPerTick, PendingProps.Num());
+	const FYSIslandGenerationRules& Rules = Data->Generation;
+	const float IslandYaw = GetActorRotation().Yaw;
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	Params.ObjectFlags |= RF_Transient;
+	for (; PendingPropIndex < End; ++PendingPropIndex)
+	{
+		const FYSIslandPropSpawn& Prop = PendingProps[PendingPropIndex];
+		const FYSIslandPropDef& Def = YSIslandGenerator::GetPropDef(Rules, Prop.Type);
+		if (!Def.Class)
+		{
+			continue;
+		}
+		const FVector Location = LocalToWorld(Prop.Location, Terrain.Height(Prop.Location.X, Prop.Location.Y) - Def.Sink);
+		if (AActor* Actor = GetWorld()->SpawnActor<AActor>(Def.Class, Location, FRotator(0.0f, Prop.Yaw + IslandYaw, 0.0f), Params))
+		{
+			Actor->SetActorScale3D(FVector(Prop.Scale));
+			Actor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+		}
+	}
+	if (PendingPropIndex >= PendingProps.Num())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : %d props posés (%s)"), *Data->GetName(), PendingProps.Num(), HasAuthority() ? TEXT("serveur") : TEXT("client"));
+		PendingProps.Empty();
+		PendingPropIndex = 0;
+	}
 }
 
 void AYSIsland::OnRep_Plan()
@@ -131,11 +213,41 @@ void AYSIsland::BuildLocally()
 	}
 	bBuiltLocally = true;
 	const double StartTime = FPlatformTime::Seconds();
-	Terrain = FYSIslandTerrain(Data->Generation, Plan.Seed);
+	Terrain = FYSIslandTerrain(Data->Generation, Plan.Seed, Plan.Biome);
 	BuildTerrain();
-	SpawnProps();
-	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : terrain et %d props construits en %.0f ms (%s)"), *Data->GetName(), Plan.Props.Num(), (FPlatformTime::Seconds() - StartTime) * 1000.0,
-		HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	const double TerrainTime = FPlatformTime::Seconds();
+
+	// pontons de Port Town : sur chaque machine, accrochés à l'île
+	if (Plan.PierSegments.Num() > 0)
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		Params.ObjectFlags |= RF_Transient;
+		Pier = GetWorld()->SpawnActor<AYSIslandPier>(AYSIslandPier::StaticClass(), GetActorTransform(), Params);
+		if (Pier)
+		{
+			Pier->Build(Plan.PierSegments, Data->Generation);
+			Pier->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+		}
+	}
+
+	if (HasAuthority())
+	{
+		SpawnPropList(Plan.Props);
+	}
+	else
+	{
+		// clients : props reçus par parts
+		for (TActorIterator<AYSIslandPropChunk> It(GetWorld()); It; ++It)
+		{
+			if (It->GetIsland() == this)
+			{
+				It->TrySpawnProps();
+			}
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : terrain construit en %.0f ms (+ %.0f ms pontons, %s)"), *Data->GetName(), (TerrainTime - StartTime) * 1000.0,
+		(FPlatformTime::Seconds() - TerrainTime) * 1000.0, HasAuthority() ? TEXT("serveur") : TEXT("client"));
 
 	// le sol existe maintenant : ce qui s'est posé avant (client) se repose dessus
 	for (TActorIterator<AYSBrookerNPC> It(GetWorld()); It; ++It)
@@ -209,26 +321,33 @@ void AYSIsland::BuildTerrain()
 	}
 }
 
-void AYSIsland::SpawnProps()
+void AYSIsland::SpawnPropList(const TArray<FYSIslandPropSpawn>& Props)
 {
-	const FYSIslandGenerationRules& Rules = Data->Generation;
-	FActorSpawnParameters Params;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	Params.ObjectFlags |= RF_Transient;
-	for (const FYSIslandPropSpawn& Prop : Plan.Props)
+	// posés par paquets dans le Tick (TickPendingProps)
+	PendingProps.Append(Props);
+}
+
+void AYSIsland::SpawnPropChunks()
+{
+	// seul : le serveur pose tout lui-même
+	if (GetNetMode() == NM_Standalone)
 	{
-		const FYSIslandPropDef& Def = Prop.Type == EYSIslandPropType::Tree ? Rules.TreeProp : Prop.Type == EYSIslandPropType::Bush ? Rules.BushProp : Rules.RockProp;
-		if (!Def.Class)
+		return;
+	}
+	int32 Chunks = 0;
+	for (int32 Start = 0; Start < Plan.Props.Num(); Start += YSIslandActor::PropsPerChunk)
+	{
+		TArray<FYSIslandPropSpawn> Slice;
+		Slice.Append(Plan.Props.GetData() + Start, FMath::Min(YSIslandActor::PropsPerChunk, Plan.Props.Num() - Start));
+		AYSIslandPropChunk* Chunk = GetWorld()->SpawnActorDeferred<AYSIslandPropChunk>(AYSIslandPropChunk::StaticClass(), GetActorTransform(), this, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (Chunk)
 		{
-			continue;
-		}
-		const FVector Location(Prop.Location.X, Prop.Location.Y, Terrain.Height(Prop.Location.X, Prop.Location.Y) - Def.Sink);
-		if (AActor* Actor = GetWorld()->SpawnActor<AActor>(Def.Class, Location, FRotator(0.0f, Prop.Yaw, 0.0f), Params))
-		{
-			Actor->SetActorScale3D(FVector(Prop.Scale));
-			Actor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+			Chunk->InitChunk(this, MoveTemp(Slice));
+			Chunk->FinishSpawning(GetActorTransform());
+			++Chunks;
 		}
 	}
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : %d props répliqués en %d part(s)"), *Data->GetName(), Plan.Props.Num(), Chunks);
 }
 
 void AYSIsland::AttachToIsland(AActor* Actor)
@@ -260,35 +379,59 @@ FVector AYSIsland::GetGameBoatStartLocation(float Distance) const
 {
 	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
 	const float Sea = Ocean ? Ocean->GetSeaLevel() : 0.0f;
-	// depuis la plage, vers le sud (-X) jusqu'au bord de l'eau
+	// depuis la plage, vers le large (-X de l'île) jusqu'au bord de l'eau
 	float X = Plan.BoatLocation.X;
 	while (X > -2.0f * Terrain.GetHalfSize() && Terrain.Height(X, Plan.BoatLocation.Y) > Sea)
 	{
 		X -= YSIslandActor::CircleSearchStep;
 	}
-	return FVector(X - Distance, Plan.BoatLocation.Y, Sea);
+	FVector Location = LocalToWorld(FVector2f(X - Distance, Plan.BoatLocation.Y), 0.0f);
+	Location.Z = Sea;
+	return Location;
 }
 
 void AYSIsland::SpawnGameplayActors()
 {
 	UWorld* World = GetWorld();
 
-	// GameBoat : la chaloupe attend sur l'eau, la zone de dépôt viendra à son arrivée ; sinon bateau de départ échoué sur la plage
+	// île de départ du GameBoat : la chaloupe attend sur l'eau, la zone de dépôt viendra à son arrivée ; sinon zone de dépôt sur la plage
 	AYSFlowMode* FlowMode = World->GetAuthGameMode<AYSFlowMode>();
-	if (!FlowMode || !FlowMode->SpawnGameBoat(this))
+	if (!bStartIsland || !FlowMode || !FlowMode->SpawnGameBoat(this))
 	{
-		SpawnStartBoat(FVector(Plan.BoatLocation.X, Plan.BoatLocation.Y, Terrain.Height(Plan.BoatLocation.X, Plan.BoatLocation.Y)), Plan.BoatYaw);
+		SpawnStartBoat(LocalToWorld(Plan.BoatLocation, Terrain.Height(Plan.BoatLocation.X, Plan.BoatLocation.Y)), Plan.BoatYaw + GetActorRotation().Yaw);
 	}
 
+	// tous les objectifs comptent dès le début ; les objets n'apparaissent qu'à leur jour
 	for (const FYSIslandObjectiveDef& Def : Data->MainObjectives)
 	{
-		SpawnObjective(Def, true);
+		FYSIslandObjectiveState& State = Objectives.AddDefaulted_GetRef();
+		State.Def = Def;
+		State.bMain = true;
 	}
 	for (const FYSIslandObjectiveDef& Def : Data->SecondaryObjectives)
 	{
-		SpawnObjective(Def, false);
+		FYSIslandObjectiveState& State = Objectives.AddDefaulted_GetRef();
+		State.Def = Def;
 	}
+	for (FYSIslandObjectiveState& State : Objectives)
+	{
+		State.DisplayName = State.Def.DisplayName;
+		State.DeliveryClass = State.Def.DeliveryClass ? State.Def.DeliveryClass : State.Def.ItemClass;
+	}
+	SpawnDueObjectives();
 	RefreshOpenDeliveryClasses();
+}
+
+void AYSIsland::SpawnDueObjectives()
+{
+	const int32 Day = GetIslandDay();
+	for (FYSIslandObjectiveState& State : Objectives)
+	{
+		if (!State.bSpawned && !State.bDone && State.Def.SpawnDay <= Day)
+		{
+			SpawnObjective(State);
+		}
+	}
 }
 
 bool AYSIsland::IsSpotFree(const FVector2f& Spot, float Margin) const
@@ -310,17 +453,17 @@ bool AYSIsland::IsSpotFree(const FVector2f& Spot, float Margin) const
 	return true;
 }
 
-bool AYSIsland::FindFreeSpot(float MinDistanceFromBoat, float MaxDistanceFromBoat, FVector2f& OutSpot)
+bool AYSIsland::FindFreeSpot(float MinDistanceFromBoat, float MaxDistanceFromBoat, bool bInTown, FVector2f& OutSpot)
 {
 	const float Reach = Data->Generation.Radius;
-	for (int32 Attempt = 0; Attempt < YSIslandActor::SpotAttempts; ++Attempt)
+	for (int32 Attempt = 0; Attempt < YSIslandActor::SpotAttempts * (bInTown ? 4 : 1); ++Attempt)
 	{
 		const FVector2f Spot(ServerRng.FRandRange(-Reach, Reach), ServerRng.FRandRange(-Reach, Reach));
 		const float Distance = (Spot - Plan.BoatLocation).Size();
 		const float Theta = FMath::Atan2(Spot.Y, Spot.X);
-		// sur le plateau : ni sur la plage ni au bord de la falaise
+		// sur le plateau : ni sur la plage ni au bord de la falaise ; ville : dans son secteur
 		if (Distance >= MinDistanceFromBoat && Distance <= MaxDistanceFromBoat && Terrain.Inland(Spot.X, Spot.Y) >= FMath::Max(300.0f, Terrain.BeachDepth(Theta) * Terrain.BeachWeight(Theta))
-			&& IsSpotFree(Spot, YSIslandActor::SpotMargin))
+			&& (!bInTown || Terrain.IsInTownSector(Spot.X, Spot.Y)) && IsSpotFree(Spot, YSIslandActor::SpotMargin))
 		{
 			OutSpot = Spot;
 			return true;
@@ -329,8 +472,10 @@ bool AYSIsland::FindFreeSpot(float MinDistanceFromBoat, float MaxDistanceFromBoa
 	return false;
 }
 
-void AYSIsland::SpawnObjective(const FYSIslandObjectiveDef& Def, bool bMain)
+void AYSIsland::SpawnObjective(FYSIslandObjectiveState& State)
 {
+	const FYSIslandObjectiveDef& Def = State.Def;
+	State.bSpawned = true;
 	if (!Def.ItemClass)
 	{
 		return;
@@ -341,11 +486,11 @@ void AYSIsland::SpawnObjective(const FYSIslandObjectiveDef& Def, bool bMain)
 	for (int32 Attempt = 0; Attempt < 30 && !Item; ++Attempt)
 	{
 		FVector2f Spot;
-		if (!FindFreeSpot(Def.DistanceFromBoat.X, Def.DistanceFromBoat.Y, Spot))
+		if (!FindFreeSpot(Def.DistanceFromBoat.X, Def.DistanceFromBoat.Y, Def.bInTown, Spot))
 		{
 			break;
 		}
-		const FVector Ground(Spot.X, Spot.Y, Terrain.Height(Spot.X, Spot.Y));
+		const FVector Ground = LocalToWorld(Spot, Terrain.Height(Spot.X, Spot.Y));
 		if (MapSettings)
 		{
 			// carte au trésor : il lui faut un chemin complet
@@ -368,26 +513,47 @@ void AYSIsland::SpawnObjective(const FYSIslandObjectiveDef& Def, bool bMain)
 		}
 	}
 
-	FYSIslandObjectiveState& State = Objectives.AddDefaulted_GetRef();
-	State.DisplayName = Def.DisplayName;
-	State.DeliveryClass = Def.DeliveryClass ? Def.DeliveryClass : Def.ItemClass;
 	State.Item = Item;
-	State.bMain = bMain;
-	UE_LOG(LogTemp, Log, TEXT("[YSIsland] Objectif %s « %s » : %s en %s"), bMain ? TEXT("principal") : TEXT("secondaire"), *Def.DisplayName.ToString(),
-		Item ? *Item->GetName() : TEXT("AUCUN EMPLACEMENT"), Item ? *Item->GetActorLocation().ToCompactString() : TEXT("-"));
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s, jour %d : objectif %s « %s » : %s en %s"), *Data->GetName(), GetIslandDay(), State.bMain ? TEXT("principal") : TEXT("secondaire"),
+		*Def.DisplayName.ToString(), Item ? *Item->GetName() : TEXT("AUCUN EMPLACEMENT"), Item ? *Item->GetActorLocation().ToCompactString() : TEXT("-"));
 }
 
 FTransform AYSIsland::GetPlayerSpawnTransform(int32 Index) const
 {
 	const FVector2f Spot = Plan.PlayerSpots.Num() > 0 ? Plan.PlayerSpots[Index % Plan.PlayerSpots.Num()] : FVector2f::ZeroVector;
-	return FTransform(FRotator::ZeroRotator, FVector(Spot.X, Spot.Y, Terrain.Height(Spot.X, Spot.Y) + YSIslandActor::PlayerSpawnHeight));
+	return FTransform(FRotator::ZeroRotator, LocalToWorld(Spot, Terrain.Height(Spot.X, Spot.Y) + YSIslandActor::PlayerSpawnHeight));
 }
 
 void AYSIsland::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	// descente : sur chaque machine, depuis l'heure serveur
+	UpdateSink();
+	if (Data)
+	{
+		TickPendingProps();
+	}
+
 	if (!HasAuthority() || !Data)
+	{
+		return;
+	}
+
+	// plan calculé sur un autre fil : construction sur le fil du jeu
+	if (AsyncPlan.IsValid())
+	{
+		if (!AsyncPlan.IsReady())
+		{
+			return;
+		}
+		FAsyncPlanResult Result = AsyncPlan.Get();
+		AsyncPlan.Reset();
+		Plan = MoveTemp(Result.Plan);
+		OnPlanReady(FString::Printf(TEXT("%s (prêt %.0f ms après l'apparition)"), *Result.Report, (FPlatformTime::Seconds() - AsyncPlanStartTime) * 1000.0));
+		return;
+	}
+	if (Plan.Seed == 0)
 	{
 		return;
 	}
@@ -408,21 +574,85 @@ void AYSIsland::Tick(float DeltaSeconds)
 	}
 	else if (Phase == EYSIslandPhase::Sinking && !bSinkStarted && PhaseElapsed >= Data->SinkDelay)
 	{
-		bSinkStarted = true;
-		// ce qui est posé coule avec l'île
-		for (TActorIterator<AYSInteractiveObject> It(GetWorld()); It; ++It)
+		StartSinking();
+	}
+}
+
+void AYSIsland::StartSinking()
+{
+	bSinkStarted = true;
+	// ce qui est posé coule avec l'île
+	for (TActorIterator<AYSInteractiveObject> It(GetWorld()); It; ++It)
+	{
+		if (!It->GetCarrier() && !It->GetAttachParentActor() && FindAt(GetWorld(), It->GetActorLocation()) == this)
 		{
-			if (!It->GetCarrier() && !It->GetAttachParentActor() && FindAt(GetWorld(), It->GetActorLocation()) == this)
+			AttachToIsland(*It);
+		}
+	}
+	SinkStartServerTime = FMath::Max(YSIslandActor::GetServerTime(GetWorld()), 0.001);
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s coule (%.0f cm en %.0f s)"), *Data->GetName(), Data->SinkDepth, Data->SinkDuration);
+
+	if (AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())
+	{
+		FlowMode->OnIslandSinkStarted(this);
+	}
+}
+
+bool AYSIsland::IsSinking() const
+{
+	if (!Data || SinkStartServerTime <= 0.0)
+	{
+		return false;
+	}
+	return YSIslandActor::GetServerTime(GetWorld()) - SinkStartServerTime < Data->SinkDuration;
+}
+
+void AYSIsland::UpdateSink()
+{
+	if (SinkStartServerTime <= 0.0 || !Data)
+	{
+		return;
+	}
+
+	// une fois : l'île et tout ce qui y est accroché (props, pontons, PNJ, objets), rendus mobiles
+	if (!bSinkGathered)
+	{
+		bSinkGathered = true;
+		SinkOrigin = GetActorLocation();
+		TArray<AActor*> Attached;
+		GetAttachedActors(Attached, false, true);
+		Attached.Insert(this, 0);
+		for (AActor* Actor : Attached)
+		{
+			TInlineComponentArray<USceneComponent*> Components(Actor);
+			for (USceneComponent* Component : Components)
 			{
-				AttachToIsland(*It);
+				Component->SetMobility(EComponentMobility::Movable);
 			}
 		}
-		if (AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>())
-		{
-			YSGameState->StartIslandSink(Data->SinkDuration, Data->SinkDepth, Data->SinkEaseExponent);
-		}
-		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s coule (%.0f cm en %.0f s)"), *Data->GetName(), Data->SinkDepth, Data->SinkDuration);
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s coule : %d acteur(s) (%s)"), *Data->GetName(), Attached.Num(), HasAuthority() ? TEXT("serveur") : TEXT("client"));
 	}
+
+	// même descente sur toutes les machines (temps serveur) ; les acteurs accrochés suivent l'île
+	const float Alpha = FMath::Clamp(static_cast<float>(YSIslandActor::GetServerTime(GetWorld()) - SinkStartServerTime) / FMath::Max(Data->SinkDuration, 0.1f), 0.0f, 1.0f);
+	const FVector Target = SinkOrigin - FVector(0.0f, 0.0f, Data->SinkDepth * FMath::Pow(Alpha, Data->SinkEaseExponent));
+	if (!GetActorLocation().Equals(Target, 0.1f))
+	{
+		SetActorLocation(Target);
+	}
+}
+
+bool AYSIsland::IsSinkingAt(const UWorld* World, const FVector& Location)
+{
+	for (TActorIterator<AYSIsland> It(World); It; ++It)
+	{
+		if (It->IsSinking() && FVector::DistSquared2D(It->GetActorLocation(), Location) <= FMath::Square(It->GetReach()))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void AYSIsland::TickActivation()
@@ -436,7 +666,7 @@ void AYSIsland::TickActivation()
 	{
 		const AYSPlayerCharacter* Character = It->Get() ? Cast<AYSPlayerCharacter>(It->Get()->GetPawn()) : nullptr;
 		const UPrimitiveComponent* Base = Character ? Character->GetCharacterMovement()->GetMovementBase() : nullptr;
-		// sur le terrain, ou sur ce qui y est accroché (bateau de départ, rocher...)
+		// sur le terrain, ou sur ce qui y est accroché (bateau de départ, rocher, ponton...)
 		const AActor* BaseActor = Base ? Base->GetOwner() : nullptr;
 		if (BaseActor && (BaseActor == this || BaseActor->GetAttachParentActor() == this))
 		{
@@ -455,18 +685,31 @@ void AYSIsland::Activate()
 	StartDayPhase();
 }
 
+int32 AYSIsland::GetIslandDay() const
+{
+	if (Phase == EYSIslandPhase::Inactive)
+	{
+		return 1;
+	}
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	return (YSGameState ? YSGameState->GetDayNumber() : ReferenceDay) - ReferenceDay + 1;
+}
+
 void AYSIsland::StartDayPhase()
 {
 	Phase = EYSIslandPhase::Day;
-	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : début du jour (nuit dans %.0f s)"), *Data->GetName(), Data->DayDuration);
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : début du jour %d de l'île (nuit dans %.0f s)"), *Data->GetName(), GetIslandDay(), Data->DayDuration);
 	StartPhaseEvents(&Data->DayEvents);
+	SpawnDueObjectives();
+	RefreshOpenDeliveryClasses();
 	ForceNetUpdate();
 }
 
 void AYSIsland::StartNightPhase()
 {
 	Phase = EYSIslandPhase::Night;
-	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : tombée de la nuit"), *Data->GetName());
+	NightElites.Reset();
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : tombée de la nuit %d de l'île"), *Data->GetName(), GetIslandDay());
 	StartPhaseEvents(&Data->NightEvents);
 	ForceNetUpdate();
 }
@@ -498,9 +741,15 @@ void AYSIsland::TickPhaseEvents()
 	{
 		return;
 	}
+	const int32 Day = GetIslandDay();
 	for (int32 Index = 0; Index < PhaseEvents->Num(); ++Index)
 	{
 		const FYSIslandSpawnEvent& Event = (*PhaseEvents)[Index];
+		// vague d'un seul jour (ou d'une seule nuit) de l'île
+		if (Event.IslandDay > 0 && Event.IslandDay != Day)
+		{
+			continue;
+		}
 		while ((Event.RepeatCount == 0 || EventsFired[Index] < Event.RepeatCount) && PhaseElapsed >= Event.Time + EventsFired[Index] * Event.RepeatInterval)
 		{
 			FireEvent(Event, EventsFired[Index]);
@@ -530,12 +779,18 @@ void AYSIsland::FireEvent(const FYSIslandSpawnEvent& Event, int32 Repeat)
 	TArray<UClass*> Classes;
 	for (const FYSIslandFoeEntry& Entry : Event.Foes)
 	{
-		if (Entry.FoeClass)
+		if (!Entry.FoeClass && Entry.RandomFoeClasses.Num() == 0)
 		{
-			const int32 Count = Event.bScaleWithPlayers ? GameMode->ScaleEnemyCount(Entry.Count) : Entry.Count;
-			for (int32 K = 0; K < Count; ++K)
+			continue;
+		}
+		const int32 Count = Event.bScaleWithPlayers ? GameMode->ScaleEnemyCount(Entry.Count) : Entry.Count;
+		for (int32 K = 0; K < Count; ++K)
+		{
+			// au hasard dans la liste (ex. élite Skull ou Gun)
+			UClass* Class = Entry.RandomFoeClasses.Num() > 0 ? Entry.RandomFoeClasses[ServerRng.RandRange(0, Entry.RandomFoeClasses.Num() - 1)].Get() : Entry.FoeClass.Get();
+			if (Class)
 			{
-				Classes.Add(Entry.FoeClass.Get());
+				Classes.Add(Class);
 			}
 		}
 	}
@@ -556,8 +811,9 @@ void AYSIsland::FireEvent(const FYSIslandSpawnEvent& Event, int32 Repeat)
 	case EYSIslandSpawnShape::Center:
 		for (UClass* Class : Classes)
 		{
-			if (TrySpawnAtCenter(Class, ForcedLevel, LevelBonus))
+			if (AYSFoeCharacter* Foe = TrySpawnAtCenter(Class, ForcedLevel, LevelBonus))
 			{
+				TrackNightElite(Foe);
 				++Spawned;
 			}
 			else
@@ -570,15 +826,31 @@ void AYSIsland::FireEvent(const FYSIslandSpawnEvent& Event, int32 Repeat)
 		Spawned = SpawnOffScreen(Classes, ForcedLevel, LevelBonus);
 		break;
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s, %.0f s de phase %d : vague %s, répétition %d, %d / %d NME%s"), *Data->GetName(), PhaseElapsed, static_cast<int32>(Phase),
+	FString Names;
+	for (const UClass* Class : Classes)
+	{
+		if (Names.Len() < 120)
+		{
+			Names += (Names.IsEmpty() ? TEXT("") : TEXT(", ")) + Class->GetName();
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s, jour %d, %.0f s de phase %d : vague %s, répétition %d, %d / %d NME%s (%s)"), *Data->GetName(), GetIslandDay(), PhaseElapsed, static_cast<int32>(Phase),
 		Event.Shape == EYSIslandSpawnShape::Circle ? TEXT("circle") : Event.Shape == EYSIslandSpawnShape::Center ? TEXT("centre") : TEXT("hors écran"), Repeat, Spawned, Classes.Num(),
-		ForcedLevel != INDEX_NONE ? *FString::Printf(TEXT(", niveau %d"), ForcedLevel) : TEXT(""));
+		ForcedLevel != INDEX_NONE ? *FString::Printf(TEXT(", niveau %d"), ForcedLevel) : TEXT(""), *Names);
 }
 
-bool AYSIsland::TrySpawnAtCenter(UClass* Class, int32 ForcedLevel, int32 LevelBonus)
+void AYSIsland::TrackNightElite(AYSFoeCharacter* Foe)
+{
+	if (Foe && Foe->IsElite() && Phase == EYSIslandPhase::Night)
+	{
+		NightElites.Add(Foe);
+	}
+}
+
+AYSFoeCharacter* AYSIsland::TrySpawnAtCenter(UClass* Class, int32 ForcedLevel, int32 LevelBonus)
 {
 	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
-	const FVector Facing(Plan.BoatLocation.X, Plan.BoatLocation.Y, Data->Generation.PlateauHeight);
+	const FVector Facing = LocalToWorld(Plan.BoatLocation, Data->Generation.PlateauHeight);
 	for (int32 Ring = 0; Ring <= YSIslandActor::CenterRingCount; ++Ring)
 	{
 		const int32 Spots = Ring == 0 ? 1 : YSIslandActor::CenterRingSpots;
@@ -587,14 +859,16 @@ bool AYSIsland::TrySpawnAtCenter(UClass* Class, int32 ForcedLevel, int32 LevelBo
 			const float Angle = 2.0f * PI * Index / Spots;
 			const FVector2f Spot = Plan.CenterSpot + FVector2f(FMath::Cos(Angle), FMath::Sin(Angle)) * (Ring * YSIslandActor::CenterRingStep);
 			FVector Ground;
-			if (IsSpotFree(Spot, YSIslandActor::SpotMargin) && GameMode->FindIslandGround(FVector(Spot.X, Spot.Y, Data->Generation.PlateauHeight), Ground)
-				&& GameMode->SpawnFoeOnGround(Class, Ground, Facing, ForcedLevel, LevelBonus))
+			if (IsSpotFree(Spot, YSIslandActor::SpotMargin) && GameMode->FindIslandGround(LocalToWorld(Spot, Data->Generation.PlateauHeight), Ground))
 			{
-				return true;
+				if (AYSFoeCharacter* Foe = GameMode->SpawnFoeOnGround(Class, Ground, Facing, ForcedLevel, LevelBonus))
+				{
+					return Foe;
+				}
 			}
 		}
 	}
-	return false;
+	return nullptr;
 }
 
 void AYSIsland::TickPendingCenterSpawns(float DeltaSeconds)
@@ -608,8 +882,9 @@ void AYSIsland::TickPendingCenterSpawns(float DeltaSeconds)
 	for (int32 Index = PendingCenterSpawns.Num() - 1; Index >= 0; --Index)
 	{
 		const FPendingCenterSpawn& Pending = PendingCenterSpawns[Index];
-		if (TrySpawnAtCenter(Pending.Class, Pending.ForcedLevel, Pending.LevelBonus))
+		if (AYSFoeCharacter* Foe = TrySpawnAtCenter(Pending.Class, Pending.ForcedLevel, Pending.LevelBonus))
 		{
+			TrackNightElite(Foe);
 			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : %s apparu après avoir attendu une place"), *Data->GetName(), *Pending.Class->GetName());
 			PendingCenterSpawns.RemoveAt(Index);
 		}
@@ -640,15 +915,15 @@ int32 AYSIsland::SpawnOffScreen(const TArray<UClass*>& Classes, int32 ForcedLeve
 			const FVector Center = Players[ServerRng.RandRange(0, Players.Num() - 1)]->GetActorLocation();
 			const float Angle = ServerRng.FRandRange(0.0f, 2.0f * PI);
 			const float Distance = ServerRng.FRandRange(Data->OffScreenRadius, Data->OffScreenRadius + Data->OffScreenBand);
-			const FVector2f Spot(Center.X + FMath::Cos(Angle) * Distance, Center.Y + FMath::Sin(Angle) * Distance);
+			const FVector World(Center.X + FMath::Cos(Angle) * Distance, Center.Y + FMath::Sin(Angle) * Distance, GetActorLocation().Z + Data->Generation.PlateauHeight);
+			const FVector2f Spot = WorldToLocal(World);
 			bool bFree = Terrain.Inland(Spot.X, Spot.Y) > YSIslandActor::CircleShoreInset && IsSpotFree(Spot, YSIslandActor::SpotMargin);
 			for (const APawn* Player : Players)
 			{
-				bFree = bFree && FVector2f::DistSquared(FVector2f(Player->GetActorLocation().X, Player->GetActorLocation().Y), Spot) >= FMath::Square(Data->OffScreenRadius);
+				bFree = bFree && FVector::DistSquared2D(Player->GetActorLocation(), World) >= FMath::Square(Data->OffScreenRadius);
 			}
 			FVector Ground;
-			if (bFree && GameMode->FindIslandGround(FVector(Spot.X, Spot.Y, Data->Generation.PlateauHeight), Ground)
-				&& GameMode->SpawnFoeOnGround(Class, Ground, Center, ForcedLevel, LevelBonus))
+			if (bFree && GameMode->FindIslandGround(World, Ground) && GameMode->SpawnFoeOnGround(Class, Ground, Center, ForcedLevel, LevelBonus))
 			{
 				++Spawned;
 				break;
@@ -666,7 +941,7 @@ bool AYSIsland::FindCirclePoint(float Angle, FVector& OutGround) const
 	for (float Inset = YSIslandActor::CircleShoreInset; Inset < YSIslandActor::CircleSearchMax; Inset += YSIslandActor::CircleSearchStep)
 	{
 		const FVector2f Spot((Coast - Inset) * FMath::Cos(Angle), (Coast - Inset) * FMath::Sin(Angle));
-		if (IsSpotFree(Spot, YSIslandActor::SpotMargin) && GameMode && GameMode->FindIslandGround(FVector(Spot.X, Spot.Y, Data->Generation.PlateauHeight), OutGround))
+		if (IsSpotFree(Spot, YSIslandActor::SpotMargin) && GameMode && GameMode->FindIslandGround(LocalToWorld(Spot, Data->Generation.PlateauHeight), OutGround))
 		{
 			return true;
 		}
@@ -685,7 +960,7 @@ int32 AYSIsland::SpawnCircle(const TArray<UClass*>& Classes, int32 ForcedLevel, 
 	const float EndAngle = FMath::DegreesToRadians(Data->Generation.BeachAngleEnd);
 	const float Start = PI + EndAngle;
 	const float Arc = 2.0f * PI - 2.0f * EndAngle;
-	const FVector Facing(Plan.CenterSpot.X, Plan.CenterSpot.Y, Data->Generation.PlateauHeight);
+	const FVector Facing = LocalToWorld(Plan.CenterSpot, Data->Generation.PlateauHeight);
 	int32 Spawned = 0;
 	for (int32 Index = 0; Index < Classes.Num(); ++Index)
 	{
@@ -718,10 +993,30 @@ void AYSIsland::OnGlobalDayChanged(int32 Day)
 	}
 }
 
+bool AYSIsland::OwnsNightElite(const AYSFoeCharacter* Elite) const
+{
+	return NightElites.ContainsByPredicate([Elite](const TWeakObjectPtr<AYSFoeCharacter>& Tracked) { return Tracked.Get() == Elite; });
+}
+
 void AYSIsland::OnEliteKilled(AYSFoeCharacter* Elite)
 {
 	if (!IsNight())
 	{
+		return;
+	}
+	// plusieurs élites (duo) : la nuit se termine quand le dernier meurt
+	const bool bTracked = OwnsNightElite(Elite);
+	NightElites.RemoveAll([Elite](const TWeakObjectPtr<AYSFoeCharacter>& Tracked)
+	{
+		return !Tracked.IsValid() || Tracked.Get() == Elite || Tracked->IsDying() || Tracked->GetHealth() <= 0.0f;
+	});
+	if (!bTracked && NightElites.Num() > 0)
+	{
+		return;
+	}
+	if (NightElites.Num() > 0 || PendingCenterSpawns.Num() > 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : élite %s tué, encore %d élite(s) cette nuit"), *Data->GetName(), Elite ? *Elite->GetName() : TEXT("?"), NightElites.Num() + PendingCenterSpawns.Num());
 		return;
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : élite %s tué, la nuit se termine"), *Data->GetName(), Elite ? *Elite->GetName() : TEXT("?"));
@@ -774,10 +1069,11 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 {
 	for (FYSIslandObjectiveState& State : Objectives)
 	{
-		if (!State.bDone && Object && State.DeliveryClass && Object->IsA(State.DeliveryClass))
+		if (!State.bDone && State.bSpawned && Object && State.DeliveryClass && Object->IsA(State.DeliveryClass))
 		{
 			State.bDone = true;
-			UE_LOG(LogTemp, Log, TEXT("[YSIsland] Objectif %s accompli : %s (%d principal(aux) restant(s))"), State.bMain ? TEXT("principal") : TEXT("secondaire"), *State.DisplayName.ToString(), CountOpenMainObjectives());
+			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : objectif %s accompli : %s (%d principal(aux) restant(s))"), *Data->GetName(), State.bMain ? TEXT("principal") : TEXT("secondaire"),
+				*State.DisplayName.ToString(), CountOpenMainObjectives());
 			RefreshOpenDeliveryClasses();
 			if (State.bMain && CountOpenMainObjectives() == 0 && Phase != EYSIslandPhase::Sinking)
 			{
@@ -820,7 +1116,7 @@ bool AYSIsland::IsBlockedAt(const UWorld* World, const FVector& Location, float 
 	{
 		return false;
 	}
-	const FVector2f Point(Location.X, Location.Y);
+	const FVector2f Point = Island->WorldToLocal(Location);
 	for (const FYSIslandMassif& Massif : Island->Plan.Massifs)
 	{
 		if (YSIslandGenerator::MassifDistance(Massif, Point) < Margin)
@@ -834,13 +1130,14 @@ bool AYSIsland::IsBlockedAt(const UWorld* World, const FVector& Location, float 
 void AYSIsland::LogStatus() const
 {
 	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
-	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : graine %d, phase %d (%.0f s), jour global %d (référence %d), bateau %s"), Data ? *Data->GetName() : TEXT("?"), Plan.Seed, static_cast<int32>(Phase), PhaseElapsed,
-		YSGameState ? YSGameState->GetDayNumber() : 0, ReferenceDay, StartBoat ? *StartBoat->GetActorLocation().ToCompactString() : TEXT("-"));
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s en %s : graine %d, biome %s, phase %d (%.0f s), jour global %d (référence %d, jour de l'île %d), bateau %s, %d élite(s) de nuit"),
+		Data ? *Data->GetName() : TEXT("?"), *GetActorLocation().ToCompactString(), Plan.Seed, *StaticEnum<EYSIslandGeneration>()->GetNameStringByValue(static_cast<int64>(Plan.Biome)),
+		static_cast<int32>(Phase), PhaseElapsed, YSGameState ? YSGameState->GetDayNumber() : 0, ReferenceDay, GetIslandDay(), StartBoat ? *StartBoat->GetActorLocation().ToCompactString() : TEXT("-"), NightElites.Num());
 	for (int32 Index = 0; Index < Objectives.Num(); ++Index)
 	{
 		const FYSIslandObjectiveState& State = Objectives[Index];
-		UE_LOG(LogTemp, Log, TEXT("[YSIsland]   %d %s « %s » %s : %s"), Index, State.bMain ? TEXT("principal") : TEXT("secondaire"), *State.DisplayName.ToString(), State.bDone ? TEXT("FAIT") : TEXT("en cours"),
-			State.Item ? *State.Item->GetActorLocation().ToCompactString() : TEXT("-"));
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland]   %d %s « %s » jour %d %s : %s"), Index, State.bMain ? TEXT("principal") : TEXT("secondaire"), *State.DisplayName.ToString(), State.Def.SpawnDay,
+			State.bDone ? TEXT("FAIT") : State.bSpawned ? TEXT("en cours") : TEXT("pas encore apparu"), State.Item ? *State.Item->GetActorLocation().ToCompactString() : TEXT("-"));
 	}
 }
 
@@ -848,6 +1145,27 @@ void AYSIsland::DebugSkipTime(float Seconds)
 {
 	PhaseElapsed += Seconds;
 	UE_LOG(LogTemp, Log, TEXT("[YSIsland] Temps de phase avancé de %.0f s : %.0f s"), Seconds, PhaseElapsed);
+}
+
+void AYSIsland::DebugSinkNow()
+{
+	StartSinkRoutine(TEXT("debug"));
+	if (!bSinkStarted)
+	{
+		StartSinking();
+	}
+}
+
+bool AYSIsland::GetPierSegmentLocation(int32 Index, FVector& OutLocation) const
+{
+	if (!Plan.PierSegments.IsValidIndex(Index))
+	{
+		return false;
+	}
+	const FYSIslandPierSegment& Segment = Plan.PierSegments[Index];
+	const FVector3f Middle = (Segment.A + Segment.B) * 0.5f;
+	OutLocation = LocalToWorld(FVector2f(Middle.X, Middle.Y), Middle.Z);
+	return true;
 }
 
 AYSInteractiveObject* AYSIsland::GetObjectiveItem(int32 Index) const

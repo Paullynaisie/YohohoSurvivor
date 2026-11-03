@@ -527,6 +527,30 @@ public:
 	UFUNCTION(Exec)
 	void YSIslandGoToBoat();
 
+	/** Debug (hôte, FlowMod) : les îles suivantes apparaissent maintenant autour de l'île de départ */
+	UFUNCTION(Exec)
+	void YSIslandSpawnNext();
+
+	/** Debug (hôte) : l'île la plus proche commence à couler tout de suite (sans attendre Sink Delay) */
+	UFUNCTION(Exec)
+	void YSIslandSinkNow();
+
+	/** Debug (FlowMod, hôte ou client) : téléporté sur l'île Index (0 = départ, puis les îles suivantes dans l'ordre de Next Islands) */
+	UFUNCTION(Exec)
+	void YSIslandGoTo(int32 Index);
+
+	/** Debug (hôte, FlowMod) : téléporté au milieu du morceau de ponton Segment (0 = rampe de la 1re ouverture) de l'île Index */
+	UFUNCTION(Exec)
+	void YSIslandGoToPier(int32 Index, int32 Segment);
+
+	/** Debug (hôte, FlowMod) : « go naviguer » (vagues en mer) */
+	UFUNCTION(Exec)
+	void YSNavigate();
+
+	/** Debug (console) : longueur du bras de la caméra (ex. 15000 pour voir une île entière) ; 0 = celle du Blueprint */
+	UFUNCTION(Exec)
+	void YSCameraDistance(float Length);
+
 	/** Debug (console) : téléporte son personnage (ex. sur le pont du bateau de GameMap : YSTeleport -6050 550 300) */
 	UFUNCTION(Exec)
 	void YSTeleport(float X, float Y, float Z);

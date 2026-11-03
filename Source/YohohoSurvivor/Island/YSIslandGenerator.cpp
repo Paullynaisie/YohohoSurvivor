@@ -52,7 +52,25 @@ namespace YSIslandGen
 
 	const FYSIslandPropDef& PropDef(const FYSIslandGenerationRules& Rules, EYSIslandPropType Type)
 	{
-		return Type == EYSIslandPropType::Tree ? Rules.TreeProp : Type == EYSIslandPropType::Bush ? Rules.BushProp : Rules.RockProp;
+		switch (Type)
+		{
+		case EYSIslandPropType::Bush:		return Rules.BushProp;
+		case EYSIslandPropType::Rock:		return Rules.RockProp;
+		case EYSIslandPropType::SmallHouse:	return Rules.SmallHouseProp;
+		case EYSIslandPropType::BigHouse:	return Rules.BigHouseProp;
+		default:							return Rules.TreeProp;
+		}
+	}
+
+	bool IsHouse(EYSIslandPropType Type)
+	{
+		return Type == EYSIslandPropType::SmallHouse || Type == EYSIslandPropType::BigHouse;
+	}
+
+	/** Angle (radians, -PI..PI) d'un angle quelconque */
+	float NormalizeAngle(float Theta)
+	{
+		return FMath::Atan2(FMath::Sin(Theta), FMath::Cos(Theta));
 	}
 
 	/** Prop du plan avec ses rayons pour les calculs */
@@ -490,7 +508,8 @@ namespace YSIslandGen
 		const FYSIslandPropDef& Def = PropDef(Rules, Type);
 		FPlacedProp Prop;
 		Prop.Spawn.Location = Location;
-		Prop.Spawn.Yaw = Rng.FRandRange(0.0f, 360.0f);
+		// maisons : alignées sur la direction du milieu de l'île (rues à peu près droites), un des 4 côtés au hasard
+		Prop.Spawn.Yaw = IsHouse(Type) ? FMath::RadiansToDegrees(FMath::Atan2(Location.Y, Location.X)) + 90.0f * Rng.RandRange(0, 3) : Rng.FRandRange(0.0f, 360.0f);
 		Prop.Spawn.Scale = Scale;
 		Prop.Spawn.Type = Type;
 		Prop.Spawn.Role = Role;
@@ -499,10 +518,172 @@ namespace YSIslandGen
 		return Prop;
 	}
 
-	/** Un essai de plan à une graine : vide OutError si toutes les règles sont respectées */
-	void BuildPlan(const FYSIslandGenerationRules& Rules, int32 Seed, FYSIslandPlan& OutPlan, FString& OutError, FString& OutInfo)
+	/** Bateau de départ échoué sur la plage, au sud : proue vers l'île ; joueurs entre lui et la jungle */
+	void PlaceBoatAndPlayers(const FYSIslandTerrain& Terrain, FRandomStream& Rng, FYSIslandPlan& OutPlan)
 	{
-		const FYSIslandTerrain Terrain(Rules, Seed);
+		const float BoatAngle = PI + FMath::DegreesToRadians(Rng.FRandRange(-15.0f, 15.0f));
+		const float BoatRadius = Terrain.CoastRadius(BoatAngle) - Terrain.BeachDepth(NormalizeAngle(BoatAngle)) * 0.3f;
+		OutPlan.BoatLocation = FVector2f(BoatRadius * FMath::Cos(BoatAngle), BoatRadius * FMath::Sin(BoatAngle));
+		OutPlan.BoatYaw = FMath::RadiansToDegrees(BoatAngle) + 180.0f + Rng.FRandRange(-25.0f, 25.0f);
+		for (int32 K = 0; K < 4; ++K)
+		{
+			// assez loin de la chaloupe pour ne pas atterrir dessus
+			OutPlan.PlayerSpots.Add(OutPlan.BoatLocation + FVector2f(900.0f + (K / 2) * 250.0f, -350.0f + (K % 2) * 700.0f));
+		}
+	}
+
+	/**
+	 *  Pontons de Port Town : à chaque ouverture de la ceinture côté ville, une rampe descend du haut de la falaise jusqu'à un ponton qui longe
+	 *  la côte au large et relie les rampes ; au bout de chaque quai et régulièrement le long du ponton, une pente plonge dans l'eau pour
+	 *  remonter à la nage
+	 */
+	void BuildPiers(const FYSIslandTerrain& Terrain, const TArray<float>& WaterSpots, TArray<FYSIslandPierSegment>& Out)
+	{
+		const FYSIslandGenerationRules& Rules = Terrain.GetRules();
+		const float Deck = SeaLevel + Rules.PierDeckHeight;
+		const float WaterEnd = SeaLevel - Rules.PierWaterRampDepth;
+		const float TownLimit = FMath::DegreesToRadians(Rules.TownHalfAngle + 10.0f);
+
+		// ouvertures côté ville (autour du nord, +X), triées d'ouest en est
+		TArray<float> Spots;
+		for (const float Spot : WaterSpots)
+		{
+			if (FMath::Abs(NormalizeAngle(Spot)) <= TownLimit)
+			{
+				Spots.Add(NormalizeAngle(Spot));
+			}
+		}
+		if (Spots.Num() == 0 && WaterSpots.Num() > 0)
+		{
+			float Best = WaterSpots[0];
+			for (const float Spot : WaterSpots)
+			{
+				Best = FMath::Abs(NormalizeAngle(Spot)) < FMath::Abs(NormalizeAngle(Best)) ? Spot : Best;
+			}
+			Spots.Add(NormalizeAngle(Best));
+		}
+		Spots.Sort();
+
+		const auto Radial = [](float Theta, float R) { return FVector2f(FMath::Cos(Theta), FMath::Sin(Theta)) * R; };
+		const auto AddSegment = [&Out](const FVector2f& A, float ZA, const FVector2f& B, float ZB, bool bPosts, bool bOverlap)
+		{
+			FYSIslandPierSegment& Segment = Out.AddDefaulted_GetRef();
+			Segment.A = FVector3f(A.X, A.Y, ZA);
+			Segment.B = FVector3f(B.X, B.Y, ZB);
+			Segment.bPosts = bPosts;
+			Segment.bOverlapEnds = bOverlap;
+		};
+
+		for (const float Theta : Spots)
+		{
+			const float Coast = Terrain.CoastRadius(Theta);
+			// rampe : du bord de la falaise (au niveau du plateau) jusqu'au ponton de la côte
+			const FVector2f Top = Radial(Theta, Coast - 40.0f);
+			const FVector2f Foot = Radial(Theta, Coast + Rules.PierCoastOffset);
+			AddSegment(Top, Terrain.Height(Top.X, Top.Y) + 2.0f, Foot, Deck, false, false);
+			// quai vers le large, puis pente dans l'eau
+			const FVector2f DockEnd = Radial(Theta, Coast + Rules.PierCoastOffset + Rules.PierDockLength);
+			AddSegment(Foot, Deck, DockEnd, Deck, true, true);
+			AddSegment(DockEnd, Deck, Radial(Theta, Coast + Rules.PierCoastOffset + Rules.PierDockLength + Rules.PierWaterRampLength), WaterEnd, false, false);
+		}
+
+		// ponton de la côte entre deux rampes voisines, avec des accès depuis l'eau
+		for (int32 Index = 0; Index + 1 < Spots.Num(); ++Index)
+		{
+			const float From = Spots[Index];
+			const float To = Spots[Index + 1];
+			const float Length = (To - From) * (Terrain.CoastRadius((From + To) * 0.5f) + Rules.PierCoastOffset);
+			const int32 Steps = FMath::Max(1, FMath::CeilToInt32(Length / Rules.PierStep));
+			float SinceAccess = 0.0f;
+			for (int32 Step = 0; Step < Steps; ++Step)
+			{
+				const float T0 = From + (To - From) * Step / Steps;
+				const float T1 = From + (To - From) * (Step + 1) / Steps;
+				const FVector2f P0 = Radial(T0, Terrain.CoastRadius(T0) + Rules.PierCoastOffset);
+				const FVector2f P1 = Radial(T1, Terrain.CoastRadius(T1) + Rules.PierCoastOffset);
+				AddSegment(P0, Deck, P1, Deck, true, true);
+				SinceAccess += (P1 - P0).Size();
+				if (SinceAccess >= Rules.PierWaterAccessSpacing && Step + 1 < Steps)
+				{
+					SinceAccess = 0.0f;
+					const FVector2f Out2D = Radial(T1, 1.0f);
+					AddSegment(P1, Deck, P1 + Out2D * (Rules.PierWidth * 0.5f + Rules.PierWaterRampLength), WaterEnd, false, false);
+				}
+			}
+		}
+	}
+
+	/** Désert : plage tout autour, palmiers seuls ou en trio sur une grille régulière (un peu décalée) */
+	void BuildDesertPlan(const FYSIslandGenerationRules& Rules, int32 Seed, FYSIslandPlan& OutPlan, FString& OutInfo)
+	{
+		const FYSIslandTerrain Terrain(Rules, Seed, EYSIslandGeneration::Desert);
+		FRandomStream Rng(Seed * 31 + 1);
+		OutPlan = FYSIslandPlan();
+		OutPlan.Seed = Seed;
+		OutPlan.Biome = EYSIslandGeneration::Desert;
+		PlaceBoatAndPlayers(Terrain, Rng, OutPlan);
+
+		const float Spacing = Rules.DesertPalmSpacing;
+		const float Jitter = Spacing * Rules.DesertPalmJitter;
+		const float Reach = Terrain.GetHalfSize();
+		const FYSIslandPropDef& Palm = Rules.TreeProp;
+		int32 Solos = 0;
+		int32 Trios = 0;
+		for (float X = -Reach; X <= Reach; X += Spacing)
+		{
+			for (float Y = -Reach; Y <= Reach; Y += Spacing)
+			{
+				const FVector2f P(X + Rng.FRandRange(-Jitter, Jitter), Y + Rng.FRandRange(-Jitter, Jitter));
+				const bool bTrio = Rng.FRand() < Rules.DesertTrioChance;
+				bool bFree = Terrain.Inland(P.X, P.Y) >= Rules.DesertShoreMargin && (P - OutPlan.BoatLocation).Size() >= 1200.0f;
+				for (const FVector2f& Spot : OutPlan.PlayerSpots) { bFree = bFree && (P - Spot).Size() >= 700.0f; }
+				if (!bFree)
+				{
+					continue;
+				}
+				if (bTrio)
+				{
+					const float Start = Rng.FRandRange(0.0f, 2.0f * PI);
+					for (int32 M = 0; M < 3; ++M)
+					{
+						const float Angle = Start + M * 2.0f * PI / 3.0f;
+						OutPlan.Props.Add(MakeProp(Rules, EYSIslandPropType::Tree, EYSIslandPropRole::Trio, Rules.TreeTrio.Scale,
+							P + FVector2f(FMath::Cos(Angle), FMath::Sin(Angle)) * Rules.TreeTrio.Circumradius, Rng).Spawn);
+					}
+					++Trios;
+				}
+				else
+				{
+					OutPlan.Props.Add(MakeProp(Rules, EYSIslandPropType::Tree, EYSIslandPropRole::Beach, Rng.FRandRange(Palm.ScaleMin, Palm.ScaleMax), P, Rng).Spawn);
+					++Solos;
+				}
+			}
+		}
+
+		// élite : point le plus dégagé vers le milieu
+		float BestScore = -1e9f;
+		for (float X = -Rules.Radius * 0.5f; X <= Rules.Radius * 0.5f; X += 200.0f)
+		{
+			for (float Y = -Rules.Radius * 0.5f; Y <= Rules.Radius * 0.5f; Y += 200.0f)
+			{
+				const FVector2f P(X, Y);
+				float Clear = 1e9f;
+				for (const FYSIslandPropSpawn& Prop : OutPlan.Props) { Clear = FMath::Min(Clear, (Prop.Location - P).Size()); }
+				const float Score = Clear - P.Size() * 0.25f;
+				if (Score > BestScore)
+				{
+					BestScore = Score;
+					OutPlan.CenterSpot = P;
+				}
+			}
+		}
+		OutInfo = FString::Printf(TEXT("désert : %d palmiers seuls, %d trios (%d props)"), Solos, Trios, OutPlan.Props.Num());
+	}
+
+	/** Un essai de plan (Tropical, Port Town) à une graine : vide OutError si toutes les règles sont respectées */
+	void BuildPlan(const FYSIslandGenerationRules& Rules, EYSIslandGeneration Biome, int32 Seed, FYSIslandPlan& OutPlan, FString& OutError, FString& OutInfo)
+	{
+		const FYSIslandTerrain Terrain(Rules, Seed, Biome);
 		FRandomStream Rng(Seed * 31 + 1);
 		const FGrid Grid(Terrain.GetHalfSize());
 		const int32 N = Grid.N;
@@ -511,6 +692,7 @@ namespace YSIslandGen
 
 		OutPlan = FYSIslandPlan();
 		OutPlan.Seed = Seed;
+		OutPlan.Biome = Biome;
 
 		TArray<FYSIslandMassif> Belt;
 		TArray<FYSIslandMassif> Interior;
@@ -519,16 +701,16 @@ namespace YSIslandGen
 		OutPlan.Massifs = Belt;
 		OutPlan.Massifs.Append(Interior);
 
-		// bateau de départ échoué sur la plage, au sud : proue vers l'île ; joueurs entre lui et la jungle
-		const float BoatAngle = PI + FMath::DegreesToRadians(Rng.FRandRange(-15.0f, 15.0f));
-		const float BoatRadius = Terrain.CoastRadius(BoatAngle) - Terrain.BeachDepth(FMath::Atan2(FMath::Sin(BoatAngle), FMath::Cos(BoatAngle))) * 0.3f;
-		OutPlan.BoatLocation = FVector2f(BoatRadius * FMath::Cos(BoatAngle), BoatRadius * FMath::Sin(BoatAngle));
-		OutPlan.BoatYaw = FMath::RadiansToDegrees(BoatAngle) + 180.0f + Rng.FRandRange(-25.0f, 25.0f);
-		for (int32 K = 0; K < 4; ++K)
+		// Port Town : les massifs côté falaise, à l'opposé de la plage, deviennent la ville
+		int32 TownMassifs = 0;
+		for (FYSIslandMassif& M : OutPlan.Massifs)
 		{
-			// assez loin de la chaloupe pour ne pas atterrir dessus
-			OutPlan.PlayerSpots.Add(OutPlan.BoatLocation + FVector2f(900.0f + (K / 2) * 250.0f, -350.0f + (K % 2) * 700.0f));
+			const FVector2f Middle = (M.A + M.B) * 0.5f;
+			M.bTown = Terrain.IsInTownSector(Middle.X, Middle.Y);
+			TownMassifs += M.bTown ? 1 : 0;
 		}
+
+		PlaceBoatAndPlayers(Terrain, Rng, OutPlan);
 
 		TArray<FPlacedProp> Props;
 
@@ -563,6 +745,8 @@ namespace YSIslandGen
 		Carved.Init(1, Grid.Total());
 		TArray<uint8> Core;
 		Core.SetNumZeroed(Grid.Total());
+		TArray<uint8> Town;
+		Town.SetNumZeroed(Grid.Total());
 		for (const FYSIslandMassif& M : OutPlan.Massifs)
 		{
 			const FVector2f Min(FMath::Min(M.A.X, M.B.X) - M.Radius, FMath::Min(M.A.Y, M.B.Y) - M.Radius);
@@ -571,7 +755,7 @@ namespace YSIslandGen
 			ForEachCellAround(Grid, Min, Max, [&](int32 K, const FVector2f& P)
 			{
 				const float D = PointSegmentDistance(P, M.A, M.B);
-				if (D <= M.Radius) { Carved[K] = 0; }
+				if (D <= M.Radius) { Carved[K] = 0; Town[K] = Town[K] || M.bTown; }
 				if (D <= CoreR) { Core[K] = 1; }
 			});
 		}
@@ -624,10 +808,27 @@ namespace YSIslandGen
 		{
 			Index.Add(Prop);
 		}
-		const auto TryPlace = [&](int32 K, float Band, float Factor, float Gap, EYSIslandPropRole Role, float Offset)
+		// ville : ce qui remplace les buissons / rochers / arbres dans ses massifs
+		enum class ETownPick : uint8 { Houses, BigHouses, Palms };
+		const auto HouseMix = [&]()
+		{
+			const float Total = FMath::Max(Rules.SmallHouseProp.Weight + Rules.BigHouseProp.Weight, 0.01f);
+			return Rng.FRandRange(0.0f, Total) < Rules.BigHouseProp.Weight ? EYSIslandPropType::BigHouse : EYSIslandPropType::SmallHouse;
+		};
+		const auto TryPlace = [&](int32 K, float Band, float Factor, float Gap, EYSIslandPropRole Role, float Offset, ETownPick TownPick)
 		{
 			const FVector2f P = Grid.World(K % N, K / N);
-			const EYSIslandPropType Type = Core[K] ? EYSIslandPropType::Tree : PatchType(P);
+			EYSIslandPropType Type = Core[K] ? EYSIslandPropType::Tree : PatchType(P);
+			if (Town[K])
+			{
+				Type = TownPick == ETownPick::Houses ? HouseMix() : TownPick == ETownPick::BigHouses ? EYSIslandPropType::BigHouse : EYSIslandPropType::Tree;
+			}
+			if (IsHouse(Type))
+			{
+				// jamais l'une dans l'autre, quelle que soit leur orientation (Radius = demi-diagonale)
+				Factor = 1.0f;
+				Gap = Rules.HouseGap;
+			}
 			const FYSIslandPropDef& Def = PropDef(Rules, Type);
 			const float Scale = Rng.FRandRange(Def.ScaleMin, Def.ScaleMax);
 			const float Radius = Def.Radius * Scale;
@@ -648,6 +849,19 @@ namespace YSIslandGen
 		for (const FYSIslandMassif& M : OutPlan.Massifs)
 		{
 			const FVector2f Middle = (M.A + M.B) * 0.5f;
+			// ville : une grande maison au milieu si elle tient, sinon un palmier
+			if (M.bTown)
+			{
+				const float HouseScale = Rules.BigHouseProp.ScaleMin;
+				if (Terrain.Inland(Middle.X, Middle.Y) >= 40.0f && YSIslandGenerator::MassifDistance(M, Middle) <= -Rules.BigHouseProp.Radius * HouseScale
+					&& Index.Fits(Middle, Rules.BigHouseProp.Radius * HouseScale, 1.0f, Rules.HouseGap))
+				{
+					const FPlacedProp Prop = MakeProp(Rules, EYSIslandPropType::BigHouse, EYSIslandPropRole::Core, HouseScale, Middle, Rng);
+					Props.Add(Prop);
+					Index.Add(Prop);
+					continue;
+				}
+			}
 			const float Scale = Rules.TreeProp.ScaleMin;
 			if (Terrain.Inland(Middle.X, Middle.Y) >= 40.0f && Index.Fits(Middle, Rules.TreeProp.Radius * Scale, Rules.LiningOverlap, 0.0f))
 			{
@@ -662,7 +876,7 @@ namespace YSIslandGen
 			{
 				if (!Core[K])
 				{
-					TryPlace(K, 50.0f, Rules.LiningOverlap, 0.0f, EYSIslandPropRole::Lining, Row * Rules.RingRowWidth);
+					TryPlace(K, 50.0f, Rules.LiningOverlap, 0.0f, EYSIslandPropRole::Lining, Row * Rules.RingRowWidth, ETownPick::Houses);
 				}
 			}
 		}
@@ -670,14 +884,22 @@ namespace YSIslandGen
 		{
 			if (Core[K])
 			{
-				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, EYSIslandPropRole::Core, 0.0f);
+				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, EYSIslandPropRole::Core, 0.0f, ETownPick::BigHouses);
 			}
 		}
 		for (const int32 K : Candidates)
 		{
 			if (!Core[K])
 			{
-				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, EYSIslandPropRole::Interior, 0.0f);
+				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, EYSIslandPropRole::Interior, 0.0f, ETownPick::Palms);
+			}
+		}
+		// ville : des palmiers entre les grandes maisons
+		for (const int32 K : Candidates)
+		{
+			if (Core[K] && Town[K])
+			{
+				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, EYSIslandPropRole::Core, 0.0f, ETownPick::Palms);
 			}
 		}
 
@@ -714,7 +936,7 @@ namespace YSIslandGen
 				for (const FVector2f& Other : Placed) { bFree = bFree && (Other - P).SizeSquared() >= PlugSpacing * PlugSpacing; }
 				if (bFree)
 				{
-					const EYSIslandPropType Type = Core[K] ? EYSIslandPropType::Tree : EYSIslandPropType::Bush;
+					const EYSIslandPropType Type = Core[K] || Town[K] ? EYSIslandPropType::Tree : EYSIslandPropType::Bush;
 					const FPlacedProp Prop = MakeProp(Rules, Type, EYSIslandPropRole::Lining, PropDef(Rules, Type).ScaleMin, P, Rng);
 					Props.Add(Prop);
 					Index.Add(Prop);
@@ -834,7 +1056,8 @@ namespace YSIslandGen
 				if (Clearance[K] > Clearance[Best]) { Best = K; }
 			}
 			const FVector2f Center = Grid.World(Best % N, Best / N);
-			const bool bTrees = Rng.FRandRange(0.0f, Rules.TreeTrio.Weight + Rules.BushTrio.Weight) < Rules.TreeTrio.Weight;
+			// ville : que des palmiers
+			const bool bTrees = Rng.FRandRange(0.0f, Rules.TreeTrio.Weight + Rules.BushTrio.Weight) < Rules.TreeTrio.Weight || Terrain.IsInTownSector(Center.X, Center.Y);
 			const FYSIslandTrioDef& Trio = bTrees ? Rules.TreeTrio : Rules.BushTrio;
 			const EYSIslandPropType Type = bTrees ? EYSIslandPropType::Tree : EYSIslandPropType::Bush;
 			const float Reach = Trio.Circumradius + PropDef(Rules, Type).CollisionRadius * Trio.Scale;
@@ -863,16 +1086,24 @@ namespace YSIslandGen
 		int32 Trees = 0;
 		int32 Bushes = 0;
 		int32 Rocks = 0;
+		int32 Houses = 0;
 		for (const FPlacedProp& Prop : Props)
 		{
 			OutPlan.Props.Add(Prop.Spawn);
 			Trees += Prop.Spawn.Type == EYSIslandPropType::Tree ? 1 : 0;
 			Bushes += Prop.Spawn.Type == EYSIslandPropType::Bush ? 1 : 0;
 			Rocks += Prop.Spawn.Type == EYSIslandPropType::Rock ? 1 : 0;
+			Houses += IsHouse(Prop.Spawn.Type) ? 1 : 0;
 		}
 
-		OutInfo = FString::Printf(TEXT("%d massifs intérieurs + ceinture (%d morceaux), %d accès à l'eau, %d props (%d arbres, %d buissons, %d rochers, %d bouchés), trios %d arbres / %d buissons, plus grand vide %.0f PJ"),
-			Interior.Num(), Belt.Num(), Runs, Props.Num(), Trees, Bushes, Rocks, Plugged, TreeTrios, BushTrios, Widest * 2.0f / PlayerWidth);
+		// Port Town : pontons depuis les ouvertures côté ville
+		if (Biome == EYSIslandGeneration::PortTown)
+		{
+			BuildPiers(Terrain, OutPlan.WaterSpots, OutPlan.PierSegments);
+		}
+
+		OutInfo = FString::Printf(TEXT("%d massifs intérieurs + ceinture (%d morceaux, %d de la ville), %d accès à l'eau, %d props (%d arbres, %d buissons, %d rochers, %d maisons, %d bouchés), trios %d arbres / %d buissons, %d morceaux de ponton, plus grand vide %.0f PJ"),
+			Interior.Num(), Belt.Num(), TownMassifs, Runs, Props.Num(), Trees, Bushes, Rocks, Houses, Plugged, TreeTrios, BushTrios, OutPlan.PierSegments.Num(), Widest * 2.0f / PlayerWidth);
 
 		OutError.Reset();
 		if (Interior.Num() < Rules.MassifCountMin) { OutError += FString::Printf(TEXT("%d massifs intérieurs ; "), Interior.Num()); }
@@ -880,12 +1111,13 @@ namespace YSIslandGen
 		if (Runs != OutPlan.WaterSpots.Num()) { OutError += FString::Printf(TEXT("%d accès à l'eau au lieu de %d ; "), Runs, OutPlan.WaterSpots.Num()); }
 		if (BlockedShore > 0) { OutError += FString::Printf(TEXT("bord de plage bouché (%d) ; "), BlockedShore); }
 		if (Cut > 0) { OutError += FString::Printf(TEXT("tour de massif coupé (%d) ; "), Cut); }
-		if (Props.Num() > 2000) { OutError += FString::Printf(TEXT("trop de props à répliquer (%d) ; "), Props.Num()); }
+		if (Props.Num() > 20000) { OutError += FString::Printf(TEXT("trop de props (%d) ; "), Props.Num()); }
 	}
 }
 
-FYSIslandTerrain::FYSIslandTerrain(const FYSIslandGenerationRules& InRules, int32 Seed)
+FYSIslandTerrain::FYSIslandTerrain(const FYSIslandGenerationRules& InRules, int32 Seed, EYSIslandGeneration InBiome)
 	: Rules(InRules)
+	, Biome(InBiome)
 {
 	FRandomStream Rng(Seed);
 	for (float& Phase : CoastPhases) { Phase = Rng.FRandRange(0.0f, 2.0f * PI); }
@@ -904,12 +1136,27 @@ float FYSIslandTerrain::CoastRadius(float Theta) const
 
 float FYSIslandTerrain::BeachWeight(float Theta) const
 {
+	// désert : plage tout autour
+	if (Biome == EYSIslandGeneration::Desert)
+	{
+		return 1.0f;
+	}
 	const float Angle = FMath::RadiansToDegrees(FMath::Abs(FMath::Abs(Theta) - PI));
 	return 1.0f - YSIslandGen::Smoothstep((Angle - Rules.BeachAngleFull) / FMath::Max(Rules.BeachAngleEnd - Rules.BeachAngleFull, 0.01f));
 }
 
+bool FYSIslandTerrain::IsInTownSector(float X, float Y) const
+{
+	return Biome == EYSIslandGeneration::PortTown && FMath::RadiansToDegrees(FMath::Abs(FMath::Atan2(Y, X))) <= Rules.TownHalfAngle
+		&& FMath::Sqrt(X * X + Y * Y) >= Rules.Radius * Rules.TownInnerRatio;
+}
+
 float FYSIslandTerrain::BeachDepth(float Theta) const
 {
+	if (Biome == EYSIslandGeneration::Desert)
+	{
+		return Rules.BeachDepth;
+	}
 	const float Angle = FMath::RadiansToDegrees(FMath::Abs(FMath::Abs(Theta) - PI));
 	const float T = FMath::Min(1.0f, Angle / FMath::Max(Rules.BeachAngleEnd, 0.01f));
 	return Rules.BeachDepthMin + (Rules.BeachDepth - Rules.BeachDepthMin) * FMath::Square(FMath::Cos(T * PI / 2.0f));
@@ -965,16 +1212,29 @@ float YSIslandGenerator::MassifDistance(const FYSIslandMassif& Massif, const FVe
 	return YSIslandGen::PointSegmentDistance(Point, Massif.A, Massif.B) - Massif.Radius;
 }
 
-bool YSIslandGenerator::GeneratePlan(const FYSIslandGenerationRules& Rules, int32 Seed, FYSIslandPlan& OutPlan, FString& OutReport)
+const FYSIslandPropDef& YSIslandGenerator::GetPropDef(const FYSIslandGenerationRules& Rules, EYSIslandPropType Type)
+{
+	return YSIslandGen::PropDef(Rules, Type);
+}
+
+bool YSIslandGenerator::GeneratePlan(const FYSIslandGenerationRules& Rules, EYSIslandGeneration Biome, int32 Seed, FYSIslandPlan& OutPlan, FString& OutReport)
 {
 	const double StartTime = FPlatformTime::Seconds();
+	// désert : pas de massif, rien à vérifier
+	if (Biome == EYSIslandGeneration::Desert)
+	{
+		FString Info;
+		YSIslandGen::BuildDesertPlan(Rules, Seed, OutPlan, Info);
+		OutReport = FString::Printf(TEXT("graine %d (%.0f ms) : %s"), Seed, (FPlatformTime::Seconds() - StartTime) * 1000.0, *Info);
+		return true;
+	}
 	FString LastError;
 	FYSIslandPlan BestPlan;
 	for (int32 Attempt = 0; Attempt < YSIslandGen::PlanAttempts; ++Attempt)
 	{
 		FString Error;
 		FString Info;
-		YSIslandGen::BuildPlan(Rules, Seed + Attempt, OutPlan, Error, Info);
+		YSIslandGen::BuildPlan(Rules, Biome, Seed + Attempt, OutPlan, Error, Info);
 		if (Error.IsEmpty())
 		{
 			OutReport = FString::Printf(TEXT("graine %d (demandée %d, %d essai(s), %.0f ms) : %s"), OutPlan.Seed, Seed, Attempt + 1, (FPlatformTime::Seconds() - StartTime) * 1000.0, *Info);

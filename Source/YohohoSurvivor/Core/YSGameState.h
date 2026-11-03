@@ -254,6 +254,9 @@ public:
 	bool IsOvertime() const { return bOvertime; }
 	bool IsIslandSinking() const { return IslandSinkStartServerTime > 0.0; }
 
+	/** Une île coule à cet endroit (map fixe : toute l'île ; îles générées : celle qui couvre ce point, pendant sa descente) */
+	bool IsSinkingAt(const FVector& Location) const;
+
 	/** Serveur uniquement (AYSGameMode) */
 	void SetShipPresent(bool bPresent) { bShipPresent = bPresent; ForceNetUpdate(); }
 	void SetShipBoarding(int32 Aboard, int32 Total) { ShipAboardPlayers = Aboard; ShipTotalPlayers = Total; ForceNetUpdate(); }

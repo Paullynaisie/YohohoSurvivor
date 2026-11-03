@@ -18,6 +18,23 @@ namespace YSFlowMode
 	constexpr float SeatSpawnHeight = 100.0f;
 }
 
+AYSFlowMode::AYSFlowMode()
+{
+	// « go naviguer » (demande de Paul) : 3 chaloupes à 10 s, 1 Galion à 15 s, 6 chaloupes à 45 s
+	FYSNavigationWave Wave;
+	Wave.Delay = 10.0f;
+	Wave.JollyShips = 3;
+	NavigationWaves.Add(Wave);
+	Wave = FYSNavigationWave();
+	Wave.Delay = 15.0f;
+	Wave.Galions = 1;
+	NavigationWaves.Add(Wave);
+	Wave = FYSNavigationWave();
+	Wave.Delay = 45.0f;
+	Wave.JollyShips = 6;
+	NavigationWaves.Add(Wave);
+}
+
 void AYSFlowMode::InitGameState()
 {
 	Super::InitGameState();
@@ -45,13 +62,125 @@ void AYSFlowMode::BeginPlay()
 	Island = GetWorld()->SpawnActorDeferred<AYSIsland>(AYSIsland::StaticClass(), Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (Island)
 	{
-		Island->InitIsland(StartIsland, Seed);
+		Island->InitIsland(StartIsland, Seed, true);
 		Island->FinishSpawning(Transform);
+	}
+}
+
+void AYSFlowMode::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// « go naviguer » : vagues en mer programmées
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || PendingNavigationWaves.Num() == 0)
+	{
+		return;
+	}
+	const float Now = YSGameState->GetMatchElapsedTime();
+	for (int32 Index = PendingNavigationWaves.Num() - 1; Index >= 0; --Index)
+	{
+		if (Now < PendingNavigationWaves[Index].Key)
+		{
+			continue;
+		}
+		const FYSNavigationWave Wave = PendingNavigationWaves[Index].Value;
+		PendingNavigationWaves.RemoveAt(Index);
+		const int32 JollyCount = Wave.bScaleWithPlayers ? ScaleEnemyCount(Wave.JollyShips) : Wave.JollyShips;
+		const int32 GalionCount = Wave.bScaleWithPlayers ? ScaleEnemyCount(Wave.Galions) : Wave.Galions;
+		int32 Jollies = 0;
+		int32 Galions = 0;
+		for (int32 K = 0; K < JollyCount; ++K)
+		{
+			Jollies += SpawnJollyShip(TEXT("go naviguer")) ? 1 : 0;
+		}
+		for (int32 K = 0; K < GalionCount; ++K)
+		{
+			Galions += SpawnGalion(TEXT("go naviguer")) ? 1 : 0;
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSNavigation] Vague à %.0f s : %d / %d chaloupe(s), %d / %d Galion(s)"), Wave.Delay, Jollies, JollyCount, Galions, GalionCount);
+	}
+}
+
+void AYSFlowMode::OnIslandSinkStarted(AYSIsland* SinkingIsland)
+{
+	StartNavigationWaves();
+	if (SinkingIsland && SinkingIsland == Island)
+	{
+		SpawnNextIslands(SinkingIsland);
+	}
+}
+
+void AYSFlowMode::StartNavigationWaves()
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	const float Now = YSGameState ? YSGameState->GetMatchElapsedTime() : 0.0f;
+	for (const FYSNavigationWave& Wave : NavigationWaves)
+	{
+		PendingNavigationWaves.Emplace(Now + Wave.Delay, Wave);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSNavigation] Go naviguer : %d vague(s) en mer programmée(s)"), NavigationWaves.Num());
+}
+
+void AYSFlowMode::SpawnNextIslands(const AYSIsland* From)
+{
+	if (bNextIslandsSpawned || !From || NextIslands.Num() == 0)
+	{
+		return;
+	}
+	bNextIslandsSpawned = true;
+
+	// places régulières autour de l'île de départ (triangle pour 3 îles), un peu décalées ; quelle île va où : au hasard
+	// (les îles gardent l'ordre de Next Islands : YSIslandGoTo 1, 2, 3...)
+	TArray<UYSIslandData*> Order;
+	for (UYSIslandData* Data : NextIslands)
+	{
+		if (Data)
+		{
+			Order.Add(Data);
+		}
+	}
+	TArray<int32> Slots;
+	for (int32 Index = 0; Index < Order.Num(); ++Index)
+	{
+		Slots.Add(Index);
+	}
+	for (int32 K = Slots.Num() - 1; K > 0; --K)
+	{
+		Slots.Swap(K, FMath::RandRange(0, K));
+	}
+	const float BaseAngle = FMath::FRandRange(0.0f, 360.0f);
+	const FVector Center = From->GetActorLocation() * FVector(1.0f, 1.0f, 0.0f);
+	for (int32 Index = 0; Index < Order.Num(); ++Index)
+	{
+		UYSIslandData* Data = Order[Index];
+		const float Angle = FMath::DegreesToRadians(BaseAngle + 360.0f * Slots[Index] / Order.Num() + FMath::FRandRange(-NextIslandsAngleJitter, NextIslandsAngleJitter));
+		const float Distance = From->GetRadius() + NextIslandsGap + Data->Generation.Radius;
+		const FVector Location = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Distance;
+		const float Yaw = Data->bRandomRotation ? FMath::FRandRange(0.0f, 360.0f) : 0.0f;
+		const FTransform Transform(FRotator(0.0f, Yaw, 0.0f), Location);
+		AYSIsland* NewIsland = GetWorld()->SpawnActorDeferred<AYSIsland>(AYSIsland::StaticClass(), Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (NewIsland)
+		{
+			NewIsland->InitIsland(Data, 0, false);
+			NewIsland->FinishSpawning(Transform);
+			SpawnedIslands.Add(NewIsland);
+			UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Île suivante %s en %s (yaw %.0f°, %.0f m du centre de départ)"), *Data->GetName(), *Location.ToCompactString(), Yaw, Distance / 100.0f);
+		}
 	}
 }
 
 void AYSFlowMode::OnEliteKilled(AYSFoeCharacter* Elite)
 {
+	// l'île qui a fait apparaître cet élite pour sa nuit ; sinon la plus proche
+	for (TActorIterator<AYSIsland> It(GetWorld()); It; ++It)
+	{
+		if (It->OwnsNightElite(Elite))
+		{
+			It->OnEliteKilled(Elite);
+			return;
+		}
+	}
 	if (AYSIsland* EliteIsland = Elite ? AYSIsland::FindAt(GetWorld(), Elite->GetActorLocation()) : nullptr)
 	{
 		EliteIsland->OnEliteKilled(Elite);

@@ -1,6 +1,8 @@
 #include "Player/YSPlayerController.h"
 #include "Island/YSIsland.h"
+#include "Island/YSIslandData.h"
 #include "Island/YSIslandNPC.h"
+#include "Core/YSFlowMode.h"
 #include "Ship/YSShipCannon.h"
 #include "Ship/YSLongboatLauncher.h"
 #include "Core/YSGamepad.h"
@@ -51,6 +53,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/KismetRenderingLibrary.h"
 #include "Camera/CameraComponent.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "Core/YSGameInstance.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Core/YSGameMode.h"
@@ -1028,7 +1031,7 @@ void AYSPlayerController::YSIslandStatus()
 
 void AYSPlayerController::YSIslandSkip(float Seconds)
 {
-	if (AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), FVector::ZeroVector) : nullptr)
+	if (AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), GetPawn() ? GetPawn()->GetActorLocation() : FVector::ZeroVector) : nullptr)
 	{
 		Island->DebugSkipTime(Seconds);
 	}
@@ -1037,7 +1040,7 @@ void AYSPlayerController::YSIslandSkip(float Seconds)
 void AYSPlayerController::YSIslandCarry(int32 ObjectiveIndex)
 {
 	AYSPlayerCharacter* MyCharacter = Cast<AYSPlayerCharacter>(GetPawn());
-	const AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), FVector::ZeroVector) : nullptr;
+	const AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), MyCharacter ? MyCharacter->GetActorLocation() : FVector::ZeroVector) : nullptr;
 	AYSInteractiveObject* Item = Island ? Island->GetObjectiveItem(ObjectiveIndex) : nullptr;
 	if (MyCharacter && Item && !Item->GetCarrier())
 	{
@@ -1060,11 +1063,87 @@ void AYSPlayerController::YSIslandKillElite()
 
 void AYSPlayerController::YSIslandGoToBoat()
 {
-	const AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), FVector::ZeroVector) : nullptr;
+	const AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), GetPawn() ? GetPawn()->GetActorLocation() : FVector::ZeroVector) : nullptr;
 	const AActor* Boat = Island ? Island->GetStartBoat() : nullptr;
 	if (GetPawn() && Boat)
 	{
 		GetPawn()->TeleportTo(Boat->GetActorLocation() + FVector(300.0f, 300.0f, 150.0f), GetPawn()->GetActorRotation());
+	}
+}
+
+void AYSPlayerController::YSIslandSpawnNext()
+{
+	AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	if (FlowMode && FlowMode->GetStartIslandActor())
+	{
+		FlowMode->SpawnNextIslands(FlowMode->GetStartIslandActor());
+	}
+}
+
+void AYSPlayerController::YSIslandSinkNow()
+{
+	if (AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), GetPawn() ? GetPawn()->GetActorLocation() : FVector::ZeroVector) : nullptr)
+	{
+		Island->DebugSinkNow();
+	}
+}
+
+void AYSPlayerController::YSIslandGoTo(int32 Index)
+{
+	// client : demandé au serveur
+	if (!HasAuthority())
+	{
+		ServerGoToDebug(4, static_cast<float>(Index));
+		return;
+	}
+	const AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	if (!FlowMode || !GetPawn())
+	{
+		return;
+	}
+	const AYSIsland* Island = Index == 0 ? FlowMode->GetStartIslandActor() : FlowMode->GetSpawnedIslands().IsValidIndex(Index - 1) ? FlowMode->GetSpawnedIslands()[Index - 1].Get() : nullptr;
+	if (Island)
+	{
+		// places d'apparition des joueurs de l'île, puis autour (une place peut être prise par un prop ou un NME)
+		bool bTeleported = false;
+		FVector Location = FVector::ZeroVector;
+		for (int32 Attempt = 0; Attempt < 24 && !bTeleported; ++Attempt)
+		{
+			const float Angle = Attempt * 0.9f;
+			Location = Island->GetPlayerSpawnTransform(Attempt % 4).GetLocation() + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * (Attempt / 4) * 150.0f + FVector(0.0f, 0.0f, 80.0f);
+			bTeleported = GetPawn()->TeleportTo(Location, GetPawn()->GetActorRotation());
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] Debug : téléporté sur l'île %d (%s) en %s%s"), Index, Island->GetData() ? *Island->GetData()->GetName() : TEXT("?"), *Location.ToCompactString(),
+			bTeleported ? TEXT("") : TEXT(" : REFUSÉ"));
+	}
+}
+
+void AYSPlayerController::YSIslandGoToPier(int32 Index, int32 Segment)
+{
+	const AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	const AYSIsland* Island = !FlowMode ? nullptr : Index == 0 ? FlowMode->GetStartIslandActor()
+		: FlowMode->GetSpawnedIslands().IsValidIndex(Index - 1) ? FlowMode->GetSpawnedIslands()[Index - 1].Get() : nullptr;
+	FVector Location;
+	if (Island && GetPawn() && Island->GetPierSegmentLocation(Segment, Location))
+	{
+		const bool bTeleported = GetPawn()->TeleportTo(Location + FVector(0.0f, 0.0f, 120.0f), GetPawn()->GetActorRotation());
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] Debug : téléporté sur le ponton %d de l'île %d en %s%s"), Segment, Index, *Location.ToCompactString(), bTeleported ? TEXT("") : TEXT(" : REFUSÉ"));
+	}
+}
+
+void AYSPlayerController::YSCameraDistance(float Length)
+{
+	if (AYSPlayerCharacter* MyCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		MyCharacter->DebugSetCameraArmLength(Length > 0.0f ? Length : MyCharacter->GetClass()->GetDefaultObject<AYSPlayerCharacter>()->GetCameraBoom()->TargetArmLength);
+	}
+}
+
+void AYSPlayerController::YSNavigate()
+{
+	if (AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())
+	{
+		FlowMode->StartNavigationWaves();
 	}
 }
 
@@ -2568,6 +2647,10 @@ void AYSPlayerController::ServerGoToDebug_Implementation(uint8 Kind, float Dista
 	else if (Kind == 3)
 	{
 		YSGoToBoarding(Distance, Side);
+	}
+	else if (Kind == 4)
+	{
+		YSIslandGoTo(FMath::RoundToInt32(Distance));
 	}
 	else
 	{
