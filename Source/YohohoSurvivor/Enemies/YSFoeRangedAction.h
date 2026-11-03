@@ -243,6 +243,27 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Shot", meta=(ClampMin="0", ClampMax="90", Units="Degrees"))
 	float AimSpread = 30.0f;
 
+	/**
+	 *  Balles tirées par chaque pistolet à la fin de la visée (même direction). Akimbo (une action de tir dans chaque main) :
+	 *  réglé par l'arme de la main droite, les pistolets alternent (droite, gauche, droite...) ; ex. 2 = 4 balles en akimbo
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Shot", meta=(ClampMin="1"))
+	int32 ShotsPerGun = 1;
+
+	/** Délai entre deux balles de la rafale (tous pistolets confondus) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Shot", meta=(ClampMin="0", Units="Seconds"))
+	float BurstShotInterval = 0.1f;
+
+	/**
+	 *  Vrai : la balle part à la hauteur qu'elle aurait chez un NME de taille 1 (hauteur du canon au-dessus des pieds / Size
+	 *  Multiplier), donc sous le pistolet d'un élite / boss : sinon elle vole au-dessus des joueurs
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Shot")
+	bool bNormalSizeBulletHeight = true;
+
+	/** Départ de la balle : Muzzle, descendu à la hauteur d'un NME de taille 1 si Normal Size Bullet Height */
+	FVector GetBulletOrigin(const AYSFoeCharacter* Foe, const FVector& Muzzle) const;
+
 	/** Recul après le tir (mêmes réglages et même animation que le pistolet du joueur, catégorie Recoil) : cabrage de la main */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="NME Attack|Recoil", meta=(Units="Degrees"))
 	float RecoilPitch = 25.0f;

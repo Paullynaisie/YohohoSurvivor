@@ -25,6 +25,7 @@ class UYSFoeRangedAction;
 class UYSAutoSwingAbility;
 class UYSBossBigSlashAbility;
 class UYSFoeRoll360ShotAction;
+class UYSFoeShotAction;
 class UYSGroundZoneComponent;
 class AYSProjectile;
 class AYSFoeGalion;
@@ -844,14 +845,24 @@ public:
 	/** Attaque à distance de l'arme tenue (la première trouvée, main droite d'abord), ou nullptr : le NME est alors au corps à corps */
 	UYSFoeRangedAction* GetRangedAction() const;
 
-	/** Tir (NME shot) : début de la visée dans la direction de sa cible décalée de YawOffset degrés (serveur) ; tir à la fin de AimDuration */
-	bool StartAim(const AActor* AimTarget, float AimDuration, float YawOffset);
+	/**
+	 *  Tir (NME shot) : début de la visée vers sa cible (serveur) ; tir à la fin de AimDuration. Chaque balle de la rafale a sa
+	 *  direction : décalage au hasard de +/- Spread degrés, une tranche différente de l'imprécision par balle (directions
+	 *  toujours différentes), dans un ordre au hasard ; une bande de prévisualisation par balle
+	 */
+	bool StartAim(const AActor* AimTarget, float AimDuration, float Spread);
+
+	/** Balles de la rafale du tir (Shots Per Gun de l'action principale x pistolets tenus) */
+	int32 GetShotBurstCount() const;
 
 	/** Point de départ d'une attaque à distance : Muzzle de l'arme qui la porte, sinon au-dessus du NME */
 	FVector GetAttackOrigin(const UYSFoeRangedAction* Action) const;
 
-	/** Moment visible d'une attaque à distance (serveur) : animations de l'arme ici et sur les clients (lancer, recul) */
-	void NotifyRangedAttack(UYSFoeRangedAction* Action);
+	/**
+	 *  Moment visible d'une attaque à distance (serveur) : animations de l'arme ici et sur les clients (lancer, recul) ;
+	 *  AimPreviewIndex >= 0 : bande de prévisualisation de cette balle cachée partout
+	 */
+	void NotifyRangedAttack(UYSFoeRangedAction* Action, int32 AimPreviewIndex = -1);
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 
@@ -973,22 +984,44 @@ protected:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastMeleeAttack(EYSSwingAnim Anim);
 
-	/** Skull Gun : tire la balle dans la direction de la visée (serveur) */
+	/**
+	 *  Skull Gun : tire la balle suivante de la rafale dans la direction de la visée (serveur) ; Shots Per Gun balles par
+	 *  pistolet, les pistolets des deux mains (akimbo) alternant, Burst Shot Interval entre deux balles ; la visée finit avec la rafale
+	 */
 	void FireShot();
 
-	/** Ligne de visée au sol sur toutes les machines (direction figée) */
+	/** Actions de tir des armes tenues : main droite puis main gauche (akimbo = deux) */
+	void GetShotActions(TArray<UYSFoeShotAction*>& OutActions) const;
+
+	/** Lignes de visée au sol sur toutes les machines : une par balle de la rafale (directions figées, yaw en degrés) */
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastAimStarted(FVector_NetQuantize Start, FVector_NetQuantizeNormal Direction);
+	void MulticastAimStarted(FVector_NetQuantize Start, const TArray<float>& ShotYaws);
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastAimEnded();
 
-	/** Animation de l'attaque à distance de l'arme sur les clients (armes de NME locales) */
+	/**
+	 *  Animation de l'attaque à distance de l'arme sur les clients (armes de NME locales) ; bLeftWeapon = arme de la main gauche ;
+	 *  AimPreviewIndex >= 0 = bande de cette balle cachée (les autres restent jusqu'à leur tir)
+	 */
 	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastRangedAttack();
+	void MulticastRangedAttack(bool bLeftWeapon, int32 AimPreviewIndex);
 
-	/** Affiche (ou cache) la ligne de visée sur cette machine */
-	void ShowAimLine(bool bShow, const FVector& Start, const FVector& Direction);
+	/** Affiche (une bande par direction) ou cache toutes les lignes de visée sur cette machine */
+	void ShowAimLine(bool bShow, const FVector& Start, const TArray<float>& ShotYaws);
+
+	/** Bande de la balle Index cachée sur cette machine (balle partie) */
+	void HideAimPreview(int32 Index);
+
+	/** Lignes de visée du tir (locales, créées à la demande, une par balle) */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UYSGroundZoneComponent>> AimPreviews;
+
+	/** Bande Index d'une réserve (créée à la demande : locale, jamais répliquée, en coordonnées monde) */
+	UYSGroundZoneComponent* GetPooledStrip(TArray<TObjectPtr<UYSGroundZoneComponent>>& Pool, int32 Index);
+
+	/** Bande posée sur le relief depuis Start dans Direction (réglages de prévisualisation) */
+	void BuildGroundStrip(UYSGroundZoneComponent* Strip, const FVector& Start, const FVector& Direction, float Length, float Width, UMaterialInterface* Material, const FLinearColor& Color, float Opacity);
 
 	/** Bande posée sur le relief (composant AimLine) : ligne de visée, zone du Boss Big Slash ; cachée si !bShow */
 	void ShowGroundStrip(bool bShow, const FVector& Start, const FVector& Direction, float Length, float Width, UMaterialInterface* Material, const FLinearColor& Color, float Opacity);
@@ -1255,6 +1288,10 @@ private:
 	bool bAiming = false;
 	FVector AimDirection = FVector::ForwardVector;
 	float AimTimeLeft = 0.0f;
+	/** Direction (yaw) de chaque balle de la rafale, dans l'ordre des tirs (serveur) */
+	TArray<float> AimShotYaws;
+	/** Balles de la rafale déjà tirées depuis la fin de la visée (serveur) */
+	int32 ShotBurstIndex = 0;
 
 
 	/** Atk critique : balles d'attaque auto reçues de chaque tireur (serveur) */

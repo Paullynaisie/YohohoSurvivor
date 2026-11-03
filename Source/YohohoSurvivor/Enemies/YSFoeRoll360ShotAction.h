@@ -17,7 +17,8 @@ class UYSFoeShotAction;
  *  1. roulade de Roll Distance en Roll Duration (à l'opposé de la cible si Roll Away From Target), arrivée jamais dans l'eau ;
  *     le boss reste touchable (PAS d'invulnérabilité), pas de pushback pendant toute l'attaque ;
  *  2. immobile, il tire Shot Count balles une par une toutes les Shot Interval, séparées de Angle Step : la première droit vers
- *     la cible (vue depuis l'arrivée de la roulade), puis tout autour dans un sens tiré au hasard (droite ou gauche).
+ *     la cible (vue depuis l'arrivée de la roulade), puis tout autour dans un sens tiré au hasard (droite ou gauche) ;
+ *     akimbo : un pistolet sur deux tire chaque balle (recul de ce pistolet, hauteur de balle de son NME shot).
  *  Chaque balle : dégâts du NME shot de l'arme x Damage Multiplier, échelle x Bullet Scale. Prévisualisation au sol : une bande
  *  par balle, de la largeur de la balle, qui apparaît Preview Lead Time avant son tir (donc dans l'ordre des tirs) et disparaît au tir.
  *  Composant d'arme de NME (local sur chaque machine) ; le déroulé est porté par le NME (FYSFoeRoll360Shot répliqué).
@@ -75,7 +76,7 @@ public:
 
 	/** Délai entre deux balles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Roll360shot|Shots", meta=(ClampMin="0", Units="Seconds"))
-	float ShotInterval = 0.1f;
+	float ShotInterval = 0.05f;
 
 	/** Dégâts de chaque balle = dégâts du NME shot de l'arme (niveau, Damage Multiplier du NME) x ce multiplicateur */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Roll360shot|Shots", meta=(ClampMin="0"))

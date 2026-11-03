@@ -930,6 +930,10 @@ void AYSFoeCharacter::BeginDeathLocal()
 	GameplayTags.Reset();
 	SetMarked(false);
 	AimLine->SetVisibility(false);
+	for (int32 Index = 0; Index < AimPreviews.Num(); ++Index)
+	{
+		HideAimPreview(Index);
+	}
 	bAiming = false;
 	bLocalBumpActive = false;
 	bLocalRiseActive = false;
@@ -1574,7 +1578,8 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		SetActorRotation(FRotator(0.0f, AimDirection.Rotation().Yaw, 0.0f));
 		RideYaw = bLocalShipRide ? GetActorRotation().Yaw : RideYaw;
 		AimTimeLeft -= DeltaSeconds;
-		if (AimTimeLeft <= 0.0f)
+		// fin de la visée puis rafale : plusieurs balles dans la même image si elle a duré plus longtemps que l'intervalle
+		while (bAiming && AimTimeLeft <= 0.0f)
 		{
 			FireShot();
 		}
@@ -2223,67 +2228,182 @@ FVector AYSFoeCharacter::GetAttackOrigin(const UYSFoeRangedAction* Action) const
 	return GetActorLocation() + FVector(0.0f, 0.0f, YSFoe::DefaultAttackHeight);
 }
 
-bool AYSFoeCharacter::StartAim(const AActor* AimTarget, float AimDuration, float YawOffset)
+int32 AYSFoeCharacter::GetShotBurstCount() const
+{
+	TArray<UYSFoeShotAction*> Shots;
+	GetShotActions(Shots);
+	const UYSFoeShotAction* Main = Cast<UYSFoeShotAction>(GetRangedAction());
+	return Main && Shots.Num() > 0 ? FMath::Max(Main->ShotsPerGun, 1) * Shots.Num() : 1;
+}
+
+bool AYSFoeCharacter::StartAim(const AActor* AimTarget, float AimDuration, float Spread)
 {
 	if (!AimTarget)
 	{
 		return false;
 	}
 
-	// direction FIGÉE : celle de la cible au début de la visée, le NME ne réajuste pas
+	// directions FIGÉES : d'après la cible au début de la visée, le NME ne réajuste pas
 	FVector Direction = AimTarget->GetActorLocation() - GetActorLocation();
 	Direction.Z = 0.0f;
 	if (Direction.IsNearlyZero())
 	{
 		Direction = GetActorForwardVector();
 	}
-	// imprécision de l'arme : décalage de YawOffset degrés
-	AimDirection = Direction.GetSafeNormal2D().RotateAngleAxis(YawOffset, FVector::UpVector);
+	const float BaseYaw = Direction.Rotation().Yaw;
+
+	// imprécision de l'arme : chaque balle tire son décalage dans sa propre tranche de [-Spread, +Spread] (directions
+	// toujours différentes), tranches mélangées pour que l'ordre des tirs reste imprévisible
+	const int32 Count = GetShotBurstCount();
+	const float Slice = 2.0f * Spread / Count;
+	AimShotYaws.Reset(Count);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		AimShotYaws.Add(BaseYaw - Spread + Slice * (Index + FMath::FRand()));
+	}
+	for (int32 Index = Count - 1; Index > 0; --Index)
+	{
+		AimShotYaws.Swap(Index, FMath::RandRange(0, Index));
+	}
+
+	AimDirection = FRotator(0.0f, AimShotYaws[0], 0.0f).Vector();
 	AimTimeLeft = AimDuration;
 	bAiming = true;
-	SetActorRotation(FRotator(0.0f, AimDirection.Rotation().Yaw, 0.0f));
+	ShotBurstIndex = 0;
+	SetActorRotation(FRotator(0.0f, AimShotYaws[0], 0.0f));
 
 	const FVector Start = AYSInteractiveObject::FindGround(GetWorld(), GetActorLocation(), this);
-	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s vise %s pendant %.2f s, direction (%.2f, %.2f), décalage %.1f°"), *GetName(), *AimTarget->GetName(), AimDuration, AimDirection.X, AimDirection.Y, YawOffset);
-	MulticastAimStarted(Start, AimDirection);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s vise %s pendant %.2f s, %d balle(s), première à %.1f° de la cible"), *GetName(), *AimTarget->GetName(), AimDuration, Count,
+		FRotator::NormalizeAxis(AimShotYaws[0] - BaseYaw));
+	MulticastAimStarted(Start, AimShotYaws);
 	return true;
+}
+
+void AYSFoeCharacter::GetShotActions(TArray<UYSFoeShotAction*>& OutActions) const
+{
+	OutActions.Reset();
+	for (const AYSWeapon* Weapon : { GetRightHandWeapon(), GetLeftHandWeapon() })
+	{
+		if (UYSFoeShotAction* Shot = Weapon ? Weapon->FindComponentByClass<UYSFoeShotAction>() : nullptr)
+		{
+			OutActions.Add(Shot);
+		}
+	}
 }
 
 void AYSFoeCharacter::FireShot()
 {
-	bAiming = false;
-	MulticastAimEnded();
-	if (UYSFoeShotAction* Shot = Cast<UYSFoeShotAction>(GetRangedAction()))
+	// rafale réglée par l'action de tir principale ; akimbo : les pistolets alternent (droite, gauche, droite...)
+	TArray<UYSFoeShotAction*> Shots;
+	GetShotActions(Shots);
+	const UYSFoeShotAction* Main = Cast<UYSFoeShotAction>(GetRangedAction());
+	const int32 TotalShots = FMath::Max(AimShotYaws.Num(), 1);
+	if (Shots.Num() > 0)
 	{
-		Shot->Fire(this, GetAttackOrigin(Shot), AimDirection);
-		// recul du pistolet sur toutes les machines
-		NotifyRangedAttack(Shot);
+		UYSFoeShotAction* Shot = Shots[ShotBurstIndex % Shots.Num()];
+		// direction propre à cette balle, tourné vers elle ; départ dans l'axe de sa bande (centre du NME, hauteur de balle du
+		// pistolet) ; à bord d'un bateau : depuis le canon (la balle vise la hauteur de sa cible)
+		AimDirection = FRotator(0.0f, AimShotYaws.IsValidIndex(ShotBurstIndex) ? AimShotYaws[ShotBurstIndex] : AimDirection.Rotation().Yaw, 0.0f).Vector();
+		SetActorRotation(FRotator(0.0f, AimDirection.Rotation().Yaw, 0.0f));
+		const FVector Muzzle = GetAttackOrigin(Shot);
+		const FVector Origin = IsRidingShip() ? Muzzle
+			: FVector(GetActorLocation().X, GetActorLocation().Y, Shot->GetBulletOrigin(this, Muzzle).Z) + AimDirection * GetCapsuleComponent()->GetScaledCapsuleRadius();
+		Shot->Fire(this, Origin, AimDirection);
+		// recul de ce pistolet et bande de cette balle cachée, sur toutes les machines
+		NotifyRangedAttack(Shot, ShotBurstIndex);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : balle %d / %d (%s) à %.0f°"), *GetName(), ShotBurstIndex + 1, TotalShots,
+			Cast<AYSWeapon>(Shot->GetOwner()) == GetLeftHandWeapon() ? TEXT("main gauche") : TEXT("main droite"), AimDirection.Rotation().Yaw);
 	}
+
+	++ShotBurstIndex;
+	if (ShotBurstIndex >= TotalShots)
+	{
+		bAiming = false;
+		MulticastAimEnded();
+		return;
+	}
+	AimTimeLeft += Main ? FMath::Max(Main->BurstShotInterval, 0.0f) : 0.0f;
 }
 
-void AYSFoeCharacter::MulticastAimStarted_Implementation(FVector_NetQuantize Start, FVector_NetQuantizeNormal Direction)
+void AYSFoeCharacter::MulticastAimStarted_Implementation(FVector_NetQuantize Start, const TArray<float>& ShotYaws)
 {
-	ShowAimLine(true, Start, Direction);
+	ShowAimLine(true, Start, ShotYaws);
 }
 
 void AYSFoeCharacter::MulticastAimEnded_Implementation()
 {
-	ShowAimLine(false, FVector::ZeroVector, FVector::ForwardVector);
+	ShowAimLine(false, FVector::ZeroVector, TArray<float>());
 }
 
-void AYSFoeCharacter::ShowAimLine(bool bShow, const FVector& Start, const FVector& Direction)
+void AYSFoeCharacter::ShowAimLine(bool bShow, const FVector& Start, const TArray<float>& ShotYaws)
 {
-	// réglages de la ligne : action de tir de l'arme (arme locale sur chaque machine)
+	// réglages des lignes : action de tir de l'arme (arme locale sur chaque machine)
 	const UYSFoeShotAction* Shot = Cast<UYSFoeShotAction>(GetRangedAction());
 	bShow = bShow && Shot;
-	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s ligne de visée %s (%s)"), *GetName(), bShow ? TEXT("affichée") : TEXT("cachée"), HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s lignes de visée %s (%d, %s)"), *GetName(), bShow ? TEXT("affichées") : TEXT("cachées"), ShotYaws.Num(), HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	for (int32 Index = 0; Index < AimPreviews.Num(); ++Index)
+	{
+		HideAimPreview(Index);
+	}
 	if (!bShow)
 	{
-		ShowGroundStrip(false, Start, Direction, 0.0f, 0.0f, nullptr, FLinearColor::White, 0.0f);
 		return;
 	}
-	// matériau de la prévisualisation de la bombe
-	ShowGroundStrip(true, Start, Direction, Shot->AimLineLength, Shot->AimLineWidth, Shot->PreviewMaterial, Shot->PreviewColor, Shot->AimLineOpacity);
+	// une bande par balle, de la largeur de la balle (Aim Line Width)
+	for (int32 Index = 0; Index < ShotYaws.Num(); ++Index)
+	{
+		BuildGroundStrip(GetPooledStrip(AimPreviews, Index), Start, FRotator(0.0f, ShotYaws[Index], 0.0f).Vector(), Shot->AimLineLength, Shot->AimLineWidth,
+			Shot->PreviewMaterial, Shot->PreviewColor, Shot->AimLineOpacity);
+	}
+}
+
+void AYSFoeCharacter::HideAimPreview(int32 Index)
+{
+	if (UYSGroundZoneComponent* Strip = AimPreviews.IsValidIndex(Index) ? AimPreviews[Index].Get() : nullptr)
+	{
+		if (Strip->IsVisible())
+		{
+			Strip->SetVisibility(false);
+			Strip->ClearAllMeshSections();
+		}
+	}
+}
+
+UYSGroundZoneComponent* AYSFoeCharacter::GetPooledStrip(TArray<TObjectPtr<UYSGroundZoneComponent>>& Pool, int32 Index)
+{
+	if (Pool.Num() <= Index)
+	{
+		Pool.SetNum(Index + 1);
+	}
+	if (!Pool[Index])
+	{
+		UYSGroundZoneComponent* Strip = NewObject<UYSGroundZoneComponent>(this, NAME_None, RF_Transient);
+		Strip->SetupAttachment(RootComponent);
+		Strip->SetUsingAbsoluteLocation(true);
+		Strip->SetUsingAbsoluteRotation(true);
+		Strip->SetUsingAbsoluteScale(true);
+		Strip->RegisterComponent();
+		Pool[Index] = Strip;
+	}
+	return Pool[Index];
+}
+
+void AYSFoeCharacter::BuildGroundStrip(UYSGroundZoneComponent* Strip, const FVector& Start, const FVector& Direction, float Length, float Width, UMaterialInterface* Material, const FLinearColor& Color, float Opacity)
+{
+	// bande posée sur le relief depuis Start (bord désactivé : rayon immense)
+	Strip->SetVisibility(true);
+	Strip->SetWorldLocation(Start);
+	Strip->BuildStrip(Direction, Length, Width, YSFoe::AimLineHeight);
+	if (Material)
+	{
+		UMaterialInstanceDynamic* Instance = Strip->CreateDynamicMaterialInstance(0, Material);
+		Instance->SetVectorParameterValue(TEXT("Color"), Color);
+		Instance->SetScalarParameterValue(TEXT("Glow"), 0.3f);
+		Instance->SetScalarParameterValue(TEXT("FillOpacity"), Opacity);
+		Instance->SetScalarParameterValue(TEXT("EdgeOpacity"), 0.0f);
+		Instance->SetScalarParameterValue(TEXT("Radius"), Length * 10.0f);
+		Instance->SetScalarParameterValue(TEXT("EdgeWidth"), 1.0f);
+	}
 }
 
 void AYSFoeCharacter::ShowGroundStrip(bool bShow, const FVector& Start, const FVector& Direction, float Length, float Width, UMaterialInterface* Material, const FLinearColor& Color, float Opacity)
@@ -2648,7 +2768,7 @@ void AYSFoeCharacter::BeginRoll360ShotLocal()
 	if (!HasAuthority())
 	{
 		// visée du tir de base : ligne cachée (la multicast peut arriver après)
-		ShowAimLine(false, FVector::ZeroVector, FVector::ForwardVector);
+		ShowAimLine(false, FVector::ZeroVector, TArray<float>());
 	}
 
 	// comme le Boss Big Slash : position calculée sur chaque machine, mouvement du personnage et sa réplication coupés
@@ -2672,30 +2792,36 @@ void AYSFoeCharacter::UpdateRoll360Shot()
 	const int32 ShotCount = Roll360Shot.ShotCount;
 	const float HalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 
-	// balles dont l'heure est passée (serveur) : depuis le centre du NME à hauteur du canon, pour suivre exactement les bandes
+	// akimbo : un pistolet sur deux tire chaque balle (droite, gauche, droite...)
+	TArray<UYSFoeShotAction*> Shots;
+	GetShotActions(Shots);
+
+	// balles dont l'heure est passée (serveur) : depuis le centre du NME à hauteur de balle du pistolet qui tire, pour suivre
+	// exactement les bandes
 	const int32 ShotsDue = FMath::Clamp(Elapsed >= Roll360Shot.FirstShotTime ? FMath::FloorToInt((Elapsed - Roll360Shot.FirstShotTime) / FMath::Max(Roll360Shot.ShotInterval, KINDA_SMALL_NUMBER)) + 1 : 0, 0, ShotCount);
 	if (HasAuthority() && Action)
 	{
 		while (Roll360FiredCount < ShotsDue)
 		{
 			const FVector Direction = FRotator(0.0f, Roll360Shot.GetShotYaw(Roll360FiredCount), 0.0f).Vector();
-			const UYSFoeShotAction* Shot = Action->GetShotAction();
-			const float MuzzleZ = Shot ? GetAttackOrigin(Shot).Z : GetActorLocation().Z;
-			const FVector Origin = FVector(Roll360Shot.End.X, Roll360Shot.End.Y, MuzzleZ) + Direction * GetCapsuleComponent()->GetScaledCapsuleRadius();
+			const UYSFoeShotAction* Shot = Shots.Num() > 0 ? Shots[Roll360FiredCount % Shots.Num()] : nullptr;
+			const float BulletZ = Shot ? Shot->GetBulletOrigin(this, GetAttackOrigin(Shot)).Z : GetActorLocation().Z;
+			const FVector Origin = FVector(Roll360Shot.End.X, Roll360Shot.End.Y, BulletZ) + Direction * GetCapsuleComponent()->GetScaledCapsuleRadius();
 			Action->FireBullet(this, Origin, Direction);
-			UE_LOG(LogTemp, Verbose, TEXT("[YSRoll360] %s : balle %d / %d à %.0f°"), *GetName(), Roll360FiredCount + 1, ShotCount, Roll360Shot.GetShotYaw(Roll360FiredCount));
+			UE_LOG(LogTemp, Verbose, TEXT("[YSRoll360] %s : balle %d / %d à %.0f° (%s)"), *GetName(), Roll360FiredCount + 1, ShotCount, Roll360Shot.GetShotYaw(Roll360FiredCount),
+				Shot && Cast<AYSWeapon>(Shot->GetOwner()) == GetLeftHandWeapon() ? TEXT("main gauche") : TEXT("main droite"));
 			++Roll360FiredCount;
 		}
 	}
 
-	// recul du pistolet à chaque balle (sur chaque machine)
-	if (ShotsDue > Roll360LocalShotCount)
+	// recul du pistolet qui tire chaque balle (sur chaque machine)
+	while (Roll360LocalShotCount < ShotsDue)
 	{
-		Roll360LocalShotCount = ShotsDue;
-		if (UYSFoeShotAction* Shot = Action ? Action->GetShotAction() : nullptr)
+		if (Shots.Num() > 0)
 		{
-			Shot->PlayAttackLocally();
+			Shots[Roll360LocalShotCount % Shots.Num()]->PlayAttackLocally();
 		}
+		++Roll360LocalShotCount;
 	}
 
 	// bandes : celle de chaque balle apparaît Preview Lead Time avant son tir (dans l'ordre), disparaît au tir
@@ -2790,62 +2916,39 @@ void AYSFoeCharacter::ShowRoll360Preview(int32 Index, bool bShow)
 		return;
 	}
 
-	// créée à la première utilisation (locale, jamais répliquée), en coordonnées monde
 	const UYSFoeRoll360ShotAction* Action = GetRoll360ShotAction();
 	if (!Action)
 	{
 		return;
 	}
-	if (!Strip)
-	{
-		if (Roll360Previews.Num() <= Index)
-		{
-			Roll360Previews.SetNum(Index + 1);
-		}
-		Strip = NewObject<UYSGroundZoneComponent>(this, NAME_None, RF_Transient);
-		Strip->SetupAttachment(RootComponent);
-		Strip->SetUsingAbsoluteLocation(true);
-		Strip->SetUsingAbsoluteRotation(true);
-		Strip->SetUsingAbsoluteScale(true);
-		Strip->RegisterComponent();
-		Roll360Previews[Index] = Strip;
-	}
-
 	// bande posée sur le relief depuis l'arrivée de la roulade, de la largeur de la balle
 	const FVector Direction = FRotator(0.0f, Roll360Shot.GetShotYaw(Index), 0.0f).Vector();
 	const FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), Roll360Shot.End, this);
-	Strip->SetVisibility(true);
-	Strip->SetWorldLocation(Ground);
-	Strip->BuildStrip(Direction, Action->PreviewLength, Action->GetPreviewWidth(), YSFoe::AimLineHeight);
-	if (Action->PreviewMaterial)
-	{
-		UMaterialInstanceDynamic* Instance = Strip->CreateDynamicMaterialInstance(0, Action->PreviewMaterial);
-		Instance->SetVectorParameterValue(TEXT("Color"), Action->PreviewColor);
-		Instance->SetScalarParameterValue(TEXT("Glow"), 0.3f);
-		Instance->SetScalarParameterValue(TEXT("FillOpacity"), Action->PreviewOpacity);
-		Instance->SetScalarParameterValue(TEXT("EdgeOpacity"), 0.0f);
-		Instance->SetScalarParameterValue(TEXT("Radius"), Action->PreviewLength * 10.0f);
-		Instance->SetScalarParameterValue(TEXT("EdgeWidth"), 1.0f);
-	}
+	BuildGroundStrip(GetPooledStrip(Roll360Previews, Index), Ground, Direction, Action->PreviewLength, Action->GetPreviewWidth(),
+		Action->PreviewMaterial, Action->PreviewColor, Action->PreviewOpacity);
 }
 
-void AYSFoeCharacter::NotifyRangedAttack(UYSFoeRangedAction* Action)
+void AYSFoeCharacter::NotifyRangedAttack(UYSFoeRangedAction* Action, int32 AimPreviewIndex)
 {
 	if (Action)
 	{
 		Action->PlayAttackLocally();
 	}
-	MulticastRangedAttack();
+	HideAimPreview(AimPreviewIndex);
+	MulticastRangedAttack(Action && Action->GetOwner() && Action->GetOwner() == GetLeftHandWeapon(), AimPreviewIndex);
 }
 
-void AYSFoeCharacter::MulticastRangedAttack_Implementation()
+void AYSFoeCharacter::MulticastRangedAttack_Implementation(bool bLeftWeapon, int32 AimPreviewIndex)
 {
-	// serveur : déjà joué par NotifyRangedAttack ; clients : l'arme locale joue l'animation (lancer, recul)
+	// serveur : déjà joué par NotifyRangedAttack ; clients : l'arme locale de la même main joue l'animation (lancer, recul),
+	// bande de la balle partie cachée
 	if (HasAuthority())
 	{
 		return;
 	}
-	if (UYSFoeRangedAction* Action = GetRangedAction())
+	HideAimPreview(AimPreviewIndex);
+	const AYSWeapon* Weapon = bLeftWeapon ? GetLeftHandWeapon() : GetRightHandWeapon();
+	if (UYSFoeRangedAction* Action = Weapon ? Weapon->FindComponentByClass<UYSFoeRangedAction>() : nullptr)
 	{
 		Action->PlayAttackLocally();
 	}

@@ -1,4 +1,5 @@
 #include "Enemies/YSFoeRangedAction.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "Enemies/YSFoeBomb.h"
@@ -170,8 +171,20 @@ bool UYSFoeBombAction::IsWeaponHidden() const
 
 bool UYSFoeShotAction::StartAttack(AYSFoeCharacter* Foe, const AActor* Target, const FVector& Origin)
 {
-	// imprécision : direction décalée au hasard, ligne de visée comprise
-	return Foe && Target && Foe->StartAim(Target, AimDuration, FMath::FRandRange(-AimSpread, AimSpread));
+	// imprécision : chaque balle de la rafale décalée au hasard dans +/- Aim Spread, lignes de visée comprises
+	return Foe && Target && Foe->StartAim(Target, AimDuration, AimSpread);
+}
+
+FVector UYSFoeShotAction::GetBulletOrigin(const AYSFoeCharacter* Foe, const FVector& Muzzle) const
+{
+	// NME agrandi (élite, boss) : hauteur au-dessus des pieds ramenée à celle d'un NME de taille 1 ; pas à bord d'un bateau
+	// (la balle y vise déjà la hauteur de sa cible)
+	if (!bNormalSizeBulletHeight || !Foe || Foe->IsRidingShip() || Foe->GetSizeMultiplier() <= 1.0f)
+	{
+		return Muzzle;
+	}
+	const float FeetZ = Foe->GetActorLocation().Z - Foe->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	return FVector(Muzzle.X, Muzzle.Y, FeetZ + (Muzzle.Z - FeetZ) / Foe->GetSizeMultiplier());
 }
 
 void UYSFoeShotAction::Fire(AYSFoeCharacter* Foe, const FVector& Origin, const FVector& Direction) const
