@@ -38,6 +38,7 @@
 #include "Map/YSOcean.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Enemies/YSFoeRangedAction.h"
+#include "Enemies/YSFoeRoll360ShotAction.h"
 #include "Upgrades/YSUpgrade.h"
 
 namespace YSFoe
@@ -306,7 +307,7 @@ void AYSFoeCharacter::UpdateHands(float DeltaSeconds)
 {
 	// perf : pur visuel local (rien n'est répliqué) ; hors écran les mains restent figées, SAUF sur le serveur pendant une
 	// attaque de mêlée : la hitbox de l'arme suit la main (un client peut se battre hors de l'écran de l'hôte)
-	if (bHandsInitialized && GetWorld() && GetWorld()->IsGameWorld() && !WasRecentlyRendered(HandsOffscreenFreezeDelay) && !(HasAuthority() && (IsMeleeAttacking() || bLocalBossDashActive || (GetRangedAction() && GetRangedAction()->IsAnimating()))))
+	if (bHandsInitialized && GetWorld() && GetWorld()->IsGameWorld() && !WasRecentlyRendered(HandsOffscreenFreezeDelay) && !(HasAuthority() && (IsMeleeAttacking() || bLocalBossDashActive || bLocalRoll360Active || (GetRangedAction() && GetRangedAction()->IsAnimating()))))
 	{
 		return;
 	}
@@ -427,6 +428,7 @@ void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(AYSFoeCharacter, Shield);
 	DOREPLIFETIME(AYSFoeCharacter, MaxShield);
 	DOREPLIFETIME(AYSFoeCharacter, BossDash);
+	DOREPLIFETIME(AYSFoeCharacter, Roll360Shot);
 	DOREPLIFETIME(AYSFoeCharacter, ShipRide);
 	DOREPLIFETIME(AYSFoeCharacter, RideYaw);
 }
@@ -524,9 +526,9 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	TryTriggerBossShield();
 
 	// coup qui bumpe (Bumping Slash) : NME lancé en cloche ; un élite seulement si l'Ability le permet (Bump Elites), sinon pushback normal
-	// ; jamais sous bouclier de boss, pendant le Boss Big Slash ni à bord d'un Jolly Ship
+	// ; jamais sous bouclier de boss, pendant le Boss Big Slash / Roll360shot ni à bord d'un Jolly Ship
 	const FYSBumpDamageEvent* BumpEventPtr = DamageEvent.IsOfType(FYSBumpDamageEvent::ClassID) ? static_cast<const FYSBumpDamageEvent*>(&DamageEvent) : nullptr;
-	if (BumpEventPtr && (!bIsElite || BumpEventPtr->bBumpElites) && !HasBossShield() && !BossDash.bActive && !bLocalShipRide)
+	if (BumpEventPtr && (!bIsElite || BumpEventPtr->bBumpElites) && !HasBossShield() && !BossDash.bActive && !Roll360Shot.bActive && !bLocalShipRide)
 	{
 		const FYSBumpDamageEvent& BumpEvent = *BumpEventPtr;
 		StartBump(BumpEvent.ShotDirection, BumpEvent.Distance, BumpEvent.ApexHeight, BumpEvent.Duration, BumpEvent.SpinTurns);
@@ -703,7 +705,7 @@ void AYSFoeCharacter::UpdateBump()
 
 void AYSFoeCharacter::StartHitReaction(float Damage, const FDamageEvent& DamageEvent)
 {
-	if (!bHitReaction || bLocalBumpActive || MaxHealth <= 0.0f || !DamageEvent.IsOfType(FPointDamageEvent::ClassID))
+	if (!bHitReaction || bLocalBumpActive || bLocalRoll360Active || MaxHealth <= 0.0f || !DamageEvent.IsOfType(FPointDamageEvent::ClassID))
 	{
 		return;
 	}
@@ -722,7 +724,7 @@ void AYSFoeCharacter::StartHitReaction(float Damage, const FDamageEvent& DamageE
 
 void AYSFoeCharacter::OnRep_HitReaction()
 {
-	if (!bLocalBumpActive && !bLocalDeathStarted)
+	if (!bLocalBumpActive && !bLocalRoll360Active && !bLocalDeathStarted)
 	{
 		BeginHitReactionLocal();
 	}
@@ -755,13 +757,13 @@ void AYSFoeCharacter::UpdateHitReaction()
 	}
 }
 
-void AYSFoeCharacter::ApplyBodyTilt(const FQuat& WorldTilt)
+void AYSFoeCharacter::ApplyBodyTilt(const FQuat& WorldTilt, bool bAroundCenter)
 {
 	HitTiltCurrent = WorldTilt;
-	// dans le repère de l'acteur (il peut tourner pendant la réaction), autour des pieds
+	// dans le repère de l'acteur (il peut tourner pendant la réaction), autour des pieds (ou du centre de la capsule)
 	const FQuat ActorRotation = GetActorQuat();
 	const FQuat RelativeTilt = ActorRotation.Inverse() * WorldTilt * ActorRotation;
-	const FVector Feet(0.0f, 0.0f, -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight());
+	const FVector Feet(0.0f, 0.0f, bAroundCenter ? 0.0f : -GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight());
 	BodyMesh->SetRelativeLocationAndRotation(Feet + RelativeTilt.RotateVector(BodyRestTransform.GetLocation() - Feet), RelativeTilt * BodyRestTransform.GetRotation());
 	FaceDecal->SetRelativeLocationAndRotation(Feet + RelativeTilt.RotateVector(FaceRestTransform.GetLocation() - Feet), RelativeTilt * FaceRestTransform.GetRotation());
 }
@@ -803,9 +805,9 @@ void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEven
 	StartHitReaction(Damage, DamageEvent);
 
 	// direction du coup portée par l'événement (hitbox de l'arme, vol du projectile) ; force réglée sur le personnage qui frappe
-	// Boss Big Slash en cours : trajet calculé, pas de pushback ; à bord d'un Jolly Ship : gardé sur sa place
+	// Boss Big Slash / Roll360shot en cours : trajet calculé, pas de pushback ; à bord d'un Jolly Ship : gardé sur sa place
 	const AYSPlayerCharacter* Attacker = EventInstigator ? Cast<AYSPlayerCharacter>(EventInstigator->GetPawn()) : nullptr;
-	if (!Attacker || !DamageEvent.IsOfType(FPointDamageEvent::ClassID) || BossDash.bActive || bLocalShipRide)
+	if (!Attacker || !DamageEvent.IsOfType(FPointDamageEvent::ClassID) || BossDash.bActive || Roll360Shot.bActive || bLocalShipRide)
 	{
 		return;
 	}
@@ -932,6 +934,16 @@ void AYSFoeCharacter::BeginDeathLocal()
 	bLocalBumpActive = false;
 	bLocalRiseActive = false;
 	bLocalBossDashActive = false;
+	if (bLocalRoll360Active)
+	{
+		// roulade interrompue : corps remis droit avant la physique, bandes cachées
+		bLocalRoll360Active = false;
+		ApplyBodyTilt(FQuat::Identity);
+		for (int32 Index = 0; Index < Roll360Previews.Num(); ++Index)
+		{
+			ShowRoll360Preview(Index, false);
+		}
+	}
 	bLocalShipRide = false;
 	bHitReactionActive = false;
 	HealthBar->SetVisibility(false);
@@ -1511,6 +1523,13 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// Roll360shot : roulade puis tirs calculés sur chaque machine (balles tirées par le serveur), aucun autre comportement
+	if (bLocalRoll360Active)
+	{
+		UpdateRoll360Shot();
+		return;
+	}
+
 	// serveur autoritaire : les clients reçoivent position et rotation par réplication
 	if (!HasAuthority())
 	{
@@ -1527,7 +1546,7 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	}
 
 	// bouclier de boss : son attaque en plus passe avant l'attaque de base
-	if (HasBossShield() && !bLocalShipRide && !CrewShip && TryStartBossAttack())
+	if (HasBossShield() && !bLocalShipRide && !CrewShip && (TryStartBossAttack() || TryStartRoll360Shot()))
 	{
 		return;
 	}
@@ -2528,6 +2547,285 @@ void AYSFoeCharacter::EndBossDashLocal()
 		SetReplicateMovement(true);
 		ForceNetUpdate();
 		UE_LOG(LogTemp, Verbose, TEXT("[YSBoss] %s : Boss Big Slash fini en (%.0f, %.0f, %.0f)"), *GetName(), BossDash.End.X, BossDash.End.Y, BossDash.End.Z);
+	}
+}
+
+UYSFoeRoll360ShotAction* AYSFoeCharacter::GetRoll360ShotAction() const
+{
+	for (const AYSWeapon* Weapon : { GetRightHandWeapon(), GetLeftHandWeapon() })
+	{
+		if (UYSFoeRoll360ShotAction* Action = Weapon ? Weapon->FindComponentByClass<UYSFoeRoll360ShotAction>() : nullptr)
+		{
+			return Action;
+		}
+	}
+	return nullptr;
+}
+
+bool AYSFoeCharacter::TryStartRoll360Shot()
+{
+	UYSFoeRoll360ShotAction* Action = GetRoll360ShotAction();
+	if (!Action || !Action->IsReady())
+	{
+		return false;
+	}
+	const APawn* Victim = FindNearestPlayer(true);
+	if (!Victim)
+	{
+		return false;
+	}
+	const FVector ToVictim = (Victim->GetActorLocation() - GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
+	if (ToVictim.SizeSquared() > FMath::Square(Action->TriggerRange))
+	{
+		return false;
+	}
+
+	// visée en cours du tir de base : abandonnée (l'attaque en plus passe avant)
+	if (bAiming)
+	{
+		bAiming = false;
+		MulticastAimEnded();
+	}
+
+	const FVector ToVictimDirection = ToVictim.IsNearlyZero() ? GetActorForwardVector().GetSafeNormal2D() : ToVictim.GetSafeNormal();
+	const FVector RollDirection = Action->bRollAwayFromTarget ? -ToVictimDirection : ToVictimDirection;
+	const FVector Start = GetActorLocation();
+	const FVector End = Action->FindRollEnd(Start, RollDirection, GetCapsuleComponent()->GetScaledCapsuleHalfHeight(), this);
+	// première balle : vers la cible vue depuis l'arrivée de la roulade
+	FVector FirstDirection = (Victim->GetActorLocation() - End) * FVector(1.0f, 1.0f, 0.0f);
+	if (FirstDirection.IsNearlyZero())
+	{
+		FirstDirection = ToVictimDirection;
+	}
+
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	Roll360Shot.bActive = true;
+	Roll360Shot.Start = Start;
+	Roll360Shot.End = End;
+	Roll360Shot.FirstYaw = FirstDirection.Rotation().Yaw;
+	Roll360Shot.Side = FMath::RandBool() ? 1 : -1;
+	Roll360Shot.RollDuration = Action->RollDuration;
+	Roll360Shot.FirstShotTime = Action->RollDuration + Action->FirstShotDelay;
+	Roll360Shot.ShotInterval = Action->ShotInterval;
+	Roll360Shot.ShotCount = Action->ShotCount;
+	Roll360Shot.AngleStep = Action->AngleStep;
+	Roll360Shot.StartServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	++Roll360Shot.Counter;
+	Roll360FiredCount = 0;
+	MeleeVictim = nullptr;
+	Action->NotifyStarted();
+
+	BeginRoll360ShotLocal();
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSRoll360] %s : Roll360shot vers %s, roulade %.0f cm en %.2f s, %d balles de %.0f dégâts tous les %.0f° (%s) toutes les %.2f s"),
+		*GetName(), *Victim->GetName(), FVector::Dist2D(Start, End), Action->RollDuration, Action->ShotCount, Action->GetBulletDamage(this), Action->AngleStep,
+		Roll360Shot.Side > 0 ? TEXT("droite") : TEXT("gauche"), Action->ShotInterval);
+	return true;
+}
+
+void AYSFoeCharacter::OnRep_Roll360Shot()
+{
+	if (Roll360Shot.bActive && (!bLocalRoll360Active || LocalRoll360Counter != Roll360Shot.Counter) && !bLocalDeathStarted)
+	{
+		BeginRoll360ShotLocal();
+	}
+	else if (!Roll360Shot.bActive && bLocalRoll360Active)
+	{
+		EndRoll360ShotLocal();
+	}
+}
+
+void AYSFoeCharacter::BeginRoll360ShotLocal()
+{
+	bLocalRoll360Active = true;
+	LocalRoll360Counter = Roll360Shot.Counter;
+	Roll360LocalShotCount = 0;
+	CancelHitReaction();
+	for (int32 Index = 0; Index < Roll360Previews.Num(); ++Index)
+	{
+		ShowRoll360Preview(Index, false);
+	}
+	if (!HasAuthority())
+	{
+		// visée du tir de base : ligne cachée (la multicast peut arriver après)
+		ShowAimLine(false, FVector::ZeroVector, FVector::ForwardVector);
+	}
+
+	// comme le Boss Big Slash : position calculée sur chaque machine, mouvement du personnage et sa réplication coupés
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->StopMovementImmediately();
+	Movement->SetComponentTickEnabled(false);
+	if (HasAuthority())
+	{
+		SetReplicateMovement(false);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSRoll360] %s (%s) : Roll360shot commencé"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	UpdateRoll360Shot();
+}
+
+void AYSFoeCharacter::UpdateRoll360Shot()
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const float Elapsed = FMath::Max(0.0f, static_cast<float>(Now - Roll360Shot.StartServerTime));
+	const UYSFoeRoll360ShotAction* Action = GetRoll360ShotAction();
+	const int32 ShotCount = Roll360Shot.ShotCount;
+	const float HalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+
+	// balles dont l'heure est passée (serveur) : depuis le centre du NME à hauteur du canon, pour suivre exactement les bandes
+	const int32 ShotsDue = FMath::Clamp(Elapsed >= Roll360Shot.FirstShotTime ? FMath::FloorToInt((Elapsed - Roll360Shot.FirstShotTime) / FMath::Max(Roll360Shot.ShotInterval, KINDA_SMALL_NUMBER)) + 1 : 0, 0, ShotCount);
+	if (HasAuthority() && Action)
+	{
+		while (Roll360FiredCount < ShotsDue)
+		{
+			const FVector Direction = FRotator(0.0f, Roll360Shot.GetShotYaw(Roll360FiredCount), 0.0f).Vector();
+			const UYSFoeShotAction* Shot = Action->GetShotAction();
+			const float MuzzleZ = Shot ? GetAttackOrigin(Shot).Z : GetActorLocation().Z;
+			const FVector Origin = FVector(Roll360Shot.End.X, Roll360Shot.End.Y, MuzzleZ) + Direction * GetCapsuleComponent()->GetScaledCapsuleRadius();
+			Action->FireBullet(this, Origin, Direction);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSRoll360] %s : balle %d / %d à %.0f°"), *GetName(), Roll360FiredCount + 1, ShotCount, Roll360Shot.GetShotYaw(Roll360FiredCount));
+			++Roll360FiredCount;
+		}
+	}
+
+	// recul du pistolet à chaque balle (sur chaque machine)
+	if (ShotsDue > Roll360LocalShotCount)
+	{
+		Roll360LocalShotCount = ShotsDue;
+		if (UYSFoeShotAction* Shot = Action ? Action->GetShotAction() : nullptr)
+		{
+			Shot->PlayAttackLocally();
+		}
+	}
+
+	// bandes : celle de chaque balle apparaît Preview Lead Time avant son tir (dans l'ordre), disparaît au tir
+	const float LeadTime = Action ? Action->PreviewLeadTime : 0.0f;
+	for (int32 Index = 0; Index < ShotCount; ++Index)
+	{
+		const float ShotTime = Roll360Shot.GetShotTime(Index);
+		ShowRoll360Preview(Index, Elapsed >= ShotTime - LeadTime && Elapsed < ShotTime);
+	}
+
+	// fin : dernière balle partie et recul joué
+	const float LastShotTime = Roll360Shot.GetShotTime(ShotCount - 1);
+	const UYSFoeShotAction* RecoilShot = Action ? Action->GetShotAction() : nullptr;
+	const float EndTime = LastShotTime + (RecoilShot ? RecoilShot->RecoilKickDuration + RecoilShot->RecoilRecoverDuration : 0.25f);
+	if (Elapsed >= EndTime && (!HasAuthority() || Roll360FiredCount >= ShotCount))
+	{
+		EndRoll360ShotLocal();
+		return;
+	}
+
+	FVector Location = Roll360Shot.End;
+	float Yaw = Roll360Shot.FirstYaw;
+	if (Elapsed < Roll360Shot.RollDuration)
+	{
+		// roulade : vers End, tourné dans le sens de la roulade, le corps roule autour de son centre
+		const float Alpha = Elapsed / FMath::Max(Roll360Shot.RollDuration, 0.01f);
+		const FVector RollVector = (FVector(Roll360Shot.End) - FVector(Roll360Shot.Start)) * FVector(1.0f, 1.0f, 0.0f);
+		Location = FMath::Lerp(FVector(Roll360Shot.Start), FVector(Roll360Shot.End), Action ? Action->GetRollFraction(Alpha) : Alpha);
+		FHitResult Hit;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(YSRoll360Shot), false, this);
+		if (GetWorld()->LineTraceSingleByObjectType(Hit, Location + FVector(0.0f, 0.0f, 1000.0f), Location - FVector(0.0f, 0.0f, 5000.0f), FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+		{
+			Location.Z = AYSOcean::ClampAboveSea(GetWorld(), Hit.ImpactPoint.Z) + HalfHeight;
+		}
+		const FVector RollDirection = RollVector.IsNearlyZero() ? GetActorForwardVector().GetSafeNormal2D() : RollVector.GetSafeNormal();
+		Yaw = RollDirection.Rotation().Yaw;
+		SetActorLocationAndRotation(Location, FRotator(0.0f, Yaw, 0.0f));
+		const float Turns = Action ? Action->RollTurns : 1.0f;
+		const float SpinAlpha = FMath::InterpEaseInOut(0.0f, 1.0f, Alpha, 2.0f);
+		ApplyBodyTilt(FQuat(FVector::CrossProduct(FVector::UpVector, RollDirection).GetSafeNormal(), FMath::DegreesToRadians(360.0f * Turns * SpinAlpha)), true);
+		return;
+	}
+
+	// tirs : immobile, tourné vers la dernière balle partie (la première avant le premier tir)
+	if (HitTiltCurrent != FQuat::Identity)
+	{
+		ApplyBodyTilt(FQuat::Identity);
+	}
+	Yaw = Roll360Shot.GetShotYaw(FMath::Max(ShotsDue - 1, 0));
+	SetActorLocationAndRotation(Roll360Shot.End, FRotator(0.0f, Yaw, 0.0f));
+}
+
+void AYSFoeCharacter::EndRoll360ShotLocal()
+{
+	if (!bLocalRoll360Active)
+	{
+		return;
+	}
+	bLocalRoll360Active = false;
+	ApplyBodyTilt(FQuat::Identity);
+	for (int32 Index = 0; Index < Roll360Previews.Num(); ++Index)
+	{
+		ShowRoll360Preview(Index, false);
+	}
+
+	SetActorLocation(Roll360Shot.End);
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->SetComponentTickEnabled(true);
+	if (HasAuthority())
+	{
+		Movement->Velocity = FVector::ZeroVector;
+		Movement->SetMovementMode(MOVE_Falling);
+		Roll360Shot.bActive = false;
+		SetReplicateMovement(true);
+		ForceNetUpdate();
+		UE_LOG(LogTemp, Verbose, TEXT("[YSRoll360] %s : Roll360shot fini (%d balles)"), *GetName(), Roll360FiredCount);
+	}
+}
+
+void AYSFoeCharacter::ShowRoll360Preview(int32 Index, bool bShow)
+{
+	UYSGroundZoneComponent* Strip = Roll360Previews.IsValidIndex(Index) ? Roll360Previews[Index].Get() : nullptr;
+	const bool bVisible = Strip && Strip->IsVisible();
+	if (bShow == bVisible)
+	{
+		return;
+	}
+	if (!bShow)
+	{
+		Strip->SetVisibility(false);
+		Strip->ClearAllMeshSections();
+		return;
+	}
+
+	// créée à la première utilisation (locale, jamais répliquée), en coordonnées monde
+	const UYSFoeRoll360ShotAction* Action = GetRoll360ShotAction();
+	if (!Action)
+	{
+		return;
+	}
+	if (!Strip)
+	{
+		if (Roll360Previews.Num() <= Index)
+		{
+			Roll360Previews.SetNum(Index + 1);
+		}
+		Strip = NewObject<UYSGroundZoneComponent>(this, NAME_None, RF_Transient);
+		Strip->SetupAttachment(RootComponent);
+		Strip->SetUsingAbsoluteLocation(true);
+		Strip->SetUsingAbsoluteRotation(true);
+		Strip->SetUsingAbsoluteScale(true);
+		Strip->RegisterComponent();
+		Roll360Previews[Index] = Strip;
+	}
+
+	// bande posée sur le relief depuis l'arrivée de la roulade, de la largeur de la balle
+	const FVector Direction = FRotator(0.0f, Roll360Shot.GetShotYaw(Index), 0.0f).Vector();
+	const FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), Roll360Shot.End, this);
+	Strip->SetVisibility(true);
+	Strip->SetWorldLocation(Ground);
+	Strip->BuildStrip(Direction, Action->PreviewLength, Action->GetPreviewWidth(), YSFoe::AimLineHeight);
+	if (Action->PreviewMaterial)
+	{
+		UMaterialInstanceDynamic* Instance = Strip->CreateDynamicMaterialInstance(0, Action->PreviewMaterial);
+		Instance->SetVectorParameterValue(TEXT("Color"), Action->PreviewColor);
+		Instance->SetScalarParameterValue(TEXT("Glow"), 0.3f);
+		Instance->SetScalarParameterValue(TEXT("FillOpacity"), Action->PreviewOpacity);
+		Instance->SetScalarParameterValue(TEXT("EdgeOpacity"), 0.0f);
+		Instance->SetScalarParameterValue(TEXT("Radius"), Action->PreviewLength * 10.0f);
+		Instance->SetScalarParameterValue(TEXT("EdgeWidth"), 1.0f);
 	}
 }
 

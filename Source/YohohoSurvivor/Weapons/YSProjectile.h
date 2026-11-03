@@ -300,6 +300,9 @@ public:
 
 	void SetDamage(float NewDamage) { Damage = NewDamage; }
 
+	/** Rayon de la sphère de collision, sans l'échelle de l'acteur (lisible sur le CDO d'un BP) */
+	float GetCollisionRadius() const;
+
 	/** Distance parcourue avant la fin de vie (vitesse x durée de vie) */
 	float GetMaxRange() const { return Speed * LifeTime; }
 

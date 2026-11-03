@@ -288,4 +288,33 @@ int32 UYSEditorScriptLibrary::CopyEditableProperties(UObject* Source, UObject* T
 	return Copied;
 }
 
+FString UYSEditorScriptLibrary::CopyChangedProperties(UObject* Source, UObject* Reference, UObject* Target, const TArray<FString>& ExcludedNames)
+{
+	if (!Source || !Reference || !Target)
+	{
+		return FString();
+	}
+
+	Target->Modify();
+	FString Report;
+	for (TFieldIterator<FProperty> It(Source->GetClass()); It; ++It)
+	{
+		const FProperty* Property = *It;
+		const UClass* Owner = Property->GetOwnerClass();
+		// réglages éditables des classes du jeu communs aux trois objets
+		if (!Property->HasAnyPropertyFlags(CPF_Edit) || Property->HasAnyPropertyFlags(CPF_Transient | CPF_EditConst)
+			|| !Owner || !Target->IsA(Owner) || !Reference->IsA(Owner) || !Owner->GetOutermost()->GetName().StartsWith(TEXT("/Script/YohohoSurvivor"))
+			|| ExcludedNames.Contains(Property->GetName()) || Property->Identical_InContainer(Source, Reference))
+		{
+			continue;
+		}
+		Property->CopyCompleteValue_InContainer(Target, Source);
+		FString Value;
+		Property->ExportText_InContainer(0, Value, Source, Source, nullptr, PPF_None);
+		Report += FString::Printf(TEXT("%s = %s\n"), *Property->GetName(), *Value);
+	}
+	Target->MarkPackageDirty();
+	return Report;
+}
+
 #endif

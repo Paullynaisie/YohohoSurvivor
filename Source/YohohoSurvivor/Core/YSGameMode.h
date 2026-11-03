@@ -180,11 +180,11 @@ protected:
 
 	/** Touche du pavé numérique qui fait apparaître un NME Jolly Ship (Jolly Ship Class) sur l'eau ; -1 = aucune */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn", ClampMin="-1", ClampMax="9"))
-	int32 NumpadJollyShipKey = 7;
+	int32 NumpadJollyShipKey = -1;
 
 	/** Touche du pavé numérique qui fait apparaître un NME Galion sur l'eau (Galion Class ; -1 = aucune) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Test", meta=(EditCondition="bNumpadFoeSpawn", ClampMin="-1", ClampMax="9"))
-	int32 NumpadGalionKey = 8;
+	int32 NumpadGalionKey = -1;
 
 	/** NME Galion (BP_NME_Galion) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Galion")

@@ -75,5 +75,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static int32 CopyEditableProperties(UObject* Source, UObject* Target);
+
+	/**
+	 *  Copie vers Target les propriétés éditables des classes du jeu dont la valeur diffère entre Source et Reference
+	 *  (ex. ce qui fait d'un Skull un Skull Elite, appliqué à un Skull Gun), sauf celles d'ExcludedNames (noms C++).
+	 *  Retourne la liste « Nom = valeur » des propriétés copiées (une par ligne).
+	 */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static FString CopyChangedProperties(UObject* Source, UObject* Reference, UObject* Target, const TArray<FString>& ExcludedNames);
 #endif
 };

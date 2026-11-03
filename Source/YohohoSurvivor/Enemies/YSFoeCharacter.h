@@ -24,6 +24,7 @@ class UMaterialInterface;
 class UYSFoeRangedAction;
 class UYSAutoSwingAbility;
 class UYSBossBigSlashAbility;
+class UYSFoeRoll360ShotAction;
 class UYSGroundZoneComponent;
 class AYSProjectile;
 class AYSFoeGalion;
@@ -136,6 +137,58 @@ struct FYSFoeBossDash
 	/** Incrémenté à chaque attaque */
 	UPROPERTY()
 	uint8 Counter = 0;
+};
+
+/** Roll360shot en cours : roulade de Start à End puis balles tout autour, recalculé à l'identique sur chaque machine */
+USTRUCT()
+struct FYSFoeRoll360Shot
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	bool bActive = false;
+
+	UPROPERTY()
+	FVector_NetQuantize Start = FVector::ZeroVector;
+
+	UPROPERTY()
+	FVector_NetQuantize End = FVector::ZeroVector;
+
+	/** Direction de la première balle (vers la cible vue depuis End) */
+	UPROPERTY()
+	float FirstYaw = 0.0f;
+
+	/** Sens du tour : +1 (droite, horaire vu de dessus) ou -1 (gauche) */
+	UPROPERTY()
+	int8 Side = 1;
+
+	UPROPERTY()
+	float RollDuration = 0.4f;
+
+	/** Heure de la première balle depuis le début (roulade + pause) */
+	UPROPERTY()
+	float FirstShotTime = 0.7f;
+
+	UPROPERTY()
+	float ShotInterval = 0.1f;
+
+	UPROPERTY()
+	int32 ShotCount = 24;
+
+	UPROPERTY()
+	float AngleStep = 15.0f;
+
+	UPROPERTY()
+	double StartServerTime = 0.0;
+
+	UPROPERTY()
+	uint8 Counter = 0;
+
+	/** Heure du tir de la balle Index depuis le début */
+	float GetShotTime(int32 Index) const { return FirstShotTime + ShotInterval * Index; }
+
+	/** Direction (yaw) de la balle Index */
+	float GetShotYaw(int32 Index) const { return FirstYaw + Side * AngleStep * Index; }
 };
 
 /**
@@ -751,6 +804,9 @@ public:
 	/** Boss Big Slash en cours (préparation ou dash) */
 	bool IsBossDashing() const { return BossDash.bActive; }
 
+	/** Roll360shot en cours (roulade ou tirs) */
+	bool IsRoll360Shooting() const { return Roll360Shot.bActive; }
+
 	/**
 	 *  Monte à bord d'un NME Jolly Ship (serveur, avant FinishSpawning) : plus de mouvement, gardé sur sa place, ni pushback ni bump ;
 	 *  portée d'attaque et durée de vie des AMMO multipliées tant qu'il est à bord
@@ -1029,6 +1085,37 @@ protected:
 	bool bBossWarningShown = false;
 	uint8 LocalBossDashCounter = 0;
 
+	/** Roll360shot d'une arme tenue (attaque en plus du Boss Gun sous bouclier), ou nullptr */
+	UYSFoeRoll360ShotAction* GetRoll360ShotAction() const;
+
+	/** Bouclier actif, attaque rechargée et cible à portée : lance le Roll360shot (serveur) */
+	bool TryStartRoll360Shot();
+
+	/** Roll360shot en cours (serveur, répliqué) */
+	UPROPERTY(ReplicatedUsing=OnRep_Roll360Shot)
+	FYSFoeRoll360Shot Roll360Shot;
+
+	UFUNCTION()
+	void OnRep_Roll360Shot();
+
+	/** Début / déroulé / fin du Roll360shot sur cette machine (mouvement du personnage coupé, bandes de prévisualisation locales) */
+	void BeginRoll360ShotLocal();
+	void UpdateRoll360Shot();
+	void EndRoll360ShotLocal();
+
+	/** Bandes de prévisualisation des balles (locales, créées à la demande, une par balle) */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UYSGroundZoneComponent>> Roll360Previews;
+
+	/** Bande de la balle Index affichée ou cachée sur cette machine */
+	void ShowRoll360Preview(int32 Index, bool bShow);
+
+	bool bLocalRoll360Active = false;
+	uint8 LocalRoll360Counter = 0;
+	/** Balles déjà tirées (serveur) / déjà jouées (recul, sur cette machine) */
+	int32 Roll360FiredCount = 0;
+	int32 Roll360LocalShotCount = 0;
+
 	/** Bump en cours (serveur, répliqué) */
 	UPROPERTY(ReplicatedUsing=OnRep_Bump)
 	FYSFoeBump Bump;
@@ -1052,8 +1139,11 @@ protected:
 	/** Inclinaison puis retour (toutes machines) */
 	void UpdateHitReaction();
 
-	/** Incline le corps et le visage autour des pieds (rotation dans le repère du monde ; identité = position d'origine) */
-	void ApplyBodyTilt(const FQuat& WorldTilt);
+	/**
+	 *  Incline le corps et le visage autour des pieds (rotation dans le repère du monde ; identité = position d'origine) ;
+	 *  bAroundCenter : autour du centre de la capsule (roulade du Roll360shot)
+	 */
+	void ApplyBodyTilt(const FQuat& WorldTilt, bool bAroundCenter = false);
 
 	/** Plus d'inclinaison : corps remis à sa place */
 	void CancelHitReaction();

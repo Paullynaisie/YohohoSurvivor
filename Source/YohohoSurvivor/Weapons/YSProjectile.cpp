@@ -73,6 +73,11 @@ AYSProjectile::AYSProjectile()
 	HitTags.AddTag(YSTags::Team_Foe);
 }
 
+float AYSProjectile::GetCollisionRadius() const
+{
+	return Collision ? Collision->GetUnscaledSphereRadius() : 0.0f;
+}
+
 void AYSProjectile::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
