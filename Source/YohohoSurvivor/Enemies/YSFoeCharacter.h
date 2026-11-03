@@ -422,6 +422,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Movement", meta=(ClampMin="1"))
 	float CoreTargetDistanceMultiplier = 2.0f;
 
+	/** Le NME grimpe (mode Flying du CharacterMovement, serveur) */
+	UFUNCTION(BlueprintPure, Category="Foe|Movement|Climb")
+	bool IsClimbing() const { return bClimbing; }
+
 	/** Le NME ne change de cible qu'une fois par ... (cible morte ou devenue hors d'atteinte : tout de suite) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Foe|Movement", meta=(ClampMin="0", Units="s"))
 	float TargetCheckInterval = 3.0f;
@@ -441,6 +445,26 @@ protected:
 	/** NME à distance qui vise un joueur en train de nager : s'arrête quand la mer est à cette distance devant lui (pas dans l'eau) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement", meta=(ClampMin="0", Units="Centimeters"))
 	float WaterStopDistance = 50.0f;
+
+	/**
+	 *  Escalade (serveur, pas de pathfinding) : un NME qui poursuit sa cible et bute contre un prop ou une surface (pas un
+	 *  personnage) grimpe : la vitesse horizontale qu'il perd devient verticale (Move Speed 300 bloqué net = 300 vers le haut ;
+	 *  100 gardés en glissant le long du mur = 200 vers le haut). Plus rien devant lui : il retombe sur le dessus.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Climb")
+	bool bClimbWhenBlocked = true;
+
+	/** Vitesse verticale = vitesse horizontale perdue x ce facteur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Climb", meta=(ClampMin="0", EditCondition="bClimbWhenBlocked"))
+	float ClimbSpeedMultiplier = 1.0f;
+
+	/** Part de Move Speed qu'il doit perdre pour commencer à grimper (évite de décoller pour un simple frottement) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Climb", meta=(ClampMin="0", ClampMax="1", EditCondition="bClimbWhenBlocked"))
+	float ClimbMinLostSpeedRatio = 0.1f;
+
+	/** Il continue de grimper tant qu'il a buté contre la surface il y a moins de ... (sinon il retombe) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Climb", meta=(ClampMin="0", Units="s", EditCondition="bClimbWhenBlocked"))
+	float ClimbBlockMemory = 0.15f;
 
 	/**
 	 *  Élite : poursuit aussi les joueurs qui nagent et entre dans la mer tant que l'eau devant lui (à Water Stop Distance x sa
@@ -835,6 +859,23 @@ protected:
 
 	/** Prochain coup de contact sur un core */
 	double NextCoreContactTime = 0.0;
+
+	/** Escalade : surface (pas un personnage) contre laquelle le déplacement a buté (appelé par le CharacterMovement) */
+	virtual void MoveBlockedBy(const FHitResult& Impact) override;
+
+	/** Escalade (serveur, début du Tick) : d'après la poursuite et le déplacement de l'image précédente */
+	void UpdateClimb();
+
+	/** Fin de l'escalade : il retombe (Falling) */
+	void StopClimbing(const TCHAR* Reason);
+
+	bool bClimbing = false;
+
+	/** La poursuite a donné un input de déplacement à cette image (lu par UpdateClimb à l'image suivante) */
+	bool bChaseInputThisFrame = false;
+
+	/** Dernière fois que le déplacement a buté contre une surface qui fait grimper */
+	double LastClimbBlockTime = -1.0;
 
 	/** Le sol devant le NME (Distance dans Direction) est la mer : il s'arrête au bord au lieu d'y entrer (cible qui nage) */
 	bool IsWaterAhead(const FVector& Direction, float Distance, float MaxDepth = 0.0f) const;

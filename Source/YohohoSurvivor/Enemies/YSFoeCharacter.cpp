@@ -1517,6 +1517,9 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// escalade : d'après le déplacement de l'image précédente (avant la poursuite de cette image)
+	UpdateClimb();
+
 	// à bord d'un Jolly Ship : le pilote ne fait que piloter
 	if (bLocalShipRide && !ShipRide.bCanAttack)
 	{
@@ -1636,6 +1639,7 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		if (!bBlockedByWater)
 		{
 			AddMovementInput(ToTarget.GetSafeNormal());
+			bChaseInputThisFrame = true;
 		}
 	}
 
@@ -1919,6 +1923,86 @@ namespace YSFoeCrowd
 		}
 		return Grid;
 	}
+}
+
+void AYSFoeCharacter::MoveBlockedBy(const FHitResult& Impact)
+{
+	Super::MoveBlockedBy(Impact);
+	if (!bClimbWhenBlocked || !HasAuthority())
+	{
+		return;
+	}
+	// personnages (joueurs, minions, autres NME) : on ne leur grimpe pas dessus ; sol praticable ou plafond : rien à grimper
+	const UPrimitiveComponent* HitComponent = Impact.GetComponent();
+	const ECollisionChannel HitType = HitComponent ? HitComponent->GetCollisionObjectType() : ECC_WorldStatic;
+	if (HitType == ECC_Pawn || HitType == ECC_YSFoe || Cast<APawn>(Impact.GetActor()))
+	{
+		return;
+	}
+	if (Impact.Normal.Z >= GetCharacterMovement()->GetWalkableFloorZ() || Impact.Normal.Z < -0.5f)
+	{
+		return;
+	}
+	LastClimbBlockTime = GetWorld()->GetTimeSeconds();
+}
+
+void AYSFoeCharacter::UpdateClimb()
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	const bool bChased = bChaseInputThisFrame;
+	bChaseInputThisFrame = false;
+
+	// un autre mouvement a pris la main (pushback, bump, sortie du sol...) : plus d'escalade
+	if (bClimbing && Movement->MovementMode != MOVE_Flying)
+	{
+		bClimbing = false;
+		UE_LOG(LogTemp, Verbose, TEXT("[YSClimb] %s : escalade interrompue (mode %d)"), *GetName(), static_cast<int32>(Movement->MovementMode.GetValue()));
+	}
+
+	const bool bBlocked = LastClimbBlockTime >= 0.0 && GetWorld()->GetTimeSeconds() - LastClimbBlockTime <= ClimbBlockMemory;
+	if (!bClimbWhenBlocked || !bChased || !bBlocked || bLocalShipRide || CrewShip || !Movement->IsActive())
+	{
+		if (bClimbing)
+		{
+			StopClimbing(bBlocked ? TEXT("plus de poursuite") : TEXT("plus rien devant"));
+		}
+		return;
+	}
+
+	// vitesse horizontale perdue contre la surface (Velocity = déplacement réel de l'image précédente)
+	const float Speed = Movement->MaxWalkSpeed;
+	const float KeptSpeed = FMath::Min(Movement->Velocity.Size2D(), Speed);
+	const float LostSpeed = FMath::Max(Speed - KeptSpeed, 0.0f);
+	if (!bClimbing)
+	{
+		if (Movement->MovementMode != MOVE_Walking || LostSpeed < Speed * ClimbMinLostSpeedRatio)
+		{
+			return;
+		}
+		bClimbing = true;
+		Movement->SetMovementMode(MOVE_Flying);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSClimb] %s grimpe à (%.0f, %.0f, %.0f) : %.0f gardés, %.0f vers le haut"), *GetName(),
+			GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, KeptSpeed, LostSpeed * ClimbSpeedMultiplier);
+	}
+
+	// vol sans gravité : horizontal plafonné à Move Speed, la vitesse perdue part vers le haut
+	const float VerticalSpeed = LostSpeed * ClimbSpeedMultiplier;
+	Movement->MaxFlySpeed = Speed + VerticalSpeed + 1.0f;
+	const FVector Horizontal = FVector(Movement->Velocity.X, Movement->Velocity.Y, 0.0f).GetClampedToMaxSize(Speed);
+	Movement->Velocity = FVector(Horizontal.X, Horizontal.Y, VerticalSpeed);
+	UE_LOG(LogTemp, VeryVerbose, TEXT("[YSClimb] %s : Z %.0f, %.0f gardés, %.0f vers le haut"), *GetName(), GetActorLocation().Z, KeptSpeed, VerticalSpeed);
+}
+
+void AYSFoeCharacter::StopClimbing(const TCHAR* Reason)
+{
+	bClimbing = false;
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (Movement->MovementMode == MOVE_Flying)
+	{
+		// l'élan vers le haut est gardé (la gravité le reprend) : aide à passer le rebord
+		Movement->SetMovementMode(MOVE_Falling);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSClimb] %s arrête de grimper à (%.0f, %.0f, %.0f) : %s"), *GetName(), GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, Reason);
 }
 
 FVector AYSFoeCharacter::ComputeSeparation() const
