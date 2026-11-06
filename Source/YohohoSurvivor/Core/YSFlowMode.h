@@ -79,6 +79,9 @@ public:
 	/** Une île commence à couler (serveur) : « go naviguer », et les îles suivantes si c'est l'île de départ */
 	void OnIslandSinkStarted(AYSIsland* SinkingIsland);
 
+	/** Tous les objectifs principaux d'une île sont livrés (serveur) : GameBoat à l'étape suivante, et les îles suivantes si c'est l'île de départ */
+	void OnIslandMainObjectivesDone(AYSIsland* DoneIsland);
+
 	/** Îles suivantes autour de From (serveur, une seule fois) */
 	void SpawnNextIslands(const AYSIsland* From);
 

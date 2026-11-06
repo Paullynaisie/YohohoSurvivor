@@ -105,9 +105,20 @@ void AYSFlowMode::Tick(float DeltaSeconds)
 void AYSFlowMode::OnIslandSinkStarted(AYSIsland* SinkingIsland)
 {
 	StartNavigationWaves();
+	// objectifs jamais livrés : elles apparaissent quand même à la coulaison de l'île de départ (sans effet si déjà là)
 	if (SinkingIsland && SinkingIsland == Island)
 	{
 		SpawnNextIslands(SinkingIsland);
+	}
+}
+
+void AYSFlowMode::OnIslandMainObjectivesDone(AYSIsland* DoneIsland)
+{
+	UpgradeGameBoat();
+	// demande de Paul : les îles suivantes apparaissent dès que les objectifs de l'île de départ sont livrés (plus à sa coulaison)
+	if (DoneIsland && DoneIsland == Island)
+	{
+		SpawnNextIslands(DoneIsland);
 	}
 }
 

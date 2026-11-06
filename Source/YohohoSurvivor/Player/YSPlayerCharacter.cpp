@@ -1813,7 +1813,18 @@ void AYSPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
 		{
+			// les contextes des personnages précédents de ce joueur (corps mort réanimé, changement de classe) restaient actifs :
+			// mêmes touches, même priorité, actions sans liaison qui « consomment » ZQSD / clics une fois sur deux selon l'ordre
+			// de tri -> plus de contrôles après une réanimation. Seul le personnage utilise Enhanced Input : on repart de zéro.
+			int32 StaleContexts = 0;
+			for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
+			{
+				StaleContexts += *It != this && It->DefaultMappingContext && Subsystem->HasMappingContext(It->DefaultMappingContext) ? 1 : 0;
+			}
+			UE_LOG(LogTemp, Log, TEXT("[YSPossess] %s : %d contexte(s) d'entrées d'anciens personnages encore actif(s), retiré(s)"), *GetName(), StaleContexts);
+			Subsystem->ClearAllMappings();
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
+			InputLocalPlayer = PC->GetLocalPlayer();
 		}
 	}
 
@@ -2680,6 +2691,15 @@ void AYSPlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		DisplayedMarkedFoe->SetMarked(false);
 	}
 	DisplayedMarkedFoe.Reset();
+
+	// ses touches ne restent pas actives pour le personnage suivant du joueur
+	if (ULocalPlayer* LocalPlayer = InputLocalPlayer.Get())
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
+		{
+			Subsystem->RemoveMappingContext(DefaultMappingContext);
+		}
+	}
 
 	Super::EndPlay(EndPlayReason);
 }

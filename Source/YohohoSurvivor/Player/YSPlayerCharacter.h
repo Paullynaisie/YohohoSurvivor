@@ -18,6 +18,7 @@ class UBlendSpace;
 class UInputAction;
 class UYSRollAbility;
 class UInputMappingContext;
+class ULocalPlayer;
 class UChildActorComponent;
 class AYSWeapon;
 class UYSWeaponSet;
@@ -125,6 +126,9 @@ private:
 	/** Contexte d'input clavier/souris par défaut, créé à l'exécution */
 	UPROPERTY(Transient)
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;
+
+	/** Joueur local qui a reçu DefaultMappingContext (retiré à l'EndPlay) */
+	TWeakObjectPtr<ULocalPlayer> InputLocalPlayer;
 
 protected:
 

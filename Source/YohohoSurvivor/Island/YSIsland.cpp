@@ -1075,15 +1075,17 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : objectif %s accompli : %s (%d principal(aux) restant(s))"), *Data->GetName(), State.bMain ? TEXT("principal") : TEXT("secondaire"),
 				*State.DisplayName.ToString(), CountOpenMainObjectives());
 			RefreshOpenDeliveryClasses();
-			if (State.bMain && CountOpenMainObjectives() == 0 && Phase != EYSIslandPhase::Sinking)
+			if (State.bMain && CountOpenMainObjectives() == 0)
 			{
-				// le GameBoat passe à l'étape suivante
+				// le GameBoat passe à l'étape suivante et les îles suivantes apparaissent, même si la routine de coulaison
+				// a déjà commencé (jour max atteint avant la livraison : avant, le bateau ne changeait plus)
 				if (AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())
 				{
-					FlowMode->UpgradeGameBoat();
+					FlowMode->OnIslandMainObjectivesDone(this);
 				}
 				// plus d'objectif principal : on passe au jour suivant, ce qui lance la routine de coulaison (OnGlobalDayChanged)
-				if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+				AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+				if (GameMode && Phase != EYSIslandPhase::Sinking)
 				{
 					GameMode->AdvanceDay();
 				}
