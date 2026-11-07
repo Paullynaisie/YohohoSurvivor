@@ -25,6 +25,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
 	float BottomMargin = 148.0f;
 
+	/** Plusieurs élites / boss en vie : espace entre deux barres empilées (pixels) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout")
+	float StackSpacing = 10.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="HUD")
 	FVector2D BarSize = FVector2D(320.0f, 26.0f);
 

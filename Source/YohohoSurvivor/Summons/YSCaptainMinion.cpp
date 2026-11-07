@@ -183,6 +183,14 @@ void AYSCaptainMinion::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// resté trop loin de son Captain (bloqué sur une île pendant qu'il part en bateau) : disparaît (le Captain peut en réinvoquer)
+	if (DespawnDistanceFromCaptain > 0.0f && FVector::DistSquared2D(GetActorLocation(), Captain->GetActorLocation()) > FMath::Square(DespawnDistanceFromCaptain))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSMinion] %s : à plus de %.0f cm de %s, disparaît"), *GetName(), DespawnDistanceFromCaptain, *Captain->GetName());
+		Destroy();
+		return;
+	}
+
 	// même vitesse que le Captain (sans les bonus des actions : roulade, dash...)
 	MoveSpeed = Captain->GetUnmodifiedWalkSpeed();
 

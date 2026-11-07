@@ -84,6 +84,7 @@ void AYSIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	DOREPLIFETIME(AYSIsland, OpenDeliveryClasses);
 	DOREPLIFETIME(AYSIsland, StartBoat);
 	DOREPLIFETIME(AYSIsland, SinkStartServerTime);
+	DOREPLIFETIME(AYSIsland, bMainObjectivesDone);
 }
 
 FVector AYSIsland::LocalToWorld(const FVector2f& Local, float LocalZ) const
@@ -1077,6 +1078,8 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 			RefreshOpenDeliveryClasses();
 			if (State.bMain && CountOpenMainObjectives() == 0)
 			{
+				bMainObjectivesDone = true;
+				ForceNetUpdate();
 				// le GameBoat passe à l'étape suivante et les îles suivantes apparaissent, même si la routine de coulaison
 				// a déjà commencé (jour max atteint avant la livraison : avant, le bateau ne changeait plus)
 				if (AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())

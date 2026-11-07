@@ -429,6 +429,8 @@ void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(AYSFoeCharacter, MaxShield);
 	DOREPLIFETIME(AYSFoeCharacter, BossDash);
 	DOREPLIFETIME(AYSFoeCharacter, Roll360Shot);
+	DOREPLIFETIME(AYSFoeCharacter, bHudHealthBar);
+	DOREPLIFETIME(AYSFoeCharacter, bSwimExhausted);
 	DOREPLIFETIME(AYSFoeCharacter, ShipRide);
 	DOREPLIFETIME(AYSFoeCharacter, RideYaw);
 }
@@ -848,7 +850,8 @@ void AYSFoeCharacter::Die()
 		// élite qui marche dans l'eau peu profonde (Elite Wade Depth) : XP gardée
 		const float MaxWaterDepth = bIsElite ? FMath::Max(NoExperienceWaterDepth, EliteWadeDepth) : NoExperienceWaterDepth;
 		// tombé d'un Jolly Ship détruit : XP gardée (les joueurs ont gagné le combat)
-		if ((bSkipDeathAnim || WaterDepth > MaxWaterDepth) && !bExperienceInWater)
+		// tué en nageant : XP gardée (seul celui qui coule après Swim Duration ne rapporte rien : deadzone)
+		if ((bSkipDeathAnim || (WaterDepth > MaxWaterDepth && !bFoeSwimming)) && !bExperienceInWater)
 		{
 			UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s meurt dans l'eau (%s, %.0f cm d'eau) : pas d'XP"), *GetName(), bSkipDeathAnim ? TEXT("deadzone") : TEXT("dans la mer"), WaterDepth);
 		}
@@ -1423,6 +1426,7 @@ void AYSFoeCharacter::BeginPlay()
 		{
 			YSGameState->SetCurrentElite(this);
 		}
+		bHudHealthBar = bIsElite && !CrewShip && !bEliteHealthBarUnder;
 
 		// apparition : sort du sol avant de démarrer son comportement (pas l'équipage d'un Jolly Ship : déjà à bord)
 		if (bSpawnRise && !ShipRide.bActive && !CrewShip)
@@ -1464,6 +1468,9 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		UpdateDeath();
 		return;
 	}
+
+	// nage : porté par le sol de nage pendant Swim Duration, puis il coule
+	UpdateFoeSwimming(DeltaSeconds);
 
 	// à bord d'un Jolly Ship : gardé sur sa place (avant les mains, qui suivent le corps)
 	if (bLocalShipRide)
@@ -1597,8 +1604,10 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	}
 
 	// NME à distance : les joueurs qui nagent restent des cibles ; élite : aussi (il entre dans l'eau peu profonde)
+	// NME qui nagent (Can Swim, pas épuisé) : les nageurs aussi, il va dans l'eau
 	const bool bWades = bIsElite && EliteWadeDepth > 0.0f && !CrewShip;
-	const bool bIncludeSwimmers = Ranged != nullptr || bWades;
+	const bool bSwims = bCanSwim && !bSwimExhausted && !CrewShip;
+	const bool bIncludeSwimmers = Ranged != nullptr || bWades || bSwims;
 	const double TargetCheckNow = GetWorld()->GetTimeSeconds();
 	if (TargetCheckNow >= NextTargetCheckTime || !IsTargetStillValid(bIncludeSwimmers))
 	{
@@ -1658,7 +1667,7 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		// cible qui nage : le NME s'arrête au bord de l'eau (il attend qu'elle revienne à portée)
 		// élite : il entre dans la mer jusqu'à Elite Wade Depth (quelle que soit la cible)
 		const AYSPlayerCharacter* TargetCharacter = Cast<AYSPlayerCharacter>(Target);
-		const bool bBlockedByWater = bWades ? IsWaterAhead(ToTarget, WaterStopDistance * GetActorScale3D().X, EliteWadeDepth)
+		const bool bBlockedByWater = bSwims ? false : bWades ? IsWaterAhead(ToTarget, WaterStopDistance * GetActorScale3D().X, EliteWadeDepth)
 			: ((TargetCharacter && TargetCharacter->IsSwimming()) || TargetCore) && IsWaterAhead(ToTarget, WaterStopDistance);
 		if (!bBlockedByWater)
 		{
@@ -1683,6 +1692,56 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 	if (bLocalShipRide)
 	{
 		RideYaw = GetActorRotation().Yaw;
+	}
+}
+
+void AYSFoeCharacter::UpdateFoeSwimming(float DeltaSeconds)
+{
+	// sol de nage (canal Water) : bloque la capsule tant que le NME peut nager ; plus près d'une île qui coule, ni épuisé
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const bool bFloorActive = bCanSwim && !bSwimExhausted && !bLocalShipRide && !(YSGameState && YSGameState->IsSinkingAt(GetActorLocation()));
+	if (bFloorActive != bSwimFloorBlocked)
+	{
+		bSwimFloorBlocked = bFloorActive;
+		GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_YSWater, bFloorActive ? ECR_Block : ECR_Ignore);
+	}
+
+	// nage : pieds presque à la profondeur du sol de nage (même calcul sur toutes les machines)
+	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+	const FVector Feet = GetActorLocation() - FVector(0.0f, 0.0f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	const bool bNowSwimming = Ocean && bFloorActive && Health > 0.0f && AYSOcean::GetWaterDepth(GetWorld(), Feet) >= Ocean->GetSwimFloorDepth() - SwimEnterTolerance;
+	if (bNowSwimming != bFoeSwimming)
+	{
+		bFoeSwimming = bNowSwimming;
+		GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * (bFoeSwimming ? FoeSwimSpeedMultiplier : 1.0f);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSSwim] %s (%s) %s"), *GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"), bFoeSwimming ? TEXT("nage") : TEXT("sort de l'eau"));
+	}
+
+	if (!HasAuthority())
+	{
+		return;
+	}
+	// temps dans l'eau (remis à zéro en sortant de l'eau) : au bout de Swim Duration il coule (deadzone, pas d'XP)
+	if (!bFoeSwimming)
+	{
+		// revenu sur la terre ferme (pas sur le fond de la mer après avoir coulé) : il peut de nouveau nager
+		if (GetCharacterMovement()->IsMovingOnGround() && AYSOcean::GetWaterDepth(GetWorld(), Feet) < NoExperienceWaterDepth)
+		{
+			SwimTime = 0.0f;
+			if (bSwimExhausted)
+			{
+				bSwimExhausted = false;
+				ForceNetUpdate();
+			}
+		}
+		return;
+	}
+	SwimTime += DeltaSeconds;
+	if (SwimTime >= SwimDuration && !bSwimExhausted)
+	{
+		bSwimExhausted = true;
+		ForceNetUpdate();
+		UE_LOG(LogTemp, Log, TEXT("[YSSwim] %s : %.0f s dans l'eau, il coule en %s"), *GetName(), SwimTime, *GetActorLocation().ToCompactString());
 	}
 }
 
@@ -2722,8 +2781,10 @@ bool AYSFoeCharacter::TryStartRoll360Shot()
 	Roll360Shot.bActive = true;
 	Roll360Shot.Start = Start;
 	Roll360Shot.End = End;
-	Roll360Shot.FirstYaw = FirstDirection.Rotation().Yaw;
-	Roll360Shot.Side = FMath::RandBool() ? 1 : -1;
+	// première balle décalée de +/- First Shot Angle Offset (au hasard), puis rotation vers la cible (demande de Paul)
+	const int32 StartSign = FMath::RandBool() ? 1 : -1;
+	Roll360Shot.FirstYaw = FRotator::NormalizeAxis(FirstDirection.Rotation().Yaw + StartSign * Action->FirstShotAngleOffset);
+	Roll360Shot.Side = -StartSign;
 	Roll360Shot.RollDuration = Action->RollDuration;
 	Roll360Shot.FirstShotTime = Action->RollDuration + Action->FirstShotDelay;
 	Roll360Shot.ShotInterval = Action->ShotInterval;

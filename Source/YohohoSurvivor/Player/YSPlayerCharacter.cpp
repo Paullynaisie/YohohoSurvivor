@@ -3138,11 +3138,12 @@ float AYSPlayerCharacter::GetFoeAttractionMultiplier() const
 AYSInteractiveObject* AYSPlayerCharacter::FindInteractTarget() const
 {
 	const UWorld* World = GetWorld();
-	if (!World || !IsAlive() || IsCarrying() || IsAtStation())
+	if (!World || !IsAlive() || IsAtStation())
 	{
 		return nullptr;
 	}
 
+	// en portant un objet, seuls les objets qui l'acceptent répondent (accès du bateau : CanInteract des autres refuse un porteur) ;
 	// le plus proche devant le personnage (regard = direction du curseur), à portée
 	const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
 	const float MinCos = FMath::Cos(FMath::DegreesToRadians(InteractionAngle));
@@ -3194,9 +3195,17 @@ void AYSPlayerCharacter::ServerInteract_Implementation()
 
 void AYSPlayerCharacter::InteractOnServer()
 {
+	// en portant un objet : à côté de l'accès d'un bateau, E fait monter à bord avec l'objet ; sinon il est reposé
 	if (IsCarrying())
 	{
-		DropCarriedObject(TEXT("touche E"));
+		if (AYSInteractiveObject* Target = FindInteractTarget())
+		{
+			Target->Interact(this);
+		}
+		else
+		{
+			DropCarriedObject(TEXT("touche E"));
+		}
 		return;
 	}
 	// à un poste : E le quitte (sauf chaloupe)

@@ -58,7 +58,7 @@ public:
 
 	/** Écart entre la côte de l'île de départ et celle de chaque nouvelle île (rayons moyens) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands", meta=(ClampMin="0", Units="Centimeters"))
-	float NextIslandsGap = 50000.0f;
+	float NextIslandsGap = 25000.0f;
 
 	/** Décalage au hasard de la direction de chaque île, autour de sa place régulière */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands", meta=(ClampMin="0", ClampMax="60", Units="Degrees"))

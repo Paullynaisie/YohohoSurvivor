@@ -221,11 +221,11 @@ protected:
 
 	/** Nager : stamina consommée par pas (pas de ralentissement tant qu'il en reste) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Stamina", meta=(ClampMin="0"))
-	float SwimStaminaCost = 4.0f;
+	float SwimStaminaCost = 1.0f;
 
 	/** Nager sans stamina : PV perdus par pas, jusqu'à la mort (sans armure) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Stamina", meta=(ClampMin="0"))
-	float DrownHealthCost = 4.0f;
+	float DrownHealthCost = 1.0f;
 
 	/**
 	 *  BlendSpace 2D de strafe (X = direction -180..180 relative au regard, Y = vitesse).
@@ -689,7 +689,7 @@ protected:
 
 	/** Interaction (E) : distance max (au sol) d'un objet devant le personnage */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Interaction", meta=(ClampMin="0", Units="Centimeters"))
-	float InteractionDistance = 200.0f;
+	float InteractionDistance = 300.0f;
 
 	/** Interaction : écart d'angle max (de chaque côté) entre le regard et l'objet */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Interaction", meta=(ClampMin="0", ClampMax="180", Units="Degrees"))

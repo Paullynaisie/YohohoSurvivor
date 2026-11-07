@@ -1,4 +1,5 @@
 #include "Map/YSOcean.h"
+#include "Core/YSCombat.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -36,6 +37,8 @@ AYSOcean::AYSOcean()
 	SwimFloor->SetCollisionObjectType(ECC_YSWater);
 	SwimFloor->SetCollisionResponseToAllChannels(ECR_Ignore);
 	SwimFloor->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	// NME (canal d'objet Foe) : ils nagent aussi (leur capsule ne bloque le canal Water que tant qu'ils peuvent nager)
+	SwimFloor->SetCollisionResponseToChannel(ECC_YSFoe, ECR_Block);
 	SwimFloor->SetGenerateOverlapEvents(false);
 	SwimFloor->SetCanEverAffectNavigation(false);
 	SwimFloor->SetHiddenInGame(true);
@@ -60,6 +63,9 @@ void AYSOcean::ApplySwimFloor()
 	const float Thickness = 20.0f;
 	SwimFloor->SetBoxExtent(FVector(FMath::Max(Bounds.BoxExtent.X, 100.0f), FMath::Max(Bounds.BoxExtent.Y, 100.0f), Thickness * 0.5f));
 	SwimFloor->SetWorldLocationAndRotation(FVector(Bounds.Origin.X, Bounds.Origin.Y, GetSeaLevel() - SwimFloorDepth - Thickness * 0.5f), FRotator::ZeroRotator);
+	// réponses imposées ici aussi (océan sauvegardé dans les maps avant que les NME nagent)
+	SwimFloor->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	SwimFloor->SetCollisionResponseToChannel(ECC_YSFoe, ECR_Block);
 }
 
 float AYSOcean::GetWaterDepth(const UWorld* World, const FVector& Point)

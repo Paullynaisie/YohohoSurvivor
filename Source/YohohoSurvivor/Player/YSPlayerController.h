@@ -12,6 +12,7 @@ class UYSCharacterSelectWidget;
 class UYSUpgradeMenuWidget;
 class UYSPlayerHUDWidget;
 class UYSEliteHealthWidget;
+class AYSFoeCharacter;
 class UYSDayBannerWidget;
 class UYSOffscreenIndicatorsWidget;
 class UYSObjectiveWidget;
@@ -185,6 +186,16 @@ private:
 	/** Barre de vie de l'élite dans le HUD (haut droite), quand il est hors écran */
 	UPROPERTY(Transient)
 	TObjectPtr<UYSEliteHealthWidget> EliteHealth;
+
+	/** Barres des élites / boss en plus (plusieurs en vie : empilées au-dessus de EliteHealth) */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UYSEliteHealthWidget>> ExtraEliteHealths;
+
+	/** Élites affichés dans le HUD, dans l'ordre d'arrivée (le premier en bas) */
+	TArray<TWeakObjectPtr<AYSFoeCharacter>> HudElites;
+
+	/** Barre d'index Index de la pile (0 = EliteHealth), créée au besoin */
+	UYSEliteHealthWidget* GetEliteHealthBar(int32 Index);
 
 	/** Icônes des autres joueurs hors écran (au bord, dans leur direction) */
 	UPROPERTY(Transient)

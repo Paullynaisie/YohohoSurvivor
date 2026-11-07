@@ -1177,6 +1177,32 @@ void AYSPlayerController::ServerLoopDebug_Implementation(int32 Action)
 	}
 }
 
+UYSEliteHealthWidget* AYSPlayerController::GetEliteHealthBar(int32 Index)
+{
+	if (Index == 0)
+	{
+		return EliteHealth;
+	}
+	while (ExtraEliteHealths.Num() < Index)
+	{
+		UGameViewportSubsystem* ViewportSubsystem = UGameViewportSubsystem::Get(GetWorld());
+		UYSEliteHealthWidget* Bar = CreateWidget<UYSEliteHealthWidget>(this, EliteHealthWidgetClass ? EliteHealthWidgetClass.Get() : UYSEliteHealthWidget::StaticClass());
+		if (!Bar || !ViewportSubsystem)
+		{
+			return nullptr;
+		}
+		Bar->SetVisibility(ESlateVisibility::Collapsed);
+		FGameViewportWidgetSlot BarSlot;
+		BarSlot.Anchors = FAnchors(0.5f, 1.0f);
+		BarSlot.Alignment = FVector2D(0.5f, 1.0f);
+		BarSlot.Offsets = FMargin(0.0f, -Bar->BottomMargin, 0.0f, 0.0f);
+		BarSlot.ZOrder = 1;
+		ViewportSubsystem->AddWidgetForPlayer(Bar, GetLocalPlayer(), BarSlot);
+		ExtraEliteHealths.Add(Bar);
+	}
+	return ExtraEliteHealths[Index - 1];
+}
+
 void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 {
 	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
@@ -1198,15 +1224,43 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 	DayBannerRemaining = FMath::Max(0.0f, DayBannerRemaining - DeltaSeconds);
 	DayBanner->SetVisibility(DayBannerRemaining > 0.0f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
-	// élite : sa barre de vie est toujours dans le HUD (pas au-dessus de sa tête)
-	const AYSFoeCharacter* Elite = YSGameState->GetCurrentElite();
-	const bool bShowElite = IsValid(Elite) && Elite->GetHealth() > 0.0f;
-	if (bShowElite)
+	// élites / boss : barres de vie dans le HUD (pas au-dessus de leur tête), empilées dans l'ordre d'arrivée, le premier en bas ;
+	// un élite mort : les barres au-dessus redescendent
+	HudElites.RemoveAll([](const TWeakObjectPtr<AYSFoeCharacter>& Elite)
 	{
-		EliteHealth->SetElite(Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
-		EliteHealth->SetBossState(Elite->GetBossShield(), Elite->GetMaxBossShield(), Elite->GetRage(), Elite->UsesBossArmor() ? Elite->GetMaxRage() : 0.0f);
+		return !Elite.IsValid() || Elite->GetHealth() <= 0.0f || Elite->IsDying();
+	});
+	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
+	{
+		if (It->ShowsHudHealthBar() && It->GetHealth() > 0.0f && !It->IsDying() && !HudElites.Contains(*It))
+		{
+			HudElites.Add(*It);
+		}
 	}
-	EliteHealth->SetVisibility(bShowElite ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	UGameViewportSubsystem* ViewportSubsystem = UGameViewportSubsystem::Get(GetWorld());
+	float StackOffset = 0.0f;
+	for (int32 Index = 0; Index < FMath::Max(HudElites.Num(), 1 + ExtraEliteHealths.Num()); ++Index)
+	{
+		UYSEliteHealthWidget* Bar = Index < HudElites.Num() || Index == 0 ? GetEliteHealthBar(Index) : ExtraEliteHealths[Index - 1].Get();
+		if (!Bar)
+		{
+			continue;
+		}
+		const AYSFoeCharacter* Elite = HudElites.IsValidIndex(Index) ? HudElites[Index].Get() : nullptr;
+		if (Elite)
+		{
+			Bar->SetElite(Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
+			Bar->SetBossState(Elite->GetBossShield(), Elite->GetMaxBossShield(), Elite->GetRage(), Elite->UsesBossArmor() ? Elite->GetMaxRage() : 0.0f);
+			if (ViewportSubsystem)
+			{
+				FGameViewportWidgetSlot BarSlot = ViewportSubsystem->GetWidgetSlot(Bar);
+				BarSlot.Offsets = FMargin(0.0f, -(Bar->BottomMargin + StackOffset), 0.0f, 0.0f);
+				ViewportSubsystem->SetWidgetSlot(Bar, BarSlot);
+			}
+			StackOffset += Bar->GetDesiredSize().Y + Bar->StackSpacing;
+		}
+		Bar->SetVisibility(Elite ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
 
 	// objectif commun : doublons de l'équipe
 	if (Objective)
@@ -1419,6 +1473,19 @@ void AYSPlayerController::UpdatePlayerHUD()
 			UTexture2D* PingFace = nullptr;
 			GetIcon(PingerState, PingColor, PingFace);
 			AddIndicator(PingLocation, PingColor, PingFace, true);
+		}
+	}
+
+	// au nid d'pie : une bulle par île dont les objectifs principaux ne sont pas finis (au bord de l'écran hors écran)
+	const AYSCrowsNest* MyNest = PlayerCharacter ? Cast<AYSCrowsNest>(PlayerCharacter->GetCurrentStation()) : nullptr;
+	if (MyNest && MyNest->ShowsIslandIndicators() && bInMatch)
+	{
+		for (TActorIterator<AYSIsland> It(GetWorld()); It; ++It)
+		{
+			if (!It->AreMainObjectivesDone() && !It->HasSinkStarted())
+			{
+				AddIndicator(It->GetActorLocation() + FVector(0.0f, 0.0f, MyNest->GetIslandIndicatorHeight()), MyNest->GetIslandIndicatorColor(), MyNest->GetIslandIndicatorIcon(), true);
+			}
 		}
 	}
 

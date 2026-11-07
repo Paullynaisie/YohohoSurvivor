@@ -99,6 +99,9 @@ public:
 	/** La coulaison a commencé (descente en cours ou finie) */
 	bool HasSinkStarted() const { return SinkStartServerTime > 0.0; }
 
+	/** Tous les objectifs principaux livrés (répliqué : icônes du nid d'pie) */
+	bool AreMainObjectivesDone() const { return bMainObjectivesDone; }
+
 	/** Demi-côté du carré qui contient l'île et ses pentes sous l'eau (0 tant que le plan n'est pas construit sur cette machine) */
 	float GetReach() const { return Terrain.GetHalfSize(); }
 
@@ -262,6 +265,9 @@ private:
 	TArray<int32> EventsFired;
 
 	bool bSinkStarted = false;
+
+	UPROPERTY(Replicated)
+	bool bMainObjectivesDone = false;
 
 	/** Descente sur cette machine : composants rendus mobiles, position de départ */
 	bool bSinkGathered = false;

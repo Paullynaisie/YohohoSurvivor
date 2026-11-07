@@ -41,7 +41,7 @@ public:
 
 	/** Distance de la roulade (raccourcie si l'arrivée est dans l'eau) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Roll360shot|Roll", meta=(ClampMin="0", Units="Centimeters"))
-	float RollDistance = 1200.0f;
+	float RollDistance = 600.0f;
 
 	/** Durée de la roulade */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Roll360shot|Roll", meta=(ClampMin="0.05", Units="Seconds"))
@@ -73,6 +73,10 @@ public:
 	/** Angle entre deux balles successives */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Roll360shot|Shots", meta=(Units="Degrees"))
 	float AngleStep = 15.0f;
+
+	/** Décalage de la première balle par rapport à la cible (+ ou - au hasard) ; les suivantes tournent vers la cible */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Roll360shot|Shots", meta=(Units="Degrees"))
+	float FirstShotAngleOffset = 90.0f;
 
 	/** Délai entre deux balles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Roll360shot|Shots", meta=(ClampMin="0", Units="Seconds"))

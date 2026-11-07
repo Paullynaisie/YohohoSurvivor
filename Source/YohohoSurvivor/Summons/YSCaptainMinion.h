@@ -49,6 +49,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion", meta=(ClampMin="0", Units="Centimeters"))
 	float MaxChaseDistanceFromCaptain = 1500.0f;
 
+	/** Plus loin que cette distance du Captain (à plat), le minion disparaît (0 = jamais) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion", meta=(ClampMin="0", Units="Centimeters"))
+	float DespawnDistanceFromCaptain = 5000.0f;
+
 	/** Arme de mêlée : le minion s'approche de sa cible jusqu'à cette distance */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Minion", meta=(ClampMin="0", Units="Centimeters"))
 	float MeleeStopDistance = 150.0f;

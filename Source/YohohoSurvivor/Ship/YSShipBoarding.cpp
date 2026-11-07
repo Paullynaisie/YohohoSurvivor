@@ -31,7 +31,8 @@ AYSPirateShip* AYSShipBoarding::GetShip() const
 bool AYSShipBoarding::CanInteract(const AYSPlayerCharacter* Character) const
 {
 	const AYSPirateShip* Ship = GetShip();
-	if (!Ship || !Ship->IsPresent() || !Character || !Character->IsAlive() || Character->IsCarrying() || Character->IsAtStation())
+	// en portant un objet aussi : il monte à bord avec (demande de Paul)
+	if (!Ship || !Ship->IsPresent() || !Character || !Character->IsAlive() || Character->IsAtStation())
 	{
 		return false;
 	}

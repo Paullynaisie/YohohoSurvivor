@@ -378,6 +378,25 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(ClampMin="0", Units="Centimeters"))
 	float NoExperienceWaterDepth = 30.0f;
 
+	/**
+	 *  Nage : le NME va dans l'eau (poursuit aussi les nageurs et les joueurs sur un bateau), porté par le sol de nage de la mer
+	 *  comme les joueurs ; il peut remonter sur un bateau en grimpant sa coque (escalade). Au bout de Swim Duration dans l'eau
+	 *  il coule (deadzone, pas d'XP). Tué en nageant : XP normale.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Swim")
+	bool bCanSwim = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Swim", meta=(EditCondition="bCanSwim", ClampMin="0", Units="s"))
+	float SwimDuration = 30.0f;
+
+	/** Vitesse dans l'eau = Move Speed x ce multiplicateur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Swim", meta=(EditCondition="bCanSwim", ClampMin="0"))
+	float FoeSwimSpeedMultiplier = 0.5f;
+
+	/** Nage dès que les pieds sont à (Swim Floor Depth - cette marge) sous la surface */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Swim", meta=(EditCondition="bCanSwim", ClampMin="0", Units="Centimeters"))
+	float SwimEnterTolerance = 10.0f;
+
 	/** PV max, calculés au spawn depuis le niveau */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, ReplicatedUsing=OnRep_Health, Category="Foe|Health")
 	float MaxHealth = 100.0f;
@@ -744,6 +763,9 @@ public:
 	/** Mort, corps en ragdoll avant sa disparition (plus de gameplay) */
 	bool IsDying() const { return Death.bDead; }
 
+	/** Élite / boss dont la barre de vie est dans le HUD (pas l'équipage d'un Galion, ni ceux qui l'ont sous eux) */
+	bool ShowsHudHealthBar() const { return bHudHealthBar; }
+
 	/** Affiche ou cache la marque au sol (Captain AMMO ; local, appelé par le personnage qui marque sur chaque machine) */
 	void SetMarked(bool bMarked);
 
@@ -947,6 +969,17 @@ protected:
 	/** Le sol devant le NME (Distance dans Direction) est la mer : il s'arrête au bord au lieu d'y entrer (cible qui nage) */
 	bool IsWaterAhead(const FVector& Direction, float Distance, float MaxDepth = 0.0f) const;
 
+	/** Nage (toutes machines) : sol de nage, vitesse, temps dans l'eau (serveur) */
+	void UpdateFoeSwimming(float DeltaSeconds);
+
+	/** A nagé Swim Duration : coule (répliqué, sol de nage ignoré sur toutes les machines) */
+	UPROPERTY(Replicated)
+	bool bSwimExhausted = false;
+
+	float SwimTime = 0.0f;
+	bool bFoeSwimming = false;
+	bool bSwimFloorBlocked = false;
+
 	/** Blesse les joueurs dont la hurtbox touche la Hitbox (serveur) */
 	void ApplyContactDamage();
 
@@ -1083,6 +1116,10 @@ protected:
 	/** Équipage d'un NME Galion (serveur) */
 	UPROPERTY(Transient)
 	TObjectPtr<AYSFoeGalion> CrewShip;
+
+	/** Barre de vie dans le HUD (serveur au BeginPlay, répliqué) */
+	UPROPERTY(Replicated)
+	bool bHudHealthBar = false;
 
 	TWeakObjectPtr<AYSShipStation> CrewPost;
 
