@@ -61,6 +61,7 @@
 #include "Enemies/YSFoeJollyShip.h"
 #include "Enemies/YSNavalBattle.h"
 #include "Ship/YSPirateShip.h"
+#include "Ship/YSShipCore.h"
 #include "Ship/YSGameBoat.h"
 #include "Components/InputComponent.h"
 #include "Core/YSGameState.h"
@@ -1069,6 +1070,21 @@ void AYSPlayerController::YSIslandGoToBoat()
 	if (GetPawn() && Boat)
 	{
 		GetPawn()->TeleportTo(Boat->GetActorLocation() + FVector(300.0f, 300.0f, 150.0f), GetPawn()->GetActorRotation());
+		return;
+	}
+	// îles suivantes : la zone de dépôt est le core du bateau des joueurs (le plus proche)
+	const AYSShipCore* Core = nullptr;
+	for (TActorIterator<AYSShipCore> It(GetWorld()); It && GetPawn() && HasAuthority(); ++It)
+	{
+		if (It->IsAvailable() && (!Core || FVector::DistSquared2D(It->GetActorLocation(), GetPawn()->GetActorLocation()) < FVector::DistSquared2D(Core->GetActorLocation(), GetPawn()->GetActorLocation())))
+		{
+			Core = *It;
+		}
+	}
+	if (Core)
+	{
+		const bool bTeleported = GetPawn()->TeleportTo(Core->GetActorLocation() + FVector(150.0f, 0.0f, 150.0f), GetPawn()->GetActorRotation());
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] Debug : téléporté au core %s%s"), *Core->GetName(), bTeleported ? TEXT("") : TEXT(" : REFUSÉ"));
 	}
 }
 
@@ -1078,6 +1094,16 @@ void AYSPlayerController::YSIslandSpawnNext()
 	if (FlowMode && FlowMode->GetStartIslandActor())
 	{
 		FlowMode->BringNextIslands(FlowMode->GetStartIslandActor());
+	}
+}
+
+void AYSPlayerController::YSFinalIsland()
+{
+	AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	if (FlowMode)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Debug : îles suivantes et batailles faites : %s"), FlowMode->AreNextIslandsAndBattlesDone() ? TEXT("oui") : TEXT("non"));
+		FlowMode->BringFinalIsland(TEXT("debug"));
 	}
 }
 
@@ -1137,7 +1163,7 @@ void AYSPlayerController::YSIslandGoTo(int32 Index)
 	{
 		return;
 	}
-	const AYSIsland* Island = Index == 0 ? FlowMode->GetStartIslandActor() : FlowMode->GetSpawnedIslands().IsValidIndex(Index - 1) ? FlowMode->GetSpawnedIslands()[Index - 1].Get() : nullptr;
+	const AYSIsland* Island = FlowMode->GetIslandByIndex(Index);
 	if (Island)
 	{
 		// places d'apparition des joueurs de l'île, puis autour (une place peut être prise par un prop ou un NME)
@@ -1157,8 +1183,7 @@ void AYSPlayerController::YSIslandGoTo(int32 Index)
 void AYSPlayerController::YSIslandGoToPier(int32 Index, int32 Segment)
 {
 	const AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
-	const AYSIsland* Island = !FlowMode ? nullptr : Index == 0 ? FlowMode->GetStartIslandActor()
-		: FlowMode->GetSpawnedIslands().IsValidIndex(Index - 1) ? FlowMode->GetSpawnedIslands()[Index - 1].Get() : nullptr;
+	const AYSIsland* Island = FlowMode ? FlowMode->GetIslandByIndex(Index) : nullptr;
 	FVector Location;
 	if (Island && GetPawn() && Island->GetPierSegmentLocation(Segment, Location))
 	{
@@ -1521,6 +1546,17 @@ void AYSPlayerController::UpdatePlayerHUD()
 			if (!It->AreMainObjectivesDone() && !It->HasSinkStarted() && !It->IsSubmergedWaiting())
 			{
 				AddIndicator(It->GetActorLocation() + FVector(0.0f, 0.0f, MyNest->GetIslandIndicatorHeight()), MyNest->GetIslandIndicatorColor(), MyNest->GetIslandIndicatorIcon(), true);
+			}
+		}
+	}
+	// ... et une par bataille navale pas encore gagnée
+	if (MyNest && MyNest->ShowsNavalBattleIndicators() && bInMatch)
+	{
+		for (TActorIterator<AYSNavalBattle> It(GetWorld()); It; ++It)
+		{
+			if (!It->IsWon())
+			{
+				AddIndicator(It->GetActorLocation() + FVector(0.0f, 0.0f, MyNest->GetNavalBattleIndicatorHeight()), MyNest->GetNavalBattleIndicatorColor(), MyNest->GetNavalBattleIndicatorIcon(), true);
 			}
 		}
 	}

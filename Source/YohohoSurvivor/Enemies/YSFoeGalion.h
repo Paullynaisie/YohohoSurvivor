@@ -47,6 +47,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
 	TArray<TSubclassOf<AYSFoeCharacter>> CaptainClasses;
 
+	/** Le capitaine tué : le Galion coule (tout le monde à l'eau, comme un core détruit) ; pendant un abordage les planches sont retirées */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
+	bool bSinkWhenCaptainKilled = true;
+
 	/** Matelots : groupes (défaut : 6 Skull, 3 Skull Gun, 6 au hasard entre Skull, Skull Bomb et Skull Gun) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
 	TArray<FYSGalionCrewGroup> CrewGroups;
@@ -232,6 +236,9 @@ private:
 
 	enum class ERamState : uint8 { None, Ramming, Boarded, Done };
 	ERamState RamState = ERamState::None;
+
+	/** Un capitaine a été placé (sans capitaine dès l'apparition, le Galion ne coule pas tout seul) */
+	bool bHadCaptain = false;
 
 	/** Heure (monde) de l'activation de la bataille ; < 0 = pas de bataille */
 	double BattleActivationTime = -1.0;

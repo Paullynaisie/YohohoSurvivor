@@ -3,6 +3,7 @@
 #include "Enemies/YSFoeGalion.h"
 #include "Enemies/YSFoeJollyShip.h"
 #include "Engine/World.h"
+#include "Net/UnrealNetwork.h"
 #include "EngineUtils.h"
 #include "Ship/YSPirateShip.h"
 
@@ -20,9 +21,32 @@ AYSNavalBattle::AYSNavalBattle()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.TickInterval = 0.25f;
-	// serveur seulement : les bateaux sont répliqués eux-mêmes
-	bReplicates = false;
+	// répliqué seulement pour la bulle du nid d'pie (position, gagnée) ; les bateaux sont répliqués eux-mêmes
+	bReplicates = true;
+	bAlwaysRelevant = true;
+	SetReplicatingMovement(false);
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+}
+
+void AYSNavalBattle::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AYSNavalBattle, bWon);
+}
+
+void AYSNavalBattle::UpdateWon()
+{
+	if (bWon)
+	{
+		return;
+	}
+	Galions.RemoveAll([](const AYSFoeGalion* Galion) { return !IsValid(Galion); });
+	if (!Galions.ContainsByPredicate([](const AYSFoeGalion* Galion) { return !Galion->IsDefeated(); }))
+	{
+		bWon = true;
+		ForceNetUpdate();
+		UE_LOG(LogTemp, Log, TEXT("[YSNavalBattle] %s gagnée : Galion(s) vaincu(s)"), *GetName());
+	}
 }
 
 void AYSNavalBattle::InitBattle(const FYSNavalBattleRow& InSettings, FName InRowName)
@@ -130,6 +154,7 @@ void AYSNavalBattle::Tick(float DeltaSeconds)
 	{
 		return;
 	}
+	UpdateWon();
 	if (!bActive)
 	{
 		if (IsPlayerShipNear())
@@ -144,8 +169,7 @@ void AYSNavalBattle::Tick(float DeltaSeconds)
 	}
 
 	// tous les Galions vaincus : plus de renforts (choix de Claude : sinon la bataille ne finit jamais)
-	Galions.RemoveAll([](const AYSFoeGalion* Galion) { return !IsValid(Galion); });
-	if (Settings.bStopReinforcementsWhenGalionsDefeated && !Galions.ContainsByPredicate([](const AYSFoeGalion* Galion) { return !Galion->IsDefeated(); }))
+	if (Settings.bStopReinforcementsWhenGalionsDefeated && bWon)
 	{
 		bReinforcementsStopped = true;
 		UE_LOG(LogTemp, Log, TEXT("[YSNavalBattle] %s : Galion(s) vaincu(s), plus de renforts"), *GetName());

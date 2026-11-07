@@ -303,32 +303,41 @@ void AYSPirateShip::TakeCoreDamage(float Damage, AController* EventInstigator, c
 	}
 	if (Health <= -MaxHealth)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s détruit (core %.0f / -%.0f) : tout le monde à l'eau"), *GetName(), Health, MaxHealth);
-		OnShipDestroyedByDamage();
-
-		// objets posés sur le pont : un cadavre flotte, le reste coule avec le bateau
-		TArray<AActor*> Attached;
-		GetAttachedActors(Attached, true, true);
-		for (AActor* Actor : Attached)
-		{
-			AYSInteractiveObject* Object = Cast<AYSInteractiveObject>(Actor);
-			if (!Object || Object->GetParentActor())
-			{
-				continue;
-			}
-			if (Object->FloatsOnWater())
-			{
-				Object->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-				const FVector Location = Object->GetActorLocation();
-				Object->SetActorLocation(FVector(Location.X, Location.Y, AYSOcean::ClampAboveSea(GetWorld(), -1.0e6f)));
-			}
-			else
-			{
-				Object->Destroy();
-			}
-		}
-		Destroy();
+		SinkAtSea(*FString::Printf(TEXT("core %.0f / -%.0f"), Health, MaxHealth));
 	}
+}
+
+void AYSPirateShip::SinkAtSea(const TCHAR* Reason)
+{
+	if (!HasAuthority() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s détruit (%s) : tout le monde à l'eau"), *GetName(), Reason);
+	OnShipDestroyedByDamage();
+
+	// objets posés sur le pont : un cadavre flotte, le reste coule avec le bateau
+	TArray<AActor*> Attached;
+	GetAttachedActors(Attached, true, true);
+	for (AActor* Actor : Attached)
+	{
+		AYSInteractiveObject* Object = Cast<AYSInteractiveObject>(Actor);
+		if (!Object || Object->GetParentActor())
+		{
+			continue;
+		}
+		if (Object->FloatsOnWater())
+		{
+			Object->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+			const FVector Location = Object->GetActorLocation();
+			Object->SetActorLocation(FVector(Location.X, Location.Y, AYSOcean::ClampAboveSea(GetWorld(), -1.0e6f)));
+		}
+		else
+		{
+			Object->Destroy();
+		}
+	}
+	Destroy();
 }
 
 void AYSPirateShip::OnShipDisabled()

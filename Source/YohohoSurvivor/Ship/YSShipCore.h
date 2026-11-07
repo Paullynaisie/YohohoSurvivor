@@ -69,6 +69,9 @@ public:
 	/** Coffre (valeur en doublons) ou cadavre */
 	virtual bool AcceptsObject(const AYSInteractiveObject* Object) const override;
 
+	/** Objet attendu par un objectif d'île, et ce core est celui d'un bateau des joueurs */
+	bool IsIslandObjective(const AYSInteractiveObject* Object) const;
+
 	virtual bool IsAvailable() const override;
 
 	virtual bool IsBrooker() const override { return true; }

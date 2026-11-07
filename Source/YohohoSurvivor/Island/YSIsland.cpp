@@ -496,7 +496,17 @@ void AYSIsland::SpawnGameplayActors()
 
 	// île de départ du GameBoat : la chaloupe attend sur l'eau, la zone de dépôt viendra à son arrivée ; sinon zone de dépôt sur la plage
 	AYSFlowMode* FlowMode = World->GetAuthGameMode<AYSFlowMode>();
-	if (!bStartIsland || !FlowMode || !FlowMode->SpawnGameBoat(this))
+	// demande de Paul : zone de dépôt accrochée à l'île seulement pour l'île de départ ; sur les îles suivantes, les objectifs se posent
+	// dans la zone du core du bateau des joueurs (AYSShipCore)
+	const bool bGameBoatFlow = FlowMode && FlowMode->GameBoatData;
+	if (bStartIsland && bGameBoatFlow)
+	{
+		if (!FlowMode->SpawnGameBoat(this))
+		{
+			SpawnStartBoat(LocalToWorld(Plan.BoatLocation, Terrain.Height(Plan.BoatLocation.X, Plan.BoatLocation.Y)), Plan.BoatYaw + GetActorRotation().Yaw);
+		}
+	}
+	else if (!bGameBoatFlow)
 	{
 		SpawnStartBoat(LocalToWorld(Plan.BoatLocation, Terrain.Height(Plan.BoatLocation.X, Plan.BoatLocation.Y)), Plan.BoatYaw + GetActorRotation().Yaw);
 	}
@@ -851,7 +861,7 @@ void AYSIsland::TickPhaseEvents()
 	{
 		const FYSIslandSpawnEvent& Event = (*PhaseEvents)[Index];
 		// vague d'un seul jour (ou d'une seule nuit) de l'île
-		if (Event.IslandDay > 0 && Event.IslandDay != Day)
+		if (!Event.IsForIslandDay(Day))
 		{
 			continue;
 		}
@@ -1084,7 +1094,11 @@ void AYSIsland::OnGlobalDayChanged(int32 Day)
 	{
 		return;
 	}
-	if (CountOpenMainObjectives() == 0)
+	if (Data->bInfiniteDays)
+	{
+		StartDayPhase();
+	}
+	else if (CountOpenMainObjectives() == 0)
 	{
 		StartSinkRoutine(TEXT("objectifs principaux accomplis"));
 	}
@@ -1172,9 +1186,16 @@ bool AYSIsland::IsObjectExpected(const AYSInteractiveObject* Object) const
 
 void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 {
-	for (FYSIslandObjectiveState& State : Objectives)
+	// l'objectif qui a posé cet objet d'abord, sinon le premier qui attend ce type d'objet
+	auto Matches = [Object](const FYSIslandObjectiveState& State) { return !State.bDone && State.bSpawned && Object && State.DeliveryClass && Object->IsA(State.DeliveryClass); };
+	int32 Found = Objectives.IndexOfByPredicate([&Matches, Object](const FYSIslandObjectiveState& State) { return Matches(State) && State.Item == Object; });
+	if (Found == INDEX_NONE)
 	{
-		if (!State.bDone && State.bSpawned && Object && State.DeliveryClass && Object->IsA(State.DeliveryClass))
+		Found = Objectives.IndexOfByPredicate(Matches);
+	}
+	if (Objectives.IsValidIndex(Found))
+	{
+		FYSIslandObjectiveState& State = Objectives[Found];
 		{
 			State.bDone = true;
 			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : objectif %s accompli : %s (%d principal(aux) restant(s))"), *Data->GetName(), State.bMain ? TEXT("principal") : TEXT("secondaire"),
@@ -1200,6 +1221,30 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 			return;
 		}
 	}
+}
+
+AYSIsland* AYSIsland::FindExpecting(const UWorld* World, const AYSInteractiveObject* Object, const FVector& Location)
+{
+	// d'abord l'île d'où vient cet objet (serveur : objet posé par un de ses objectifs), sinon la plus proche qui attend ce type d'objet
+	for (TActorIterator<AYSIsland> It(World); It && Object; ++It)
+	{
+		if (It->IsObjectExpected(Object) && It->Objectives.ContainsByPredicate([Object](const FYSIslandObjectiveState& State) { return !State.bDone && State.Item == Object; }))
+		{
+			return *It;
+		}
+	}
+	AYSIsland* Nearest = nullptr;
+	double NearestDistSq = TNumericLimits<double>::Max();
+	for (TActorIterator<AYSIsland> It(World); It && Object; ++It)
+	{
+		const double DistSq = FVector::DistSquared2D(It->GetActorLocation(), Location);
+		if (DistSq < NearestDistSq && It->IsObjectExpected(Object))
+		{
+			NearestDistSq = DistSq;
+			Nearest = *It;
+		}
+	}
+	return Nearest;
 }
 
 AYSIsland* AYSIsland::FindAt(const UWorld* World, const FVector& Location)

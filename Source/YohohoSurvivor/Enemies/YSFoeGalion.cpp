@@ -63,6 +63,7 @@ void AYSFoeGalion::SpawnCrew()
 	{
 		const AYSShipStation* Helm = GetSeatStation(0);
 		Captain = SpawnCrewMember(Chosen, GetSeatFeetLocation(0), Helm ? 0 : INDEX_NONE);
+		bHadCaptain = IsValid(Captain);
 		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : capitaine %s"), *GetName(), *Chosen->GetName());
 	}
 
@@ -416,6 +417,13 @@ void AYSFoeGalion::Tick(float DeltaSeconds)
 
 	if (!HasAuthority() || IsActorBeingDestroyed())
 	{
+		return;
+	}
+	// capitaine tué : le Galion coule (demande de Paul) ; l'abordage se termine avec lui (EndBoarding dans OnShipDestroyedByDamage)
+	if (bSinkWhenCaptainKilled && bHadCaptain && IsDefeated())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : capitaine tué, le Galion coule"), *GetName());
+		SinkAtSea(TEXT("capitaine tué"));
 		return;
 	}
 	// abordage : il dure jusqu'à la mort du capitaine ; plus d'équipage à répartir

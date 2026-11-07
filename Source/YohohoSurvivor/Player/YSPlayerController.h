@@ -534,13 +534,17 @@ public:
 	UFUNCTION(Exec)
 	void YSIslandKillElite();
 
-	/** Debug (hôte) : téléporté à côté du bateau de départ */
+	/** Debug (hôte) : téléporté à côté du bateau de départ de l'île la plus proche, sinon au core du bateau des joueurs le plus proche */
 	UFUNCTION(Exec)
 	void YSIslandGoToBoat();
 
 	/** Debug (hôte, FlowMod) : les îles suivantes arrivent maintenant (remontée des îles prégénérées, batailles navales) */
 	UFUNCTION(Exec)
 	void YSIslandSpawnNext();
+
+	/** Debug (hôte, FlowMod) : l'île finale arrive tout de suite (logue si les îles suivantes et les batailles sont faites) */
+	UFUNCTION(Exec)
+	void YSFinalIsland();
 
 	/** Debug (hôte, FlowMod) : réveille toutes les batailles navales */
 	UFUNCTION(Exec)

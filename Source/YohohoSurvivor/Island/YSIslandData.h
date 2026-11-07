@@ -416,6 +416,28 @@ struct FYSIslandSpawnEvent
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn", meta=(ClampMin="0"))
 	int32 IslandDay = 0;
 
+	/** Avec Island Day : aussi tous les Island Day Period jours après (ex. Island Day 1, période 2 = jours 1, 3, 5...) ; 0 = seulement Island Day */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn", meta=(ClampMin="0"))
+	int32 IslandDayPeriod = 0;
+
+	/** Plus après ce jour de l'île (0 = pas de limite) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn", meta=(ClampMin="0"))
+	int32 IslandDayMax = 0;
+
+	/** La vague part le jour (ou la nuit) Day de l'île */
+	bool IsForIslandDay(int32 Day) const
+	{
+		if (IslandDayMax > 0 && Day > IslandDayMax)
+		{
+			return false;
+		}
+		if (IslandDay <= 0)
+		{
+			return true;
+		}
+		return IslandDayPeriod > 0 ? Day >= IslandDay && (Day - IslandDay) % IslandDayPeriod == 0 : Day == IslandDay;
+	}
+
 	/** Nombre de fois que la vague part (0 = jusqu'à la fin de la phase) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn", meta=(ClampMin="0"))
 	int32 RepeatCount = 1;
@@ -488,8 +510,12 @@ public:
 	TArray<FYSIslandObjectiveDef> SecondaryObjectives;
 
 	/** Temps pour finir les objectifs : quand le jour global atteint jour d'activation + Max Days - 1, l'île lance sa routine de coulaison */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Time", meta=(ClampMin="1"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Time", meta=(ClampMin="1", EditCondition="!bInfiniteDays"))
 	int32 MaxDays = 2;
+
+	/** Jours infinis : l'île ne coule jamais (ni Max Days, ni objectifs principaux accomplis), ses jours et ses nuits s'enchaînent (île finale) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Time")
+	bool bInfiniteDays = false;
 
 	/** Secondes entre le début du jour de l'île et la tombée de la nuit */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Time", meta=(ClampMin="1", Units="s"))

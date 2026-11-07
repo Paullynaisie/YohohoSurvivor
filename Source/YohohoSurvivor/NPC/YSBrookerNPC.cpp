@@ -94,7 +94,7 @@ bool AYSBrookerNPC::TryBuy(AYSInteractiveObject* Object)
 	}
 
 	// objectif d'une île générée (avant que l'objet disparaisse)
-	if (AYSIsland* Island = AYSIsland::FindAt(GetWorld(), GetActorLocation()))
+	if (AYSIsland* Island = AYSIsland::FindExpecting(GetWorld(), Object, GetActorLocation()))
 	{
 		Island->NotifyObjectDelivered(Object);
 	}

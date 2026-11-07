@@ -2,6 +2,7 @@
 #include "Engine/World.h"
 #include "Island/YSIsland.h"
 #include "Net/UnrealNetwork.h"
+#include "Ship/YSPirateShip.h"
 
 AYSIslandNPC::AYSIslandNPC()
 {
@@ -86,7 +87,12 @@ void AYSCarpenter::OnDelivered()
 	if (NPC)
 	{
 		NPC->FinishSpawning(Transform);
-		if (AYSIsland* Island = AYSIsland::FindAt(World, GetActorLocation()))
+		// posé sur le bateau des joueurs : il voyage avec lui ; sinon (zone de la plage) accroché à l'île
+		if (AYSPirateShip* Ship = AYSPirateShip::FindShipBelow(World, GetActorLocation(), this))
+		{
+			NPC->AttachToActor(Ship, FAttachmentTransformRules::KeepWorldTransform);
+		}
+		else if (AYSIsland* Island = AYSIsland::FindAt(World, GetActorLocation()))
 		{
 			Island->AttachToIsland(NPC);
 		}

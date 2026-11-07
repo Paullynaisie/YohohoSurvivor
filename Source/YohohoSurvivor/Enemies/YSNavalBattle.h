@@ -55,7 +55,7 @@ struct FYSNavalBattleRow : public FTableRowBase
 };
 
 /**
- *  Espace de bataille navale (serveur seulement, non répliqué) : à son apparition, ses Galions et Jolly Ships apparaissent autour de son centre,
+ *  Espace de bataille navale (répliqué pour la bulle du nid d'pie, logique serveur) : à son apparition, ses Galions et Jolly Ships apparaissent autour de son centre,
  *  immobiles (en sommeil). Le bateau des joueurs à moins d'Activation Distance : ils se réveillent et prennent les joueurs en chasse, et des
  *  renforts de Jolly Ships arrivent régulièrement. Créé par AYSFlowMode::SpawnNavalBattles entre deux îles.
  */
@@ -75,12 +75,23 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 	bool IsActive() const { return bActive; }
+
+	/** Tous ses Galions vaincus (coulés ou capitaine tué) : bataille gagnée (répliqué : bulle du nid d'pie) */
+	bool IsWon() const { return bWon; }
 
 	/** Debug : activée tout de suite */
 	void Activate(const TCHAR* Reason);
 
 private:
+
+	UPROPERTY(Replicated)
+	bool bWon = false;
+
+	/** Serveur : met Won à jour */
+	void UpdateWon();
 
 	FYSNavalBattleRow Settings;
 	FName RowName;

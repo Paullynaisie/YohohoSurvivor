@@ -360,6 +360,9 @@ public:
 	 */
 	void TakeCoreDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation);
 
+	/** Bateau coulé (serveur) : tout le monde à l'eau, cadavres posés à la surface, autres objets posés détruits, puis Destroy */
+	void SinkAtSea(const TCHAR* Reason);
+
 	/**
 	 *  Point sur l'eau pour un bateau (serveur) : direction au hasard autour d'un joueur tiré au hasard, premier point à partir de MinDistance
 	 *  (loin de tous les joueurs, jusqu'à MaxDistance) avec assez de fond sur ClearanceRadius autour, hors de l'emprise (+ ShipMargin) des

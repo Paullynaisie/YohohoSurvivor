@@ -91,6 +91,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Crow's Nest|Islands", meta=(Units="Centimeters"))
 	float IslandIndicatorHeight = 500.0f;
 
+	/** Le joueur au nid voit une icône par bataille navale pas encore gagnée (Galions pas tous vaincus), au bord de l'écran hors écran */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Crow's Nest|Naval Battles")
+	bool bShowNavalBattleIndicators = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Crow's Nest|Naval Battles")
+	FLinearColor NavalBattleIndicatorColor = FLinearColor(0.9f, 0.15f, 0.1f);
+
+	/** Icône dans la bulle (vide = rond seul) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Crow's Nest|Naval Battles")
+	TObjectPtr<UTexture2D> NavalBattleIndicatorIcon;
+
+	/** Hauteur de la bulle au-dessus du centre de la bataille (niveau de la mer) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Crow's Nest|Naval Battles", meta=(Units="Centimeters"))
+	float NavalBattleIndicatorHeight = 500.0f;
+
 	/** Quitter le nid arrête le ping */
 	virtual void OnOccupantChanged(AYSPlayerCharacter* Previous) override;
 
@@ -119,4 +134,9 @@ public:
 	const FLinearColor& GetIslandIndicatorColor() const { return IslandIndicatorColor; }
 	UTexture2D* GetIslandIndicatorIcon() const { return IslandIndicatorIcon; }
 	float GetIslandIndicatorHeight() const { return IslandIndicatorHeight; }
+
+	bool ShowsNavalBattleIndicators() const { return bShowNavalBattleIndicators; }
+	const FLinearColor& GetNavalBattleIndicatorColor() const { return NavalBattleIndicatorColor; }
+	UTexture2D* GetNavalBattleIndicatorIcon() const { return NavalBattleIndicatorIcon; }
+	float GetNavalBattleIndicatorHeight() const { return NavalBattleIndicatorHeight; }
 };

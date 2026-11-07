@@ -89,6 +89,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Naval Battles")
 	TArray<FName> NavalBattleRows;
 
+	/**
+	 *  Île finale : prégénérée sous l'eau au lancement (comme les îles suivantes), loin des autres îles, dans l'espace entre deux îles suivantes
+	 *  laissé sans bataille navale ; elle remonte quand toutes les îles suivantes sont faites (objectifs principaux livrés, ou en train de couler)
+	 *  et toutes les batailles navales gagnées. Vide = pas d'île finale
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Final Island")
+	TObjectPtr<UYSIslandData> FinalIsland;
+
+	/** Écart minimal entre la côte de l'île finale et celle de chaque autre île (rayons moyens) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Final Island", meta=(ClampMin="0", Units="Centimeters"))
+	float FinalIslandGap = 25000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Final Island", meta=(ClampMin="0.1", Units="s"))
+	float FinalIslandRiseDuration = 20.0f;
+
 	/** « Go naviguer » : vagues en mer à chaque fois qu'une île commence à couler (vide par défaut : les bateaux de NME sont dans les batailles navales) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Navigation")
 	TArray<FYSNavigationWave> NavigationWaves;
@@ -115,6 +130,17 @@ public:
 
 	/** Batailles navales entre les îles suivantes (serveur, une fois) */
 	void SpawnNavalBattles();
+
+	/** L'île finale arrive (serveur, une fois) : remontée (ou apparition) */
+	void BringFinalIsland(const TCHAR* Reason);
+
+	/** Toutes les îles suivantes faites et toutes les batailles navales gagnées */
+	bool AreNextIslandsAndBattlesDone() const;
+
+	/** 0 = île de départ, 1..N = îles suivantes (ordre de Next Islands), N + 1 = île finale */
+	AYSIsland* GetIslandByIndex(int32 Index) const;
+
+	AYSIsland* GetFinalIslandActor() const { return FinalIslandActor; }
 
 	/** Debug : réveille toutes les batailles navales */
 	void DebugActivateNavalBattles();
@@ -163,6 +189,17 @@ private:
 	bool bNextIslandsSpawned = false;
 	bool bNextIslandsBrought = false;
 	bool bNavalBattlesSpawned = false;
+	bool bFinalIslandBrought = false;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AYSIsland> FinalIslandActor;
+
+	/** Les deux îles suivantes entre lesquelles est l'île finale : pas de bataille navale entre elles */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<AYSIsland>> FinalIslandPair;
+
+	/** Île finale (serveur, une fois) ; bSubmerged = prégénérée sous l'eau */
+	void SpawnFinalIsland(bool bSubmerged);
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<class AYSNavalBattle>> NavalBattles;

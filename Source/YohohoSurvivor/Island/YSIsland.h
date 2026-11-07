@@ -79,6 +79,9 @@ public:
 	/** Île la plus proche de Location (nullptr si aucune) */
 	static AYSIsland* FindAt(const UWorld* World, const FVector& Location);
 
+	/** L'île la plus proche de Location qui attend cet objet pour un de ses objectifs, ou nullptr */
+	static AYSIsland* FindExpecting(const UWorld* World, const AYSInteractiveObject* Object, const FVector& Location);
+
 	/** Point dans un massif de l'île (à Margin près) : les chemins et apparitions l'évitent */
 	static bool IsBlockedAt(const UWorld* World, const FVector& Location, float Margin);
 

@@ -5,6 +5,7 @@
 #include "Core/YSGameplayTags.h"
 #include "Engine/StaticMesh.h"
 #include "Interaction/YSPlayerCorpse.h"
+#include "Island/YSIsland.h"
 #include "Materials/MaterialInterface.h"
 #include "Ship/YSPirateShip.h"
 #include "UObject/ConstructorHelpers.h"
@@ -107,8 +108,14 @@ float AYSShipCore::TakeDamage(float DamageAmount, const FDamageEvent& DamageEven
 
 bool AYSShipCore::AcceptsObject(const AYSInteractiveObject* Object) const
 {
-	// Medic (cadavre) ou Brooker (objet qui vaut des doublons)
-	return Super::AcceptsObject(Object) || AYSBrookerNPC::AcceptsObject(Object);
+	// Medic (cadavre), Brooker (objet qui vaut des doublons), ou zone de dépôt des objectifs des îles (bateau des joueurs)
+	return Super::AcceptsObject(Object) || AYSBrookerNPC::AcceptsObject(Object) || IsIslandObjective(Object);
+}
+
+bool AYSShipCore::IsIslandObjective(const AYSInteractiveObject* Object) const
+{
+	const AYSPirateShip* Ship = AYSPirateShip::GetShipOf(this);
+	return Object && Ship && !Ship->IsFoeShip() && AYSIsland::FindExpecting(GetWorld(), Object, GetActorLocation()) != nullptr;
 }
 
 bool AYSShipCore::IsAvailable() const
@@ -123,6 +130,14 @@ void AYSShipCore::ReceiveObject(AYSInteractiveObject* Object)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[YSShipCore] %s : cadavre %s -> résurrection"), *GetName(), *Object->GetName());
 		Super::ReceiveObject(Object);
+		return;
+	}
+	// objectif d'une île qui ne vaut pas de doublons (Charpentier, Medic, core du bateau...) : livré, il reste au bateau
+	// (l'île a déjà été prévenue par TryBuy)
+	if (Object && Object->GetDoubloonValue() <= 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSShipCore] %s : %s posé dans la zone du bateau (objectif)"), *GetName(), *Object->GetName());
+		Object->OnDelivered();
 		return;
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSShipCore] %s : %s -> doublons"), *GetName(), Object ? *Object->GetName() : TEXT("?"));

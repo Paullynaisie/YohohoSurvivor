@@ -60,6 +60,7 @@ void AYSFlowMode::BeginPlay()
 		if (bPregenerateNextIslands && NextIslandsSubmergedDepth > 0.0f)
 		{
 			SpawnNextIslands(Island, true);
+			SpawnFinalIsland(true);
 		}
 	}
 }
@@ -67,6 +68,12 @@ void AYSFlowMode::BeginPlay()
 void AYSFlowMode::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// île finale : quand toutes les îles suivantes et toutes les batailles navales sont faites
+	if (FinalIsland && bNextIslandsBrought && !bFinalIslandBrought && AreNextIslandsAndBattlesDone())
+	{
+		BringFinalIsland(TEXT("îles suivantes et batailles navales faites"));
+	}
 
 	// « go naviguer » : vagues en mer programmées
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
@@ -167,6 +174,12 @@ void AYSFlowMode::SpawnNavalBattles()
 	{
 		Pairs.Swap(K, FMath::RandRange(0, K));
 	}
+	// l'espace entre les deux îles de l'île finale en dernier (pas de bataille navale là-bas tant qu'il reste d'autres paires)
+	if (FinalIslandPair.Num() == 2)
+	{
+		auto IsFinalPair = [this](const TPair<AYSIsland*, AYSIsland*>& Pair) { return FinalIslandPair.Contains(Pair.Key) && FinalIslandPair.Contains(Pair.Value); };
+		Pairs.StableSort([&IsFinalPair](const TPair<AYSIsland*, AYSIsland*>& P, const TPair<AYSIsland*, AYSIsland*>& Q) { return !IsFinalPair(P) && IsFinalPair(Q); });
+	}
 	for (int32 Index = 0; Index < NavalBattleRows.Num() && Index < Pairs.Num(); ++Index)
 	{
 		const FYSNavalBattleRow* Row = NavalBattleTable->FindRow<FYSNavalBattleRow>(NavalBattleRows[Index], TEXT("SpawnNavalBattles"));
@@ -198,6 +211,127 @@ void AYSFlowMode::SpawnNavalBattles()
 				*Second->GetData()->GetName(), *Location.ToCompactString(), Gap / 100.0f);
 		}
 	}
+}
+
+void AYSFlowMode::SpawnFinalIsland(bool bSubmerged)
+{
+	if (FinalIslandActor || !FinalIsland || !Island)
+	{
+		return;
+	}
+	const FVector Center = Island->GetActorLocation() * FVector(1.0f, 1.0f, 0.0f);
+	const float FinalRadius = FinalIsland->Generation.Radius;
+
+	// direction : entre deux îles suivantes tirées au hasard (cet espace n'aura pas de bataille navale), à défaut à l'opposé de la seule île suivante
+	TArray<AYSIsland*> Others;
+	for (AYSIsland* Other : SpawnedIslands)
+	{
+		if (IsValid(Other))
+		{
+			Others.Add(Other);
+		}
+	}
+	const float RandomAngle = FMath::FRandRange(0.0f, 2.0f * PI);
+	FVector Direction(FMath::Cos(RandomAngle), FMath::Sin(RandomAngle), 0.0f);
+	if (Others.Num() >= 2)
+	{
+		const int32 First = FMath::RandRange(0, Others.Num() - 1);
+		int32 Second = FMath::RandRange(0, Others.Num() - 2);
+		Second += Second >= First ? 1 : 0;
+		FinalIslandPair = { Others[First], Others[Second] };
+		Direction = ((Others[First]->GetActorLocation() - Center).GetSafeNormal2D() + (Others[Second]->GetActorLocation() - Center).GetSafeNormal2D()).GetSafeNormal2D();
+	}
+	else if (Others.Num() == 1)
+	{
+		Direction = -(Others[0]->GetActorLocation() - Center).GetSafeNormal2D();
+	}
+	if (Direction.IsNearlyZero())
+	{
+		Direction = FVector::ForwardVector;
+	}
+
+	// assez loin pour laisser Final Island Gap entre sa côte et celle de chaque autre île
+	Others.Add(Island);
+	float Distance = Island->GetRadius() + FinalIslandGap + FinalRadius;
+	FVector Location = Center + Direction * Distance;
+	for (int32 Step = 0; Step < 1000; ++Step)
+	{
+		Location = Center + Direction * Distance;
+		const bool bClear = !Others.ContainsByPredicate([&](const AYSIsland* Other)
+		{
+			return FVector::Dist2D(Other->GetActorLocation(), Location) < Other->GetRadius() + FinalIslandGap + FinalRadius;
+		});
+		if (bClear)
+		{
+			break;
+		}
+		Distance += 1000.0f;
+	}
+
+	const float Yaw = FinalIsland->bRandomRotation ? FMath::FRandRange(0.0f, 360.0f) : 0.0f;
+	const float Depth = bSubmerged ? NextIslandsSubmergedDepth : 0.0f;
+	const FTransform Transform(FRotator(0.0f, Yaw, 0.0f), Location - FVector(0.0f, 0.0f, Depth));
+	FinalIslandActor = GetWorld()->SpawnActorDeferred<AYSIsland>(AYSIsland::StaticClass(), Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (FinalIslandActor)
+	{
+		FinalIslandActor->InitIsland(FinalIsland, 0, false);
+		FinalIslandActor->SetSubmerged(Depth);
+		FinalIslandActor->FinishSpawning(Transform);
+		UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Île finale %s en %s (yaw %.0f°, %.0f m du centre de départ, entre %s et %s%s)"), *FinalIsland->GetName(), *Location.ToCompactString(), Yaw, Distance / 100.0f,
+			FinalIslandPair.Num() == 2 ? *FinalIslandPair[0]->GetData()->GetName() : TEXT("-"), FinalIslandPair.Num() == 2 ? *FinalIslandPair[1]->GetData()->GetName() : TEXT("-"),
+			bSubmerged ? *FString::Printf(TEXT(", prégénérée %.0f cm sous l'eau"), Depth) : TEXT(""));
+	}
+}
+
+void AYSFlowMode::BringFinalIsland(const TCHAR* Reason)
+{
+	if (bFinalIslandBrought || !FinalIsland)
+	{
+		return;
+	}
+	bFinalIslandBrought = true;
+	SpawnFinalIsland(false);
+	if (IsValid(FinalIslandActor))
+	{
+		FinalIslandActor->StartRise(FinalIslandRiseDuration);
+		UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] L'île finale %s arrive (%s)"), *FinalIsland->GetName(), Reason);
+	}
+}
+
+bool AYSFlowMode::AreNextIslandsAndBattlesDone() const
+{
+	if (!bNextIslandsBrought || !bNavalBattlesSpawned)
+	{
+		return false;
+	}
+	for (const AYSIsland* NextIsland : SpawnedIslands)
+	{
+		if (IsValid(NextIsland) && !NextIsland->AreMainObjectivesDone() && !NextIsland->HasSinkStarted())
+		{
+			return false;
+		}
+	}
+	for (const AYSNavalBattle* Battle : NavalBattles)
+	{
+		if (IsValid(Battle) && !Battle->IsWon())
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+AYSIsland* AYSFlowMode::GetIslandByIndex(int32 Index) const
+{
+	if (Index == 0)
+	{
+		return Island;
+	}
+	if (SpawnedIslands.IsValidIndex(Index - 1))
+	{
+		return SpawnedIslands[Index - 1];
+	}
+	return Index == SpawnedIslands.Num() + 1 ? FinalIslandActor.Get() : nullptr;
 }
 
 void AYSFlowMode::DebugActivateNavalBattles()
