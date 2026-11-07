@@ -6,6 +6,7 @@
 
 class AYSFoeCharacter;
 class AYSShipStation;
+class UMaterialInterface;
 
 /** Groupe de matelots d'un NME Galion : Count NME tirés dans Classes (selon leur Spawn Weight) */
 USTRUCT(BlueprintType)
@@ -135,14 +136,47 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Routine", meta=(ClampMin="0", Units="s"))
 	float ReverseDuration = 4.0f;
 
+	/**
+	 *  Bataille navale : Ram Delay après son activation, s'il peut encore bouger (capitaine à la barre), il fonce sur le bateau des joueurs ;
+	 *  s'il le percute en fonçant : les deux bateaux s'immobilisent, des planches d'abordage relient les ponts, l'équipage (capitaine compris)
+	 *  quitte ses postes pour attaquer les joueurs et un second équipage apparaît sur le pont. Capitaine tué ou Galion coulé : planches retirées,
+	 *  le bateau des joueurs repart. Ram Delay est donné par la bataille (Data Table) ; 0 = jamais.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram", meta=(ClampMin="0", Units="s"))
+	float RamDelay = 60.0f;
+
+	/** En fonçant : le bateau visé est considéré comme percuté si sa coque est à moins de ça de la sienne */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram", meta=(ClampMin="0", Units="Centimeters"))
+	float RamContactDistance = 150.0f;
+
+	/** Planches d'abordage : largeur (3 PJ), épaisseur, distance dans chaque pont depuis le bord, hauteur au-dessus des ponts (bastingage) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram", meta=(ClampMin="50", Units="Centimeters"))
+	float BoardingPlankWidth = 260.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram", meta=(ClampMin="5", Units="Centimeters"))
+	float BoardingPlankThickness = 20.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram", meta=(ClampMin="0", Units="Centimeters"))
+	float BoardingPlankInset = 250.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram", meta=(Units="Centimeters"))
+	float BoardingPlankHeight = 32.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram")
+	TObjectPtr<UMaterialInterface> BoardingPlankMaterial;
+
+	/** Second équipage qui apparaît à l'abordage (hors capitaine) ; vide = les mêmes groupes que l'équipage */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram")
+	TArray<FYSGalionCrewGroup> BoardingCrewGroups;
+
 	/** Pilote automatique : la routine, tant que le capitaine est à la barre */
 	virtual bool ComputeAutoPilot(float& OutThrottle, float& OutSteer) override;
 
 	/** Échoué : il recule et repart dans l'autre sens */
 	virtual void OnHullBlocked() override;
 
-	/** Autre bateau : comme échoué */
-	virtual void OnShipCollision(AYSPirateShip* Other) override { OnHullBlocked(); }
+	/** Autre bateau : comme échoué ; en fonçant sur le bateau des joueurs : abordage */
+	virtual void OnShipCollision(AYSPirateShip* Other) override;
 
 	/** Core à 0 PV : plus personne aux postes, plus de poste à occuper */
 	virtual void OnShipDisabled() override;
@@ -188,7 +222,40 @@ public:
 	/** Un Galion sur l'eau, assez loin de tous les joueurs ; nullptr si rien */
 	static AYSFoeGalion* SpawnAtSea(UWorld* World, TSubclassOf<AYSFoeGalion> ShipClass, float MinDistance, float MaxDistance);
 
+	/** Bataille navale activée (serveur) : il se réveille ; InRamDelay < 0 = garde Ram Delay */
+	void ActivateBattle(float InRamDelay);
+
+	/** Vaincu : coulé (ou en train d'être détruit) ou capitaine mort */
+	bool IsDefeated() const;
+
 private:
+
+	enum class ERamState : uint8 { None, Ramming, Boarded, Done };
+	ERamState RamState = ERamState::None;
+
+	/** Heure (monde) de l'activation de la bataille ; < 0 = pas de bataille */
+	double BattleActivationTime = -1.0;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AYSPirateShip> BoardedShip;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<AActor>> BoardingPlanks;
+
+	/** Abordage de Other (serveur) : bateaux immobilisés, planches, équipage lâché, second équipage */
+	void StartBoarding(AYSPirateShip* Other);
+
+	/** Fin de l'abordage (serveur) : planches retirées, bateau des joueurs libéré */
+	void EndBoarding(const TCHAR* Reason);
+
+	/** Planches entre son pont et celui de Other, au point de contact */
+	void SpawnBoardingPlanks(AYSPirateShip* Other);
+
+	/** Hauteur du pont de Ship sous Point (trace), sinon Fallback */
+	float FindDeckHeight(const AYSPirateShip* Ship, const FVector& Point, float Fallback) const;
+
+	/** Groupes de matelots sur le pont (serveur) ; bFree = NME libres (pas d'équipage : ils vont n'importe où) */
+	void SpawnCrewGroups(const TArray<FYSGalionCrewGroup>& Groups, bool bFree);
 
 	/** Capitaine, puis matelots (serveur) */
 	UPROPERTY(Transient)

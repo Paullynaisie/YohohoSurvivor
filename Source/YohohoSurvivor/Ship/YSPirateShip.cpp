@@ -88,6 +88,8 @@ AYSPirateShip::AYSPirateShip(const FObjectInitializer& ObjectInitializer)
 	CannonRight2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonRight2"), AYSShipCannon::StaticClass(), FVector(-700.0f, 933.0f, 210.0f), 90.0f);
 	// accès : flanc bâbord (-Y), à l'ouverture du bastingage et de la planche d'embarquement, au niveau de la mer
 	BoardingAccess = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccess"), AYSShipBoarding::StaticClass(), FVector(0.0f, -1000.0f, 0.0f), -90.0f);
+	// second accès, côté tribord : on peut monter des deux côtés
+	BoardingAccessStarboard = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccessStarboard"), AYSShipBoarding::StaticClass(), FVector(0.0f, 1000.0f, 0.0f), 90.0f);
 
 	// barre de vie du bateau : à l'écran, au-dessus du pont ; rien tant qu'il n'est pas abîmé
 	ShipHealthBar = ObjectInitializer.CreateOptionalDefaultSubobject<UWidgetComponent>(this, TEXT("ShipHealthBar"));
@@ -176,6 +178,39 @@ AYSShipCore* AYSPirateShip::GetCore() const
 AYSShipBoarding* AYSPirateShip::GetBoardingAccess() const
 {
 	return BoardingAccess ? Cast<AYSShipBoarding>(BoardingAccess->GetChildActor()) : nullptr;
+}
+
+AYSShipBoarding* AYSPirateShip::GetBoardingAccess(const FVector& From) const
+{
+	AYSShipBoarding* Port = GetBoardingAccess();
+	AYSShipBoarding* Starboard = BoardingAccessStarboard ? Cast<AYSShipBoarding>(BoardingAccessStarboard->GetChildActor()) : nullptr;
+	if (!Port || !Starboard)
+	{
+		return Port ? Port : Starboard;
+	}
+	return FVector::DistSquared2D(Port->GetInteractLocation(From), From) <= FVector::DistSquared2D(Starboard->GetInteractLocation(From), From) ? Port : Starboard;
+}
+
+void AYSPirateShip::SetDormant(bool bInDormant)
+{
+	if (HasAuthority() && bDormant != bInDormant)
+	{
+		bDormant = bInDormant;
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s %s"), *GetName(), bDormant ? TEXT("en sommeil (immobile)") : TEXT("se réveille"));
+	}
+}
+
+void AYSPirateShip::SetGrappled(bool bInGrappled)
+{
+	if (HasAuthority() && bGrappled != bInGrappled)
+	{
+		bGrappled = bInGrappled;
+		Motion.Speed = 0.0f;
+		Motion.YawRate = 0.0f;
+		SetPilotInput(0.0f, 0.0f);
+		ForceNetUpdate();
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s %s"), *GetName(), bGrappled ? TEXT("abordé : immobilisé") : TEXT("libéré de l'abordage"));
+	}
 }
 
 FVector AYSPirateShip::GetRouteAroundHull(const FVector& From, const FVector& To, float Margin) const
@@ -383,6 +418,12 @@ void AYSPirateShip::SetPilotInput(float Throttle, float Steer)
 	if (!HasAuthority())
 	{
 		return;
+	}
+	// en sommeil ou abordé : plus de commandes
+	if (bDormant || bGrappled)
+	{
+		Throttle = 0.0f;
+		Steer = 0.0f;
 	}
 	Motion.Throttle = FMath::Clamp(Throttle, -1.0f, 1.0f);
 	Motion.Steer = FMath::Clamp(Steer, -1.0f, 1.0f);
@@ -677,6 +718,21 @@ bool AYSPirateShip::CanMoveHull(const FYSShipMotion& From, const FYSShipMotion& 
 
 void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 {
+	// en sommeil (bataille navale pas activée) ou abordé : immobile
+	if (bDormant || bGrappled)
+	{
+		SetPilotInput(0.0f, 0.0f);
+		if (!FMath::IsNearlyZero(Motion.Speed) || !FMath::IsNearlyZero(Motion.YawRate))
+		{
+			Motion.Speed = 0.0f;
+			Motion.YawRate = 0.0f;
+			ForceNetUpdate();
+		}
+		const AGameStateBase* FrozenGameState = GetWorld()->GetGameState();
+		Motion.ServerTime = FrozenGameState ? FrozenGameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+		return;
+	}
+
 	// pilote automatique (mode playtest, NME Jolly Ship) ; sinon, le pilote parti, la barre ne commande plus
 	const AYSShipHelm* Helm = GetHelm();
 	float AutoThrottle = 0.0f;
@@ -914,6 +970,47 @@ bool AYSPirateShip::FindSeaSpawnPoint(UWorld* World, float RequiredDepth, float 
 	}
 	OutYaw = (-BestDirection).Rotation().Yaw;
 	return bFound;
+}
+
+bool AYSPirateShip::FindSeaPointNear(UWorld* World, const FVector& Center, float Radius, float RequiredDepth, float ShipMargin, float ClearanceRadius, int32 Attempts, FVector& OutPoint)
+{
+	const AYSOcean* Ocean = AYSOcean::Find(World);
+	if (!Ocean)
+	{
+		return false;
+	}
+	const float Sea = Ocean->GetSeaLevel();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSShipSeaPointNear), false);
+	const auto IsDeepEnough = [World, Sea, RequiredDepth, &Params](const FVector& Point)
+	{
+		FHitResult Hit;
+		return !World->LineTraceSingleByObjectType(Hit, FVector(Point.X, Point.Y, Sea + YSPirateShip::SpawnTraceUp), FVector(Point.X, Point.Y, Sea - YSPirateShip::DepthTraceDown),
+			FCollisionObjectQueryParams(ECC_WorldStatic), Params) || Sea - Hit.ImpactPoint.Z >= RequiredDepth;
+	};
+	for (int32 Attempt = 0; Attempt < Attempts; ++Attempt)
+	{
+		// au centre d'abord, puis au hasard dans le disque
+		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const float Distance = Attempt == 0 ? 0.0f : Radius * FMath::Sqrt(FMath::FRand());
+		const FVector Point = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Distance;
+		bool bDeep = IsDeepEnough(Point);
+		for (int32 Probe = 0; bDeep && ClearanceRadius > 0.0f && Probe < YSPirateShip::SpawnClearanceProbes; ++Probe)
+		{
+			const float ProbeAngle = 2.0f * PI * Probe / YSPirateShip::SpawnClearanceProbes;
+			bDeep = IsDeepEnough(Point + FVector(FMath::Cos(ProbeAngle), FMath::Sin(ProbeAngle), 0.0f) * ClearanceRadius);
+		}
+		bool bInsideShip = false;
+		for (TActorIterator<AYSPirateShip> It(World); It && bDeep && !bInsideShip; ++It)
+		{
+			bInsideShip = It->IsBoardable() && It->IsPresent() && It->IsInsideHull(Point, ShipMargin);
+		}
+		if (bDeep && !bInsideShip)
+		{
+			OutPoint = FVector(Point.X, Point.Y, Sea);
+			return true;
+		}
+	}
+	return false;
 }
 
 AYSPirateShip* AYSPirateShip::FindShipBelow(const UWorld* World, const FVector& Location, const AActor* IgnoredActor)

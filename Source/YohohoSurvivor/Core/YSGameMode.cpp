@@ -150,6 +150,16 @@ void AYSGameMode::TickJollyShips()
 	UE_LOG(LogTemp, Log, TEXT("[YSJollyShip] Vague : %d / %d"), Spawned, Count);
 }
 
+UClass* AYSGameMode::GetGalionClass() const
+{
+	return GalionClass.Get();
+}
+
+UClass* AYSGameMode::GetJollyShipClass() const
+{
+	return JollyShipClass.Get();
+}
+
 AYSFoeJollyShip* AYSGameMode::SpawnJollyShip(const TCHAR* Reason)
 {
 	AYSFoeJollyShip* Ship = AYSFoeJollyShip::SpawnAtSea(GetWorld(), JollyShipClass, JollyShipMinSpawnDistance, JollyShipMaxSpawnDistance, JollyShipSpawnStep, JollyShipSpawnAttempts);

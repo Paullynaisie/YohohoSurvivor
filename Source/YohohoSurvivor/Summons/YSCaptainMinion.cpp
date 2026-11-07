@@ -317,7 +317,7 @@ bool AYSCaptainMinion::UpdateShipCrew(AAIController* AIController, float DeltaSe
 	const bool bAboveDeck = Ship->IsInsideHull(Location) && Location.Z > Ship->GetActorLocation().Z;
 	if (GetShipUnderFeet() != Ship && !bAboveDeck)
 	{
-		AYSShipBoarding* Boarding = Ship->GetBoardingAccess();
+		AYSShipBoarding* Boarding = Ship->GetBoardingAccess(Location);
 		if (!Boarding)
 		{
 			return false;

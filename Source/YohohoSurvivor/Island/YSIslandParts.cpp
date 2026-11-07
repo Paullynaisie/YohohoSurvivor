@@ -85,10 +85,10 @@ void AYSIslandPier::Build(const TArray<FYSIslandPierSegment>& Segments, const FY
 		Planks->SetMaterial(0, Rules.PierMaterial);
 		Posts->SetMaterial(0, Rules.PierMaterial);
 	}
-	const float Width = Rules.PierWidth;
 	const float Thickness = Rules.PierThickness;
 	for (const FYSIslandPierSegment& Segment : Segments)
 	{
+		const float Width = Segment.Width > 0.0f ? Segment.Width : Rules.PierWidth;
 		const FVector A(Segment.A);
 		const FVector B(Segment.B);
 		const FVector Delta = B - A;

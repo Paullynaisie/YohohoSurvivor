@@ -5,6 +5,7 @@
 #include "YSFlowMode.generated.h"
 
 class AYSIsland;
+class UDataTable;
 class UYSIslandData;
 class UYSGameBoatData;
 class AYSGameBoatLongboat;
@@ -64,7 +65,31 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands", meta=(ClampMin="0", ClampMax="60", Units="Degrees"))
 	float NextIslandsAngleJitter = 20.0f;
 
-	/** « Go naviguer » : vagues en mer à chaque fois qu'une île commence à couler (défaut : 3 chaloupes à 10 s, 1 Galion à 15 s, 6 chaloupes à 45 s) */
+	/**
+	 *  Îles suivantes prégénérées au lancement, sous l'eau (Next Islands Submerged Depth sous leur place) et inactives ; au moment où elles
+	 *  apparaissaient (objectifs de l'île de départ livrés), elles remontent à la surface en Next Islands Rise Duration
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands")
+	bool bPregenerateNextIslands = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands", meta=(ClampMin="0", Units="Centimeters", EditCondition="bPregenerateNextIslands"))
+	float NextIslandsSubmergedDepth = 3000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands", meta=(ClampMin="0.1", Units="s", EditCondition="bPregenerateNextIslands"))
+	float NextIslandsRiseDuration = 15.0f;
+
+	/**
+	 *  Batailles navales : quand les îles suivantes remontent, une bataille par ligne de Naval Battle Rows, chacune au milieu (entre les côtes)
+	 *  d'une paire d'îles différente tirée au hasard parmi les îles suivantes. Les bateaux de NME n'apparaissent plus que là.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Naval Battles", meta=(RequiredAssetDataTags="RowStructure=/Script/YohohoSurvivor.YSNavalBattleRow"))
+	TObjectPtr<UDataTable> NavalBattleTable;
+
+	/** Une bataille par nom de ligne (défaut : 2 batailles « Base ») */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Naval Battles")
+	TArray<FName> NavalBattleRows;
+
+	/** « Go naviguer » : vagues en mer à chaque fois qu'une île commence à couler (vide par défaut : les bateaux de NME sont dans les batailles navales) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Navigation")
 	TArray<FYSNavigationWave> NavigationWaves;
 
@@ -82,8 +107,19 @@ public:
 	/** Tous les objectifs principaux d'une île sont livrés (serveur) : GameBoat à l'étape suivante, et les îles suivantes si c'est l'île de départ */
 	void OnIslandMainObjectivesDone(AYSIsland* DoneIsland);
 
-	/** Îles suivantes autour de From (serveur, une seule fois) */
-	void SpawnNextIslands(const AYSIsland* From);
+	/** Îles suivantes autour de From (serveur, une seule fois) ; bSubmerged = prégénérées sous l'eau */
+	void SpawnNextIslands(const AYSIsland* From, bool bSubmerged = false);
+
+	/** Les îles suivantes arrivent dans le flow (serveur, une fois) : remontée (ou apparition), puis batailles navales */
+	void BringNextIslands(const AYSIsland* From);
+
+	/** Batailles navales entre les îles suivantes (serveur, une fois) */
+	void SpawnNavalBattles();
+
+	/** Debug : réveille toutes les batailles navales */
+	void DebugActivateNavalBattles();
+
+	const TArray<TObjectPtr<class AYSNavalBattle>>& GetNavalBattles() const { return NavalBattles; }
 
 	/** « Go naviguer » (serveur) : programme les vagues en mer */
 	void StartNavigationWaves();
@@ -125,6 +161,11 @@ private:
 	TArray<TObjectPtr<AYSIsland>> SpawnedIslands;
 
 	bool bNextIslandsSpawned = false;
+	bool bNextIslandsBrought = false;
+	bool bNavalBattlesSpawned = false;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<class AYSNavalBattle>> NavalBattles;
 
 	/** Vagues en mer à venir : temps de partie et vague */
 	TArray<TPair<float, FYSNavigationWave>> PendingNavigationWaves;

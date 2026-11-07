@@ -454,6 +454,10 @@ public:
 	/** Ctrl gauche + pavé numérique (map de test) : circle spawn de NumpadCircleCount NME de la touche ; nombre apparus */
 	int32 SpawnNumpadCircle(int32 Key);
 
+	/** Classes des bateaux de NME (batailles navales : défaut quand la ligne n'en donne pas) */
+	UClass* GetGalionClass() const;
+	UClass* GetJollyShipClass() const;
+
 	/** Un NME Jolly Ship sur l'eau, hors écran (serveur) ; nullptr si pas de classe ou pas d'emplacement */
 	AYSFoeJollyShip* SpawnJollyShip(const TCHAR* Reason);
 

@@ -8,6 +8,7 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Ship/YSBoardingPlank.h"
 #include "Ship/YSLongboat.h"
 #include "Ship/YSShipCannon.h"
 #include "Ship/YSShipHelm.h"
@@ -65,10 +66,17 @@ void AYSFoeGalion::SpawnCrew()
 		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : capitaine %s"), *GetName(), *Chosen->GetName());
 	}
 
+	SpawnCrewGroups(CrewGroups, false);
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s apparaît en (%.0f, %.0f) : capitaine %s, %d matelots"), *GetName(), GetActorLocation().X, GetActorLocation().Y, *GetNameSafe(Captain), Crew.Num());
+}
+
+void AYSFoeGalion::SpawnCrewGroups(const TArray<FYSGalionCrewGroup>& Groups, bool bFree)
+{
 	// matelots sur le pont, à distance les uns des autres
 	const FTransform& Transform = GetActorTransform();
 	TArray<FVector2D> Placed;
-	for (const FYSGalionCrewGroup& Group : CrewGroups)
+	int32 Spawned = 0;
+	for (const FYSGalionCrewGroup& Group : Groups)
 	{
 		TArray<TSubclassOf<AYSFoeCharacter>> Classes = Group.Classes;
 		Classes.RemoveAll([](const TSubclassOf<AYSFoeCharacter>& Class) { return !Class; });
@@ -89,13 +97,170 @@ void AYSFoeGalion::SpawnCrew()
 			}
 			Placed.Add(Point);
 			const FVector Feet = Transform.TransformPositionNoScale(FVector(Point.X, Point.Y, DeckHeight + YSGalion::CrewSpawnHeight));
+			// apparus comme équipage (pas de sortie du sol sur le pont) ; libres : ils quittent tout de suite l'équipage
 			if (AYSFoeCharacter* Foe = SpawnCrewMember(UYSEnemySpawnRule::PickEnemyClass(Classes), Feet, INDEX_NONE))
 			{
-				Crew.Add(Foe);
+				++Spawned;
+				if (bFree)
+				{
+					Foe->ClearCrewShip();
+				}
+				else
+				{
+					Crew.Add(Foe);
+				}
 			}
 		}
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s apparaît en (%.0f, %.0f) : capitaine %s, %d matelots"), *GetName(), GetActorLocation().X, GetActorLocation().Y, *GetNameSafe(Captain), Crew.Num());
+	if (bFree)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : second équipage de %d NME sur le pont"), *GetName(), Spawned);
+	}
+}
+
+void AYSFoeGalion::ActivateBattle(float InRamDelay)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	SetDormant(false);
+	BattleActivationTime = GetWorld()->GetTimeSeconds();
+	if (InRamDelay >= 0.0f)
+	{
+		RamDelay = InRamDelay;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : bataille activée, il fonce sur les joueurs dans %.0f s"), *GetName(), RamDelay);
+}
+
+bool AYSFoeGalion::IsDefeated() const
+{
+	return IsActorBeingDestroyed() || !IsValid(Captain) || Captain->IsDying() || Captain->GetHealth() <= 0.0f;
+}
+
+void AYSFoeGalion::OnShipCollision(AYSPirateShip* Other)
+{
+	if (RamState == ERamState::Ramming && IsValid(Other) && !Other->IsFoeShip())
+	{
+		StartBoarding(Other);
+		return;
+	}
+	OnHullBlocked();
+}
+
+void AYSFoeGalion::StartBoarding(AYSPirateShip* Other)
+{
+	if (!HasAuthority() || RamState == ERamState::Boarded || !IsValid(Other))
+	{
+		return;
+	}
+	RamState = ERamState::Boarded;
+	BoardedShip = Other;
+	SetGrappled(true);
+	Other->SetGrappled(true);
+	SpawnBoardingPlanks(Other);
+
+	// tout l'équipage (capitaine compris) quitte ses postes et attaque les joueurs, où qu'ils soient
+	TArray<AYSFoeCharacter*> All;
+	All.Add(Captain);
+	All.Append(Crew);
+	int32 Released = 0;
+	for (AYSFoeCharacter* Foe : All)
+	{
+		if (!IsValid(Foe) || Foe->IsDying())
+		{
+			continue;
+		}
+		Foe->SetCrewPost(nullptr);
+		if (Foe->IsRidingShip())
+		{
+			UnseatCrewMember(Foe);
+		}
+		Foe->ClearCrewShip();
+		++Released;
+	}
+	Crew.Reset();
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s aborde %s : %d NME lâchent leurs postes"), *GetName(), *Other->GetName(), Released);
+
+	// second équipage sur le pont (hors capitaine)
+	SpawnCrewGroups(BoardingCrewGroups.Num() > 0 ? BoardingCrewGroups : CrewGroups, true);
+}
+
+void AYSFoeGalion::EndBoarding(const TCHAR* Reason)
+{
+	if (RamState != ERamState::Boarded)
+	{
+		return;
+	}
+	RamState = ERamState::Done;
+	for (AActor* Plank : BoardingPlanks)
+	{
+		if (IsValid(Plank))
+		{
+			Plank->Destroy();
+		}
+	}
+	BoardingPlanks.Reset();
+	if (IsValid(BoardedShip))
+	{
+		BoardedShip->SetGrappled(false);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : fin de l'abordage (%s), planches retirées, %s repart"), *GetName(), Reason, *GetNameSafe(BoardedShip));
+	BoardedShip = nullptr;
+}
+
+float AYSFoeGalion::FindDeckHeight(const AYSPirateShip* Ship, const FVector& Point, float Fallback) const
+{
+	const float Top = Ship->GetActorLocation().Z + 1500.0f;
+	TArray<FHitResult> Hits;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSGalionDeck), false);
+	GetWorld()->LineTraceMultiByObjectType(Hits, FVector(Point.X, Point.Y, Top), FVector(Point.X, Point.Y, Ship->GetActorLocation().Z - 300.0f), FCollisionObjectQueryParams(ECC_WorldStatic), Params);
+	for (const FHitResult& Hit : Hits)
+	{
+		if (GetShipOf(Hit.GetActor()) == Ship)
+		{
+			return Hit.ImpactPoint.Z;
+		}
+	}
+	return Fallback;
+}
+
+void AYSFoeGalion::SpawnBoardingPlanks(AYSPirateShip* Other)
+{
+	// point de contact : les deux points les plus proches des deux coques (projections alternées, coques convexes), là où il a percuté ;
+	// la planche entre dans chaque pont de Boarding Plank Inset
+	FVector OtherEdge = Other->GetClosestHullPoint(GetActorLocation());
+	FVector OwnEdge = GetClosestHullPoint(OtherEdge);
+	for (int32 Iteration = 0; Iteration < 6; ++Iteration)
+	{
+		OtherEdge = Other->GetClosestHullPoint(OwnEdge);
+		OwnEdge = GetClosestHullPoint(OtherEdge);
+	}
+	FVector Direction = FVector(OtherEdge.X - OwnEdge.X, OtherEdge.Y - OwnEdge.Y, 0.0f);
+	if (Direction.SizeSquared() < 100.0f)
+	{
+		Direction = (Other->GetActorLocation() - GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
+	}
+	Direction = Direction.GetSafeNormal();
+	const FVector OwnIn = OwnEdge - Direction * BoardingPlankInset;
+	const FVector OtherIn = OtherEdge + Direction * BoardingPlankInset;
+
+	FYSBoardingPlankSpan Span;
+	Span.Start = FVector(OwnIn.X, OwnIn.Y, FindDeckHeight(this, OwnIn, GetActorLocation().Z + DeckHeight) + BoardingPlankHeight);
+	Span.End = FVector(OtherIn.X, OtherIn.Y, FindDeckHeight(Other, OtherIn, Other->GetActorLocation().Z + DeckHeight) + BoardingPlankHeight);
+	Span.Width = BoardingPlankWidth;
+	Span.Thickness = BoardingPlankThickness;
+	Span.Material = BoardingPlankMaterial;
+
+	const FTransform Transform(FRotator::ZeroRotator, Span.Start);
+	if (AYSBoardingPlank* Plank = GetWorld()->SpawnActorDeferred<AYSBoardingPlank>(AYSBoardingPlank::StaticClass(), Transform, this, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn))
+	{
+		Plank->InitPlank(Span);
+		Plank->FinishSpawning(Transform);
+		BoardingPlanks.Add(Plank);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : planche d'abordage de %s à %s (%.0f cm de large, %.0f de long)"), *GetName(), *FVector(Span.Start).ToCompactString(), *FVector(Span.End).ToCompactString(),
+		Span.Width, FVector::Dist(Span.Start, Span.End));
 }
 
 AYSFoeCharacter* AYSFoeGalion::SpawnCrewMember(TSubclassOf<AYSFoeCharacter> FoeClass, const FVector& FeetLocation, int32 Seat)
@@ -124,6 +289,7 @@ void AYSFoeGalion::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	if (HasAuthority() && EndPlayReason == EEndPlayReason::Destroyed)
 	{
+		EndBoarding(TEXT("Galion coulé"));
 		ReleaseCrew();
 	}
 	Super::EndPlay(EndPlayReason);
@@ -151,6 +317,7 @@ void AYSFoeGalion::ReleaseCrew()
 
 void AYSFoeGalion::OnShipDestroyedByDamage()
 {
+	EndBoarding(TEXT("Galion coulé"));
 	ReleaseCrew();
 }
 
@@ -249,6 +416,15 @@ void AYSFoeGalion::Tick(float DeltaSeconds)
 
 	if (!HasAuthority() || IsActorBeingDestroyed())
 	{
+		return;
+	}
+	// abordage : il dure jusqu'à la mort du capitaine ; plus d'équipage à répartir
+	if (RamState == ERamState::Boarded || RamState == ERamState::Done)
+	{
+		if (RamState == ERamState::Boarded && (IsDefeated() || !IsValid(BoardedShip)))
+		{
+			EndBoarding(IsValid(BoardedShip) ? TEXT("capitaine tué") : TEXT("bateau abordé disparu"));
+		}
 		return;
 	}
 	CrewUpdateTimer -= DeltaSeconds;
@@ -436,7 +612,38 @@ bool AYSFoeGalion::ComputeAutoPilot(float& OutThrottle, float& OutSteer)
 	}
 
 	const FVector Location = GetActorLocation();
-	const AYSPirateShip* TargetShip = FindTargetShip();
+	AYSPirateShip* TargetShip = FindTargetShip();
+
+	// bataille navale : Ram Delay après l'activation, il fonce droit sur le bateau des joueurs ; contact = abordage
+	if (RamState == ERamState::Boarded || RamState == ERamState::Done)
+	{
+		OutThrottle = 0.0f;
+		OutSteer = 0.0f;
+		return true;
+	}
+	const double RamNow = GetWorld()->GetTimeSeconds();
+	if (RamState == ERamState::None && BattleActivationTime >= 0.0 && RamDelay > 0.0f && RamNow - BattleActivationTime >= RamDelay && TargetShip)
+	{
+		RamState = ERamState::Ramming;
+		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s fonce sur %s"), *GetName(), *TargetShip->GetName());
+	}
+	if (RamState == ERamState::Ramming && TargetShip)
+	{
+		const FVector TargetEdge = TargetShip->GetClosestHullPoint(Location);
+		const FVector OwnEdge = GetClosestHullPoint(TargetEdge);
+		if (FVector::Dist2D(TargetEdge, OwnEdge) <= RamContactDistance)
+		{
+			StartBoarding(TargetShip);
+			OutThrottle = 0.0f;
+			OutSteer = 0.0f;
+			return true;
+		}
+		const FVector ToTarget = ((TargetShip->GetActorLocation() - Location) * FVector(1.0f, 1.0f, 0.0f)).GetSafeNormal();
+		OutThrottle = 1.0f;
+		OutSteer = ComputeSteerTowards(AvoidShore(ToTarget, ToTarget, false), SteerFullAngle);
+		return true;
+	}
+
 	const APawn* TargetPawn = TargetShip ? nullptr : FindNearestPlayerPawn();
 	if (!TargetShip && !TargetPawn)
 	{

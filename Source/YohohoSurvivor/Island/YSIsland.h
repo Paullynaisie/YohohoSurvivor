@@ -102,6 +102,21 @@ public:
 	/** Tous les objectifs principaux livrés (répliqué : icônes du nid d'pie) */
 	bool AreMainObjectivesDone() const { return bMainObjectivesDone; }
 
+	/**
+	 *  Île prégénérée sous l'eau (serveur, avant FinishSpawning) : l'acteur est posé Depth sous sa place, construite mais inactive
+	 *  (ni objectifs ni activation) jusqu'à StartRise
+	 */
+	void SetSubmerged(float Depth) { SubmergedDepth = Depth; }
+
+	/** Remontée à la surface en Duration (serveur) ; objectifs et activation une fois arrivée */
+	void StartRise(float Duration);
+
+	/** Sous l'eau en attente de remonter */
+	bool IsSubmergedWaiting() const { return SubmergedDepth > 0.0f && RiseStartServerTime <= 0.0; }
+
+	/** Hors de l'eau (remontée finie, ou jamais immergée) */
+	bool IsEmerged() const;
+
 	/** Demi-côté du carré qui contient l'île et ses pentes sous l'eau (0 tant que le plan n'est pas construit sur cette machine) */
 	float GetReach() const { return Terrain.GetHalfSize(); }
 
@@ -184,6 +199,16 @@ protected:
 	UPROPERTY(Replicated)
 	double SinkStartServerTime = 0.0;
 
+	/** Prégénérée sous l'eau : profondeur sous sa place (0 = jamais immergée), remontée (heure serveur du début, durée) */
+	UPROPERTY(Replicated)
+	float SubmergedDepth = 0.0f;
+
+	UPROPERTY(Replicated)
+	double RiseStartServerTime = 0.0;
+
+	UPROPERTY(Replicated)
+	float RiseDuration = 15.0f;
+
 private:
 
 	/** Plan prêt (serveur) : construction, parts répliquées, objectifs */
@@ -234,6 +259,16 @@ private:
 
 	/** Descente de l'île sur cette machine */
 	void UpdateSink();
+
+	/** Remontée de l'île sur cette machine ; finie : composants remis statiques, objectifs posés (serveur) */
+	void UpdateRise();
+	bool bRiseGathered = false;
+	bool bRiseDone = false;
+	FVector RiseOrigin = FVector::ZeroVector;
+	TArray<TWeakObjectPtr<USceneComponent>> RiseStaticComponents;
+
+	/** Objectifs et zone de dépôt en attente de la remontée (serveur) */
+	bool bGameplayActorsPending = false;
 
 	/** Vagues (serveur) */
 	void FireEvent(const FYSIslandSpawnEvent& Event, int32 Repeat);

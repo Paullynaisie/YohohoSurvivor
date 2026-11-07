@@ -538,9 +538,17 @@ public:
 	UFUNCTION(Exec)
 	void YSIslandGoToBoat();
 
-	/** Debug (hôte, FlowMod) : les îles suivantes apparaissent maintenant autour de l'île de départ */
+	/** Debug (hôte, FlowMod) : les îles suivantes arrivent maintenant (remontée des îles prégénérées, batailles navales) */
 	UFUNCTION(Exec)
 	void YSIslandSpawnNext();
+
+	/** Debug (hôte, FlowMod) : réveille toutes les batailles navales */
+	UFUNCTION(Exec)
+	void YSNavalBattleActivate();
+
+	/** Debug (hôte, FlowMod) : bateau des joueurs posé sur l'eau à Distance (cm, 0 = 90 m) de la bataille navale Index, le joueur sur son pont */
+	UFUNCTION(Exec)
+	void YSShipToNavalBattle(int32 Index, float Distance);
 
 	/** Debug (hôte) : l'île la plus proche commence à couler tout de suite (sans attendre Sink Delay) */
 	UFUNCTION(Exec)

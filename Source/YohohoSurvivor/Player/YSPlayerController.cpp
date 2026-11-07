@@ -59,6 +59,7 @@
 #include "Core/YSGameMode.h"
 #include "Enemies/YSFoeGalion.h"
 #include "Enemies/YSFoeJollyShip.h"
+#include "Enemies/YSNavalBattle.h"
 #include "Ship/YSPirateShip.h"
 #include "Ship/YSGameBoat.h"
 #include "Components/InputComponent.h"
@@ -1076,8 +1077,43 @@ void AYSPlayerController::YSIslandSpawnNext()
 	AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
 	if (FlowMode && FlowMode->GetStartIslandActor())
 	{
-		FlowMode->SpawnNextIslands(FlowMode->GetStartIslandActor());
+		FlowMode->BringNextIslands(FlowMode->GetStartIslandActor());
 	}
+}
+
+void AYSPlayerController::YSNavalBattleActivate()
+{
+	if (AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())
+	{
+		FlowMode->DebugActivateNavalBattles();
+	}
+}
+
+void AYSPlayerController::YSShipToNavalBattle(int32 Index, float Distance)
+{
+	// hôte : le bateau des joueurs (GameBoat) posé à Distance du centre de la bataille Index, le joueur sur son pont
+	AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	AYSPirateShip* Ship = YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	const AActor* Battle = FlowMode && FlowMode->GetNavalBattles().IsValidIndex(Index) ? FlowMode->GetNavalBattles()[Index].Get() : nullptr;
+	if (!Ship || !Battle || !GetPawn())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSNavalBattle] Debug : pas de bateau des joueurs ou pas de bataille %d"), Index);
+		return;
+	}
+	FVector Point;
+	const float Range = Distance > 0.0f ? Distance : 9000.0f;
+	const FVector Center = Battle->GetActorLocation();
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	if (!AYSPirateShip::FindSeaPointNear(GetWorld(), Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Range, 2000.0f, Ship->GetMinWaterDepth() + 100.0f, 1500.0f, 2500.0f, 40, Point))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSNavalBattle] Debug : pas de place sur l'eau près de la bataille %d"), Index);
+		return;
+	}
+	Ship->SetActorLocationAndRotation(FVector(Point.X, Point.Y, Ship->GetActorLocation().Z), ((Center - Point) * FVector(1.0f, 1.0f, 0.0f)).Rotation());
+	Ship->SyncMotionToActor();
+	GetPawn()->TeleportTo(Ship->GetActorLocation() + FVector(0.0f, 0.0f, 350.0f), GetPawn()->GetActorRotation());
+	UE_LOG(LogTemp, Log, TEXT("[YSNavalBattle] Debug : %s posé à %.0f m de la bataille %d, en %s"), *Ship->GetName(), FVector::Dist2D(Point, Center) / 100.0f, Index, *Point.ToCompactString());
 }
 
 void AYSPlayerController::YSIslandSinkNow()
@@ -1482,7 +1518,7 @@ void AYSPlayerController::UpdatePlayerHUD()
 	{
 		for (TActorIterator<AYSIsland> It(GetWorld()); It; ++It)
 		{
-			if (!It->AreMainObjectivesDone() && !It->HasSinkStarted())
+			if (!It->AreMainObjectivesDone() && !It->HasSinkStarted() && !It->IsSubmergedWaiting())
 			{
 				AddIndicator(It->GetActorLocation() + FVector(0.0f, 0.0f, MyNest->GetIslandIndicatorHeight()), MyNest->GetIslandIndicatorColor(), MyNest->GetIslandIndicatorIcon(), true);
 			}

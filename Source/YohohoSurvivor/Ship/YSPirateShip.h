@@ -109,6 +109,16 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UChildActorComponent> BoardingAccess;
 
+	/** Second accès, côté tribord (+Y) : miroir de BoardingAccess (placé par Tools/EditorScripts/setup_naval_battles.py) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> BoardingAccessStarboard;
+
+	/** En sommeil (bataille navale pas encore activée) : immobile (serveur) */
+	bool bDormant = false;
+
+	/** Abordé par un Galion (planches d'abordage) : immobile tant que ça dure (serveur) */
+	bool bGrappled = false;
+
 protected:
 
 	/** Nom affiché */
@@ -298,8 +308,24 @@ public:
 	/** Core : stats du bateau (nullptr = valeurs du bateau seules) */
 	AYSShipCore* GetCore() const;
 
-	/** Accès du bateau (nullptr sur une chaloupe) */
+	/** Accès du bateau (nullptr sur une chaloupe) : le plus proche de From parmi bâbord et tribord ; sans From : bâbord */
 	AYSShipBoarding* GetBoardingAccess() const;
+	AYSShipBoarding* GetBoardingAccess(const FVector& From) const;
+
+	/** En sommeil : immobile, commandes ignorées (serveur) */
+	void SetDormant(bool bInDormant);
+	float GetMinWaterDepth() const { return MinWaterDepth; }
+	bool IsDormant() const { return bDormant; }
+
+	/** Abordé (planches d'abordage d'un Galion) : immobile, commandes ignorées (serveur) */
+	void SetGrappled(bool bInGrappled);
+	bool IsGrappled() const { return bGrappled; }
+
+	/**
+	 *  Point sur l'eau à moins de Radius de Center (serveur) : assez de fond (RequiredDepth) sur ClearanceRadius autour, hors de l'emprise
+	 *  (+ ShipMargin) des bateaux à pont. Faux si rien en Attempts essais.
+	 */
+	static bool FindSeaPointNear(UWorld* World, const FVector& Center, float Radius, float RequiredDepth, float ShipMargin, float ClearanceRadius, int32 Attempts, FVector& OutPoint);
 
 	/**
 	 *  Point vers lequel marcher (à plat) pour aller de From à To sans buter contre la coque : To si From est déjà du même côté du bateau,

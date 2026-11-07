@@ -68,6 +68,10 @@ struct FYSIslandPierSegment
 	/** Morceaux qui se suivent le long d'une courbe : un peu plus longs pour que les joints se recouvrent */
 	UPROPERTY()
 	bool bOverlapEnds = false;
+
+	/** Largeur de ce morceau (0 = Pier Width) : rampes de la falaise plus étroites que le ponton */
+	UPROPERTY()
+	float Width = 0.0f;
 };
 
 USTRUCT()

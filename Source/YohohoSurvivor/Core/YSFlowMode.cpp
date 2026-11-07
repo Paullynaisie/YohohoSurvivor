@@ -5,6 +5,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Enemies/YSFoeCharacter.h"
+#include "Enemies/YSNavalBattle.h"
 #include "Island/YSIsland.h"
 #include "Island/YSIslandData.h"
 #include "Misc/CommandLine.h"
@@ -20,19 +21,10 @@ namespace YSFlowMode
 
 AYSFlowMode::AYSFlowMode()
 {
-	// « go naviguer » (demande de Paul) : 3 chaloupes à 10 s, 1 Galion à 15 s, 6 chaloupes à 45 s
-	FYSNavigationWave Wave;
-	Wave.Delay = 10.0f;
-	Wave.JollyShips = 3;
-	NavigationWaves.Add(Wave);
-	Wave = FYSNavigationWave();
-	Wave.Delay = 15.0f;
-	Wave.Galions = 1;
-	NavigationWaves.Add(Wave);
-	Wave = FYSNavigationWave();
-	Wave.Delay = 45.0f;
-	Wave.JollyShips = 6;
-	NavigationWaves.Add(Wave);
+	// demande de Paul (2026-11-07) : plus de bateaux de NME dans le flow, seulement dans les batailles navales
+	bJollyShipWaves = false;
+	bGalionWaves = false;
+	NavalBattleRows = { FName(TEXT("Base")), FName(TEXT("Base")) };
 }
 
 void AYSFlowMode::InitGameState()
@@ -64,6 +56,11 @@ void AYSFlowMode::BeginPlay()
 	{
 		Island->InitIsland(StartIsland, Seed, true);
 		Island->FinishSpawning(Transform);
+		// îles suivantes générées dès maintenant, sous l'eau
+		if (bPregenerateNextIslands && NextIslandsSubmergedDepth > 0.0f)
+		{
+			SpawnNextIslands(Island, true);
+		}
 	}
 }
 
@@ -108,17 +105,109 @@ void AYSFlowMode::OnIslandSinkStarted(AYSIsland* SinkingIsland)
 	// objectifs jamais livrés : elles apparaissent quand même à la coulaison de l'île de départ (sans effet si déjà là)
 	if (SinkingIsland && SinkingIsland == Island)
 	{
-		SpawnNextIslands(SinkingIsland);
+		BringNextIslands(SinkingIsland);
 	}
 }
 
 void AYSFlowMode::OnIslandMainObjectivesDone(AYSIsland* DoneIsland)
 {
 	UpgradeGameBoat();
-	// demande de Paul : les îles suivantes apparaissent dès que les objectifs de l'île de départ sont livrés (plus à sa coulaison)
+	// demande de Paul : les îles suivantes arrivent dès que les objectifs de l'île de départ sont livrés (plus à sa coulaison)
 	if (DoneIsland && DoneIsland == Island)
 	{
-		SpawnNextIslands(DoneIsland);
+		BringNextIslands(DoneIsland);
+	}
+}
+
+void AYSFlowMode::BringNextIslands(const AYSIsland* From)
+{
+	if (bNextIslandsBrought)
+	{
+		return;
+	}
+	bNextIslandsBrought = true;
+	// prégénérées : elles remontent ; sinon elles apparaissent maintenant
+	SpawnNextIslands(From, false);
+	for (AYSIsland* NextIsland : SpawnedIslands)
+	{
+		if (IsValid(NextIsland))
+		{
+			NextIsland->StartRise(NextIslandsRiseDuration);
+		}
+	}
+	SpawnNavalBattles();
+}
+
+void AYSFlowMode::SpawnNavalBattles()
+{
+	if (bNavalBattlesSpawned || !NavalBattleTable || NavalBattleRows.Num() == 0)
+	{
+		if (!NavalBattleTable && !bNavalBattlesSpawned)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[YSNavalBattle] Pas de Naval Battle Table sur le FlowMode : aucune bataille navale"));
+		}
+		bNavalBattlesSpawned = true;
+		return;
+	}
+	bNavalBattlesSpawned = true;
+
+	// paires d'îles suivantes (toutes les paires, mélangées) : une bataille par paire, au milieu de l'espace entre leurs côtes
+	TArray<TPair<AYSIsland*, AYSIsland*>> Pairs;
+	for (int32 A = 0; A < SpawnedIslands.Num(); ++A)
+	{
+		for (int32 B = A + 1; B < SpawnedIslands.Num(); ++B)
+		{
+			if (IsValid(SpawnedIslands[A]) && IsValid(SpawnedIslands[B]))
+			{
+				Pairs.Emplace(SpawnedIslands[A], SpawnedIslands[B]);
+			}
+		}
+	}
+	for (int32 K = Pairs.Num() - 1; K > 0; --K)
+	{
+		Pairs.Swap(K, FMath::RandRange(0, K));
+	}
+	for (int32 Index = 0; Index < NavalBattleRows.Num() && Index < Pairs.Num(); ++Index)
+	{
+		const FYSNavalBattleRow* Row = NavalBattleTable->FindRow<FYSNavalBattleRow>(NavalBattleRows[Index], TEXT("SpawnNavalBattles"));
+		if (!Row)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[YSNavalBattle] Ligne %s absente de %s"), *NavalBattleRows[Index].ToString(), *NavalBattleTable->GetName());
+			continue;
+		}
+		// entre les deux îles sur le cercle des îles suivantes (le milieu en ligne droite tomberait près de l'île de départ, au centre du triangle)
+		const AYSIsland* First = Pairs[Index].Key;
+		const AYSIsland* Second = Pairs[Index].Value;
+		const FVector Center = Island ? Island->GetActorLocation() * FVector(1.0f, 1.0f, 0.0f) : FVector::ZeroVector;
+		const FVector A = First->GetActorLocation() * FVector(1.0f, 1.0f, 0.0f);
+		const FVector B = Second->GetActorLocation() * FVector(1.0f, 1.0f, 0.0f);
+		FVector MidDirection = ((A - Center).GetSafeNormal() + (B - Center).GetSafeNormal()).GetSafeNormal();
+		if (MidDirection.IsNearlyZero())
+		{
+			MidDirection = (B - A).GetSafeNormal().RotateAngleAxis(90.0f, FVector::UpVector);
+		}
+		const FVector Location = Center + MidDirection * (FVector::Dist(A, Center) + FVector::Dist(B, Center)) * 0.5f;
+		const float Gap = FMath::Min(FVector::Dist(Location, A) - First->GetRadius(), FVector::Dist(Location, B) - Second->GetRadius());
+		const FTransform Transform(FRotator::ZeroRotator, Location);
+		if (AYSNavalBattle* Battle = GetWorld()->SpawnActorDeferred<AYSNavalBattle>(AYSNavalBattle::StaticClass(), Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn))
+		{
+			Battle->InitBattle(*Row, NavalBattleRows[Index]);
+			Battle->FinishSpawning(Transform);
+			NavalBattles.Add(Battle);
+			UE_LOG(LogTemp, Log, TEXT("[YSNavalBattle] Bataille %s entre %s et %s, en %s (côte la plus proche à %.0f m)"), *NavalBattleRows[Index].ToString(), *First->GetData()->GetName(),
+				*Second->GetData()->GetName(), *Location.ToCompactString(), Gap / 100.0f);
+		}
+	}
+}
+
+void AYSFlowMode::DebugActivateNavalBattles()
+{
+	for (AYSNavalBattle* Battle : NavalBattles)
+	{
+		if (IsValid(Battle))
+		{
+			Battle->Activate(TEXT("debug"));
+		}
 	}
 }
 
@@ -133,7 +222,7 @@ void AYSFlowMode::StartNavigationWaves()
 	UE_LOG(LogTemp, Log, TEXT("[YSNavigation] Go naviguer : %d vague(s) en mer programmée(s)"), NavigationWaves.Num());
 }
 
-void AYSFlowMode::SpawnNextIslands(const AYSIsland* From)
+void AYSFlowMode::SpawnNextIslands(const AYSIsland* From, bool bSubmerged)
 {
 	if (bNextIslandsSpawned || !From || NextIslands.Num() == 0)
 	{
@@ -169,14 +258,18 @@ void AYSFlowMode::SpawnNextIslands(const AYSIsland* From)
 		const float Distance = From->GetRadius() + NextIslandsGap + Data->Generation.Radius;
 		const FVector Location = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Distance;
 		const float Yaw = Data->bRandomRotation ? FMath::FRandRange(0.0f, 360.0f) : 0.0f;
-		const FTransform Transform(FRotator(0.0f, Yaw, 0.0f), Location);
+		// prégénérée : sous l'eau, à sa place
+		const float Depth = bSubmerged ? NextIslandsSubmergedDepth : 0.0f;
+		const FTransform Transform(FRotator(0.0f, Yaw, 0.0f), Location - FVector(0.0f, 0.0f, Depth));
 		AYSIsland* NewIsland = GetWorld()->SpawnActorDeferred<AYSIsland>(AYSIsland::StaticClass(), Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 		if (NewIsland)
 		{
 			NewIsland->InitIsland(Data, 0, false);
+			NewIsland->SetSubmerged(Depth);
 			NewIsland->FinishSpawning(Transform);
 			SpawnedIslands.Add(NewIsland);
-			UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Île suivante %s en %s (yaw %.0f°, %.0f m du centre de départ)"), *Data->GetName(), *Location.ToCompactString(), Yaw, Distance / 100.0f);
+			UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Île suivante %s en %s (yaw %.0f°, %.0f m du centre de départ%s)"), *Data->GetName(), *Location.ToCompactString(), Yaw, Distance / 100.0f,
+				bSubmerged ? *FString::Printf(TEXT(", prégénérée %.0f cm sous l'eau"), Depth) : TEXT(""));
 		}
 	}
 }

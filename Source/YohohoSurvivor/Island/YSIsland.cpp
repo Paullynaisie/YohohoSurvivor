@@ -85,6 +85,88 @@ void AYSIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	DOREPLIFETIME(AYSIsland, StartBoat);
 	DOREPLIFETIME(AYSIsland, SinkStartServerTime);
 	DOREPLIFETIME(AYSIsland, bMainObjectivesDone);
+	DOREPLIFETIME(AYSIsland, SubmergedDepth);
+	DOREPLIFETIME(AYSIsland, RiseStartServerTime);
+	DOREPLIFETIME(AYSIsland, RiseDuration);
+}
+
+void AYSIsland::StartRise(float Duration)
+{
+	if (!HasAuthority() || !IsSubmergedWaiting())
+	{
+		return;
+	}
+	RiseDuration = FMath::Max(Duration, 0.1f);
+	RiseStartServerTime = FMath::Max(YSIslandActor::GetServerTime(GetWorld()), 0.001);
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s remonte à la surface (%.0f cm en %.0f s)"), Data ? *Data->GetName() : *GetName(), SubmergedDepth, RiseDuration);
+}
+
+bool AYSIsland::IsEmerged() const
+{
+	return SubmergedDepth <= 0.0f || bRiseDone;
+}
+
+void AYSIsland::UpdateRise()
+{
+	if (SubmergedDepth <= 0.0f || RiseStartServerTime <= 0.0 || bRiseDone)
+	{
+		return;
+	}
+
+	// une fois : l'île et tout ce qui y est accroché (props, pontons) rendus mobiles ; ce qui était statique le redevient à l'arrivée
+	if (!bRiseGathered)
+	{
+		bRiseGathered = true;
+		RiseOrigin = GetActorLocation();
+		TArray<AActor*> Attached;
+		GetAttachedActors(Attached, false, true);
+		Attached.Insert(this, 0);
+		for (AActor* Actor : Attached)
+		{
+			TInlineComponentArray<USceneComponent*> Components(Actor);
+			for (USceneComponent* Component : Components)
+			{
+				if (Component->Mobility == EComponentMobility::Static)
+				{
+					RiseStaticComponents.Add(Component);
+				}
+				Component->SetMobility(EComponentMobility::Movable);
+			}
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s remonte : %d acteur(s) (%s)"), *Data->GetName(), Attached.Num(), HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	}
+
+	// même remontée sur toutes les machines (temps serveur), ralentie à l'arrivée
+	const float Alpha = FMath::Clamp(static_cast<float>(YSIslandActor::GetServerTime(GetWorld()) - RiseStartServerTime) / FMath::Max(RiseDuration, 0.1f), 0.0f, 1.0f);
+	const float Eased = 1.0f - FMath::Square(1.0f - Alpha);
+	const FVector Target = RiseOrigin + FVector(0.0f, 0.0f, SubmergedDepth * Eased);
+	if (!GetActorLocation().Equals(Target, 0.1f))
+	{
+		SetActorLocation(Target);
+	}
+	if (Alpha < 1.0f)
+	{
+		return;
+	}
+
+	// arrivée : statique comme une île générée à la surface (props accrochés à un parent statique), puis objectifs (serveur)
+	bRiseDone = true;
+	for (const TWeakObjectPtr<USceneComponent>& Component : RiseStaticComponents)
+	{
+		if (Component.IsValid())
+		{
+			Component->SetMobility(EComponentMobility::Static);
+		}
+	}
+	RiseStaticComponents.Empty();
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s à la surface (%s)"), *Data->GetName(), HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	if (HasAuthority() && bGameplayActorsPending)
+	{
+		bGameplayActorsPending = false;
+		SpawnGameplayActors();
+		ForceNetUpdate();
+	}
 }
 
 FVector AYSIsland::LocalToWorld(const FVector2f& Local, float LocalZ) const
@@ -158,7 +240,15 @@ void AYSIsland::OnPlanReady(const FString& Report)
 		*StaticEnum<EYSIslandGeneration>()->GetNameStringByValue(static_cast<int64>(Plan.Biome)), *Report);
 	BuildLocally();
 	SpawnPropChunks();
-	SpawnGameplayActors();
+	// prégénérée sous l'eau : objectifs et zone de dépôt une fois remontée
+	if (SubmergedDepth > 0.0f && !bRiseDone)
+	{
+		bGameplayActorsPending = true;
+	}
+	else
+	{
+		SpawnGameplayActors();
+	}
 	ForceNetUpdate();
 }
 
@@ -187,6 +277,15 @@ void AYSIsland::TickPendingProps()
 		if (AActor* Actor = GetWorld()->SpawnActor<AActor>(Def.Class, Location, FRotator(0.0f, Prop.Yaw + IslandYaw, 0.0f), Params))
 		{
 			Actor->SetActorScale3D(FVector(Prop.Scale));
+			// île en mouvement (remontée, coulaison) : un prop statique ne s'accroche pas à un parent mobile
+			if (TerrainMesh->Mobility == EComponentMobility::Movable)
+			{
+				TInlineComponentArray<USceneComponent*> Components(Actor);
+				for (USceneComponent* Component : Components)
+				{
+					Component->SetMobility(EComponentMobility::Movable);
+				}
+			}
 			Actor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
 		}
 	}
@@ -529,7 +628,8 @@ void AYSIsland::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	// descente : sur chaque machine, depuis l'heure serveur
+	// remontée (îles prégénérées) et descente : sur chaque machine, depuis l'heure serveur
+	UpdateRise();
 	UpdateSink();
 	if (Data)
 	{
@@ -561,7 +661,11 @@ void AYSIsland::Tick(float DeltaSeconds)
 
 	if (Phase == EYSIslandPhase::Inactive)
 	{
-		TickActivation();
+		// sous l'eau ou en train de remonter : rien ne l'active
+		if (IsEmerged())
+		{
+			TickActivation();
+		}
 		return;
 	}
 

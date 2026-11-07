@@ -295,9 +295,25 @@ struct FYSIslandGenerationRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="11 Port Town", meta=(ClampMin="0", Units="Centimeters"))
 	float HouseGap = 40.0f;
 
-	/** Pontons : largeur (5 PJ) */
+	/** Massifs de la ville : presque que des maisons ; chance qu'une place libre entre elles reçoive quand même un palmier */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="11 Port Town", meta=(ClampMin="0", ClampMax="1"))
+	float TownTreeChance = 0.05f;
+
+	/** Bouchons de la ville (trous du bord des massifs) : petites maisons ; réduites à cette échelle quand une maison entière ne tient pas */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="11 Port Town", meta=(ClampMin="0.2", ClampMax="1"))
+	float TownPlugHouseScale = 0.6f;
+
+	/** Pontons : largeur du ponton de la côte et des quais (15 PJ) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="50", Units="Centimeters"))
-	float PierWidth = 420.0f;
+	float PierWidth = 1260.0f;
+
+	/** Rampes qui descendent du haut de la falaise : largeur ; elles longent la falaise, posées sur le ponton */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="50", Units="Centimeters"))
+	float PierRampWidth = 420.0f;
+
+	/** Pente max des rampes de la falaise (leur longueur en dépend) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="5", ClampMax="40", Units="Degrees"))
+	float PierRampMaxSlope = 25.0f;
 
 	/** Dessus des pontons au-dessus de la mer */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(Units="Centimeters"))
@@ -307,9 +323,9 @@ struct FYSIslandGenerationRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="5", Units="Centimeters"))
 	float PierThickness = 30.0f;
 
-	/** Le ponton qui longe la côte (et relie les rampes) passe à cette distance du bord de la falaise */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="200", Units="Centimeters"))
-	float PierCoastOffset = 1000.0f;
+	/** Écart entre le pied de la falaise et le bord intérieur du ponton de la côte (0 = collé à la falaise) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="0", Units="Centimeters"))
+	float PierCoastOffset = 0.0f;
 
 	/** Quai au pied de chaque rampe, vers le large */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="0", Units="Centimeters"))
@@ -324,7 +340,7 @@ struct FYSIslandGenerationRules
 
 	/** Accès depuis l'eau aussi tous les ... le long du ponton de la côte */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="500", Units="Centimeters"))
-	float PierWaterAccessSpacing = 3000.0f;
+	float PierWaterAccessSpacing = 1500.0f;
 
 	/** Longueur d'un morceau du ponton de la côte (il suit la courbe) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="100", Units="Centimeters"))

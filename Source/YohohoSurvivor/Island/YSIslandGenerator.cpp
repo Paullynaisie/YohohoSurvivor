@@ -565,51 +565,77 @@ namespace YSIslandGen
 		Spots.Sort();
 
 		const auto Radial = [](float Theta, float R) { return FVector2f(FMath::Cos(Theta), FMath::Sin(Theta)) * R; };
-		const auto AddSegment = [&Out](const FVector2f& A, float ZA, const FVector2f& B, float ZB, bool bPosts, bool bOverlap)
+		const auto AddSegment = [&Out](const FVector2f& A, float ZA, const FVector2f& B, float ZB, bool bPosts, bool bOverlap, float Width = 0.0f)
 		{
 			FYSIslandPierSegment& Segment = Out.AddDefaulted_GetRef();
 			Segment.A = FVector3f(A.X, A.Y, ZA);
 			Segment.B = FVector3f(B.X, B.Y, ZB);
 			Segment.bPosts = bPosts;
 			Segment.bOverlapEnds = bOverlap;
+			Segment.Width = Width;
 		};
+		// ponton de la côte : collé au pied de la falaise (Pier Coast Offset = écart), son milieu à cette distance du centre
+		const auto WalkRadius = [&Terrain, &Rules](float Theta) { return Terrain.CoastRadius(Theta) + Rules.PierCoastOffset + Rules.PierWidth * 0.5f; };
+		const auto RampRadius = [&Terrain, &Rules](float Theta) { return Terrain.CoastRadius(Theta) + Rules.PierCoastOffset + Rules.PierRampWidth * 0.5f; };
 
-		for (const float Theta : Spots)
+		// ponton de la côte de From à To (angles), avec des accès depuis l'eau tous les Pier Water Access Spacing
+		const auto AddWalkway = [&](float From, float To)
 		{
-			const float Coast = Terrain.CoastRadius(Theta);
-			// rampe : du bord de la falaise (au niveau du plateau) jusqu'au ponton de la côte
-			const FVector2f Top = Radial(Theta, Coast - 40.0f);
-			const FVector2f Foot = Radial(Theta, Coast + Rules.PierCoastOffset);
-			AddSegment(Top, Terrain.Height(Top.X, Top.Y) + 2.0f, Foot, Deck, false, false);
-			// quai vers le large, puis pente dans l'eau
-			const FVector2f DockEnd = Radial(Theta, Coast + Rules.PierCoastOffset + Rules.PierDockLength);
-			AddSegment(Foot, Deck, DockEnd, Deck, true, true);
-			AddSegment(DockEnd, Deck, Radial(Theta, Coast + Rules.PierCoastOffset + Rules.PierDockLength + Rules.PierWaterRampLength), WaterEnd, false, false);
-		}
-
-		// ponton de la côte entre deux rampes voisines, avec des accès depuis l'eau
-		for (int32 Index = 0; Index + 1 < Spots.Num(); ++Index)
-		{
-			const float From = Spots[Index];
-			const float To = Spots[Index + 1];
-			const float Length = (To - From) * (Terrain.CoastRadius((From + To) * 0.5f) + Rules.PierCoastOffset);
+			const float Length = FMath::Abs(To - From) * WalkRadius((From + To) * 0.5f);
 			const int32 Steps = FMath::Max(1, FMath::CeilToInt32(Length / Rules.PierStep));
 			float SinceAccess = 0.0f;
 			for (int32 Step = 0; Step < Steps; ++Step)
 			{
 				const float T0 = From + (To - From) * Step / Steps;
 				const float T1 = From + (To - From) * (Step + 1) / Steps;
-				const FVector2f P0 = Radial(T0, Terrain.CoastRadius(T0) + Rules.PierCoastOffset);
-				const FVector2f P1 = Radial(T1, Terrain.CoastRadius(T1) + Rules.PierCoastOffset);
+				const FVector2f P0 = Radial(T0, WalkRadius(T0));
+				const FVector2f P1 = Radial(T1, WalkRadius(T1));
 				AddSegment(P0, Deck, P1, Deck, true, true);
 				SinceAccess += (P1 - P0).Size();
 				if (SinceAccess >= Rules.PierWaterAccessSpacing && Step + 1 < Steps)
 				{
 					SinceAccess = 0.0f;
-					const FVector2f Out2D = Radial(T1, 1.0f);
-					AddSegment(P1, Deck, P1 + Out2D * (Rules.PierWidth * 0.5f + Rules.PierWaterRampLength), WaterEnd, false, false);
+					AddSegment(P1, Deck, P1 + Radial(T1, 1.0f) * (Rules.PierWidth * 0.5f + Rules.PierWaterRampLength), WaterEnd, false, false);
 				}
 			}
+		};
+
+		const float RampTan = FMath::Tan(FMath::DegreesToRadians(Rules.PierRampMaxSlope));
+		for (int32 Index = 0; Index < Spots.Num(); ++Index)
+		{
+			const float Theta = Spots[Index];
+			const float Coast = Terrain.CoastRadius(Theta);
+			// rampe : du haut de la falaise à l'ouverture, elle longe la falaise en descendant (côté de la rampe voisine) et se pose sur le ponton
+			const float TopZ = Terrain.Height(Radial(Theta, Coast - 40.0f).X, Radial(Theta, Coast - 40.0f).Y) + 2.0f;
+			const float RampLength = FMath::Max(TopZ - Deck, 0.0f) / FMath::Max(RampTan, 0.05f);
+			const float Side = Index + 1 < Spots.Num() || Spots.Num() == 1 ? 1.0f : -1.0f;
+			const float RampEnd = Theta + Side * RampLength / FMath::Max(RampRadius(Theta), 100.0f);
+			const int32 RampSteps = FMath::Max(1, FMath::CeilToInt32(RampLength / Rules.PierStep));
+			for (int32 Step = 0; Step < RampSteps; ++Step)
+			{
+				const float A0 = float(Step) / RampSteps;
+				const float A1 = float(Step + 1) / RampSteps;
+				const float T0 = FMath::Lerp(Theta, RampEnd, A0);
+				const float T1 = FMath::Lerp(Theta, RampEnd, A1);
+				AddSegment(Radial(T0, RampRadius(T0)), FMath::Lerp(TopZ, Deck, A0), Radial(T1, RampRadius(T1)), FMath::Lerp(TopZ, Deck, A1), false, true, Rules.PierRampWidth);
+			}
+			// ponton sous la rampe (une seule ouverture : il n'y a pas de ponton entre deux rampes)
+			if (Spots.Num() == 1)
+			{
+				AddWalkway(FMath::Min(Theta, RampEnd), FMath::Max(Theta, RampEnd) + Rules.PierWidth / FMath::Max(WalkRadius(Theta), 100.0f));
+			}
+			// quai vers le large depuis le bord extérieur du ponton, puis pente dans l'eau
+			const float Outer = Coast + Rules.PierCoastOffset + Rules.PierWidth;
+			const FVector2f DockStart = Radial(Theta, Outer - Rules.PierWidth * 0.5f);
+			const FVector2f DockEnd = Radial(Theta, Outer + Rules.PierDockLength);
+			AddSegment(DockStart, Deck, DockEnd, Deck, true, true);
+			AddSegment(DockEnd, Deck, Radial(Theta, Outer + Rules.PierDockLength + Rules.PierWaterRampLength), WaterEnd, false, false);
+		}
+
+		// ponton de la côte entre deux rampes voisines, avec des accès depuis l'eau
+		for (int32 Index = 0; Index + 1 < Spots.Num(); ++Index)
+		{
+			AddWalkway(Spots[Index], Spots[Index + 1]);
 		}
 	}
 
@@ -887,19 +913,27 @@ namespace YSIslandGen
 				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, EYSIslandPropRole::Core, 0.0f, ETownPick::BigHouses);
 			}
 		}
+		// intérieur : arbres hors de la ville ; dans la ville, des maisons (demande de Paul : presque que des maisons)
 		for (const int32 K : Candidates)
 		{
 			if (!Core[K])
 			{
-				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, EYSIslandPropRole::Interior, 0.0f, ETownPick::Palms);
+				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, EYSIslandPropRole::Interior, 0.0f, ETownPick::Houses);
 			}
 		}
-		// ville : des palmiers entre les grandes maisons
+		// ville : petites maisons entre les grandes, puis de rares palmiers dans les places qui restent
 		for (const int32 K : Candidates)
 		{
 			if (Core[K] && Town[K])
 			{
-				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, EYSIslandPropRole::Core, 0.0f, ETownPick::Palms);
+				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, EYSIslandPropRole::Core, 0.0f, ETownPick::Houses);
+			}
+		}
+		for (const int32 K : Candidates)
+		{
+			if (Town[K] && Rng.FRand() < Rules.TownTreeChance)
+			{
+				TryPlace(K, -1.0f, 1.0f, Rules.InteriorGap, Core[K] ? EYSIslandPropRole::Core : EYSIslandPropRole::Interior, 0.0f, ETownPick::Palms);
 			}
 		}
 
@@ -936,8 +970,20 @@ namespace YSIslandGen
 				for (const FVector2f& Other : Placed) { bFree = bFree && (Other - P).SizeSquared() >= PlugSpacing * PlugSpacing; }
 				if (bFree)
 				{
-					const EYSIslandPropType Type = Core[K] || Town[K] ? EYSIslandPropType::Tree : EYSIslandPropType::Bush;
-					const FPlacedProp Prop = MakeProp(Rules, Type, EYSIslandPropRole::Lining, PropDef(Rules, Type).ScaleMin, P, Rng);
+					// ville : une petite maison (demande de Paul : presque pas d'arbres), réduite si elle ne tient pas en entier, quitte à
+					// toucher sa voisine (c'est un bouchon : il ferme le passage)
+					EYSIslandPropType Type = Core[K] || Town[K] ? EYSIslandPropType::Tree : EYSIslandPropType::Bush;
+					float Scale = PropDef(Rules, Type).ScaleMin;
+					if (Town[K])
+					{
+						Type = EYSIslandPropType::SmallHouse;
+						Scale = Rules.SmallHouseProp.ScaleMin;
+						if (!Index.Fits(P, Rules.SmallHouseProp.Radius * Scale, 1.0f, Rules.HouseGap))
+						{
+							Scale *= Rules.TownPlugHouseScale;
+						}
+					}
+					const FPlacedProp Prop = MakeProp(Rules, Type, EYSIslandPropRole::Lining, Scale, P, Rng);
 					Props.Add(Prop);
 					Index.Add(Prop);
 					Placed.Add(P);
