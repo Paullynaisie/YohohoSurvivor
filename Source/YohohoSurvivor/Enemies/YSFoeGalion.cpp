@@ -419,6 +419,12 @@ void AYSFoeGalion::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	// barre de vie du capitaine dans le HUD seulement quand la bataille navale est active (navire réveillé)
+	if (HasAuthority() && IsValid(Captain))
+	{
+		Captain->SetHudHealthBar(!IsDormant() && !IsSinking());
+	}
+
 	if (!HasAuthority() || IsActorBeingDestroyed() || IsSinking())
 	{
 		return;

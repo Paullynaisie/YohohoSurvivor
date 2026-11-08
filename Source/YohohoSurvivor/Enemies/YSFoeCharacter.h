@@ -815,6 +815,10 @@ public:
 
 	/** Capitaine d'un navire de NME (serveur) : mécaniques de boss (Boss armor, rage, bouclier) et barre de vie dans le HUD */
 	void SetShipCaptainBoss();
+	bool IsShipCaptainBoss() const { return bShipCaptainBoss; }
+
+	/** Barre de vie dans le HUD (serveur ; capitaine : seulement quand son navire est réveillé, bataille navale active) */
+	void SetHudHealthBar(bool bShow) { if (bHudHealthBar != bShow) { bHudHealthBar = bShow; ForceNetUpdate(); } }
 
 	float GetRage() const { return Rage; }
 

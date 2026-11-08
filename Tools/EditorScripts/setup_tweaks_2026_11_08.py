@@ -48,11 +48,18 @@ def chests():
         child = cdo(path)
         child.set_editor_property("bFloatsOnWater", True)
         save(path)
-    # coffre du boss : 50 doublons (demande de Paul)
-    boss_chest = cdo(CHILD_CHESTS[1])
-    log(f"BP_InteractiveObject_BossChest : doublons {boss_chest.get_editor_property('DoubloonValue')} -> 50")
-    boss_chest.set_editor_property("DoubloonValue", 50)
-    save(CHILD_CHESTS[1])
+    # tous les coffres : 50 doublons et 1 plume de phoenix (demande de Paul)
+    for path in (CHEST,) + CHILD_CHESTS:
+        chest = cdo(path)
+        chest.set_editor_property("DoubloonValue", 50)
+        chest.set_editor_property("PhoenixFeatherValue", 1)
+        save(path)
+    # coffre lâché par chaque NME
+    for data in unreal.AssetRegistryHelpers.get_asset_registry().get_assets_by_path("/Game/Placeable/Character/Foe", recursive=True):
+        foe_class = assets.load_blueprint_class(str(data.package_name))
+        loot = unreal.get_default_object(foe_class).get_editor_property("DeathLootClass") if foe_class else None
+        if loot:
+            log(f"{data.asset_name} lâche {loot.get_name()}")
     for path in (CHEST,) + CHILD_CHESTS:
         log(f"{path.rsplit('/', 1)[1]} : flotte = {cdo(path).get_editor_property('bFloatsOnWater')}, doublons {cdo(path).get_editor_property('DoubloonValue')}, plumes {cdo(path).get_editor_property('PhoenixFeatherValue')}")
 

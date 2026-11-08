@@ -2546,7 +2546,8 @@ void AYSFoeCharacter::SetShipCaptainBoss()
 	}
 	// demande de Paul (2026-11-08) : capitaines de navire = mécaniques de boss (bouclier, rage) et barre de vie affichée
 	bShipCaptainBoss = true;
-	bHudHealthBar = true;
+	// barre de vie : affichée par le navire quand la bataille navale est active (AYSFoeGalion::Tick)
+	bHudHealthBar = false;
 	ForceNetUpdate();
 	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : capitaine de navire, mécaniques de boss (rage %.0f, bouclier %.0f)"), *GetName(), GetMaxRage(), BossShield);
 }

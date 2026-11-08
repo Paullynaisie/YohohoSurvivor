@@ -1358,7 +1358,7 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 		const AYSFoeCharacter* Elite = HudElites.IsValidIndex(Index) ? HudElites[Index].Get() : nullptr;
 		if (Elite)
 		{
-			Bar->SetElite(Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
+			Bar->SetElite(Elite->IsShipCaptainBoss() ? NSLOCTEXT("YS", "ShipCaptainBarName", "Capitaine") : Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
 			Bar->SetBossState(Elite->GetBossShield(), Elite->GetMaxBossShield(), Elite->GetRage(), Elite->UsesBossShield() ? Elite->GetMaxRage() : 0.0f);
 			if (ViewportSubsystem)
 			{
