@@ -64,6 +64,10 @@ void AYSFoeGalion::SpawnCrew()
 		const AYSShipStation* Helm = GetSeatStation(0);
 		Captain = SpawnCrewMember(Chosen, GetSeatFeetLocation(0), Helm ? 0 : INDEX_NONE);
 		bHadCaptain = IsValid(Captain);
+		if (bHadCaptain)
+		{
+			Captain->SetShipCaptainBoss();
+		}
 		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : capitaine %s"), *GetName(), *Chosen->GetName());
 	}
 

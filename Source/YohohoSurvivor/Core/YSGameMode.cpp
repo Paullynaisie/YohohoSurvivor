@@ -1206,6 +1206,12 @@ int32 AYSGameMode::GetPlayersInMatchCount() const
 	return Count;
 }
 
+float AYSGameMode::GetFoeLevelGainMultiplier(const UWorld* World)
+{
+	const AYSGameMode* GameMode = World ? World->GetAuthGameMode<AYSGameMode>() : nullptr;
+	return GameMode ? GameMode->FoeLevelGainMultiplier : 1.0f;
+}
+
 FYSPlayerCountScaling AYSGameMode::GetPlayerCountScaling() const
 {
 	if (PlayerCountScaling.Num() == 0)

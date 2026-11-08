@@ -1359,7 +1359,7 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 		if (Elite)
 		{
 			Bar->SetElite(Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
-			Bar->SetBossState(Elite->GetBossShield(), Elite->GetMaxBossShield(), Elite->GetRage(), Elite->UsesBossArmor() ? Elite->GetMaxRage() : 0.0f);
+			Bar->SetBossState(Elite->GetBossShield(), Elite->GetMaxBossShield(), Elite->GetRage(), Elite->UsesBossShield() ? Elite->GetMaxRage() : 0.0f);
 			if (ViewportSubsystem)
 			{
 				FGameViewportWidgetSlot BarSlot = ViewportSubsystem->GetWidgetSlot(Bar);

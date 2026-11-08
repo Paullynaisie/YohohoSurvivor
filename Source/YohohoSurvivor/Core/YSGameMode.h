@@ -169,6 +169,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Player Count")
 	TArray<FYSPlayerCountScaling> PlayerCountScaling;
 
+	/** Gains de stats des NME par niveau (= par jour : PV, dégâts de contact, dégâts des attaques à distance) x ce multiplicateur ; valeurs de base inchangées (demande de Paul, 2026-11-08 : 1.5) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Foe Level", meta=(ClampMin="0"))
+	float FoeLevelGainMultiplier = 1.5f;
+
 	/** Cycle jour / nuit (désactivé : toujours le jour 1, pas de nuit ; la mort d'un élite ne change pas de jour) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DayNight")
 	bool bDayNightCycle = true;
@@ -551,6 +555,9 @@ public:
 
 	/** Ligne de PlayerCountScaling pour le nombre de joueurs de la partie */
 	FYSPlayerCountScaling GetPlayerCountScaling() const;
+
+	/** Gains de stats des NME par niveau x ce multiplicateur (1 sans GameMode du jeu, ex. client) */
+	static float GetFoeLevelGainMultiplier(const UWorld* World);
 
 	/** Nombre de NME pour 1 joueur -> pour les joueurs de la partie (arrondi, au moins 1 si BaseCount > 0) */
 	int32 ScaleEnemyCount(int32 BaseCount) const;

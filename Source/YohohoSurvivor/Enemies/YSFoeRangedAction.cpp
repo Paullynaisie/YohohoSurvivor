@@ -1,5 +1,6 @@
 #include "Enemies/YSFoeRangedAction.h"
 #include "Components/CapsuleComponent.h"
+#include "Core/YSGameMode.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "Enemies/YSFoeBomb.h"
@@ -17,7 +18,7 @@ UYSFoeRangedAction::UYSFoeRangedAction()
 
 float UYSFoeRangedAction::GetDamage(const AYSFoeCharacter* Foe) const
 {
-	return Foe ? (BaseDamage + DamagePerLevel * Foe->GetFoeLevel()) * Foe->GetDamageMultiplier() : BaseDamage;
+	return Foe ? (BaseDamage + DamagePerLevel * AYSGameMode::GetFoeLevelGainMultiplier(Foe->GetWorld()) * Foe->GetFoeLevel()) * Foe->GetDamageMultiplier() : BaseDamage;
 }
 
 void UYSFoeRangedAction::PlayAttackLocally()

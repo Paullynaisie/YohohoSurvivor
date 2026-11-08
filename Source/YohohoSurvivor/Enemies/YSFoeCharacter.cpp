@@ -430,6 +430,7 @@ void AYSFoeCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(AYSFoeCharacter, BossDash);
 	DOREPLIFETIME(AYSFoeCharacter, Roll360Shot);
 	DOREPLIFETIME(AYSFoeCharacter, bHudHealthBar);
+	DOREPLIFETIME(AYSFoeCharacter, bShipCaptainBoss);
 	DOREPLIFETIME(AYSFoeCharacter, bSwimExhausted);
 	DOREPLIFETIME(AYSFoeCharacter, ShipRide);
 	DOREPLIFETIME(AYSFoeCharacter, RideYaw);
@@ -1398,7 +1399,7 @@ void AYSFoeCharacter::BeginPlay()
 		if (ForcedLevel != INDEX_NONE)
 		{
 			Level = FMath::Max(0, ForcedLevel);
-			UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau imposé %d (%.0f PV)"), *GetName(), Level, (BaseHealth + HealthPerLevel * Level) * HealthMultiplier);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau imposé %d (%.0f PV)"), *GetName(), Level, (BaseHealth + HealthPerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * HealthMultiplier);
 		}
 		else if (bLevelFromDay && YSGameState)
 		{
@@ -1416,10 +1417,10 @@ void AYSFoeCharacter::BeginPlay()
 		const float PlayerHealthMultiplier = bIsElite ? PlayerScaling.EliteHealthMultiplier : PlayerScaling.HealthMultiplier;
 		PlayerCountHealthMultiplier = PlayerHealthMultiplier;
 		ScaledMaxRage = FMath::RoundToFloat(MaxRage * (bScaleRageWithPlayerCount ? PlayerCountHealthMultiplier : 1.0f));
-		MaxHealth = FMath::RoundToFloat((BaseHealth + HealthPerLevel * Level) * HealthMultiplier * PlayerHealthMultiplier);
+		MaxHealth = FMath::RoundToFloat((BaseHealth + HealthPerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * HealthMultiplier * PlayerHealthMultiplier);
 		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau %d, %.0f PV (x%.2f pour %d joueur(s)), %.1f XP"), *GetName(), Level, MaxHealth, PlayerHealthMultiplier,
 			YSGameMode ? YSGameMode->GetPlayersInMatchCount() : 0, GetExperienceReward());
-		ContactDamage = (BaseContactDamage + ContactDamagePerLevel * Level) * DamageMultiplier;
+		ContactDamage = (BaseContactDamage + ContactDamagePerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * DamageMultiplier;
 		Health = MaxHealth;
 
 		if (bIsElite && YSGameState && !CrewShip)
@@ -2515,7 +2516,7 @@ float AYSFoeCharacter::ApplyBossArmor(float Damage, const FDamageEvent& DamageEv
 
 void AYSFoeCharacter::TryTriggerBossShield()
 {
-	if (!UsesBossArmor() || HasBossShield() || BossShield <= 0.0f || Health <= 0.0f)
+	if (!UsesBossShield() || HasBossShield() || BossShield <= 0.0f || Health <= 0.0f)
 	{
 		return;
 	}
@@ -2537,9 +2538,22 @@ void AYSFoeCharacter::TryTriggerBossShield()
 	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : bouclier de boss %.0f (%s), rage vidée"), *GetName(), Shield, bRageFull ? TEXT("rage pleine") : TEXT("PV sous le seuil"));
 }
 
+void AYSFoeCharacter::SetShipCaptainBoss()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	// demande de Paul (2026-11-08) : capitaines de navire = mécaniques de boss (bouclier, rage) et barre de vie affichée
+	bShipCaptainBoss = true;
+	bHudHealthBar = true;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : capitaine de navire, mécaniques de boss (rage %.0f, bouclier %.0f)"), *GetName(), GetMaxRage(), BossShield);
+}
+
 void AYSFoeCharacter::DebugAddRage(float Amount)
 {
-	if (!HasAuthority() || !UsesBossArmor() || HasBossShield() || IsDying())
+	if (!HasAuthority() || !UsesBossShield() || HasBossShield() || IsDying())
 	{
 		return;
 	}

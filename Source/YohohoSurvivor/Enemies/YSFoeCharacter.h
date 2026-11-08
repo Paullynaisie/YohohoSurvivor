@@ -309,6 +309,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(EditCondition="bIsElite"))
 	bool bBossArmor = true;
 
+	/** Bouclier de boss et rage (faux : seulement la réduction des dégâts de la Boss armor, comme les élites ; les capitaines de navire l'ont toujours) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(EditCondition="bIsElite && bBossArmor"))
+	bool bBossShield = true;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="0", EditCondition="bIsElite && bBossArmor"))
 	float RageCapHealthRatio = 0.02f;
 
@@ -804,7 +808,13 @@ public:
 	float GetDamageMultiplier() const { return DamageMultiplier; }
 
 	/** Élite avec Boss armor (rage, bouclier de boss) */
-	bool UsesBossArmor() const { return bIsElite && bBossArmor; }
+	bool UsesBossArmor() const { return bIsElite && (bBossArmor || bShipCaptainBoss); }
+
+	/** Bouclier de boss et rage (boss, capitaines de navire) */
+	bool UsesBossShield() const { return UsesBossArmor() && (bBossShield || bShipCaptainBoss); }
+
+	/** Capitaine d'un navire de NME (serveur) : mécaniques de boss (Boss armor, rage, bouclier) et barre de vie dans le HUD */
+	void SetShipCaptainBoss();
 
 	float GetRage() const { return Rage; }
 
@@ -1116,6 +1126,10 @@ protected:
 	/** Équipage d'un NME Galion (serveur) */
 	UPROPERTY(Transient)
 	TObjectPtr<AYSFoeGalion> CrewShip;
+
+	/** Capitaine d'un navire : mécaniques de boss quels que soient ses réglages (répliqué : barres de rage et de bouclier) */
+	UPROPERTY(Replicated)
+	bool bShipCaptainBoss = false;
 
 	/** Barre de vie dans le HUD (serveur au BeginPlay, répliqué) */
 	UPROPERTY(Replicated)
