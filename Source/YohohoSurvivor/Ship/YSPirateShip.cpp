@@ -4,6 +4,7 @@
 #include "Components/SceneComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Core/YSGameState.h"
+#include "Core/YSGameMode.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/GameStateBase.h"
@@ -317,6 +318,15 @@ void AYSPirateShip::SinkAtSea(const TCHAR* Reason)
 		return;
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s coule (%s) en %.0f s"), *GetName(), Reason, SinkDuration);
+	// bateau des joueurs coulé : game over (demande de Paul, 2026-11-08)
+	const AYSGameState* SinkGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (SinkGameState && SinkGameState->GetGameBoat() == this)
+	{
+		if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+		{
+			GameMode->GameOver(TEXT("le bateau des joueurs a coulé"));
+		}
+	}
 	OnShipDestroyedByDamage();
 
 	// hors d'usage : postes vidés, plus de commandes
@@ -1161,4 +1171,20 @@ void AYSPirateShip::GetWorldHullPoints(TArray<FVector>& OutPoints) const
 	{
 		OutPoints.Add(Transform.TransformPositionNoScale(FVector(Probe.X, Probe.Y, 0.0f)));
 	}
+}
+
+void AYSPirateShip::RepairCore(float DeltaSeconds)
+{
+	if (!HasAuthority() || !CanRepairCore())
+	{
+		return;
+	}
+	Health = FMath::Min(Health + CoreRepairPerSecond * DeltaSeconds, CoreRepairMaxHealth);
+	if (Health >= CoreRepairMaxHealth)
+	{
+		// de retour dans le positif : le bateau est de nouveau utilisable (ses postes à 0 PV se réparent comme avant)
+		bDisabled = false;
+		UE_LOG(LogTemp, Log, TEXT("[YSShipRepair] %s : core réparé (%.0f PV), bateau de nouveau utilisable"), *GetName(), Health);
+	}
+	ForceNetUpdate();
 }

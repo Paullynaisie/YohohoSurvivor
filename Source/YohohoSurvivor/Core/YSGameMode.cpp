@@ -1562,3 +1562,14 @@ bool AYSGameMode::FindShorePoint(float Angle, FVector& OutGround, float Inset) c
 	}
 	return false;
 }
+
+void AYSGameMode::GameOver(const TCHAR* Reason)
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || YSGameState->IsGameOver() || YSGameState->IsVictory())
+	{
+		return;
+	}
+	YSGameState->SetGameOver(GameOverReturnDelay);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] GAME OVER (%s) : retour au menu dans %.0f s"), Reason, GameOverReturnDelay);
+}

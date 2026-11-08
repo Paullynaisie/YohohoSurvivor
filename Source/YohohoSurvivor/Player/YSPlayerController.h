@@ -574,6 +574,10 @@ public:
 	UFUNCTION(Exec)
 	void YSSinkShip(int32 bFoeOnly);
 
+	/** Debug (hôte) : le joueur est posé à côté du core du bateau des joueurs (GameBoat) */
+	UFUNCTION(Exec)
+	void YSGoToShipCore();
+
 	/** Debug (FlowMod, hôte ou client) : téléporté sur l'île Index (0 = départ, puis les îles suivantes dans l'ordre de Next Islands) */
 	UFUNCTION(Exec)
 	void YSIslandGoTo(int32 Index);

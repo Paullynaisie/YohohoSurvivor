@@ -229,6 +229,7 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, Passive);
 	DOREPLIFETIME(AYSPlayerCharacter, CarriedObject);
 	DOREPLIFETIME(AYSPlayerCharacter, CurrentStation);
+	DOREPLIFETIME(AYSPlayerCharacter, RepairingShip);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustStacks);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustMaxStacks);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustDuration);
@@ -1352,6 +1353,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 		{
 			return;
 		}
+		UpdateShipRepair(DeltaSeconds);
 	}
 	// vitesse : peut dépendre d'une action en cours (visée du Rolling shot) ; serveur et client propriétaire
 	UpdateMaxWalkSpeed();
@@ -1915,6 +1917,11 @@ void AYSPlayerCharacter::CreateDefaultInput()
 
 void AYSPlayerCharacter::Move(const FInputActionValue& Value)
 {
+	// répare le core du bateau : immobile (E pour arrêter)
+	if (IsRepairingShip())
+	{
+		return;
+	}
 	// trajectoire imposée par une action (Dashing Slash) : ZQSD ignoré jusqu'à la fin
 	if (IsMoveInputOverridden())
 	{
@@ -3214,6 +3221,12 @@ void AYSPlayerCharacter::InteractOnServer()
 		LeaveStation(TEXT("touche E"));
 		return;
 	}
+	// répare le core : E arrête (les PV rendus restent)
+	if (IsRepairingShip())
+	{
+		StopShipRepair(TEXT("touche E"));
+		return;
+	}
 
 	if (AYSInteractiveObject* Target = FindInteractTarget())
 	{
@@ -3751,4 +3764,53 @@ void AYSPlayerCharacter::RecomputeCriticalDamageBonus()
 		CriticalDamageBonus = Bonus;
 		UE_LOG(LogTemp, Log, TEXT("[YSCritical] %s : bonus critique %.2f -> dégâts critiques x%.3f"), *GetName(), CriticalDamageBonus, GetCriticalDamageMultiplier());
 	}
+}
+
+void AYSPlayerCharacter::StartShipRepair(AYSPirateShip* Ship)
+{
+	if (!HasAuthority() || !IsValid(Ship) || IsRepairingShip() || !IsAlive())
+	{
+		return;
+	}
+	CancelAllActions();
+	RepairingShip = Ship;
+	RepairSpot = GetActorLocation();
+	GetCharacterMovement()->StopMovementImmediately();
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSShipRepair] %s répare le core de %s (%.0f / %.0f PV)"), *GetName(), *Ship->GetName(), Ship->GetHealth(), Ship->GetMaxHealth());
+}
+
+void AYSPlayerCharacter::StopShipRepair(const TCHAR* Reason)
+{
+	if (!HasAuthority() || !RepairingShip)
+	{
+		return;
+	}
+	const AYSPirateShip* Ship = RepairingShip;
+	RepairingShip = nullptr;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSShipRepair] %s arrête de réparer (%s) : core %.0f PV"), *GetName(), Reason, IsValid(Ship) ? Ship->GetHealth() : 0.0f);
+}
+
+void AYSPlayerCharacter::UpdateShipRepair(float DeltaSeconds)
+{
+	AYSPirateShip* Ship = RepairingShip;
+	if (!Ship)
+	{
+		return;
+	}
+	// les PV déjà rendus restent quand on arrête (plusieurs joueurs peuvent réparer en même temps : chacun ajoute les siens)
+	const TCHAR* Reason = !IsValid(Ship) || Ship->IsActorBeingDestroyed() ? TEXT("bateau disparu")
+		: Ship->IsSinking() ? TEXT("bateau coulé")
+		: !Ship->CanRepairCore() ? TEXT("core réparé")
+		: !IsAlive() ? TEXT("mort")
+		: IsCarrying() || IsAtStation() || IsSwimming() ? TEXT("occupé ailleurs")
+		: FVector::Dist2D(GetActorLocation(), RepairSpot) > 100.0f ? TEXT("parti")
+		: nullptr;
+	if (Reason)
+	{
+		StopShipRepair(Reason);
+		return;
+	}
+	Ship->RepairCore(DeltaSeconds);
 }

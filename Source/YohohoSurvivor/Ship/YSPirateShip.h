@@ -240,6 +240,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sink", meta=(ClampMin="0", Units="Centimeters"))
 	float SinkCollisionOffDepth = 700.0f;
 
+	/**
+	 *  Réparation du core en négatif (bateau des joueurs hors d'usage) : E au core, chaque joueur qui répare rend Core Repair Per Second PV
+	 *  par seconde (cumulés à plusieurs), jusqu'à Core Repair Max Health (juste positif : le bateau redevient utilisable) ; partir garde les PV rendus
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Repair", meta=(ClampMin="0"))
+	float CoreRepairPerSecond = 250.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Repair", meta=(ClampMin="1"))
+	float CoreRepairMaxHealth = 1.0f;
+
 	/** Coulaison en cours (serveur -> clients ; chaque machine fait descendre le bateau depuis l'heure serveur) */
 	UPROPERTY(Replicated)
 	double SinkStartServerTime = 0.0;
@@ -396,6 +406,12 @@ public:
 
 	/** Bateau coulé (serveur) : postes vidés, cadavres posés à la surface, autres objets posés détruits, puis il coule (Sink Duration) et disparaît */
 	void SinkAtSea(const TCHAR* Reason);
+
+	/** Core réparable (E au core) : bateau des joueurs hors d'usage, sous Core Repair Max Health, pas en train de couler */
+	bool CanRepairCore() const { return !IsFoeShip() && bDisabled && !IsSinking() && Health < CoreRepairMaxHealth; }
+
+	/** Un joueur répare le core pendant DeltaSeconds (serveur) : bateau de nouveau utilisable une fois à Core Repair Max Health */
+	void RepairCore(float DeltaSeconds);
 
 	/** En train de couler (hors d'usage, plus de déplacement) */
 	bool IsSinking() const { return SinkStartServerTime > 0.0; }

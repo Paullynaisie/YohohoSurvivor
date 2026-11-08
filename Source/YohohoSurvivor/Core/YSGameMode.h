@@ -315,6 +315,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship", meta=(ClampMin="0", Units="s", EditCondition="bShipBoardingVictory"))
 	float VictoryReturnDelay = 5.0f;
 
+	/** Game over : le bateau des joueurs (GameBoat) coule ; « GAME OVER » puis retour au menu après ce délai (demande de Paul, 2026-11-08) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship", meta=(ClampMin="0", Units="s"))
+	float GameOverReturnDelay = 8.0f;
+
 	/** Overtime de l'île (GameMap) : la nuit d'Overtime Day, pas d'élite : circle spawns plus forts (Overtime Waves), puis l'île coule */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Overtime")
 	bool bOvertime = true;
@@ -528,6 +532,9 @@ public:
 
 	/** Debug (serveur) : une récompense de doublons maintenant, comme si la jauge venait d'être remplie */
 	void QueueDoubloonReward(EYSUpgradeSelectionKind Kind, const TCHAR* Reason);
+
+	/** Game over (serveur, une fois) : « GAME OVER » chez tous les joueurs puis retour au menu */
+	void GameOver(const TCHAR* Reason);
 
 	/** Récompense de la N-ième jauge de doublons remplie (0 = la première) */
 	EYSUpgradeSelectionKind GetDoubloonReward(int32 FillIndex) const;

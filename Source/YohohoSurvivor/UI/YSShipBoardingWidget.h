@@ -43,6 +43,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Victory")
 	FLinearColor VictoryColor = FLinearColor(1.0f, 0.8f, 0.1f);
 
+	/** Écran de game over (bateau des joueurs coulé) : même voile, autre texte */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Game Over")
+	FText GameOverText = NSLOCTEXT("YS", "ShipGameOver", "GAME OVER");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Game Over")
+	FLinearColor GameOverColor = FLinearColor(0.9f, 0.15f, 0.1f);
+
 	/** Voile derrière « BRAVO » */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Victory")
 	FLinearColor VictoryBackgroundColor = FLinearColor(0.0f, 0.0f, 0.0f, 0.6f);
@@ -55,6 +62,9 @@ public:
 	/** Écran « BRAVO » */
 	void SetVictory(bool bVictory);
 
+	/** Écran « GAME OVER » (prioritaire sur « BRAVO ») */
+	void SetGameOver(bool bGameOver);
+
 private:
 
 	void BuildWidgetTree();
@@ -64,4 +74,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UWidget> VictoryPanel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> VictoryTextBlock;
+
+	bool bShowingGameOver = false;
 };

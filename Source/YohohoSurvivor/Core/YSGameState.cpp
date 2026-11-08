@@ -72,6 +72,7 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, ShipAboardPlayers);
 	DOREPLIFETIME(AYSGameState, ShipTotalPlayers);
 	DOREPLIFETIME(AYSGameState, bVictory);
+	DOREPLIFETIME(AYSGameState, bGameOver);
 	DOREPLIFETIME(AYSGameState, VictoryReturnDelay);
 	DOREPLIFETIME(AYSGameState, bOvertime);
 	DOREPLIFETIME(AYSGameState, IslandSinkStartServerTime);

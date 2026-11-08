@@ -130,6 +130,10 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Ship")
 	bool bVictory = false;
 
+	/** Game over : le bateau des joueurs a coulé (« GAME OVER » puis retour au menu après VictoryReturnDelay) */
+	UPROPERTY(Replicated)
+	bool bGameOver = false;
+
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Ship")
 	float VictoryReturnDelay = 5.0f;
 
@@ -268,6 +272,10 @@ public:
 	void SetShipPresent(bool bPresent) { bShipPresent = bPresent; ForceNetUpdate(); }
 	void SetShipBoarding(int32 Aboard, int32 Total) { ShipAboardPlayers = Aboard; ShipTotalPlayers = Total; ForceNetUpdate(); }
 	void SetVictory(float ReturnDelay) { bVictory = true; VictoryReturnDelay = ReturnDelay; ForceNetUpdate(); }
+
+	/** Game over (bateau des joueurs coulé) : « GAME OVER » puis retour au menu après ReturnDelay */
+	void SetGameOver(float ReturnDelay) { bGameOver = true; VictoryReturnDelay = ReturnDelay; ForceNetUpdate(); }
+	bool IsGameOver() const { return bGameOver; }
 	void SetOvertime() { bOvertime = true; ForceNetUpdate(); }
 	void StartIslandSink(float Duration, float Depth, float EaseExponent);
 

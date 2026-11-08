@@ -61,7 +61,8 @@ void UYSShipBoardingWidget::BuildWidgetTree()
 	BackgroundSlot->SetHorizontalAlignment(HAlign_Fill);
 	BackgroundSlot->SetVerticalAlignment(VAlign_Fill);
 
-	UOverlaySlot* TextSlot = Victory->AddChildToOverlay(MakeText(VictoryText, VictoryFontSize, VictoryColor));
+	VictoryTextBlock = MakeText(VictoryText, VictoryFontSize, VictoryColor);
+	UOverlaySlot* TextSlot = Victory->AddChildToOverlay(VictoryTextBlock);
 	TextSlot->SetHorizontalAlignment(HAlign_Center);
 	TextSlot->SetVerticalAlignment(VAlign_Center);
 }
@@ -80,5 +81,23 @@ void UYSShipBoardingWidget::SetVictory(bool bVictory)
 	if (VictoryPanel)
 	{
 		VictoryPanel->SetVisibility(bVictory ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
+}
+
+void UYSShipBoardingWidget::SetGameOver(bool bGameOver)
+{
+	if (!VictoryPanel || !VictoryTextBlock)
+	{
+		return;
+	}
+	if (bGameOver != bShowingGameOver)
+	{
+		bShowingGameOver = bGameOver;
+		VictoryTextBlock->SetText(bGameOver ? GameOverText : VictoryText);
+		VictoryTextBlock->SetColorAndOpacity(FSlateColor(bGameOver ? GameOverColor : VictoryColor));
+	}
+	if (bGameOver)
+	{
+		VictoryPanel->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 }

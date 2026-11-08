@@ -7,6 +7,7 @@
 #include "Interaction/YSPlayerCorpse.h"
 #include "Island/YSIsland.h"
 #include "Materials/MaterialInterface.h"
+#include "Player/YSPlayerCharacter.h"
 #include "Ship/YSPirateShip.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -83,6 +84,16 @@ void AYSShipCore::BeginPlay()
 		YSCombat::ConfigureHurtbox(CoreHurtbox);
 		// la hurtbox ne suit que les requêtes de combat : aucun overlap entretenu
 		CoreHurtbox->SetGenerateOverlapEvents(false);
+
+		// point de réparation du core (bateau en négatif), local comme le core
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		Params.Owner = this;
+		RepairPoint = GetWorld()->SpawnActor<AYSShipCoreRepair>(AYSShipCoreRepair::StaticClass(), GetActorTransform(), Params);
+		if (RepairPoint)
+		{
+			RepairPoint->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+		}
 	}
 }
 
@@ -142,4 +153,36 @@ void AYSShipCore::ReceiveObject(AYSInteractiveObject* Object)
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSShipCore] %s : %s -> doublons"), *GetName(), Object ? *Object->GetName() : TEXT("?"));
 	AYSBrookerNPC::ReceiveObject(Object);
+}
+
+void AYSShipCore::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (IsValid(RepairPoint))
+	{
+		RepairPoint->Destroy();
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
+AYSShipCoreRepair::AYSShipCoreRepair()
+{
+	// local, créé sur chaque machine par le core (comme lui) : le serveur gère la réparation, les clients n'affichent que l'invite
+	bReplicates = false;
+	SetReplicatingMovement(false);
+	bCarriable = false;
+}
+
+bool AYSShipCoreRepair::CanInteract(const AYSPlayerCharacter* Character) const
+{
+	const AYSPirateShip* Ship = AYSPirateShip::GetShipOf(this);
+	return Ship && Ship->CanRepairCore() && Character && Character->IsAlive() && !Character->IsCarrying() && !Character->IsAtStation() && !Character->IsSwimming()
+		&& !Character->IsRepairingShip();
+}
+
+void AYSShipCoreRepair::Interact(AYSPlayerCharacter* Character)
+{
+	if (CanInteract(Character))
+	{
+		Character->StartShipRepair(AYSPirateShip::GetShipOf(this));
+	}
 }

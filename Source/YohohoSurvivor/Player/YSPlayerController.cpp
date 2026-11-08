@@ -987,15 +987,18 @@ void AYSPlayerController::UpdateShipBoardingUI(float DeltaSeconds)
 	{
 		return;
 	}
-	const bool bVictory = YSGameState->IsVictory();
+	// game over (bateau des joueurs coulé) : même enchaînement que la victoire, autre texte
+	const bool bGameOver = YSGameState->IsGameOver();
+	const bool bVictory = YSGameState->IsVictory() || bGameOver;
 	ShipBoarding->SetBoarding(YSGameState->IsShipPresent() && !bVictory ? YSGameState->GetShipAboardPlayers() : 0, YSGameState->GetShipTotalPlayers());
 	ShipBoarding->SetVictory(bVictory);
+	ShipBoarding->SetGameOver(bGameOver);
 
 	// « BRAVO » puis retour au menu ; l'hôte part un peu après ses clients (sinon ils voient une erreur réseau)
 	if (bVictory && VictoryReturnTimer == -1.0f)
 	{
 		VictoryReturnTimer = YSGameState->GetVictoryReturnDelay() + (HasAuthority() && GetNetMode() != NM_Standalone ? 0.5f : 0.0f);
-		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : BRAVO, retour au menu dans %.1f s"), *GetName(), VictoryReturnTimer);
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : %s, retour au menu dans %.1f s"), *GetName(), bGameOver ? TEXT("GAME OVER") : TEXT("BRAVO"), VictoryReturnTimer);
 	}
 	if (VictoryReturnTimer >= 0.0f)
 	{
@@ -2910,4 +2913,18 @@ void AYSPlayerController::YSGoToCorpse()
 	// juste au-dessus : collé au personnage, le cadavre compte toujours comme « devant » pour E
 	MyPawn->TeleportTo(Nearest->GetActorLocation() + FVector(0.0f, 0.0f, 100.0f), MyPawn->GetActorRotation());
 	UE_LOG(LogTemp, Log, TEXT("[YSGoToCorpse] %s sur %s"), *MyPawn->GetName(), *Nearest->GetName());
+}
+
+void AYSPlayerController::YSGoToShipCore()
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPirateShip* Ship = HasAuthority() && YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	const AActor* Core = Ship ? Ship->GetCore() : nullptr;
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	if (Core && PlayerCharacter)
+	{
+		const FVector Forward = Ship->GetActorForwardVector().GetSafeNormal2D();
+		PlayerCharacter->TeleportToFeetLocation(Core->GetActorLocation() + Forward * 150.0f + FVector(0.0f, 0.0f, 20.0f), -Forward);
+		UE_LOG(LogTemp, Log, TEXT("[YSShipRepair] (debug) %s posé à côté du core de %s"), *PlayerCharacter->GetName(), *Ship->GetName());
+	}
 }

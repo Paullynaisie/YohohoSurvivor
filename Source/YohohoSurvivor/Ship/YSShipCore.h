@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameplayTagAssetInterface.h"
 #include "NPC/YSMedicNPC.h"
+#include "Interaction/YSInteractiveObject.h"
 #include "YSShipCore.generated.h"
 
 class UBoxComponent;
@@ -20,6 +21,10 @@ class AYSShipCore : public AYSMedicNPC, public IGameplayTagAssetInterface
 	GENERATED_BODY()
 
 private:
+
+	/** Point de réparation du core (E quand le bateau des joueurs est en négatif), local comme le core */
+	UPROPERTY(Transient)
+	TObjectPtr<class AYSShipCoreRepair> RepairPoint;
 
 	/** Bateau des joueurs : hurtbox ciblée par les NME (haute : de la mer au-dessus du core), ses dégâts vont aux PV du bateau */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
@@ -60,6 +65,8 @@ public:
 
 	virtual void BeginPlay() override;
 
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override;
 
 	virtual float TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
@@ -80,4 +87,25 @@ public:
 	float GetSpeedMultiplier() const { return SpeedMultiplier; }
 	float GetAccelerationMultiplier() const { return AccelerationMultiplier; }
 	float GetTurnRateMultiplier() const { return TurnRateMultiplier; }
+};
+
+/**
+ *  Point de réparation du core (créé par le core, local sur chaque machine) : quand le bateau des joueurs est en négatif (hors d'usage),
+ *  E à côté du core fait réparer le joueur (AYSPlayerCharacter::StartShipRepair : immobile, PV rendus en continu, plusieurs joueurs à la fois ;
+ *  E ou s'éloigner arrête, les PV rendus restent) jusqu'à Core Repair Max Health du bateau.
+ */
+UCLASS(NotBlueprintable)
+class AYSShipCoreRepair : public AYSInteractiveObject
+{
+	GENERATED_BODY()
+
+public:
+
+	AYSShipCoreRepair();
+
+	virtual bool CanInteract(const AYSPlayerCharacter* Character) const override;
+
+	virtual void Interact(AYSPlayerCharacter* Character) override;
+
+	virtual bool RequiresFacing() const override { return false; }
 };

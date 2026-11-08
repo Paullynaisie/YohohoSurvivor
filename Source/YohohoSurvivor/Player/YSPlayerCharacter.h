@@ -709,6 +709,16 @@ protected:
 	UPROPERTY(ReplicatedUsing=OnRep_CurrentStation, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Interaction")
 	TObjectPtr<AYSShipStation> CurrentStation;
 
+	/** Répare le core en négatif de ce bateau (E au core) : immobile, armes rangées ; E, s'éloigner ou le bateau réparé arrêtent */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Interaction")
+	TObjectPtr<AYSPirateShip> RepairingShip;
+
+	/** Où il répare (serveur) : s'en éloigner arrête */
+	FVector RepairSpot = FVector::ZeroVector;
+
+	/** Réparation du core (serveur, chaque image) */
+	void UpdateShipRepair(float DeltaSeconds);
+
 	UFUNCTION()
 	void OnRep_CurrentStation(AYSShipStation* PreviousStation);
 
@@ -1362,7 +1372,14 @@ public:
 	bool IsSwimming() const { return bSwimming; }
 
 	/** Armes rangées (objet porté sauf passif du Quartermaster, nage, poste de bateau) : cachées, ni Ability ni attaque auto */
-	bool AreWeaponsStowed() const { return (IsCarrying() && !CanAttackWhileCarrying()) || bSwimming || IsAtStation(); }
+	bool AreWeaponsStowed() const { return (IsCarrying() && !CanAttackWhileCarrying()) || bSwimming || IsAtStation() || IsRepairingShip(); }
+
+	/** Répare le core en négatif d'un bateau */
+	bool IsRepairingShip() const { return RepairingShip != nullptr; }
+
+	/** Commence / arrête la réparation du core de Ship (serveur) */
+	void StartShipRepair(AYSPirateShip* Ship);
+	void StopShipRepair(const TCHAR* Reason);
 
 	/** Passif : garde ses armes en portant un objet (porté par l'autre main) */
 	bool CanAttackWhileCarrying() const;
