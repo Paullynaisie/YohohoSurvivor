@@ -122,6 +122,9 @@ void AYSPirateShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AYSPirateShip, Health);
 	DOREPLIFETIME(AYSPirateShip, bDisabled);
 	DOREPLIFETIME(AYSPirateShip, bPlaytestMode);
+	DOREPLIFETIME(AYSPirateShip, SinkStartServerTime);
+	DOREPLIFETIME(AYSPirateShip, SinkStartLocation);
+	DOREPLIFETIME(AYSPirateShip, SinkStartYaw);
 }
 
 void AYSPirateShip::BeginPlay()
@@ -285,7 +288,7 @@ void AYSPirateShip::UpdateShipHealthBar()
 void AYSPirateShip::TakeCoreDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation)
 {
 	const float MaxHealth = GetMaxHealth();
-	if (!HasAuthority() || Damage <= 0.0f || MaxHealth <= 0.0f || IsActorBeingDestroyed())
+	if (!HasAuthority() || Damage <= 0.0f || MaxHealth <= 0.0f || IsActorBeingDestroyed() || IsSinking())
 	{
 		return;
 	}
@@ -309,12 +312,22 @@ void AYSPirateShip::TakeCoreDamage(float Damage, AController* EventInstigator, c
 
 void AYSPirateShip::SinkAtSea(const TCHAR* Reason)
 {
-	if (!HasAuthority() || IsActorBeingDestroyed())
+	if (!HasAuthority() || IsActorBeingDestroyed() || IsSinking())
 	{
 		return;
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s détruit (%s) : tout le monde à l'eau"), *GetName(), Reason);
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s coule (%s) en %.0f s"), *GetName(), Reason, SinkDuration);
 	OnShipDestroyedByDamage();
+
+	// hors d'usage : postes vidés, plus de commandes
+	if (!bDisabled)
+	{
+		bDisabled = true;
+		OnShipDisabled();
+	}
+	SetPilotInput(0.0f, 0.0f);
+	Motion.Speed = 0.0f;
+	Motion.YawRate = 0.0f;
 
 	// objets posés sur le pont : un cadavre flotte, le reste coule avec le bateau
 	TArray<AActor*> Attached;
@@ -337,7 +350,54 @@ void AYSPirateShip::SinkAtSea(const TCHAR* Reason)
 			Object->Destroy();
 		}
 	}
-	Destroy();
+
+	if (SinkDuration <= 0.0f)
+	{
+		Destroy();
+		return;
+	}
+	// coulaison progressive, calculée sur chaque machine depuis l'heure serveur
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	SinkStartServerTime = FMath::Max(GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds(), UE_KINDA_SMALL_NUMBER);
+	SinkStartLocation = GetActorLocation();
+	SinkStartYaw = GetActorRotation().Yaw;
+	ForceNetUpdate();
+}
+
+void AYSPirateShip::UpdateSink()
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const float Alpha = SinkDuration > 0.0f ? FMath::Clamp(static_cast<float>(Now - SinkStartServerTime) / SinkDuration, 0.0f, 1.0f) : 1.0f;
+	const float Eased = FMath::Pow(Alpha, SinkEaseExponent);
+	const float Depth = SinkDepth * Eased;
+	const FVector Location = SinkStartLocation - FVector(0.0f, 0.0f, Depth);
+	// la proue pique en même temps qu'il descend (la poupe ne remonte jamais au-dessus de sa hauteur de départ pour un petit angle)
+	const FRotator Rotation(-SinkPitch * Eased, SinkStartYaw, 0.0f);
+	if (!GetActorLocation().Equals(Location, 0.1f) || !GetActorRotation().Equals(Rotation, 0.01f))
+	{
+		SetActorLocationAndRotation(Location, Rotation);
+	}
+	// le pont et le gaillard sont sous les nageurs : plus rien ne les touche
+	if (Depth >= SinkCollisionOffDepth && GetActorEnableCollision())
+	{
+		SetActorEnableCollision(false);
+		TArray<AActor*> Attached;
+		GetAttachedActors(Attached, true, true);
+		for (AActor* Actor : Attached)
+		{
+			if (!Actor->IsA<APawn>())
+			{
+				Actor->SetActorEnableCollision(false);
+			}
+		}
+		UE_LOG(LogTemp, Verbose, TEXT("[YSShip] %s : coulé de %.0f cm, plus de collision"), *GetName(), Depth);
+	}
+	if (HasAuthority() && Alpha >= 1.0f)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s a fini de couler : détruit"), *GetName());
+		Destroy();
+	}
 }
 
 void AYSPirateShip::OnShipDisabled()
@@ -468,6 +528,13 @@ void AYSPirateShip::Tick(float DeltaSeconds)
 	}
 
 	UpdateShipHealthBar();
+
+	// coulé : il descend, plus de pilotage
+	if (IsSinking())
+	{
+		UpdateSink();
+		return;
+	}
 
 	if (bDrivable && !IsHidden())
 	{

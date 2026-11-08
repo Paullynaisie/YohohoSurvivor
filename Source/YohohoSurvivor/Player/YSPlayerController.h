@@ -558,6 +558,22 @@ public:
 	UFUNCTION(Exec)
 	void YSIslandSinkNow();
 
+	/** Debug (hôte) : doublons ajoutés comme une vente (jauge, niveau du bateau, récompenses) */
+	UFUNCTION(Exec)
+	void YSAddDoubloons(int32 Amount);
+
+	/** Debug (hôte) : récompense de doublons tout de suite : 1 classe, 2 upgrade d'arme, 3 Golden, 4 mythique */
+	UFUNCTION(Exec)
+	void YSDoubloonReward(int32 Kind);
+
+	/** Debug (hôte) : le GameBoat passe à l'étape suivante (comme un core du bateau livré) */
+	UFUNCTION(Exec)
+	void YSUpgradeGameBoat();
+
+	/** Debug (hôte) : le bateau le plus proche du joueur coule (coulaison progressive) ; 1 = seulement un bateau de NME */
+	UFUNCTION(Exec)
+	void YSSinkShip(int32 bFoeOnly);
+
 	/** Debug (FlowMod, hôte ou client) : téléporté sur l'île Index (0 = départ, puis les îles suivantes dans l'ordre de Next Islands) */
 	UFUNCTION(Exec)
 	void YSIslandGoTo(int32 Index);

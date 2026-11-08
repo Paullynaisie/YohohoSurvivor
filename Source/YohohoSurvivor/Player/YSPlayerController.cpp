@@ -1150,6 +1150,54 @@ void AYSPlayerController::YSIslandSinkNow()
 	}
 }
 
+void AYSPlayerController::YSAddDoubloons(int32 Amount)
+{
+	if (AYSGameMode* GameMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSGameMode>() : nullptr)
+	{
+		GameMode->AddDoubloons(Amount);
+	}
+}
+
+void AYSPlayerController::YSDoubloonReward(int32 Kind)
+{
+	AYSGameMode* GameMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSGameMode>() : nullptr;
+	if (GameMode && Kind >= 1 && Kind <= 4)
+	{
+		GameMode->QueueDoubloonReward(static_cast<EYSUpgradeSelectionKind>(Kind), TEXT("debug"));
+	}
+}
+
+void AYSPlayerController::YSUpgradeGameBoat()
+{
+	if (AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr)
+	{
+		FlowMode->UpgradeGameBoat();
+	}
+}
+
+void AYSPlayerController::YSSinkShip(int32 bFoeOnly)
+{
+	if (!HasAuthority() || !GetPawn())
+	{
+		return;
+	}
+	AYSPirateShip* Nearest = nullptr;
+	double NearestDistSq = TNumericLimits<double>::Max();
+	for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
+	{
+		const double DistSq = FVector::DistSquared2D(It->GetActorLocation(), GetPawn()->GetActorLocation());
+		if (It->IsBoardable() && !It->IsSinking() && (!bFoeOnly || It->IsFoeShip()) && DistSq < NearestDistSq)
+		{
+			Nearest = *It;
+			NearestDistSq = DistSq;
+		}
+	}
+	if (Nearest)
+	{
+		Nearest->SinkAtSea(TEXT("debug"));
+	}
+}
+
 void AYSPlayerController::YSIslandGoTo(int32 Index)
 {
 	// client : demandé au serveur
@@ -1615,7 +1663,20 @@ void AYSPlayerController::UpdateUpgradeMenu()
 		DisplayedUpgradeOffers = MyState->GetUpgradeOffers();
 		DisplayedUpgradeStacks = TotalStacks;
 		// choix de classe (upgrades de classe) ou d'amélioration
-		UpgradeMenu->SetTitle(FText::Format(bClassChoice ? NSLOCTEXT("YS", "ClassUpgradeTitle", "Niveau {0} ! Choisis ta classe") : NSLOCTEXT("YS", "UpgradeTitle", "Niveau {0} ! Choisis une amélioration"), YSGameState->GetUpgradeSelectionLevel()));
+		// récompense de doublons : titre selon ce qui est proposé (un joueur sans upgrade d'arme à débloquer reçoit le type suivant : lu sur ses propositions)
+		FText Title = FText::Format(bClassChoice ? NSLOCTEXT("YS", "ClassUpgradeTitle", "Niveau {0} ! Choisis ta classe") : NSLOCTEXT("YS", "UpgradeTitle", "Niveau {0} ! Choisis une amélioration"), YSGameState->GetUpgradeSelectionLevel());
+		if (YSGameState->GetUpgradeSelectionKind() != EYSUpgradeSelectionKind::LevelUp && DisplayedUpgradeOffers.Num() > 0)
+		{
+			const FYSUpgradeOffer& First = DisplayedUpgradeOffers[0];
+			const bool bWeaponOffer = !First.UpStats && Cast<UYSWeaponUpgrade>(FirstUpgrade) != nullptr;
+			const FText Format = bClassChoice ? NSLOCTEXT("YS", "ShipClassTitle", "Bateau niveau {0} ! Choisis ta classe")
+				: bWeaponOffer && First.Variant == 0 ? NSLOCTEXT("YS", "ShipWeaponTitle", "Bateau niveau {0} ! Choisis une upgrade d'arme")
+				: bWeaponOffer && First.Variant == 2 ? NSLOCTEXT("YS", "ShipGoldenTitle", "Bateau niveau {0} ! Choisis une upgrade d'arme Golden")
+				: First.Rarity == EYSUpgradeRarity::Mythic ? NSLOCTEXT("YS", "ShipMythicTitle", "Bateau niveau {0} ! Choisis une upgrade mythique")
+				: NSLOCTEXT("YS", "ShipUpgradeTitle", "Bateau niveau {0} ! Choisis une amélioration");
+			Title = FText::Format(Format, YSGameState->GetUpgradeSelectionLevel());
+		}
+		UpgradeMenu->SetTitle(Title);
 
 		TArray<FYSUpgradeCard> Cards;
 		for (const FYSUpgradeOffer& Offer : DisplayedUpgradeOffers)

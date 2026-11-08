@@ -59,6 +59,7 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, ExperienceToNextLevel);
 	DOREPLIFETIME(AYSGameState, bUpgradeSelectionActive);
 	DOREPLIFETIME(AYSGameState, UpgradeSelectionLevel);
+	DOREPLIFETIME(AYSGameState, UpgradeSelectionKind);
 	DOREPLIFETIME(AYSGameState, DayNumber);
 	DOREPLIFETIME(AYSGameState, bNight);
 	DOREPLIFETIME(AYSGameState, DayStartServerTime);

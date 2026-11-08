@@ -570,6 +570,11 @@ TArray<TObjectPtr<UYSUpShard>> YSShardUpgrades::ResolveShardList(const AYSPlayer
 
 TArray<FYSUpgradeOffer> YSShardUpgrades::PickOffers(const AYSPlayerCharacter* Character, const UDataTable* Table, const TArray<UYSUpStats*>& Replacements, int32 Count)
 {
+	return PickOffers(Character, Table, Replacements, Count, FPickOptions());
+}
+
+TArray<FYSUpgradeOffer> YSShardUpgrades::PickOffers(const AYSPlayerCharacter* Character, const UDataTable* Table, const TArray<UYSUpStats*>& Replacements, int32 Count, const FPickOptions& Options)
+{
 	TArray<FYSUpgradeOffer> Offers;
 	if (!Character)
 	{
@@ -585,7 +590,7 @@ TArray<FYSUpgradeOffer> YSShardUpgrades::PickOffers(const AYSPlayerCharacter* Ch
 		int32 Variant = 0;
 	};
 	TArray<FCandidate> Pool;
-	for (UYSUpStats* Stats : GetAvailableUpStats(Character, Table))
+	for (UYSUpStats* Stats : Options.bStats ? GetAvailableUpStats(Character, Table) : TArray<UYSUpStats*>())
 	{
 		if (Stats->OfferWeight > 0.0f && Stats->IsApplicable(Character))
 		{
@@ -598,7 +603,8 @@ TArray<FYSUpgradeOffer> YSShardUpgrades::PickOffers(const AYSPlayerCharacter* Ch
 		const UYSWeaponUpgrade* Weapon = Cast<UYSWeaponUpgrade>(UpgradePool[PoolIndex]);
 		for (int32 Variant = 0; Weapon && Weapon->bShardSystem && Variant < Weapon->GetVariantCount(); ++Variant)
 		{
-			if (Weapon->GetOfferWeight(Variant) > 0.0f && Weapon->CanBeOffered(Character, Variant, Character->GetUpgradeProgress(PoolIndex, Variant)))
+			const bool bTierAllowed = (Options.WeaponTierMask & (1u << FMath::Min(Variant, 7))) != 0;
+			if (bTierAllowed && Weapon->GetOfferWeight(Variant) > 0.0f && Weapon->CanBeOffered(Character, Variant, Character->GetUpgradeProgress(PoolIndex, Variant)))
 			{
 				Pool.Add({ nullptr, Weapon, PoolIndex, Variant });
 			}
@@ -616,9 +622,14 @@ TArray<FYSUpgradeOffer> YSShardUpgrades::PickOffers(const AYSPlayerCharacter* Ch
 
 	// garde-fou : raretés tirées sans aucun candidat (ex. Bronze alors qu'il ne reste que des upgrades d'arme)
 	int32 EmptyRolls = 0;
-	while (Offers.Num() < Count && Pool.Num() > 0 && EmptyRolls < 50)
+	while (Offers.Num() < Count && Pool.Num() > 0 && EmptyRolls < 200)
 	{
-		const EYSUpgradeRarity Rarity = RollRarity(Character);
+		const EYSUpgradeRarity Rarity = Options.ForcedRarity.IsSet() ? Options.ForcedRarity.GetValue() : RollRarity(Character);
+		if (Options.ForcedRarity.IsSet() && EmptyRolls > 0)
+		{
+			// rareté imposée sans candidat : rien de plus à proposer
+			break;
+		}
 
 		// upgrade au poids, sans remise
 		float TotalWeight = 0.0f;

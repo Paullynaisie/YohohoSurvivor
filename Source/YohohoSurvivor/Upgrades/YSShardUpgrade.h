@@ -253,6 +253,21 @@ namespace YSShardUpgrades
 	 */
 	TArray<FYSUpgradeOffer> PickOffers(const AYSPlayerCharacter* Character, const UDataTable* Table, const TArray<UYSUpStats*>& Replacements, int32 Count);
 
+	/** Ce qui peut être proposé par un tirage */
+	struct FPickOptions
+	{
+		/** Upgrades de stats (DA_Up_Stats de la table) */
+		bool bStats = true;
+
+		/** Paliers d'upgrade d'arme permis : bit 0 = Déblocage, bit 1 = Bonus (++), bit 2 = Super (Golden) */
+		uint8 WeaponTierMask = 0b111;
+
+		/** Rareté imposée à toutes les propositions (sinon tirée selon les chances du personnage) */
+		TOptional<EYSUpgradeRarity> ForcedRarity;
+	};
+
+	TArray<FYSUpgradeOffer> PickOffers(const AYSPlayerCharacter* Character, const UDataTable* Table, const TArray<UYSUpStats*>& Replacements, int32 Count, const FPickOptions& Options);
+
 	/** Rareté tirée selon les chances du personnage (Bronze, Silver, Gold, Mythique) */
 	EYSUpgradeRarity RollRarity(const AYSPlayerCharacter* Character);
 

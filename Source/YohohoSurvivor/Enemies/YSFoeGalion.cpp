@@ -136,7 +136,7 @@ void AYSFoeGalion::ActivateBattle(float InRamDelay)
 
 bool AYSFoeGalion::IsDefeated() const
 {
-	return IsActorBeingDestroyed() || !IsValid(Captain) || Captain->IsDying() || Captain->GetHealth() <= 0.0f;
+	return IsActorBeingDestroyed() || IsSinking() || !IsValid(Captain) || Captain->IsDying() || Captain->GetHealth() <= 0.0f;
 }
 
 void AYSFoeGalion::OnShipCollision(AYSPirateShip* Other)
@@ -415,7 +415,7 @@ void AYSFoeGalion::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	if (!HasAuthority() || IsActorBeingDestroyed())
+	if (!HasAuthority() || IsActorBeingDestroyed() || IsSinking())
 	{
 		return;
 	}

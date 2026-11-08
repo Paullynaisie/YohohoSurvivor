@@ -219,6 +219,40 @@ protected:
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Ship")
 	bool bDisabled = false;
 
+	/**
+	 *  Coulé (core sous -PV max, capitaine du Galion tué) : le bateau descend de Sink Depth en Sink Duration (proue qui pique de Sink Pitch), puis
+	 *  disparaît ; ceux qui sont à bord se retrouvent à nager quand le pont passe sous l'eau. 0 = disparaît tout de suite
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sink", meta=(ClampMin="0", Units="s"))
+	float SinkDuration = 10.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sink", meta=(ClampMin="0", Units="Centimeters"))
+	float SinkDepth = 1500.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sink", meta=(Units="Degrees"))
+	float SinkPitch = 8.0f;
+
+	/** Courbe de la descente (1 = vitesse constante, plus grand = lent au début puis de plus en plus vite) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sink", meta=(ClampMin="0.1"))
+	float SinkEaseExponent = 1.5f;
+
+	/** Profondeur à partir de laquelle le bateau n'a plus de collision (le pont et le gaillard sont passés sous les nageurs) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sink", meta=(ClampMin="0", Units="Centimeters"))
+	float SinkCollisionOffDepth = 700.0f;
+
+	/** Coulaison en cours (serveur -> clients ; chaque machine fait descendre le bateau depuis l'heure serveur) */
+	UPROPERTY(Replicated)
+	double SinkStartServerTime = 0.0;
+
+	UPROPERTY(Replicated)
+	FVector SinkStartLocation = FVector::ZeroVector;
+
+	UPROPERTY(Replicated)
+	float SinkStartYaw = 0.0f;
+
+	/** Coulaison : position du moment, collision coupée sous Sink Collision Off Depth, disparition à la fin (serveur) */
+	void UpdateSink();
+
 	/** Serveur : le core vient de passer à 0 PV ; postes libérés */
 	virtual void OnShipDisabled();
 
@@ -360,8 +394,11 @@ public:
 	 */
 	void TakeCoreDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation);
 
-	/** Bateau coulé (serveur) : tout le monde à l'eau, cadavres posés à la surface, autres objets posés détruits, puis Destroy */
+	/** Bateau coulé (serveur) : postes vidés, cadavres posés à la surface, autres objets posés détruits, puis il coule (Sink Duration) et disparaît */
 	void SinkAtSea(const TCHAR* Reason);
+
+	/** En train de couler (hors d'usage, plus de déplacement) */
+	bool IsSinking() const { return SinkStartServerTime > 0.0; }
 
 	/**
 	 *  Point sur l'eau pour un bateau (serveur) : direction au hasard autour d'un joueur tiré au hasard, premier point à partir de MinDistance

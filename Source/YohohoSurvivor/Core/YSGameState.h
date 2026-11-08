@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameStateBase.h"
 #include "Core/YSCustomization.h"
+#include "Core/YSShipRewardTypes.h"
 #include "YSGameState.generated.h"
 
 class AYSDamageNumber;
@@ -78,6 +79,10 @@ protected:
 	/** Niveau atteint par la sélection d'upgrade en cours (plusieurs niveaux gagnés d'un coup : sélections enchaînées) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")
 	int32 UpgradeSelectionLevel = 0;
+
+	/** Type de la sélection d'upgrade en cours : level up ou récompense de la jauge de doublons (niveau du bateau = Upgrade Selection Level) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Level")
+	EYSUpgradeSelectionKind UpgradeSelectionKind = EYSUpgradeSelectionKind::LevelUp;
 
 	/** Jour en cours (1 au départ) : sert aussi de niveau aux NME et de multiplicateur aux vagues */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="DayNight")
@@ -215,6 +220,8 @@ public:
 	void SetUpgradeSelectionActive(bool bActive) { bUpgradeSelectionActive = bActive; ForceNetUpdate(); }
 	void SetUpgradeSelectionLevel(int32 Level) { UpgradeSelectionLevel = Level; ForceNetUpdate(); }
 	int32 GetUpgradeSelectionLevel() const { return UpgradeSelectionLevel; }
+	void SetUpgradeSelectionKind(EYSUpgradeSelectionKind Kind) { UpgradeSelectionKind = Kind; ForceNetUpdate(); }
+	EYSUpgradeSelectionKind GetUpgradeSelectionKind() const { return UpgradeSelectionKind; }
 
 	int32 GetDayNumber() const { return DayNumber; }
 	bool IsNight() const { return bNight; }

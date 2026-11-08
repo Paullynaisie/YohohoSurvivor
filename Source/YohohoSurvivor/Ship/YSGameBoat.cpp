@@ -129,11 +129,12 @@ AYSGameBoatSeat::AYSGameBoatSeat()
 
 AYSSloop::AYSSloop(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer
-		.DoNotCreateDefaultSubobject(TEXT("CannonLeft"))
-		.DoNotCreateDefaultSubobject(TEXT("CannonRight"))
+		.DoNotCreateDefaultSubobject(TEXT("CannonFront"))
 		.DoNotCreateDefaultSubobject(TEXT("CannonLeft2"))
 		.DoNotCreateDefaultSubobject(TEXT("CannonRight2")))
 {
+	// demande de Paul (2026-11-08) : 2 canons à l'avant, écartés et tournés de 15° vers l'extérieur = Cannon Left / Cannon Right
+	// (placés par Tools/EditorScripts/setup_game_boat_stages.py)
 	ShipName = NSLOCTEXT("YS", "SloopName", "Sloop");
 	bObjectiveShip = false;
 	bDrivable = true;
@@ -144,4 +145,24 @@ AYSSloop::AYSSloop(const FObjectInitializer& ObjectInitializer)
 		FVector2D(82.0f, 0.0f), FVector2D(0.0f, -90.0f), FVector2D(0.0f, 90.0f),
 		FVector2D(-218.0f, -90.0f), FVector2D(-218.0f, 90.0f), FVector2D(-218.0f, 0.0f)
 	};
+}
+
+AYSSlooplus::AYSSlooplus(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer
+		.DoNotCreateDefaultSubobject(TEXT("CannonLeft2"))
+		.DoNotCreateDefaultSubobject(TEXT("CannonRight2")))
+{
+	// 1 canon à l'avant (centré), 1 à bâbord, 1 à tribord
+	ShipName = NSLOCTEXT("YS", "SlooplusName", "Slooplus");
+	bObjectiveShip = false;
+	bDrivable = true;
+}
+
+AYSBrigantin::AYSBrigantin(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.DoNotCreateDefaultSubobject(TEXT("CannonFront")))
+{
+	// 2 canons à l'avant tournés de 45° vers l'extérieur (Cannon Left 2 / Cannon Right 2), 1 à bâbord, 1 à tribord
+	ShipName = NSLOCTEXT("YS", "BrigantinName", "Brigantin");
+	bObjectiveShip = false;
+	bDrivable = true;
 }

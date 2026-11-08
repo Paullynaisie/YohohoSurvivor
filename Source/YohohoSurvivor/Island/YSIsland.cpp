@@ -1201,6 +1201,12 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : objectif %s accompli : %s (%d principal(aux) restant(s))"), *Data->GetName(), State.bMain ? TEXT("principal") : TEXT("secondaire"),
 				*State.DisplayName.ToString(), CountOpenMainObjectives());
 			RefreshOpenDeliveryClasses();
+			// core du bateau ramené d'une île suivante : le GameBoat passe à l'étape suivante (île de départ : quand tous ses objectifs principaux sont livrés)
+			AYSFlowMode* DeliveryFlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+			if (DeliveryFlowMode && Object && Object->UpgradesGameBoat() && DeliveryFlowMode->GetStartIslandActor() != this)
+			{
+				DeliveryFlowMode->RequestGameBoatUpgrade(*FString::Printf(TEXT("%s livré (%s)"), *Object->GetName(), *Data->GetName()));
+			}
 			if (State.bMain && CountOpenMainObjectives() == 0)
 			{
 				bMainObjectivesDone = true;

@@ -134,7 +134,7 @@ protected:
 };
 
 /**
- *  Sloop : 2e étape du GameBoat, miniature du bateau pirate avec un seul canon (à l'avant), core, barre, nid d'pie et chalouperie.
+ *  Sloop : 2e étape du GameBoat, miniature du bateau pirate avec 2 canons à l avant (écartés, à 15°), core, barre, nid d'pie et chalouperie.
  *  Visuel dans le Blueprint /Game/Placeable/Ship/BP_GameBoat_Sloop (Tools/EditorScripts/setup_game_boat.py).
  */
 UCLASS(meta=(PrioritizeCategories="Ship"))
@@ -145,4 +145,32 @@ class AYSSloop : public AYSPirateShip
 public:
 
 	AYSSloop(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+};
+
+/**
+ *  Slooplus : 3e étape du GameBoat (entre le sloop et le galion), 1 canon à l'avant (centré), 1 à bâbord, 1 à tribord.
+ *  Visuel dans le Blueprint /Game/Placeable/Ship/BP_GameBoat_Slooplus (Tools/EditorScripts/setup_game_boat_stages.py).
+ */
+UCLASS(meta=(PrioritizeCategories="Ship"))
+class AYSSlooplus : public AYSPirateShip
+{
+	GENERATED_BODY()
+
+public:
+
+	AYSSlooplus(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+};
+
+/**
+ *  Brigantin : 4e étape du GameBoat (avant le galion), 2 canons à l'avant à 45°, 1 à bâbord, 1 à tribord.
+ *  Visuel dans le Blueprint /Game/Placeable/Ship/BP_GameBoat_Brigantin (Tools/EditorScripts/setup_game_boat_stages.py).
+ */
+UCLASS(meta=(PrioritizeCategories="Ship"))
+class AYSBrigantin : public AYSPirateShip
+{
+	GENERATED_BODY()
+
+public:
+
+	AYSBrigantin(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 };

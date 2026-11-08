@@ -12,6 +12,10 @@
 #include "Misc/Parse.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Ship/YSGameBoat.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Ship/YSPirateShip.h"
+#include "Ship/YSShipHelm.h"
 
 namespace YSFlowMode
 {
@@ -69,6 +73,13 @@ void AYSFlowMode::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	// GameBoat : étapes demandées (core du bateau livré)
+	if (PendingGameBoatUpgrades > 0)
+	{
+		--PendingGameBoatUpgrades;
+		UpgradeGameBoat();
+	}
+
 	// île finale : quand toutes les îles suivantes et toutes les batailles navales sont faites
 	if (FinalIsland && bNextIslandsBrought && !bFinalIslandBrought && AreNextIslandsAndBattlesDone())
 	{
@@ -118,12 +129,20 @@ void AYSFlowMode::OnIslandSinkStarted(AYSIsland* SinkingIsland)
 
 void AYSFlowMode::OnIslandMainObjectivesDone(AYSIsland* DoneIsland)
 {
-	UpgradeGameBoat();
-	// demande de Paul : les îles suivantes arrivent dès que les objectifs de l'île de départ sont livrés (plus à sa coulaison)
+	// demande de Paul : les îles suivantes arrivent dès que les objectifs de l'île de départ sont livrés (plus à sa coulaison) ;
+	// le GameBoat passe au sloop. Îles suivantes : il change à chaque core du bateau livré (AYSIsland::NotifyObjectDelivered)
 	if (DoneIsland && DoneIsland == Island)
 	{
+		RequestGameBoatUpgrade(TEXT("objectifs de l'île de départ livrés"));
 		BringNextIslands(DoneIsland);
 	}
+}
+
+void AYSFlowMode::RequestGameBoatUpgrade(const TCHAR* Reason)
+{
+	// à l'image suivante : l'objet vient d'être livré dans la zone du core du bateau actuel, qui va être détruit
+	++PendingGameBoatUpgrades;
+	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] Étape suivante demandée : %s"), Reason);
 }
 
 void AYSFlowMode::BringNextIslands(const AYSIsland* From)
@@ -252,14 +271,15 @@ void AYSFlowMode::SpawnFinalIsland(bool bSubmerged)
 
 	// assez loin pour laisser Final Island Gap entre sa côte et celle de chaque autre île
 	Others.Add(Island);
-	float Distance = Island->GetRadius() + FinalIslandGap + FinalRadius;
+	const float Gap = FinalIslandGap * NextIslandsDistanceMultiplier;
+	float Distance = Island->GetRadius() + Gap + FinalRadius;
 	FVector Location = Center + Direction * Distance;
 	for (int32 Step = 0; Step < 1000; ++Step)
 	{
 		Location = Center + Direction * Distance;
 		const bool bClear = !Others.ContainsByPredicate([&](const AYSIsland* Other)
 		{
-			return FVector::Dist2D(Other->GetActorLocation(), Location) < Other->GetRadius() + FinalIslandGap + FinalRadius;
+			return FVector::Dist2D(Other->GetActorLocation(), Location) < Other->GetRadius() + Gap + FinalRadius;
 		});
 		if (bClear)
 		{
@@ -389,7 +409,8 @@ void AYSFlowMode::SpawnNextIslands(const AYSIsland* From, bool bSubmerged)
 	{
 		UYSIslandData* Data = Order[Index];
 		const float Angle = FMath::DegreesToRadians(BaseAngle + 360.0f * Slots[Index] / Order.Num() + FMath::FRandRange(-NextIslandsAngleJitter, NextIslandsAngleJitter));
-		const float Distance = From->GetRadius() + NextIslandsGap + Data->Generation.Radius;
+		// jamais au point que les côtes se touchent
+		const float Distance = FMath::Max((From->GetRadius() + NextIslandsGap + Data->Generation.Radius) * NextIslandsDistanceMultiplier, From->GetRadius() + Data->Generation.Radius + 2000.0f);
 		const FVector Location = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Distance;
 		const float Yaw = Data->bRandomRotation ? FMath::FRandRange(0.0f, 360.0f) : 0.0f;
 		// prégénérée : sous l'eau, à sa place
@@ -551,10 +572,22 @@ void AYSFlowMode::UpgradeGameBoat()
 		return;
 	}
 
-	// assez de fond pour sa coque : à reculons depuis la plage, le long de la direction d'arrivée
+	// chaloupe échouée : à reculons depuis la plage, le long de la direction d'arrivée, tourné (accès côté plage) ;
+	// bateau en mer : à sa place, même cap, éloigné de l'île la plus proche s'il n'y a pas assez de fond pour la coque plus grande
+	const bool bFromLongboat = OldBoat->IsA<AYSGameBoatLongboat>();
 	const FVector From = OldBoat->GetActorLocation();
-	const FVector Away = -OldBoat->GetActorForwardVector().GetSafeNormal2D();
-	const float Yaw = OldBoat->GetActorRotation().Yaw + GameBoatData->UpgradeYawOffset;
+	FVector Away = -OldBoat->GetActorForwardVector().GetSafeNormal2D();
+	float Yaw = OldBoat->GetActorRotation().Yaw + GameBoatData->UpgradeYawOffset;
+	if (!bFromLongboat)
+	{
+		Yaw = OldBoat->GetActorRotation().Yaw;
+		const AYSIsland* NearestIsland = AYSIsland::FindAt(GetWorld(), From);
+		Away = NearestIsland ? (From - NearestIsland->GetActorLocation()).GetSafeNormal2D() : FVector::ZeroVector;
+		if (Away.IsNearlyZero())
+		{
+			Away = -OldBoat->GetActorRightVector().GetSafeNormal2D();
+		}
+	}
 	const FTransform SpawnTransform(FRotator(0.0f, Yaw, 0.0f), From);
 	AYSPirateShip* NewBoat = GetWorld()->SpawnActorDeferred<AYSPirateShip>(NextClass, SpawnTransform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (!NewBoat)
@@ -567,8 +600,92 @@ void AYSFlowMode::UpgradeGameBoat()
 		UE_LOG(LogTemp, Warning, TEXT("[YSGameBoat] %s : pas assez de fond à moins de %.0f cm, posé au plus loin"), *NewBoat->GetName(), GameBoatData->WaterSearchDistance);
 	}
 	NewBoat->FinishSpawning(FTransform(FRotator(0.0f, Yaw, 0.0f), Location));
-	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] Étape %d : %s remplace %s, en %s (%.0f cm de la chaloupe)"), NextStage, *NewBoat->GetName(), *OldBoat->GetName(), *Location.ToCompactString(), FVector::Dist2D(From, Location));
+	NewBoat->SyncMotionToActor();
+	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] Étape %d : %s remplace %s, en %s (%.0f cm de l'ancien)"), NextStage, *NewBoat->GetName(), *OldBoat->GetName(), *Location.ToCompactString(), FVector::Dist2D(From, Location));
 	GameBoatStage = NextStage;
 	YSGameState->SetGameBoat(NewBoat);
+	if (!bFromLongboat)
+	{
+		TransferAboard(OldBoat, NewBoat);
+	}
 	OldBoat->Destroy();
+}
+
+void AYSFlowMode::TransferAboard(AYSPirateShip* OldBoat, AYSPirateShip* NewBoat)
+{
+	// emprise des deux coques (repère local) : une place à bord garde la même position proportionnelle, hauteur gardée (les étapes ont le même pont)
+	const auto LocalBounds = [](const AYSPirateShip* Ship)
+	{
+		TArray<FVector> Points;
+		Ship->GetWorldHullPoints(Points);
+		FBox2D Box(ForceInit);
+		for (const FVector& Point : Points)
+		{
+			const FVector Local = Ship->GetActorTransform().InverseTransformPosition(Point);
+			Box += FVector2D(Local.X, Local.Y);
+		}
+		return Box;
+	};
+	const FBox2D OldBox = LocalBounds(OldBoat);
+	const FBox2D NewBox = LocalBounds(NewBoat);
+	const FVector2D Scale(OldBox.GetSize().X > 1.0 ? NewBox.GetSize().X / OldBox.GetSize().X : 1.0, OldBox.GetSize().Y > 1.0 ? NewBox.GetSize().Y / OldBox.GetSize().Y : 1.0);
+	const auto MapLocation = [&](const FVector& World)
+	{
+		const FVector Local = OldBoat->GetActorTransform().InverseTransformPosition(World);
+		const FVector2D Mapped = (FVector2D(Local.X, Local.Y) - OldBox.GetCenter()) * Scale + NewBox.GetCenter();
+		return NewBoat->GetActorTransform().TransformPosition(FVector(Mapped.X, Mapped.Y, Local.Z));
+	};
+	const float DeltaYaw = NewBoat->GetActorRotation().Yaw - OldBoat->GetActorRotation().Yaw;
+
+	// personnages à bord (postes compris) : joueurs, minions, NME montés sur le pont
+	OldBoat->SetActorEnableCollision(false);
+	int32 Characters = 0;
+	for (TActorIterator<ACharacter> It(GetWorld()); It; ++It)
+	{
+		ACharacter* Character = *It;
+		AYSPlayerCharacter* Player = Cast<AYSPlayerCharacter>(Character);
+		const UPrimitiveComponent* Base = Character->GetMovementBase();
+		const bool bAboard = Player ? Player->GetShipUnderFeet() == OldBoat : (Base && AYSPirateShip::GetShipOf(Base->GetOwner()) == OldBoat);
+		if (!bAboard || Character->IsActorBeingDestroyed())
+		{
+			continue;
+		}
+		const float HalfHeight = Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		const FVector Feet = MapLocation(Character->GetActorLocation() - FVector(0.0f, 0.0f, HalfHeight));
+		const FVector Facing = FRotator(0.0f, Character->GetActorRotation().Yaw + DeltaYaw, 0.0f).Vector();
+		if (Player)
+		{
+			const bool bWasPiloting = Player->GetCurrentStation() && Player->GetCurrentStation()->UsesPilotInput();
+			Player->LeaveStation(TEXT("le bateau change"), true);
+			Player->TeleportToFeetLocation(Feet, Facing);
+			if (bWasPiloting && NewBoat->GetHelm())
+			{
+				Player->EnterStation(NewBoat->GetHelm());
+			}
+		}
+		else
+		{
+			Character->SetActorLocationAndRotation(Feet + FVector(0.0f, 0.0f, HalfHeight + 2.0f), Facing.Rotation(), false, nullptr, ETeleportType::TeleportPhysics);
+			Character->GetCharacterMovement()->Velocity = FVector::ZeroVector;
+		}
+		++Characters;
+	}
+
+	// posé sur le pont (objets, cadavres, PNJ livrés) ; pas les postes, acteurs enfants du bateau
+	TArray<AActor*> Attached;
+	OldBoat->GetAttachedActors(Attached, true, false);
+	int32 Objects = 0;
+	for (AActor* Actor : Attached)
+	{
+		if (!Actor || Actor->IsChildActor() || Actor->IsA<APawn>() || Actor->IsActorBeingDestroyed())
+		{
+			continue;
+		}
+		Actor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+		Actor->SetActorLocationAndRotation(MapLocation(Actor->GetActorLocation()), Actor->GetActorRotation() + FRotator(0.0f, DeltaYaw, 0.0f), false, nullptr, ETeleportType::TeleportPhysics);
+		Actor->AttachToActor(NewBoat, FAttachmentTransformRules::KeepWorldTransform);
+		++Objects;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] %s -> %s : %d personnage(s) et %d objet(s) à bord passés sur le nouveau bateau (échelle %.2f x %.2f)"), *OldBoat->GetName(), *NewBoat->GetName(),
+		Characters, Objects, Scale.X, Scale.Y);
 }

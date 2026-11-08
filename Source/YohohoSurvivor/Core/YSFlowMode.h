@@ -9,6 +9,7 @@ class UDataTable;
 class UYSIslandData;
 class UYSGameBoatData;
 class AYSGameBoatLongboat;
+class AYSPirateShip;
 
 /** « Go naviguer » : une vague en mer, comptée depuis le moment où une île commence à couler */
 USTRUCT(BlueprintType)
@@ -60,6 +61,13 @@ public:
 	/** Écart entre la côte de l'île de départ et celle de chaque nouvelle île (rayons moyens) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands", meta=(ClampMin="0", Units="Centimeters"))
 	float NextIslandsGap = 25000.0f;
+
+	/**
+	 *  Distance au centre de l'île de départ x ce multiplicateur (îles suivantes, et donc les batailles navales placées entre elles, et l'écart
+	 *  laissé autour de l'île finale) ; 0.7 = 30 % plus près (demande de Paul, 2026-11-08)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands", meta=(ClampMin="0.1"))
+	float NextIslandsDistanceMultiplier = 0.7f;
 
 	/** Décalage au hasard de la direction de chaque île, autour de sa place régulière */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands", meta=(ClampMin="0", ClampMax="60", Units="Degrees"))
@@ -164,8 +172,14 @@ public:
 	/** La chaloupe a débarqué les joueurs : elle devient le point de dépôt des objectifs de l'île */
 	void OnGameBoatLanded(AYSGameBoatLongboat* Boat, const FVector& Landing);
 
-	/** GameBoat : étape suivante, sur l'eau à côté de l'étape actuelle (serveur) */
+	/**
+	 *  GameBoat : étape suivante (serveur). Depuis la chaloupe échouée : sur l'eau à côté d'elle ; depuis un bateau : à sa place (éloigné de l'île
+	 *  la plus proche s'il n'y a pas assez de fond), ceux qui sont à bord et ce qui est posé sur le pont passent sur le nouveau bateau
+	 */
 	void UpgradeGameBoat();
+
+	/** Étape suivante à l'image suivante (objectif livré dans la zone du core du bateau actuel) */
+	void RequestGameBoatUpgrade(const TCHAR* Reason);
 
 	virtual void OnEliteKilled(AYSFoeCharacter* Elite) override;
 
@@ -212,6 +226,12 @@ private:
 
 	/** Étape actuelle du GameBoat */
 	int32 GameBoatStage = 0;
+
+	/** Étapes demandées pas encore faites (une par image) */
+	int32 PendingGameBoatUpgrades = 0;
+
+	/** Passe ceux qui sont à bord de OldBoat (joueurs, minions, NME, objets posés, PNJ livrés) sur NewBoat, aux mêmes places proportionnellement */
+	void TransferAboard(AYSPirateShip* OldBoat, AYSPirateShip* NewBoat);
 
 	/** Chaloupe de départ encore en route, ou nullptr */
 	AYSGameBoatLongboat* GetArrivingBoat() const;

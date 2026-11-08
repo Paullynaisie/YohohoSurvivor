@@ -393,17 +393,38 @@ void AYSGameMode::AddTeamExperience(float Amount)
 void AYSGameMode::StartUpgradeSelection()
 {
 	AYSGameState* YSGameState = GetGameState<AYSGameState>();
-	if (!YSGameState || PendingLevelUps <= 0)
+	if (!YSGameState || (PendingLevelUps <= 0 && PendingDoubloonRewards.Num() == 0))
 	{
 		return;
 	}
 
-	--PendingLevelUps;
-	// niveau atteint par cette sélection (plusieurs niveaux gagnés d'un coup : sélections enchaînées)
-	const int32 SelectionLevel = YSGameState->GetTeamLevel() - PendingLevelUps;
-	const bool bClassSelection = SelectionLevel == ClassUpgradeLevel;
+	// récompenses de la jauge de doublons d'abord (niveau du bateau), puis les level up
+	EYSUpgradeSelectionKind Kind = EYSUpgradeSelectionKind::LevelUp;
+	int32 SelectionLevel = 0;
+	const bool bDoubloonSelection = PendingDoubloonRewards.Num() > 0;
+	if (bDoubloonSelection)
+	{
+		Kind = PendingDoubloonRewards[0];
+		PendingDoubloonRewards.RemoveAt(0);
+		SelectionLevel = YSGameState->GetShipLevel();
+	}
+	else
+	{
+		--PendingLevelUps;
+		// niveau atteint par cette sélection (plusieurs niveaux gagnés d'un coup : sélections enchaînées)
+		SelectionLevel = YSGameState->GetTeamLevel() - PendingLevelUps;
+		// ancien fonctionnement : choix de classe au niveau de classe
+		if (!bDoubloonRewards && SelectionLevel == ClassUpgradeLevel)
+		{
+			Kind = EYSUpgradeSelectionKind::Class;
+		}
+	}
+	CurrentSelectionKind = Kind;
 	YSGameState->SetUpgradeSelectionLevel(SelectionLevel);
+	// level up (même un choix de classe de l'ancien fonctionnement : le menu reconnaît les upgrades de classe) ou récompense de doublons
+	YSGameState->SetUpgradeSelectionKind(bDoubloonSelection ? Kind : EYSUpgradeSelectionKind::LevelUp);
 	YSGameState->SetUpgradeSelectionActive(true);
+	const bool bClassSelection = Kind == EYSUpgradeSelectionKind::Class;
 
 	// propositions propres à chaque joueur vivant (selon son personnage) ; les autres ne sont pas attendus
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -411,23 +432,22 @@ void AYSGameMode::StartUpgradeSelection()
 		APlayerController* Player = It->Get();
 		AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
 		AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
-		if (Character && bRestoreOnLevelUp)
+		if (Character && bRestoreOnLevelUp && !bDoubloonSelection)
 		{
 			Character->RestoreOnLevelUp();
 		}
 		if (PlayerState)
 		{
-			// niveau de classe : choix de classe (si le personnage en a), sinon upgrades au hasard
+			// type de la sélection (classe, upgrade d'arme...), avec repli si le personnage n'a rien de ce type à proposer
 			TArray<FYSUpgradeOffer> Offers;
+			EYSUpgradeSelectionKind PlayerKind = Kind;
 			if (Character && Character->IsAlive())
 			{
-				Offers = bClassSelection ? Character->PickClassOffers() : TArray<FYSUpgradeOffer>();
-				if (Offers.Num() == 0)
-				{
-					Offers = PickRandomUpgradeOffers(Character, UpgradeChoiceCount);
-				}
+				Offers = PickOffersForKind(Character, Kind, PlayerKind);
 			}
 			PlayerState->SetUpgradeOffers(Offers);
+			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s : sélection %s%s"), *PlayerState->GetPlayerName(), *UEnum::GetValueAsString(Kind),
+				PlayerKind != Kind ? *FString::Printf(TEXT(" -> %s (rien à proposer)"), *UEnum::GetValueAsString(PlayerKind)) : TEXT(""));
 			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s (%s, pool de %d, armes G %s / D %s) : %d proposition(s)"), *PlayerState->GetPlayerName(),
 				Character ? *Character->GetClass()->GetName() : TEXT("pas de perso"), Character ? Character->GetUpgradePool().Num() : 0,
 				Character && Character->GetLeftHandWeapon() ? *Character->GetLeftHandWeapon()->GetName() : TEXT("aucune"),
@@ -436,7 +456,8 @@ void AYSGameMode::StartUpgradeSelection()
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Niveau %d : choix %s (%d niveau(x) en attente)"), SelectionLevel, bClassSelection ? TEXT("de classe") : TEXT("d'upgrade"), PendingLevelUps);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s %d : choix %s (%d niveau(x) et %d récompense(s) de doublons en attente)"), bDoubloonSelection ? TEXT("Bateau niveau") : TEXT("Niveau"), SelectionLevel,
+		bClassSelection ? TEXT("de classe") : *UEnum::GetValueAsString(Kind), PendingLevelUps, PendingDoubloonRewards.Num());
 
 	// tout le monde s'arrête pendant le choix (pause répliquée aux clients)
 	if (APlayerController* FirstPlayer = GetWorld()->GetFirstPlayerController())
@@ -464,7 +485,94 @@ TArray<FYSUpgradeOffer> AYSGameMode::PickRandomUpgradeOffers(const AYSPlayerChar
 	{
 		Replacements.Add(Replacement);
 	}
-	return YSShardUpgrades::PickOffers(Character, CharaUpgradesTable, Replacements, Count);
+	// récompenses de doublons : les level up ne proposent plus que le Bonus (++) des upgrades d'arme déjà débloquées
+	YSShardUpgrades::FPickOptions Options;
+	if (bDoubloonRewards)
+	{
+		Options.WeaponTierMask = 0b010;
+	}
+	return YSShardUpgrades::PickOffers(Character, CharaUpgradesTable, Replacements, Count, Options);
+}
+
+TArray<FYSUpgradeOffer> AYSGameMode::PickOffersForKind(const AYSPlayerCharacter* Character, EYSUpgradeSelectionKind Kind, EYSUpgradeSelectionKind& OutKind) const
+{
+	OutKind = Kind;
+	if (!Character)
+	{
+		return TArray<FYSUpgradeOffer>();
+	}
+	TArray<UYSUpStats*> Replacements;
+	for (const TObjectPtr<UYSUpStats>& Replacement : ReplacementUpStats)
+	{
+		Replacements.Add(Replacement);
+	}
+	TArray<FYSUpgradeOffer> Offers;
+	switch (Kind)
+	{
+	case EYSUpgradeSelectionKind::Class:
+		Offers = Character->PickClassOffers();
+		if (Offers.Num() == 0)
+		{
+			// ancien fonctionnement (niveau de classe) : upgrades au hasard ; récompense de doublons : mythique
+			return PickOffersForKind(Character, bDoubloonRewards ? EYSUpgradeSelectionKind::Mythic : EYSUpgradeSelectionKind::LevelUp, OutKind);
+		}
+		return Offers;
+
+	case EYSUpgradeSelectionKind::Weapon:
+	case EYSUpgradeSelectionKind::GoldenWeapon:
+	{
+		YSShardUpgrades::FPickOptions Options;
+		Options.bStats = false;
+		Options.WeaponTierMask = Kind == EYSUpgradeSelectionKind::Weapon ? 0b001 : 0b100;
+		if (Kind == EYSUpgradeSelectionKind::GoldenWeapon)
+		{
+			Options.ForcedRarity = EYSUpgradeRarity::Gold;
+		}
+		Offers = bShardUpgrades ? YSShardUpgrades::PickOffers(Character, CharaUpgradesTable, Replacements, UpgradeChoiceCount, Options) : TArray<FYSUpgradeOffer>();
+		if (Offers.Num() == 0)
+		{
+			// pas d'upgrade d'arme à débloquer / à passer en Golden
+			return PickOffersForKind(Character, Kind == EYSUpgradeSelectionKind::GoldenWeapon ? EYSUpgradeSelectionKind::Weapon : EYSUpgradeSelectionKind::Mythic, OutKind);
+		}
+		return Offers;
+	}
+
+	case EYSUpgradeSelectionKind::Mythic:
+	{
+		YSShardUpgrades::FPickOptions Options;
+		Options.WeaponTierMask = 0b010;
+		Options.ForcedRarity = EYSUpgradeRarity::Mythic;
+		Offers = bShardUpgrades ? YSShardUpgrades::PickOffers(Character, CharaUpgradesTable, Replacements, UpgradeChoiceCount, Options) : TArray<FYSUpgradeOffer>();
+		if (Offers.Num() == 0)
+		{
+			return PickOffersForKind(Character, EYSUpgradeSelectionKind::LevelUp, OutKind);
+		}
+		return Offers;
+	}
+
+	default:
+		return PickRandomUpgradeOffers(Character, UpgradeChoiceCount);
+	}
+}
+
+EYSUpgradeSelectionKind AYSGameMode::GetDoubloonReward(int32 FillIndex) const
+{
+	return DoubloonRewardCycle.IsValidIndex(FillIndex) ? DoubloonRewardCycle[FillIndex] : DoubloonRewardAfterCycle;
+}
+
+void AYSGameMode::QueueDoubloonReward(EYSUpgradeSelectionKind Kind, const TCHAR* Reason)
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || !YSGameState->IsMatchStarted())
+	{
+		return;
+	}
+	PendingDoubloonRewards.Add(Kind);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Récompense de doublons %s (%s)"), *UEnum::GetValueAsString(Kind), Reason);
+	if (!YSGameState->IsUpgradeSelectionActive())
+	{
+		StartUpgradeSelection();
+	}
 }
 
 UYSUpShard* AYSGameMode::FindShard(const AYSPlayerCharacter* Character, uint8 Stat) const
@@ -538,7 +646,9 @@ void AYSGameMode::PlayerRerolledUpgrades(APlayerController* Player)
 		return;
 	}
 
-	const TArray<FYSUpgradeOffer> Offers = PickRandomUpgradeOffers(Character, UpgradeChoiceCount);
+	// même type de sélection (récompense de doublons comprise)
+	EYSUpgradeSelectionKind PlayerKind = CurrentSelectionKind;
+	const TArray<FYSUpgradeOffer> Offers = PickOffersForKind(Character, CurrentSelectionKind == EYSUpgradeSelectionKind::Class ? EYSUpgradeSelectionKind::LevelUp : CurrentSelectionKind, PlayerKind);
 	if (Offers.Num() > 0)
 	{
 		PlayerState->SetUpgradeOffers(Offers);
@@ -579,7 +689,7 @@ void AYSGameMode::TryFinishUpgradeSelection()
 		}
 	}
 
-	if (PendingLevelUps > 0)
+	if (PendingLevelUps > 0 || PendingDoubloonRewards.Num() > 0)
 	{
 		StartUpgradeSelection();
 	}
@@ -1063,9 +1173,20 @@ void AYSGameMode::AddDoubloons(int32 Amount)
 		{
 			UE_LOG(LogTemp, Log, TEXT("[YSShip] Le bateau monte au niveau %d"), Level);
 		}
+		// jauge remplie : récompense pour tous (classe, upgrade d'arme, Golden, puis mythique)
+		if (bDoubloonRewards)
+		{
+			PendingDoubloonRewards.Add(GetDoubloonReward(DoubloonFillCount));
+			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Jauge de doublons n°%d remplie : récompense %s"), DoubloonFillCount + 1, *UEnum::GetValueAsString(PendingDoubloonRewards.Last()));
+		}
+		++DoubloonFillCount;
 	}
 	YSGameState->SetDoubloons(Total, GetDoubloonGoalForShipLevel(Level));
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Doublons +%d -> %d / %d (bateau niveau %d)"), Amount, Total, GetDoubloonGoalForShipLevel(Level), Level);
+	if (PendingDoubloonRewards.Num() > 0 && YSGameState->IsMatchStarted() && !YSGameState->IsUpgradeSelectionActive())
+	{
+		StartUpgradeSelection();
+	}
 }
 
 int32 AYSGameMode::GetPlayersInMatchCount() const

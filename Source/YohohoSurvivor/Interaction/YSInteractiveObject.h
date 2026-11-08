@@ -89,6 +89,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Brooker", meta=(ClampMin="0"))
 	int32 PhoenixFeatherValue = 0;
 
+	/** Objectif d'île qui fait passer le GameBoat à l'étape suivante quand il est livré (core du bateau ; sauf sur l'île de départ, où il faut tous ses objectifs principaux) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Brooker")
+	bool bUpgradesGameBoat = false;
+
 	/** Bulle d'indication (comme celle du Brooker) : au bord de l'écran quand l'objet posé est hors écran (coffres : pour ne pas les perdre) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator")
 	bool bShowIndicator = false;
@@ -158,6 +162,7 @@ public:
 
 	int32 GetDoubloonValue() const { return DoubloonValue; }
 	int32 GetPhoenixFeatherValue() const { return PhoenixFeatherValue; }
+	bool UpgradesGameBoat() const { return bUpgradesGameBoat; }
 
 	bool ShowsIndicator() const { return bShowIndicator; }
 	bool ShowsIndicatorOnScreen() const { return bIndicatorOnScreen; }

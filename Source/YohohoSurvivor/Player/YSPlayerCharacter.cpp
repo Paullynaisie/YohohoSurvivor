@@ -3585,9 +3585,9 @@ void AYSPlayerCharacter::UpdateStation()
 
 void AYSPlayerCharacter::UpdateSwimming(float DeltaSeconds)
 {
-	// pendant que l'île coule, plus de sol de nage autour d'elle : tout le monde coule avec elle (seuls ceux du bateau survivent)
-	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
-	const bool bFloorActive = !(YSGameState && YSGameState->IsSinkingAt(GetActorLocation()));
+	// sol de nage toujours là pour les joueurs et les minions (demande de Paul, 2026-11-08) : sur une île ou un bateau qui coule, ils
+	// restent à la surface quand le sol passe sous l'eau et se mettent à nager (avant : emportés jusqu'à la deadzone)
+	const bool bFloorActive = true;
 	if (bFloorActive != bSwimFloorBlocked)
 	{
 		bSwimFloorBlocked = bFloorActive;

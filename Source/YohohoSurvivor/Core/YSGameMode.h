@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "Core/YSCustomization.h"
+#include "Core/YSShipRewardTypes.h"
 #include "YSGameMode.generated.h"
 
 class AYSPlayerCharacter;
@@ -121,9 +122,25 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level")
 	bool bAllowUpgradeReroll = true;
 
-	/** Niveau d'équipe où chaque joueur choisit sa classe (upgrades de classe de son personnage, sans hasard) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1"))
+	/** Niveau d'équipe où chaque joueur choisit sa classe (upgrades de classe de son personnage, sans hasard) ; ignoré avec Doubloon Rewards */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1", EditCondition="!bDoubloonRewards"))
 	int32 ClassUpgradeLevel = 5;
+
+	/**
+	 *  Récompenses de la jauge de doublons (demande de Paul, 2026-11-08) : les level up ne proposent plus d'upgrade de classe ni le Déblocage /
+	 *  Golden des upgrades d'arme (le ++ d'une upgrade d'arme déjà débloquée reste proposé). À chaque jauge de doublons remplie (niveau du
+	 *  bateau), une sélection d'upgrade pour tous : Doubloon Reward Cycle dans l'ordre, puis Doubloon Reward After Cycle
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Doubloon Rewards")
+	bool bDoubloonRewards = true;
+
+	/** Récompenses des premières jauges remplies, dans l'ordre (défaut : classe à 100 doublons, upgrade d'arme à 150, Golden à 200) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Doubloon Rewards", meta=(EditCondition="bDoubloonRewards"))
+	TArray<EYSUpgradeSelectionKind> DoubloonRewardCycle = { EYSUpgradeSelectionKind::Class, EYSUpgradeSelectionKind::Weapon, EYSUpgradeSelectionKind::GoldenWeapon };
+
+	/** Récompense de toutes les jauges suivantes (défaut : 3 propositions mythiques, à partir de 250 doublons) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Doubloon Rewards", meta=(EditCondition="bDoubloonRewards"))
+	EYSUpgradeSelectionKind DoubloonRewardAfterCycle = EYSUpgradeSelectionKind::Mythic;
 
 	/** À chaque level up, chaque joueur vivant récupère tous ses PV et la recharge de son Ability */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level")
@@ -420,6 +437,12 @@ public:
 	/** Propositions d'un level up (pas de classe) : système de shards (bShardUpgrades) ou anciennes upgrades du pool */
 	TArray<FYSUpgradeOffer> PickRandomUpgradeOffers(const AYSPlayerCharacter* Character, int32 Count) const;
 
+	/**
+	 *  Propositions d'une sélection de ce type (level up, récompense de doublons) ; sans proposition possible, le type suivant :
+	 *  Golden -> Déblocage -> mythique, classe -> mythique, mythique -> level up. OutKind = type réellement proposé
+	 */
+	TArray<FYSUpgradeOffer> PickOffersForKind(const AYSPlayerCharacter* Character, EYSUpgradeSelectionKind Kind, EYSUpgradeSelectionKind& OutKind) const;
+
 	/** Shard d'un type parmi les upgrades disponibles pour ce personnage (cheats, debug) ; nullptr si aucune */
 	UYSUpShard* FindShard(const AYSPlayerCharacter* Character, uint8 Stat) const;
 
@@ -496,8 +519,14 @@ public:
 	/** Doublons gagnés par l'équipe (vente au Brooker ; serveur) */
 	void AddDoubloons(int32 Amount);
 
-	/** Doublons pour passer du niveau de bateau Level au suivant */
-	int32 GetDoubloonGoalForShipLevel(int32 Level) const { return DoubloonGoal + DoubloonGoalPerShipLevel * FMath::Max(0, Level); }
+	/** Doublons pour passer du niveau de bateau Level au suivant (première jauge = Doubloon Goal, que le bateau soit là dès le début ou non) */
+	int32 GetDoubloonGoalForShipLevel(int32 Level) const { return DoubloonGoal + DoubloonGoalPerShipLevel * FMath::Max(0, Level - (bShipArrivesAtDoubloonGoal ? 0 : 1)); }
+
+	/** Debug (serveur) : une récompense de doublons maintenant, comme si la jauge venait d'être remplie */
+	void QueueDoubloonReward(EYSUpgradeSelectionKind Kind, const TCHAR* Reason);
+
+	/** Récompense de la N-ième jauge de doublons remplie (0 = la première) */
+	EYSUpgradeSelectionKind GetDoubloonReward(int32 FillIndex) const;
 
 	/**
 	 *  Cadavre reposé chez le Medic (serveur) : son joueur (encore dans la partie) ressuscite debout sur Ground, même personnage,
@@ -548,6 +577,15 @@ protected:
 
 	/** Montées de niveau pas encore traitées par une sélection d'upgrade */
 	int32 PendingLevelUps = 0;
+
+	/** Récompenses de doublons pas encore traitées (passent avant les level up) */
+	TArray<EYSUpgradeSelectionKind> PendingDoubloonRewards;
+
+	/** Jauges de doublons remplies depuis le début de la partie */
+	int32 DoubloonFillCount = 0;
+
+	/** Type de la sélection en cours (relance des propositions) */
+	EYSUpgradeSelectionKind CurrentSelectionKind = EYSUpgradeSelectionKind::LevelUp;
 
 	/** Début d'un jour (partie, mort de l'élite) : overtime à partir de Overtime Day */
 	virtual void OnDayStarted(int32 Day);
