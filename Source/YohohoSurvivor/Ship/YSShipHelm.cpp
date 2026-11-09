@@ -53,6 +53,36 @@ void AYSShipHelm::OnOccupantChanged(AYSPlayerCharacter* Previous)
 		if (AYSPirateShip* Ship = GetShip())
 		{
 			Ship->SetPilotInput(0.0f, 0.0f);
+			Ship->SetRamming(false);
 		}
 	}
+}
+
+void AYSShipHelm::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	AYSPirateShip* Ship = HasAuthority() ? GetShip() : nullptr;
+	if (!Ship || Ship->GetHelm() != this)
+	{
+		return;
+	}
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	AYSPlayerCharacter* Pilot = GetOccupant();
+	const bool bRam = Pilot && Pilot->IsStationInputHeld(YSStationInput::Left) && Ship->IsDrivable() && !(YSGameState && YSGameState->IsHelmLockedFor(Ship));
+	Ship->SetRamming(bRam, Pilot ? Pilot->GetController() : nullptr);
+}
+
+bool AYSShipHelm::GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const
+{
+	if (!RamIcon)
+	{
+		return Super::GetActionIcon(OutIcon, OutTint, OutRemaining, OutDuration);
+	}
+	const AYSPirateShip* Ship = GetShip();
+	OutIcon = RamIcon;
+	OutTint = Ship && Ship->IsRamming() ? FLinearColor(1.0f, 0.6f, 0.2f) : FLinearColor::White;
+	OutRemaining = 0.0f;
+	OutDuration = 1.0f;
+	return true;
 }

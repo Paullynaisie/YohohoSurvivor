@@ -139,8 +139,8 @@ TSubclassOf<AYSShipStation> AYSCombatPostReceptacle::RemovePost(const TCHAR* Rea
 bool AYSCombatPostReceptacle::CanDismount(const AYSPlayerCharacter* Character) const
 {
 	const AYSShipStation* Post = InstalledPost;
-	return Post && Post->GetCombatPostItemClass() && Post->IsFree() && !Post->IsBroken() && !Post->IsRepairing() && Character && Character->IsAlive()
-		&& !Character->IsCarrying() && !Character->IsAtStation() && !Character->IsSwimming();
+	return Post && Post->GetCombatPostItemClass() && Character && Post->GetOccupant() == Character && !Post->IsBroken() && !Post->IsRepairing()
+		&& Character->IsAlive() && !Character->IsCarrying();
 }
 
 void AYSCombatPostReceptacle::Dismount(AYSPlayerCharacter* Character)
@@ -151,6 +151,8 @@ void AYSCombatPostReceptacle::Dismount(AYSPlayerCharacter* Character)
 	}
 	const TSubclassOf<AYSInteractiveObject> ItemClass = InstalledPost->GetCombatPostItemClass();
 	const FVector Location = InstalledPost->GetActorLocation();
+	// le joueur quitte le poste (sans être reposé ailleurs) puis repart avec l'objet
+	Character->LeaveStation(TEXT("poste démonté"), true);
 	RemovePost(*FString::Printf(TEXT("démonté par %s"), *Character->GetName()));
 	AYSInteractiveObject* Item = AYSInteractiveObject::SpawnOnGround(GetWorld(), ItemClass, Location, GetActorRotation().Yaw);
 	if (Item)

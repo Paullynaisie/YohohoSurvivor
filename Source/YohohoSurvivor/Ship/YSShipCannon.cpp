@@ -155,11 +155,20 @@ void AYSShipCannon::Tick(float DeltaSeconds)
 
 void AYSShipCannon::ServerHandleAction(AYSPlayerCharacter* Character, EYSStationAction Action, const FVector& AimLocation)
 {
-	if (!HasAuthority() || Action != EYSStationAction::Fire || !Character || Character != GetOccupant())
+	if (!HasAuthority() || Action != EYSStationAction::Primary || !Character || Character != GetOccupant() || IsWorking())
 	{
 		return;
 	}
 	Fire(Character, AimLocation, false);
+}
+
+void AYSShipCannon::OnWorkStopped(EYSStationWork StoppedWork)
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	ReadyServerTime = FMath::Max(ReadyServerTime, Now + Cooldown);
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : fin %s, recharge %.1f s"), *GetName(), StoppedWork == EYSStationWork::Repair ? TEXT("de la réparation") : TEXT("du démontage"), Cooldown);
 }
 
 void AYSShipCannon::OnBrokenChanged(bool bBroken)
@@ -371,6 +380,11 @@ bool AYSShipCannon::IsAimedAt(const AActor* Target) const
 
 bool AYSShipCannon::GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const
 {
+	// réparation en cours : icône de réparation (temps pour finir)
+	if (IsRepairing())
+	{
+		return Super::GetActionIcon(OutIcon, OutTint, OutRemaining, OutDuration);
+	}
 	OutIcon = Icon;
 	OutTint = IconTint;
 	OutRemaining = GetCooldownRemaining();

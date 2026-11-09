@@ -209,7 +209,7 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 		HandSlot->SetPadding(FMargin(HandednessSpacing * 0.5f, 0.0f));
 	}
 
-	// Camera Lock : caméra centrée sur le PJ (décoché par défaut ; TAB en jeu)
+	// Camera Lock : caméra centrée sur le PJ (décoché par défaut ; réglable seulement ici)
 	UHorizontalBox* CameraLockRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("CameraLock"));
 	UVerticalBoxSlot* CameraLockRowSlot = Customization->AddChildToVerticalBox(CameraLockRow);
 	CameraLockRowSlot->SetHorizontalAlignment(HAlign_Center);

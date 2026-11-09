@@ -280,6 +280,17 @@ void AYSFoeGalion::OnShipCollision(AYSPirateShip* Other)
 	OnHullBlocked();
 }
 
+bool AYSFoeGalion::TryStartBoardingBy(AYSPirateShip* Rammer, const FVector& ImpactLocation)
+{
+	if (!HasAuthority() || !IsValid(Rammer) || Rammer->IsFoeShip() || RamState == ERamState::Boarded || !CanBoardAt(ImpactLocation, false))
+	{
+		return false;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s éperonné par %s sur un point abordable : abordage"), *GetName(), *Rammer->GetName());
+	StartBoarding(Rammer);
+	return true;
+}
+
 void AYSFoeGalion::StartBoarding(AYSPirateShip* Other)
 {
 	if (!HasAuthority() || RamState == ERamState::Boarded || !IsValid(Other))

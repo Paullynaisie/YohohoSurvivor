@@ -207,6 +207,52 @@ void AYSPirateShip::SetDormant(bool bInDormant)
 	}
 }
 
+FVector AYSPirateShip::GetHullCenter() const
+{
+	const FBox2D Bounds = GetHullBounds();
+	if (!Bounds.bIsValid)
+	{
+		return GetActorLocation();
+	}
+	const FVector2D Center = Bounds.GetCenter();
+	return GetActorTransform().TransformPositionNoScale(FVector(Center.X, Center.Y, 0.0f));
+}
+
+void AYSPirateShip::SetRamming(bool bInRamming, AController* InInstigator)
+{
+	// pas d'abordage d'un bateau immobilisé (sommeil, abordé, hors d'usage, qui coule)
+	const bool bRamming = bInRamming && !bDormant && !bGrappled && !bDisabled && !IsSinking();
+	if (!HasAuthority() || Motion.bRamming == bRamming)
+	{
+		return;
+	}
+	Motion.bRamming = bRamming;
+	RamInstigator = InInstigator;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : « À l'abordage » %s"), *GetName(), bRamming ? TEXT("(plein gaz, cap figé)") : TEXT("relâché"));
+}
+
+void AYSPirateShip::ReceiveRamDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation)
+{
+	TakeCoreDamage(Damage, EventInstigator, ImpactLocation);
+}
+
+void AYSPirateShip::HandleRamImpact(AYSPirateShip* Target)
+{
+	if (!HasAuthority() || !IsValid(Target) || Target->IsSinking())
+	{
+		return;
+	}
+	const FVector Impact = Target->GetClosestHullPoint(GetActorLocation());
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s éperonne %s (« À l'abordage ») : %.0f dégâts"), *GetName(), *Target->GetName(), RamDamage);
+	Target->ReceiveRamDamage(RamDamage, RamInstigator.Get(), Impact);
+	if (IsValid(Target) && !Target->IsSinking() && Target->TryStartBoardingBy(this, Impact))
+	{
+		SetRamming(false);
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : point abordable, phase d'abordage de %s"), *GetName(), *Target->GetName());
+	}
+}
+
 bool AYSPirateShip::IsHullGrounded() const
 {
 	return GetWorld() && GetWorld()->GetTimeSeconds() - LastHullBlockedTime < 0.5;
@@ -272,6 +318,7 @@ void AYSPirateShip::SetGrappled(bool bInGrappled)
 	if (HasAuthority() && bGrappled != bInGrappled)
 	{
 		bGrappled = bInGrappled;
+		Motion.bRamming = false;
 		Motion.Speed = 0.0f;
 		Motion.YawRate = 0.0f;
 		SetPilotInput(0.0f, 0.0f);
@@ -682,21 +729,26 @@ void AYSPirateShip::StepMotion(FYSShipMotion& State, float DeltaSeconds) const
 	const float SpeedMultiplier = Core ? Core->GetSpeedMultiplier() : 1.0f;
 	const float AccelerationMultiplier = Core ? Core->GetAccelerationMultiplier() : 1.0f;
 	const float TurnMultiplier = Core ? Core->GetTurnRateMultiplier() : 1.0f;
-	const float MaxForward = MaxForwardSpeed * SpeedMultiplier * (IsOnPlaytestAutoPilot() ? PlaytestSpeedMultiplier : 1.0f);
+	// « À l'abordage » : plein gaz, vitesse max (et accélération) x Ram Speed Multiplier, plus de rotation
+	const float RamMultiplier = State.bRamming ? RamSpeedMultiplier : 1.0f;
+	const float MaxForward = MaxForwardSpeed * SpeedMultiplier * RamMultiplier * (IsOnPlaytestAutoPilot() ? PlaytestSpeedMultiplier : 1.0f);
 	const float MaxReverse = MaxReverseSpeed * SpeedMultiplier;
-	const float ForwardRate = ForwardAcceleration * AccelerationMultiplier;
+	const float ForwardRate = ForwardAcceleration * AccelerationMultiplier * RamMultiplier;
 	const float ReverseRate = ReverseAcceleration * AccelerationMultiplier;
+	const float Throttle = State.bRamming ? 1.0f : State.Throttle;
 
 	// vitesse : Z accélère vers l'avant, S freine puis recule, sans commande le bateau glisse et ralentit (inertie)
-	if (State.Throttle > 0.0f)
+	if (Throttle > 0.0f)
 	{
 		const float Rate = State.Speed < 0.0f ? FMath::Max(ForwardRate, Deceleration) : ForwardRate;
-		State.Speed = FMath::Min(State.Speed + Rate * State.Throttle * DeltaSeconds, MaxForward);
+		// (au-delà du max, abordage relâché : redescend comme sans commande)
+		State.Speed = State.Speed > MaxForward ? FMath::FInterpConstantTo(State.Speed, MaxForward, DeltaSeconds, Deceleration)
+			: FMath::Min(State.Speed + Rate * Throttle * DeltaSeconds, MaxForward);
 	}
-	else if (State.Throttle < 0.0f)
+	else if (Throttle < 0.0f)
 	{
 		const float Rate = State.Speed > 0.0f ? FMath::Max(ReverseRate, Deceleration) : ReverseRate;
-		State.Speed = FMath::Max(State.Speed + Rate * State.Throttle * DeltaSeconds, -MaxReverse);
+		State.Speed = FMath::Max(State.Speed + Rate * Throttle * DeltaSeconds, -MaxReverse);
 	}
 	else
 	{
@@ -708,7 +760,7 @@ void AYSPirateShip::StepMotion(FYSShipMotion& State, float DeltaSeconds) const
 	const float SpeedRatio = FMath::Clamp(FMath::Abs(State.Speed) / FullTurnSpeed, 0.0f, 1.0f);
 	const float TurnRatio = FMath::Lerp(StandstillTurnRatio, 1.0f, SpeedRatio);
 	const float TargetYawRate = State.Steer * MaxTurnRate * TurnMultiplier * TurnRatio * (State.Speed < -1.0f ? -1.0f : 1.0f);
-	State.YawRate = TurnResponsiveness > 0.0f ? FMath::FInterpTo(State.YawRate, TargetYawRate, DeltaSeconds, TurnResponsiveness) : TargetYawRate;
+	State.YawRate = State.bRamming ? 0.0f : TurnResponsiveness > 0.0f ? FMath::FInterpTo(State.YawRate, TargetYawRate, DeltaSeconds, TurnResponsiveness) : TargetYawRate;
 
 	State.Yaw = FRotator::NormalizeAxis(State.Yaw + State.YawRate * DeltaSeconds);
 	State.Location += FRotator(0.0f, State.Yaw, 0.0f).Vector() * State.Speed * DeltaSeconds;
@@ -972,6 +1024,11 @@ void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 				ForceNetUpdate();
 				if (BlockingShip)
 				{
+					// « À l'abordage » : éperonnage (dégâts, abordage si possible)
+					if (Motion.bRamming)
+					{
+						HandleRamImpact(BlockingShip);
+					}
 					OnShipCollision(BlockingShip);
 				}
 				else

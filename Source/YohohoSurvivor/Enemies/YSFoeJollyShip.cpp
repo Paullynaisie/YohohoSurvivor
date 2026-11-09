@@ -3,6 +3,7 @@
 #include "Components/ChildActorComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Enemies/YSEnemySpawnRule.h"
+#include "Engine/DamageEvents.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/GameStateBase.h"
@@ -364,6 +365,14 @@ bool AYSFoeJollyShip::ComputeAutoPilot(float& OutThrottle, float& OutSteer)
 	OutThrottle = 1.0f;
 	OutSteer = ComputeSteerTowards(Desired, SteerFullAngle);
 	return true;
+}
+
+void AYSFoeJollyShip::ReceiveRamDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation)
+{
+	if (IsValid(HullFoe))
+	{
+		HullFoe->TakeDamage(Damage, FDamageEvent(), EventInstigator, nullptr);
+	}
 }
 
 void AYSFoeJollyShip::OnShipCollision(AYSPirateShip* Other)

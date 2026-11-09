@@ -189,6 +189,9 @@ protected:
 	/** Autre bateau : comme échoué ; en fonçant sur le bateau des joueurs : abordage */
 	virtual void OnShipCollision(AYSPirateShip* Other) override;
 
+	/** Éperonné par le bateau des joueurs (« À l'abordage ») sur un point abordable : phase d'abordage (planche, équipage lâché) */
+	virtual bool TryStartBoardingBy(AYSPirateShip* Rammer, const FVector& ImpactLocation) override;
+
 	/** Core à 0 PV : plus personne aux postes, plus de poste à occuper */
 	virtual void OnShipDisabled() override;
 

@@ -374,10 +374,13 @@ public:
 	UFUNCTION(Exec)
 	void YSCameraLock(int32 bLocked = 1);
 
-	/** Camera Lock (réglage local du joueur, décoché par défaut ; case de l'écran de sélection, touche TAB en jeu) : caméra centrée sur le PJ */
+	/** Camera Lock (réglage local du joueur, décoché par défaut ; case de l'écran de sélection seulement) : caméra centrée sur le PJ */
 	bool IsCameraLocked() const { return bCameraLock; }
 	void SetCameraLock(bool bLocked);
 	void ToggleCameraLock() { SetCameraLock(!bCameraLock); }
+
+	/** TAB : référentiel par défaut de la caméra du personnage (AYSPlayerCharacter::ResetCameraFrame) */
+	void ResetCameraFrame();
 
 	/** Debug : comme la touche E (prendre / reposer un objet) */
 	UFUNCTION(Exec)
@@ -553,9 +556,16 @@ public:
 	UFUNCTION(Exec)
 	void YSGoToReceptacle(int32 Index);
 
-	/** Debug (hôte) : commence le démontage du poste posé sur le réceptacle Index (comme E maintenu à côté, sans le regarder ; relâché = jamais) */
+	/**
+	 *  Debug (hôte ou client) : touches du poste tenues comme si elles étaient enfoncées (1 clic gauche, 2 clic droit = démontage,
+	 *  4 Espace = réparation, additionnés ; 0 = relâchées).  Ex : YSStationHold 2
+	 */
 	UFUNCTION(Exec)
-	void YSDismountPost(int32 Index);
+	void YSStationHold(int32 Mask);
+
+	/** Debug : comme la touche TAB (référentiel par défaut de la caméra) */
+	UFUNCTION(Exec)
+	void YSCameraReset();
 
 	/** Debug (hôte) : le poste de combat Index de Combat Post Item Classes du GameMode (0 canon, 1 Gatling) dans les mains */
 	UFUNCTION(Exec)

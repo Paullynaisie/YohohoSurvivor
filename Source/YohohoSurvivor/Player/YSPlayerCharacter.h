@@ -451,6 +451,17 @@ protected:
 	TWeakObjectPtr<AYSPirateShip> CameraShip;
 	float CameraYawError = 0.0f;
 
+	/** Référentiel de la caméra : yaw relatif au bateau de référence (bCameraFrameOnShip) ou au monde */
+	bool bCameraFrameOnShip = false;
+	float CameraFrameYaw = 0.0f;
+
+public:
+
+	/** TAB (joueur local) : référentiel par défaut de la caméra : sur un bateau proue à gauche (sauf en pilotant), sinon nord en haut */
+	void ResetCameraFrame();
+
+protected:
+
 	/** Progression de chaque variante d'upgrade obtenue (répliquée pour l'affichage du menu) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TArray<FYSUpgradeProgress> UpgradeProgress;
@@ -1465,8 +1476,15 @@ public:
 	/** L'objet porté est utilisé (serveur) : il quitte les mains et disparaît (poste de combat posé sur un réceptacle) */
 	void ConsumeCarriedObject(const TCHAR* Reason);
 
-	/** Poste de combat que le joueur est en train de démonter (E maintenu), ou nullptr */
-	class AYSShipStation* GetPendingDismountPost() const { return PendingDismountPost.Get(); }
+	/**
+	 *  Touches maintenues au poste (YSStationInput : clic gauche, clic droit, Espace), connues du serveur : démontage (clic droit), réparation
+	 *  (Espace), « À l'abordage » de la barre (clic gauche)
+	 */
+	uint8 GetStationHeldInputs() const { return IsAtStation() ? StationHeldInputs : 0; }
+	bool IsStationInputHeld(uint8 Input) const { return (GetStationHeldInputs() & Input) != 0; }
+
+	/** Debug (YSStationHold) : touches du poste tenues comme si elles étaient enfoncées */
+	void SetDebugStationHeld(uint8 Mask) { DebugStationHeld = Mask; }
 
 	/** Choix de cible des NME : distance divisée par ce nombre (objet porté ; 1 sinon) */
 	float GetFoeAttractionMultiplier() const;
@@ -1535,26 +1553,15 @@ protected:
 	/** Interaction côté serveur */
 	void InteractOnServer();
 
-	/** Touche E relâchée : un démontage de poste de combat pas fini est annulé et le joueur s'installe au poste (simple appui) */
-	void InteractReleased();
+	/** Touches maintenues au poste (serveur : reçues de la machine qui contrôle ; machine qui contrôle : dernières envoyées) */
+	uint8 StationHeldInputs = 0;
+	uint8 DebugStationHeld = 0;
+
+	/** Machine qui contrôle, chaque image : touches du poste maintenues envoyées au serveur quand elles changent */
+	void UpdateStationHeldInputs();
 
 	UFUNCTION(Server, Reliable)
-	void ServerInteractReleased();
-
-	void InteractReleasedOnServer();
-
-public:
-
-	/** Démontage d'un poste de combat posé (serveur, E maintenu) : vrai s'il commence */
-	bool StartDismount(class AYSShipStation* Post);
-
-protected:
-
-	/** Démontage en cours (serveur) : fini au bout de la durée du réceptacle, annulé si le joueur s'éloigne ou si le poste devient indisponible */
-	void UpdatePendingDismount();
-
-	TWeakObjectPtr<class AYSShipStation> PendingDismountPost;
-	double PendingDismountEndTime = 0.0;
+	void ServerSetStationHeldInputs(uint8 Mask);
 
 	/** Commandes de la barre (machine qui contrôle) : Z / S et D / Q reçus par Move cette image */
 	FVector2D HelmInput = FVector2D::ZeroVector;

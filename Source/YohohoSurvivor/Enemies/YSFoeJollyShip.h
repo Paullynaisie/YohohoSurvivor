@@ -128,6 +128,9 @@ protected:
 
 	virtual void OnShipCollision(AYSPirateShip* Other) override;
 
+	/** Éperonné (« À l'abordage ») : dégâts à la coque (NME) */
+	virtual void ReceiveRamDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation) override;
+
 	virtual bool IgnoresAlliedShips() const override { return true; }
 
 	/** Pas de barre : la chaloupe reste sans pilote */

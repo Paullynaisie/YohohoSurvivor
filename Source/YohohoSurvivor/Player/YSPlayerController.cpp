@@ -275,8 +275,8 @@ void AYSPlayerController::SetupInputComponent()
 
 	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AYSPlayerController::YSLeaveGame);
 
-	// TAB : Camera Lock (caméra centrée sur le PJ ou décalée vers le curseur)
-	InputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &AYSPlayerController::ToggleCameraLock);
+	// TAB : référentiel par défaut de la caméra (bateau : proue à gauche, sinon nord en haut) ; Camera Lock se règle seulement sur l'écran de sélection
+	InputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &AYSPlayerController::ResetCameraFrame);
 
 	// spectateur : Q / A (gauche) et D (droite) passent d'un joueur vivant à l'autre ; sans consommer la touche (déplacement du vivant)
 	for (const TPair<FKey, int32>& Spectate : { TPair<FKey, int32>(EKeys::Q, -1), TPair<FKey, int32>(EKeys::A, -1), TPair<FKey, int32>(EKeys::D, 1) })
@@ -1169,15 +1169,24 @@ void AYSPlayerController::YSGoToReceptacle(int32 Index)
 	UE_LOG(LogTemp, Log, TEXT("[YSCombatPost] Debug : devant %s (%d / %d)%s"), *Receptacle->GetName(), Index, Receptacles.Num(), bTeleported ? TEXT("") : TEXT(" : REFUSÉ"));
 }
 
-void AYSPlayerController::YSDismountPost(int32 Index)
+void AYSPlayerController::YSStationHold(int32 Mask)
 {
-	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
-	const AYSPirateShip* Boat = YSGameState && HasAuthority() ? YSGameState->GetGameBoat() : nullptr;
-	const TArray<AYSCombatPostReceptacle*> Receptacles = Boat ? Boat->GetCombatPostReceptacles() : TArray<AYSCombatPostReceptacle*>();
-	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
-	if (PlayerCharacter && Receptacles.IsValidIndex(Index) && !PlayerCharacter->StartDismount(Receptacles[Index]->GetInstalledPost()))
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
 	{
-		UE_LOG(LogTemp, Log, TEXT("[YSCombatPost] Debug : démontage de %s impossible"), *Receptacles[Index]->GetName());
+		PlayerCharacter->SetDebugStationHeld(static_cast<uint8>(FMath::Clamp(Mask, 0, 7)));
+	}
+}
+
+void AYSPlayerController::YSCameraReset()
+{
+	ResetCameraFrame();
+}
+
+void AYSPlayerController::ResetCameraFrame()
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->ResetCameraFrame();
 	}
 }
 

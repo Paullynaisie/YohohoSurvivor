@@ -1288,6 +1288,7 @@ void AYSPlayerCharacter::BeginPlay()
 	// caméra à pied (réglée dans le Blueprint) : retrouvée en quittant la barre d'un bateau
 	DefaultCameraArmLength = CameraBoom->TargetArmLength;
 	DefaultCameraYaw = CameraBoom->GetComponentRotation().Yaw;
+	CameraFrameYaw = DefaultCameraYaw;
 
 	// réappliqué en jeu : la hurtbox ne dépend pas de réglages de collision sauvegardés dans le Blueprint
 	YSCombat::ConfigureHurtbox(BodyMesh);
@@ -1334,7 +1335,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 		UpdateRise();
 	}
 
-	UpdatePendingDismount();
+	UpdateStationHeldInputs();
 	UpdateSwimming(DeltaSeconds);
 	UpdateStation();
 	UpdateStrafeAnimation(DeltaSeconds);
@@ -1838,7 +1839,6 @@ void AYSPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AYSPlayerCharacter::Move);
 		EnhancedInput->BindAction(FireAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Fire);
 		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Interact);
-		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Completed, this, &AYSPlayerCharacter::InteractReleased);
 		EnhancedInput->BindAction(MoveActionInput, ETriggerEvent::Started, this, &AYSPlayerCharacter::OnMoveActionPressed);
 	}
 }
@@ -2324,7 +2324,8 @@ void AYSPlayerCharacter::UpdateCursorCamera(float DeltaSeconds)
 			Target = AimDirection.GetSafeNormal2D() * Station->GetCameraOffsetDistance();
 		}
 		const AYSPirateShip* Ship = Station->IsCameraOnShip() ? Station->GetShip() : nullptr;
-		HelmCameraOffset = Ship ? Ship->GetActorLocation() - GetActorLocation() : FVector::ZeroVector;
+		// centre de la coque (pas l'origine du Blueprint, ni le poste)
+		HelmCameraOffset = Ship ? Ship->GetHullCenter() - GetActorLocation() : FVector::ZeroVector;
 		HelmCameraOffset.Z = 0.0f;
 		HelmCameraArmLength = Station->GetCameraArmLength();
 		HelmCameraInterpSpeed = Station->GetCameraInterpSpeed();
@@ -2349,20 +2350,29 @@ AYSPirateShip* AYSPlayerCharacter::GetShipUnderFeet() const
 
 void AYSPlayerCharacter::UpdateShipCamera(float DeltaSeconds)
 {
-	// en l'air (saut depuis le pont) : même référentiel jusqu'à ce qu'il retouche un sol
-	// celui qui pilote (barre, chaloupe) garde le nord en haut de l'écran
-	const bool bPiloting = IsValid(CurrentStation) && (CurrentStation->UsesPilotInput() || CurrentStation->KeepsCameraNorthUp());
-	AYSPirateShip* Ship = !bCameraFollowsShip || bPiloting ? nullptr : (!IsValid(CurrentStation) && GetCharacterMovement()->IsFalling() ? CameraShip.Get() : GetShipUnderFeet());
-	const float TargetYaw = Ship ? Ship->GetActorRotation().Yaw + ShipCameraYawOffset : DefaultCameraYaw;
+	// bateau de référence : sous les pieds ou au poste ; en l'air (saut depuis le pont) : le même jusqu'à ce qu'il retouche un sol
+	// (place de la chaloupe de l'intro : nord en haut de l'écran, monde)
+	const bool bNorthSeat = IsValid(CurrentStation) && CurrentStation->KeepsCameraNorthUp();
+	AYSPirateShip* Ship = !bCameraFollowsShip || bNorthSeat ? nullptr : (!IsValid(CurrentStation) && GetCharacterMovement()->IsFalling() ? CameraShip.Get() : GetShipUnderFeet());
 
 	FRotator BoomRotation = CameraBoom->GetComponentRotation();
 	if (Ship != CameraShip.Get())
 	{
-		// changement de référentiel : l'écart avec l'angle affiché disparaît en douceur ; ensuite la caméra colle au bateau, sans retard
-		CameraYawError = FRotator::NormalizeAxis(BoomRotation.Yaw - TargetYaw);
+		// demande de Paul (2026-11-09) : monter à bord / descendre ne fait plus tourner la caméra ; son angle actuel devient le référentiel
+		// (relatif au bateau : elle tourne avec lui ensuite ; ou au monde). TAB remet le référentiel par défaut (ResetCameraFrame)
 		CameraShip = Ship;
-		UE_LOG(LogTemp, Log, TEXT("[YSCamera] %s : caméra %s %s (yaw %.0f)"), *GetName(), Ship ? TEXT("relative à") : TEXT("relative au monde"), Ship ? *Ship->GetName() : TEXT(""), TargetYaw);
+		bCameraFrameOnShip = Ship != nullptr;
+		CameraFrameYaw = FRotator::NormalizeAxis(BoomRotation.Yaw - (Ship ? Ship->GetActorRotation().Yaw : 0.0f));
+		CameraYawError = 0.0f;
+		UE_LOG(LogTemp, Log, TEXT("[YSCamera] %s : caméra gardée (yaw %.0f), relative %s %s"), *GetName(), BoomRotation.Yaw, Ship ? TEXT("à") : TEXT("au monde"), Ship ? *Ship->GetName() : TEXT(""));
 	}
+	if (bNorthSeat && (bCameraFrameOnShip || !FMath::IsNearlyEqual(CameraFrameYaw, DefaultCameraYaw)))
+	{
+		bCameraFrameOnShip = false;
+		CameraFrameYaw = DefaultCameraYaw;
+	}
+	const AYSPirateShip* FrameShip = bCameraFrameOnShip ? CameraShip.Get() : nullptr;
+	const float TargetYaw = FRotator::NormalizeAxis(CameraFrameYaw + (FrameShip ? FrameShip->GetActorRotation().Yaw : 0.0f));
 	CameraYawError = ShipCameraBlendSpeed > 0.0f ? FMath::FInterpTo(CameraYawError, 0.0f, DeltaSeconds, ShipCameraBlendSpeed) : 0.0f;
 
 	const float NewYaw = FRotator::NormalizeAxis(TargetYaw + CameraYawError);
@@ -2372,6 +2382,23 @@ void AYSPlayerCharacter::UpdateShipCamera(float DeltaSeconds)
 		CameraBoom->SetWorldRotation(BoomRotation);
 		UE_LOG(LogTemp, VeryVerbose, TEXT("[YSCamera] %s : yaw %.1f"), *GetName(), NewYaw);
 	}
+}
+
+void AYSPlayerCharacter::ResetCameraFrame()
+{
+	if (!IsLocallyControlled() || !CameraBoom)
+	{
+		return;
+	}
+	// TAB : référentiel par défaut, en douceur : sur un bateau (sauf au pilotage) proue à gauche (Ship Camera Yaw Offset), sinon nord en haut
+	const float DisplayedYaw = CameraBoom->GetComponentRotation().Yaw;
+	const bool bPiloting = IsValid(CurrentStation) && (CurrentStation->UsesPilotInput() || CurrentStation->KeepsCameraNorthUp());
+	const AYSPirateShip* Ship = bCameraFollowsShip && !bPiloting ? CameraShip.Get() : nullptr;
+	bCameraFrameOnShip = Ship != nullptr;
+	CameraFrameYaw = Ship ? ShipCameraYawOffset : DefaultCameraYaw;
+	const float TargetYaw = FRotator::NormalizeAxis(CameraFrameYaw + (Ship ? Ship->GetActorRotation().Yaw : 0.0f));
+	CameraYawError = FRotator::NormalizeAxis(DisplayedYaw - TargetYaw);
+	UE_LOG(LogTemp, Log, TEXT("[YSCamera] %s : TAB, référentiel par défaut (%s, yaw %.0f)"), *GetName(), Ship ? TEXT("bateau, proue à gauche") : TEXT("monde, nord en haut"), TargetYaw);
 }
 
 TArray<FYSUpgradeOffer> AYSPlayerCharacter::PickClassOffers() const
@@ -3234,88 +3261,44 @@ void AYSPlayerCharacter::InteractOnServer()
 
 	if (AYSInteractiveObject* Target = FindInteractTarget())
 	{
-		// poste de combat posé sur un réceptacle : E maintenu le démonte, un simple appui (relâché avant) installe au poste
-		if (StartDismount(Cast<AYSShipStation>(Target)))
-		{
-			return;
-		}
 		Target->Interact(this);
 	}
 }
 
-bool AYSPlayerCharacter::StartDismount(AYSShipStation* Post)
+void AYSPlayerCharacter::UpdateStationHeldInputs()
 {
-	AYSCombatPostReceptacle* Receptacle = Post ? Post->GetHostReceptacle() : nullptr;
-	if (!HasAuthority() || !Receptacle || !Receptacle->CanDismount(this))
-	{
-		return false;
-	}
-	const AGameStateBase* GameState = GetWorld()->GetGameState();
-	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
-	PendingDismountPost = Post;
-	PendingDismountEndTime = Now + Receptacle->GetDismountHoldDuration();
-	Post->SetDismountEndServerTime(PendingDismountEndTime);
-	UE_LOG(LogTemp, Log, TEXT("[YSCombatPost] %s commence à démonter %s (E maintenu %.1f s)"), *GetName(), *Post->GetName(), Receptacle->GetDismountHoldDuration());
-	return true;
-}
-
-void AYSPlayerCharacter::InteractReleased()
-{
-	if (HasAuthority())
-	{
-		InteractReleasedOnServer();
-	}
-	else
-	{
-		ServerInteractReleased();
-	}
-}
-
-void AYSPlayerCharacter::ServerInteractReleased_Implementation()
-{
-	InteractReleasedOnServer();
-}
-
-void AYSPlayerCharacter::InteractReleasedOnServer()
-{
-	AYSShipStation* Post = PendingDismountPost.Get();
-	if (!Post)
+	if (!IsLocallyControlled() || !IsPlayerControlled())
 	{
 		return;
 	}
-	// relâché avant la fin : simple appui = s'installer au poste
-	PendingDismountPost.Reset();
-	Post->SetDismountEndServerTime(0.0);
-	UE_LOG(LogTemp, Log, TEXT("[YSCombatPost] %s relâche E avant la fin : s'installe à %s"), *GetName(), *Post->GetName());
-	if (Post->CanInteract(this))
+	// clic gauche, clic droit, Espace : lus à chaque image, envoyés au serveur quand ils changent (rien hors d'un poste)
+	uint8 Mask = 0;
+	if (IsAtStation())
 	{
-		Post->Interact(this);
+		const APlayerController* PC = Cast<APlayerController>(GetController());
+		const UEnhancedInputLocalPlayerSubsystem* Subsystem = PC ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()) : nullptr;
+		if (const UEnhancedPlayerInput* PlayerInput = Subsystem ? Subsystem->GetPlayerInput() : nullptr)
+		{
+			Mask |= AutoAttackAction && PlayerInput->GetActionValue(AutoAttackAction).Get<bool>() ? YSStationInput::Left : 0;
+			Mask |= FireAction && PlayerInput->GetActionValue(FireAction).Get<bool>() ? YSStationInput::Right : 0;
+			Mask |= MoveActionInput && PlayerInput->GetActionValue(MoveActionInput).Get<bool>() ? YSStationInput::Space : 0;
+		}
+		Mask |= DebugStationHeld;
+	}
+	if (Mask != StationHeldInputs)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSStation] %s : touches maintenues %d -> %d"), *GetName(), StationHeldInputs, Mask);
+		StationHeldInputs = Mask;
+		if (!HasAuthority())
+		{
+			ServerSetStationHeldInputs(Mask);
+		}
 	}
 }
 
-void AYSPlayerCharacter::UpdatePendingDismount()
+void AYSPlayerCharacter::ServerSetStationHeldInputs_Implementation(uint8 Mask)
 {
-	AYSShipStation* Post = PendingDismountPost.Get();
-	if (!HasAuthority() || !Post)
-	{
-		return;
-	}
-	AYSCombatPostReceptacle* Receptacle = Post->GetHostReceptacle();
-	const float Reach = InteractionDistance + 100.0f;
-	if (!Receptacle || !Receptacle->CanDismount(this) || FVector::DistSquared2D(Post->GetActorLocation(), GetActorLocation()) > FMath::Square(Reach))
-	{
-		PendingDismountPost.Reset();
-		Post->SetDismountEndServerTime(0.0);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSCombatPost] %s : démontage de %s annulé"), *GetName(), *Post->GetName());
-		return;
-	}
-	const AGameStateBase* GameState = GetWorld()->GetGameState();
-	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
-	if (Now >= PendingDismountEndTime)
-	{
-		PendingDismountPost.Reset();
-		Receptacle->Dismount(this);
-	}
+	StationHeldInputs = Mask;
 }
 
 void AYSPlayerCharacter::ConsumeCarriedObject(const TCHAR* Reason)

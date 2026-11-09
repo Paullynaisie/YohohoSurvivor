@@ -39,6 +39,10 @@ struct FYSShipMotion
 	UPROPERTY()
 	float Steer = 0.0f;
 
+	/** « À l'abordage » (clic gauche maintenu à la barre) : plein gaz plus rapide, sans tourner */
+	UPROPERTY()
+	bool bRamming = false;
+
 	/** Heure serveur de cet état */
 	UPROPERTY()
 	double ServerTime = 0.0;
@@ -302,6 +306,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sails", meta=(EditCondition="bToggleSails"))
 	FString FurledSailTag = TEXT("_Sail");
 
+	/** « À l'abordage » (clic gauche maintenu à la barre) : vitesse max x ce multiplicateur, plein gaz, la barre ne tourne plus */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="1"))
+	float RamSpeedMultiplier = 1.2f;
+
+	/** « À l'abordage » : dégâts au bateau percuté (core ; coque d'un Jolly Ship) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="0"))
+	float RamDamage = 500.0f;
+
+	/** Serveur : ce bateau en éperonne un autre (« À l'abordage ») : dégâts, puis abordage si le point percuté est abordable */
+	void HandleRamImpact(AYSPirateShip* Target);
+
 	/** Abordage : la chaloupe qui percute la coque près d'un poste à 0 PV (mesuré sur la coque, en face du poste) peut aborder */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding", meta=(ClampMin="0", Units="Centimeters"))
 	float BoardingStationRadius = 600.0f;
@@ -436,6 +451,19 @@ public:
 	/** En train de couler (hors d'usage, plus de déplacement) */
 	bool IsSinking() const { return SinkStartServerTime > 0.0; }
 
+	/** Centre de la coque (milieu du rectangle des Hull Probe Points, monde, hauteur de l'acteur) ; caméra du pilote */
+	FVector GetHullCenter() const;
+
+	/** « À l'abordage » tenu par le pilote (serveur) */
+	void SetRamming(bool bInRamming, AController* InInstigator = nullptr);
+	bool IsRamming() const { return Motion.bRamming; }
+
+	/** Serveur : éperonné par Rammer (« À l'abordage ») ; défaut : dégâts au core */
+	virtual void ReceiveRamDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation);
+
+	/** Serveur : Rammer éperonne la coque à ImpactLocation ; vrai = une phase d'abordage commence (Galion de NME : point abordable) */
+	virtual bool TryStartBoardingBy(AYSPirateShip* Rammer, const FVector& ImpactLocation) { return false; }
+
 	/** Serveur : la coque a touché le fond (pas un autre bateau) il y a moins d'une demi-seconde */
 	bool IsHullGrounded() const;
 
@@ -520,6 +548,9 @@ private:
 
 	/** Dernier arrêt contre le fond (temps du monde, serveur) */
 	double LastHullBlockedTime = -1.0e6;
+
+	/** Pilote qui éperonne (dégâts attribués) */
+	TWeakObjectPtr<AController> RamInstigator;
 
 	/** Voiles : calculé par le serveur (CanSailNow), appliqué sur chaque machine (visibilité des formes) */
 	UPROPERTY(Replicated)

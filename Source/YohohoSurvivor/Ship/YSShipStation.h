@@ -24,6 +24,25 @@ enum class EYSStationCameraOffset : uint8
 	Aim			UMETA(DisplayName="Vers la visée (au maximum)")
 };
 
+/** Touches maintenues au poste (AYSPlayerCharacter::GetStationHeldInputs) */
+namespace YSStationInput
+{
+	constexpr uint8 Left = 1;
+	constexpr uint8 Right = 2;
+	constexpr uint8 Space = 4;
+}
+
+/** Travail du joueur au poste (touche maintenue) : rien d'autre n'est possible pendant ce temps */
+UENUM()
+enum class EYSStationWork : uint8
+{
+	None,
+	/** Espace maintenu : PV rendus petit à petit (ils restent si on relâche) */
+	Repair,
+	/** Clic droit maintenu (poste de combat posé) : démonté au bout de Dismount Hold Duration du réceptacle, à refaire si on relâche */
+	Dismount
+};
+
 /** Action envoyée par le joueur à son poste */
 UENUM()
 enum class EYSStationAction : uint8
@@ -71,9 +90,9 @@ private:
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Station", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<AYSFoeCharacter> FoeOccupant;
 
-	/** Heure serveur de la fin de la réparation (0 = pas de réparation en cours) */
+	/** Travail en cours de l'occupant (réparation, démontage) */
 	UPROPERTY(Replicated, Transient)
-	double RepairEndServerTime = 0.0;
+	EYSStationWork Work = EYSStationWork::None;
 
 	/** Joueur au poste (nullptr = personne) */
 	UPROPERTY(ReplicatedUsing=OnRep_Occupant, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Station", meta=(AllowPrivateAccess="true"))
@@ -86,7 +105,7 @@ private:
 	UPROPERTY(Replicated, Transient)
 	TObjectPtr<AYSCombatPostReceptacle> HostReceptacle;
 
-	/** Démontage en cours (E maintenu) : heure serveur de la fin (0 = aucun) */
+	/** Démontage en cours (clic droit maintenu) : heure serveur de la fin (0 = aucun) */
 	UPROPERTY(Replicated, Transient)
 	double DismountEndServerTime = 0.0;
 
@@ -128,7 +147,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", EditCondition="bTakesDamage"))
 	float MaxHealth = 0.0f;
 
-	/** Réparation (E sur un module à 0 PV) : le joueur reste au poste pendant cette durée ; E l'interrompt (à refaire depuis le début) */
+	/** Réparation (Espace maintenu au poste) : temps pour rendre tous les PV (de 0 au max) ; relâché, les PV rendus restent */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", Units="s", EditCondition="bTakesDamage"))
 	float RepairDuration = 10.0f;
 
@@ -174,6 +193,9 @@ protected:
 	/** Préfixe des logs */
 	virtual const TCHAR* GetLogTag() const { return TEXT("[YSStation]"); }
 
+	/** Serveur : réparation ou démontage arrêté (relâché, plus possible) ; canon : son Ability se met en recharge */
+	virtual void OnWorkStopped(EYSStationWork StoppedWork) {}
+
 public:
 
 	AYSShipStation();
@@ -205,9 +227,12 @@ public:
 	bool TakesDamage() const { return bTakesDamage; }
 
 	/** Un joueur le répare (toutes machines) */
-	bool IsRepairing() const { return RepairEndServerTime > 0.0; }
+	bool IsRepairing() const { return Work == EYSStationWork::Repair; }
 
-	/** Secondes avant la fin de la réparation */
+	/** L'occupant répare ou démonte : pas d'autre action au poste */
+	bool IsWorking() const { return Work != EYSStationWork::None; }
+
+	/** Secondes pour finir de réparer (aux PV max) */
 	float GetRepairRemaining() const;
 
 	AYSFoeCharacter* GetFoeOccupant() const { return FoeOccupant; }
@@ -292,9 +317,7 @@ public:
 
 	TSubclassOf<AYSInteractiveObject> GetCombatPostItemClass() const { return CombatPostItemClass; }
 
-	/** Démontage (serveur) : fin prévue, 0 = annulé */
-	void SetDismountEndServerTime(double EndTime) { DismountEndServerTime = EndTime; ForceNetUpdate(); }
-	bool IsBeingDismounted() const { return DismountEndServerTime > 0.0; }
+	bool IsBeingDismounted() const { return Work == EYSStationWork::Dismount && DismountEndServerTime > 0.0; }
 
 private:
 
@@ -304,8 +327,9 @@ private:
 	/** Une réparation peut continuer : bateau pas hors d'usage */
 	bool IsUsableForRepair() const;
 
-	/** Serveur : réparation terminée (PV rendus, le joueur quitte le poste) */
-	void FinishRepair();
+	/** Serveur, chaque image : réparation (Espace) et démontage (clic droit) de l'occupant */
+	void UpdateWork(float DeltaSeconds);
+	void StopWork(const TCHAR* Reason);
 
 	/** Visuel appliqué : à 0 PV ou non (local) */
 	bool bAppliedBroken = false;
@@ -315,4 +339,5 @@ private:
 
 	float DisplayedHealth = -1.0f;
 	float DisplayedRepairProgress = -1.0f;
+	bool bDisplayedRepairing = false;
 };

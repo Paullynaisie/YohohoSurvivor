@@ -29,7 +29,18 @@ public:
 
 	AYSPlayerCharacter* GetPilot() const { return GetOccupant(); }
 
+	/** Serveur : « À l'abordage » tant que le pilote maintient le clic gauche (barre pas verrouillée) */
+	virtual void Tick(float DeltaSeconds) override;
+
+	/** Icône « À l'abordage » en bas de l'écran (vide = pas d'icône) */
+	virtual bool GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const override;
+
 protected:
+
+	/** Icône de l'action « À l'abordage » (clic gauche maintenu) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Helm")
+	TObjectPtr<UTexture2D> RamIcon;
+
 
 	/** Personne à la barre : le bateau garde son élan et ralentit seul */
 	virtual void OnOccupantChanged(AYSPlayerCharacter* Previous) override;

@@ -55,7 +55,7 @@ private:
 
 protected:
 
-	/** E maintenu pendant cette durée à côté d'un poste actif : démonté */
+	/** Clic droit maintenu pendant cette durée au poste (en état) : démonté, le joueur repart avec l'objet */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat Post", meta=(ClampMin="0", Units="s"))
 	float DismountHoldDuration = 3.0f;
 
@@ -88,7 +88,7 @@ public:
 	/** Retire le poste posé (serveur) : la classe du poste, nullptr s'il n'y en a pas */
 	TSubclassOf<AYSShipStation> RemovePost(const TCHAR* Reason);
 
-	/** Le joueur peut démonter le poste posé : poste libre, en état, pas en réparation, mains libres */
+	/** Le joueur peut démonter le poste posé : il y est installé, poste en état et pas en réparation, mains libres */
 	bool CanDismount(const AYSPlayerCharacter* Character) const;
 
 	/** Démonte le poste posé (serveur) : le joueur l'obtient dans ses mains */

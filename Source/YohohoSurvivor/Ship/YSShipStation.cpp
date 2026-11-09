@@ -62,7 +62,7 @@ void AYSShipStation::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AYSShipStation, DismountEndServerTime);
 	DOREPLIFETIME(AYSShipStation, Health);
 	DOREPLIFETIME(AYSShipStation, FoeOccupant);
-	DOREPLIFETIME(AYSShipStation, RepairEndServerTime);
+	DOREPLIFETIME(AYSShipStation, Work);
 }
 
 void AYSShipStation::BeginPlay()
@@ -128,8 +128,9 @@ float AYSShipStation::TakeDamage(float DamageAmount, const FDamageEvent& DamageE
 	// inutilisable : celui qui y était s'en va
 	if (Health <= 0.0f)
 	{
-		UE_LOG(LogTemp, Log, TEXT("%s %s : à 0 PV, inutilisable (E pour réparer)"), GetLogTag(), *GetName());
-		if (Occupant)
+		// (le joueur au poste y reste : il peut le réparer avec Espace)
+		UE_LOG(LogTemp, Log, TEXT("%s %s : à 0 PV, inutilisable (Espace maintenu au poste pour réparer)"), GetLogTag(), *GetName());
+		if (Occupant && Occupant->IsA<AYSCaptainMinion>())
 		{
 			Occupant->LeaveStation(TEXT("module à 0 PV"), true);
 		}
@@ -193,13 +194,7 @@ void AYSShipStation::SetFoeOccupant(AYSFoeCharacter* NewOccupant)
 
 float AYSShipStation::GetRepairRemaining() const
 {
-	if (!IsRepairing())
-	{
-		return 0.0f;
-	}
-	const AGameStateBase* GameState = GetWorld()->GetGameState();
-	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
-	return FMath::Max(0.0f, static_cast<float>(RepairEndServerTime - Now));
+	return MaxHealth > 0.0f ? FMath::Max(0.0f, (MaxHealth - Health) / MaxHealth * RepairDuration) : 0.0f;
 }
 
 bool AYSShipStation::GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const
@@ -215,16 +210,84 @@ bool AYSShipStation::GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, 
 	return true;
 }
 
-void AYSShipStation::FinishRepair()
+void AYSShipStation::UpdateWork(float DeltaSeconds)
 {
-	Health = MaxHealth;
-	RepairEndServerTime = 0.0;
-	UE_LOG(LogTemp, Log, TEXT("%s %s : réparé par %s (%.0f PV)"), GetLogTag(), *GetName(), *GetNameSafe(Occupant), Health);
-	ForceNetUpdate();
-	if (Occupant)
+	// minions : jamais de touche maintenue
+	AYSPlayerCharacter* User = Occupant && !Occupant->IsA<AYSCaptainMinion>() ? Occupant.Get() : nullptr;
+	const uint8 Held = User ? User->GetStationHeldInputs() : 0;
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const bool bCanRepair = bTakesDamage && MaxHealth > 0.0f && Health < MaxHealth && IsUsableForRepair();
+	const bool bCanDismount = User && HostReceptacle && HostReceptacle->CanDismount(User);
+
+	switch (Work)
 	{
-		Occupant->LeaveStation(TEXT("réparation terminée"), true);
+	case EYSStationWork::None:
+		// la touche déjà maintenue en arrivant au poste compte aussi ; démontage d'abord (choix de Claude), une seule chose à la fois
+		if ((Held & YSStationInput::Right) && bCanDismount)
+		{
+			Work = EYSStationWork::Dismount;
+			DismountEndServerTime = Now + HostReceptacle->GetDismountHoldDuration();
+			ForceNetUpdate();
+			UE_LOG(LogTemp, Log, TEXT("[YSCombatPost] %s commence à démonter %s (clic droit maintenu %.1f s)"), *User->GetName(), *GetName(), HostReceptacle->GetDismountHoldDuration());
+		}
+		else if ((Held & YSStationInput::Space) && bCanRepair)
+		{
+			Work = EYSStationWork::Repair;
+			ForceNetUpdate();
+			UE_LOG(LogTemp, Log, TEXT("%s %s : %s le répare (%.0f / %.0f PV)"), GetLogTag(), *GetName(), *User->GetName(), Health, MaxHealth);
+		}
+		break;
+
+	case EYSStationWork::Repair:
+		if (!(Held & YSStationInput::Space))
+		{
+			StopWork(TEXT("Espace relâché"));
+		}
+		else if (!bCanRepair)
+		{
+			StopWork(Health >= MaxHealth ? TEXT("PV au max") : TEXT("plus réparable"));
+		}
+		else
+		{
+			Health = FMath::Min(MaxHealth, Health + MaxHealth / FMath::Max(RepairDuration, 0.1f) * DeltaSeconds);
+			ForceNetUpdate();
+			if (Health >= MaxHealth)
+			{
+				StopWork(TEXT("PV au max"));
+			}
+		}
+		break;
+
+	case EYSStationWork::Dismount:
+		if (!(Held & YSStationInput::Right) || !bCanDismount)
+		{
+			StopWork(!(Held & YSStationInput::Right) ? TEXT("clic droit relâché") : TEXT("plus démontable"));
+		}
+		else if (Now >= DismountEndServerTime)
+		{
+			// démonté : le joueur quitte le poste et l'emporte (le poste est détruit)
+			Work = EYSStationWork::None;
+			DismountEndServerTime = 0.0;
+			HostReceptacle->Dismount(User);
+		}
+		break;
 	}
+}
+
+void AYSShipStation::StopWork(const TCHAR* Reason)
+{
+	const EYSStationWork Stopped = Work;
+	if (Stopped == EYSStationWork::None)
+	{
+		return;
+	}
+	Work = EYSStationWork::None;
+	DismountEndServerTime = 0.0;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("%s %s : %s arrêté%s (%s), %.0f / %.0f PV"), GetLogTag(), *GetName(), Stopped == EYSStationWork::Repair ? TEXT("réparation") : TEXT("démontage"),
+		Stopped == EYSStationWork::Repair ? TEXT("e") : TEXT(""), Reason, Health, MaxHealth);
+	OnWorkStopped(Stopped);
 }
 
 void AYSShipStation::UpdateModuleHealthBar()
@@ -238,8 +301,9 @@ void AYSShipStation::UpdateModuleHealthBar()
 	{
 		return;
 	}
-	// réparation (ou démontage d'un poste de combat, E maintenu) : la barre se remplit ; sinon PV du module (affichée dès qu'il est abîmé, à 0 PV comprise)
-	float RepairProgress = IsRepairing() && RepairDuration > 0.0f ? 1.0f - GetRepairRemaining() / RepairDuration : -1.0f;
+	// démontage d'un poste de combat (clic droit maintenu) : la barre se remplit ; sinon PV du module (affichée dès qu'il est abîmé, à 0 PV
+	// comprise, et pendant la réparation)
+	float RepairProgress = -1.0f;
 	if (IsBeingDismounted() && HostReceptacle)
 	{
 		const AGameStateBase* GameState = GetWorld()->GetGameState();
@@ -256,11 +320,12 @@ void AYSShipStation::UpdateModuleHealthBar()
 		}
 		return;
 	}
-	if (DisplayedRepairProgress >= 0.0f || !FMath::IsNearlyEqual(Health, DisplayedHealth))
+	if (DisplayedRepairProgress >= 0.0f || !FMath::IsNearlyEqual(Health, DisplayedHealth) || IsRepairing() != bDisplayedRepairing)
 	{
 		DisplayedRepairProgress = -1.0f;
 		DisplayedHealth = Health;
-		Bar->SetHealth(Health, MaxHealth, Health <= 0.0f);
+		bDisplayedRepairing = IsRepairing();
+		Bar->SetHealth(Health, MaxHealth, Health <= 0.0f || IsRepairing());
 	}
 }
 
@@ -291,17 +356,13 @@ void AYSShipStation::Tick(float DeltaSeconds)
 		SetFoeOccupant(nullptr);
 	}
 
-	// réparation (serveur) ; le bateau hors d'usage l'arrête
-	if (HasAuthority() && IsRepairing())
+	// réparation (Espace) et démontage (clic droit) de l'occupant (serveur)
+	if (HasAuthority())
 	{
-		if (!Occupant || !IsUsableForRepair())
+		UpdateWork(DeltaSeconds);
+		if (!IsValid(this) || IsActorBeingDestroyed())
 		{
-			RepairEndServerTime = 0.0;
-			ForceNetUpdate();
-		}
-		else if (GetRepairRemaining() <= 0.0f)
-		{
-			FinishRepair();
+			return;
 		}
 	}
 
@@ -352,15 +413,8 @@ void AYSShipStation::Interact(AYSPlayerCharacter* Character)
 		Replaced->LeaveStation(TEXT("place prise par un joueur"), true);
 		Replaced->TeleportToFeetLocation(GetOccupantFeetLocation() + OccupantPoint->GetRightVector().GetSafeNormal2D() * ReplacedOccupantOffset, GetOccupantForward());
 	}
-	const bool bRepair = IsBroken();
+	// (module à 0 PV : le joueur s'y installe quand même, Espace maintenu le répare)
 	Character->EnterStation(this);
-	if (bRepair && GetOccupant() == Character)
-	{
-		const AGameStateBase* GameState = GetWorld()->GetGameState();
-		RepairEndServerTime = (GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds()) + RepairDuration;
-		ForceNetUpdate();
-		UE_LOG(LogTemp, Log, TEXT("%s %s : %s le répare (%.0f s)"), GetLogTag(), *GetName(), *Character->GetName(), RepairDuration);
-	}
 }
 
 void AYSShipStation::SetOccupant(AYSPlayerCharacter* NewOccupant)
@@ -369,10 +423,10 @@ void AYSShipStation::SetOccupant(AYSPlayerCharacter* NewOccupant)
 	{
 		return;
 	}
+	// le joueur part : réparation / démontage arrêtés (recharge de l'Ability comme si on relâchait)
+	StopWork(TEXT("occupant parti"));
 	AYSPlayerCharacter* Previous = Occupant;
 	Occupant = NewOccupant;
-	// le réparateur est parti : à refaire depuis le début
-	RepairEndServerTime = 0.0;
 	SetPromptVisible(false);
 	OnOccupantChanged(Previous);
 	ForceNetUpdate();

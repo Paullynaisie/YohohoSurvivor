@@ -121,6 +121,9 @@ protected:
 
 	virtual void OnBrokenChanged(bool bBroken) override;
 
+	/** Réparation / démontage arrêtés : le canon se met en recharge (on ne répare pas sans perdre le tir) */
+	virtual void OnWorkStopped(EYSStationWork StoppedWork) override;
+
 	/** Recul joué sur toutes les machines */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastFired();
@@ -135,9 +138,9 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
-	virtual bool HandlesAction(EYSStationAction Action) const override { return Action == EYSStationAction::Fire && IsUsable(); }
+	virtual bool HandlesAction(EYSStationAction Action) const override { return Action == EYSStationAction::Primary && IsUsable() && !IsWorking(); }
 
-	/** Clic droit : tir de canon vers AimLocation (dans les limites du canon) */
+	/** Clic gauche : tir de canon vers AimLocation (dans les limites du canon) ; pas pendant une réparation / un démontage */
 	virtual void ServerHandleAction(AYSPlayerCharacter* Character, EYSStationAction Action, const FVector& AimLocation) override;
 
 	/** Direction du canon (vers la visée de l'occupant, limitée) */
