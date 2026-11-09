@@ -1576,3 +1576,16 @@ void AYSGameMode::GameOver(const TCHAR* Reason)
 	YSGameState->SetGameOver(GameOverReturnDelay);
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] GAME OVER (%s) : retour au menu dans %.0f s"), Reason, GameOverReturnDelay);
 }
+
+TSubclassOf<AYSInteractiveObject> AYSGameMode::PickRandomCombatPostItem() const
+{
+	TArray<TSubclassOf<AYSInteractiveObject>> Valid;
+	for (const TSubclassOf<AYSInteractiveObject>& Class : CombatPostItemClasses)
+	{
+		if (Class)
+		{
+			Valid.Add(Class);
+		}
+	}
+	return Valid.Num() > 0 ? Valid[FMath::RandRange(0, Valid.Num() - 1)] : nullptr;
+}

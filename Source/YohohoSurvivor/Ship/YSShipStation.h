@@ -10,6 +10,7 @@ class UBoxComponent;
 class UTexture2D;
 class UWidgetComponent;
 class AYSFoeCharacter;
+class AYSCombatPostReceptacle;
 
 /** Décalage de la caméra d'un joueur à un poste */
 UENUM(BlueprintType)
@@ -81,7 +82,19 @@ private:
 	UFUNCTION()
 	void OnRep_Occupant();
 
+	/** Poste de combat posé sur ce réceptacle (nullptr = poste fixe du bateau) */
+	UPROPERTY(Replicated, Transient)
+	TObjectPtr<AYSCombatPostReceptacle> HostReceptacle;
+
+	/** Démontage en cours (E maintenu) : heure serveur de la fin (0 = aucun) */
+	UPROPERTY(Replicated, Transient)
+	double DismountEndServerTime = 0.0;
+
 protected:
+
+	/** Poste de combat : objet ramassable rendu quand on le démonte de son réceptacle */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Combat Post")
+	TSubclassOf<AYSInteractiveObject> CombatPostItemClass;
 
 	/** E quitte le poste (faux : le joueur y reste, ex. chaloupe) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station")
@@ -272,6 +285,16 @@ public:
 
 	float GetHealth() const { return Health; }
 	float GetMaxHealth() const { return MaxHealth; }
+
+	/** Poste de combat posé sur un réceptacle (serveur, avant FinishSpawning) */
+	void SetHostReceptacle(AYSCombatPostReceptacle* Receptacle) { HostReceptacle = Receptacle; }
+	AYSCombatPostReceptacle* GetHostReceptacle() const { return HostReceptacle; }
+
+	TSubclassOf<AYSInteractiveObject> GetCombatPostItemClass() const { return CombatPostItemClass; }
+
+	/** Démontage (serveur) : fin prévue, 0 = annulé */
+	void SetDismountEndServerTime(double EndTime) { DismountEndServerTime = EndTime; ForceNetUpdate(); }
+	bool IsBeingDismounted() const { return DismountEndServerTime > 0.0; }
 
 private:
 

@@ -549,6 +549,18 @@ public:
 	UFUNCTION(Exec)
 	void YSGoToGameBoat();
 
+	/** Debug (hôte) : téléporté devant le réceptacle à poste de combat Index du bateau des joueurs, tourné vers lui */
+	UFUNCTION(Exec)
+	void YSGoToReceptacle(int32 Index);
+
+	/** Debug (hôte) : commence le démontage du poste posé sur le réceptacle Index (comme E maintenu à côté, sans le regarder ; relâché = jamais) */
+	UFUNCTION(Exec)
+	void YSDismountPost(int32 Index);
+
+	/** Debug (hôte) : le poste de combat Index de Combat Post Item Classes du GameMode (0 canon, 1 Gatling) dans les mains */
+	UFUNCTION(Exec)
+	void YSSpawnCombatPost(int32 Index);
+
 	/** Debug (hôte) : téléporté à côté du bateau de départ de l'île la plus proche, sinon au core du bateau des joueurs le plus proche */
 	UFUNCTION(Exec)
 	void YSIslandGoToBoat();

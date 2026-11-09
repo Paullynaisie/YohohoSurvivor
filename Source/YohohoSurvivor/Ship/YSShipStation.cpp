@@ -15,6 +15,7 @@
 #include "Player/YSPlayerCharacter.h"
 #include "Ship/YSPirateShip.h"
 #include "Ship/YSShipCore.h"
+#include "Ship/YSCombatPost.h"
 #include "Enemies/YSFoeGalion.h"
 #include "Summons/YSCaptainMinion.h"
 #include "UI/YSHealthBarWidget.h"
@@ -57,6 +58,8 @@ void AYSShipStation::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AYSShipStation, Occupant);
+	DOREPLIFETIME(AYSShipStation, HostReceptacle);
+	DOREPLIFETIME(AYSShipStation, DismountEndServerTime);
 	DOREPLIFETIME(AYSShipStation, Health);
 	DOREPLIFETIME(AYSShipStation, FoeOccupant);
 	DOREPLIFETIME(AYSShipStation, RepairEndServerTime);
@@ -235,8 +238,15 @@ void AYSShipStation::UpdateModuleHealthBar()
 	{
 		return;
 	}
-	// réparation : la barre se remplit ; sinon PV du module (affichée dès qu'il est abîmé, à 0 PV comprise)
-	const float RepairProgress = IsRepairing() && RepairDuration > 0.0f ? 1.0f - GetRepairRemaining() / RepairDuration : -1.0f;
+	// réparation (ou démontage d'un poste de combat, E maintenu) : la barre se remplit ; sinon PV du module (affichée dès qu'il est abîmé, à 0 PV comprise)
+	float RepairProgress = IsRepairing() && RepairDuration > 0.0f ? 1.0f - GetRepairRemaining() / RepairDuration : -1.0f;
+	if (IsBeingDismounted() && HostReceptacle)
+	{
+		const AGameStateBase* GameState = GetWorld()->GetGameState();
+		const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+		const float Hold = FMath::Max(HostReceptacle->GetDismountHoldDuration(), 0.01f);
+		RepairProgress = FMath::Clamp(1.0f - static_cast<float>(DismountEndServerTime - Now) / Hold, 0.0f, 1.0f);
+	}
 	if (RepairProgress >= 0.0f)
 	{
 		if (!FMath::IsNearlyEqual(RepairProgress, DisplayedRepairProgress, 0.01f))

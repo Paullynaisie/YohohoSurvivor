@@ -12,6 +12,7 @@ class AYSFoeCharacter;
 class AYSFoeJollyShip;
 class AYSFoeGalion;
 class AYSTreasureMap;
+class AYSInteractiveObject;
 class AYSPlayerCorpse;
 class UTexture2D;
 class UYSUpStats;
@@ -378,6 +379,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap")
 	TSubclassOf<AYSTreasureMap> TreasureMapClass;
 
+	/** Tous les « poste de combat [item] » : un objectif (ou une carte au trésor) qui en crée un le tire au hasard dans cette liste */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat Posts")
+	TArray<TSubclassOf<AYSInteractiveObject>> CombatPostItemClasses;
+
 	/** Zone d'apparition de la carte : centre (Z = hauteur du sol attendue) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap")
 	FVector TreasureMapAreaCenter = FVector::ZeroVector;
@@ -395,6 +400,11 @@ protected:
 	bool bOneTreasureMapAtATime = true;
 
 public:
+
+	/** Un poste de combat ramassable au hasard (Combat Post Item Classes), nullptr si la liste est vide */
+	TSubclassOf<AYSInteractiveObject> PickRandomCombatPostItem() const;
+
+	const TArray<TSubclassOf<AYSInteractiveObject>>& GetCombatPostItemClasses() const { return CombatPostItemClasses; }
 
 	AYSGameMode();
 

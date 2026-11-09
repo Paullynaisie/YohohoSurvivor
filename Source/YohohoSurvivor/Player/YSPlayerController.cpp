@@ -62,6 +62,7 @@
 #include "Enemies/YSFoeJollyShip.h"
 #include "Enemies/YSNavalBattle.h"
 #include "Ship/YSPirateShip.h"
+#include "Ship/YSCombatPost.h"
 #include "Ship/YSShipCore.h"
 #include "Ship/YSGameBoat.h"
 #include "Components/InputComponent.h"
@@ -1098,6 +1099,51 @@ void AYSPlayerController::YSGoToGameBoat()
 	const FVector Target = (Box.IsValid ? Box.GetCenter() : Boat->GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f) + FVector(0.0f, 0.0f, Boat->GetActorLocation().Z + 330.0f);
 	const bool bTeleported = GetPawn()->TeleportTo(Target, GetPawn()->GetActorRotation());
 	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] Debug : téléporté sur %s en %s%s"), *Boat->GetName(), *Target.ToCompactString(), bTeleported ? TEXT("") : TEXT(" : REFUSÉ"));
+}
+
+void AYSPlayerController::YSGoToReceptacle(int32 Index)
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPirateShip* Boat = YSGameState && HasAuthority() ? YSGameState->GetGameBoat() : nullptr;
+	const TArray<AYSCombatPostReceptacle*> Receptacles = Boat ? Boat->GetCombatPostReceptacles() : TArray<AYSCombatPostReceptacle*>();
+	if (!GetPawn() || !Receptacles.IsValidIndex(Index))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSCombatPost] Debug : pas de réceptacle %d (%d sur le bateau)"), Index, Receptacles.Num());
+		return;
+	}
+	// vers le milieu du bateau, à 150 cm du réceptacle, tourné vers lui
+	const AYSCombatPostReceptacle* Receptacle = Receptacles[Index];
+	const FVector Inward = (Boat->GetActorLocation() - Receptacle->GetActorLocation()).GetSafeNormal2D();
+	const FVector Target = Receptacle->GetActorLocation() + Inward * 150.0f + FVector(0.0f, 0.0f, 120.0f);
+	const bool bTeleported = GetPawn()->TeleportTo(Target, (-Inward).Rotation());
+	SetControlRotation((-Inward).Rotation());
+	UE_LOG(LogTemp, Log, TEXT("[YSCombatPost] Debug : devant %s (%d / %d)%s"), *Receptacle->GetName(), Index, Receptacles.Num(), bTeleported ? TEXT("") : TEXT(" : REFUSÉ"));
+}
+
+void AYSPlayerController::YSDismountPost(int32 Index)
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPirateShip* Boat = YSGameState && HasAuthority() ? YSGameState->GetGameBoat() : nullptr;
+	const TArray<AYSCombatPostReceptacle*> Receptacles = Boat ? Boat->GetCombatPostReceptacles() : TArray<AYSCombatPostReceptacle*>();
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	if (PlayerCharacter && Receptacles.IsValidIndex(Index) && !PlayerCharacter->StartDismount(Receptacles[Index]->GetInstalledPost()))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSCombatPost] Debug : démontage de %s impossible"), *Receptacles[Index]->GetName());
+	}
+}
+
+void AYSPlayerController::YSSpawnCombatPost(int32 Index)
+{
+	const AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	if (!GameMode || !PlayerCharacter || PlayerCharacter->IsCarrying() || !GameMode->GetCombatPostItemClasses().IsValidIndex(Index))
+	{
+		return;
+	}
+	if (AYSInteractiveObject* Item = AYSInteractiveObject::SpawnOnGround(GetWorld(), GameMode->GetCombatPostItemClasses()[Index], PlayerCharacter->GetActorLocation(), 0.0f))
+	{
+		PlayerCharacter->StartCarrying(Item);
+	}
 }
 
 void AYSPlayerController::YSIslandGoToBoat()

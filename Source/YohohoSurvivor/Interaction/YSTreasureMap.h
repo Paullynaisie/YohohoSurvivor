@@ -74,9 +74,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Wave", meta=(ClampMin="0"))
 	int32 WaveEnemiesPerPlayer = 10;
 
-	/** Récompense posée au dernier point (coffre au trésor) */
+	/** Récompense posée au dernier point (coffre au trésor) ; ignorée si Reward Classes n'est pas vide */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Reward")
 	TSubclassOf<AYSInteractiveObject> RewardClass;
+
+	/** Récompenses posées en cercle autour du dernier point (ex. 1 Elite Chest et 2 Basic Chest) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Reward")
+	TArray<TSubclassOf<AYSInteractiveObject>> RewardClasses;
+
+	/** Plus un « poste de combat [item] » tiré au hasard (Combat Post Item Classes du GameMode) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Reward")
+	bool bRewardRandomCombatPost = false;
+
+	/** Rayon du cercle des récompenses autour du dernier point */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Reward", meta=(ClampMin="0", Units="Centimeters"))
+	float RewardSpacing = 150.0f;
 
 	/** Pointillés affichés jusqu'à cette distance du porteur */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Dashes", meta=(ClampMin="0", Units="Centimeters"))

@@ -1462,6 +1462,12 @@ public:
 	/** Repose l'objet porté au sol devant lui (serveur) ; près d'un Brooker, il est racheté */
 	void DropCarriedObject(const TCHAR* Reason = TEXT(""));
 
+	/** L'objet porté est utilisé (serveur) : il quitte les mains et disparaît (poste de combat posé sur un réceptacle) */
+	void ConsumeCarriedObject(const TCHAR* Reason);
+
+	/** Poste de combat que le joueur est en train de démonter (E maintenu), ou nullptr */
+	class AYSShipStation* GetPendingDismountPost() const { return PendingDismountPost.Get(); }
+
 	/** Choix de cible des NME : distance divisée par ce nombre (objet porté ; 1 sinon) */
 	float GetFoeAttractionMultiplier() const;
 
@@ -1528,6 +1534,27 @@ protected:
 
 	/** Interaction côté serveur */
 	void InteractOnServer();
+
+	/** Touche E relâchée : un démontage de poste de combat pas fini est annulé et le joueur s'installe au poste (simple appui) */
+	void InteractReleased();
+
+	UFUNCTION(Server, Reliable)
+	void ServerInteractReleased();
+
+	void InteractReleasedOnServer();
+
+public:
+
+	/** Démontage d'un poste de combat posé (serveur, E maintenu) : vrai s'il commence */
+	bool StartDismount(class AYSShipStation* Post);
+
+protected:
+
+	/** Démontage en cours (serveur) : fini au bout de la durée du réceptacle, annulé si le joueur s'éloigne ou si le poste devient indisponible */
+	void UpdatePendingDismount();
+
+	TWeakObjectPtr<class AYSShipStation> PendingDismountPost;
+	double PendingDismountEndTime = 0.0;
 
 	/** Commandes de la barre (machine qui contrôle) : Z / S et D / Q reçus par Move cette image */
 	FVector2D HelmInput = FVector2D::ZeroVector;

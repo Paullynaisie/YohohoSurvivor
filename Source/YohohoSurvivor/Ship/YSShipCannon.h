@@ -74,9 +74,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0", ClampMax="90", Units="Degrees"))
 	float Spread = 20.0f;
 
-	/** Recharge du tir de canon */
+	/** Recharge du tir de canon (comptée depuis le premier tir de la rafale) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0", Units="s"))
 	float Cooldown = 2.0f;
+
+	/** Rafale : tirs (de Ammo Per Shot AMMO chacun) par activation, un toutes les Burst Interval, vers la visée du moment (Gatling : 10 x 0.1 s) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="1"))
+	int32 ShotsPerBurst = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0.01", Units="s", EditCondition="ShotsPerBurst > 1"))
+	float BurstInterval = 0.1f;
 
 	/** Recharge x ce multiplicateur quand le tireur n'est pas un joueur (NME, minion du Captain) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0"))
@@ -166,6 +173,17 @@ private:
 
 	/** NME au canon (serveur) : cible, visée, tir */
 	void UpdateFoeFire(float DeltaSeconds);
+
+	/** Un tir : Ammo Per Shot AMMO en éventail autour de BaseYaw, depuis la bouche (serveur) */
+	void SpawnVolley(APawn* Shooter, float BaseYaw, bool bFoeShooter);
+
+	/** Tir suivant de la rafale (serveur, timer) : vers la visée actuelle du canon */
+	void FireNextBurstShot();
+
+	FTimerHandle BurstTimer;
+	TWeakObjectPtr<APawn> BurstShooter;
+	bool bBurstFoeShooter = false;
+	int32 BurstShotsLeft = 0;
 
 	/** NME au canon : angle visé (serveur -> clients : il n'a pas de regard répliqué au poste) */
 	UPROPERTY(Replicated)

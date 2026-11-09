@@ -55,6 +55,8 @@
 #include "Ship/YSLongboat.h"
 #include "Ship/YSCrowsNest.h"
 #include "Ship/YSShipCannon.h"
+#include "Ship/YSCombatPost.h"
+#include "GameFramework/GameStateBase.h"
 
 namespace
 {
@@ -1332,6 +1334,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 		UpdateRise();
 	}
 
+	UpdatePendingDismount();
 	UpdateSwimming(DeltaSeconds);
 	UpdateStation();
 	UpdateStrafeAnimation(DeltaSeconds);
@@ -1835,6 +1838,7 @@ void AYSPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AYSPlayerCharacter::Move);
 		EnhancedInput->BindAction(FireAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Fire);
 		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Interact);
+		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Completed, this, &AYSPlayerCharacter::InteractReleased);
 		EnhancedInput->BindAction(MoveActionInput, ETriggerEvent::Started, this, &AYSPlayerCharacter::OnMoveActionPressed);
 	}
 }
@@ -3230,8 +3234,104 @@ void AYSPlayerCharacter::InteractOnServer()
 
 	if (AYSInteractiveObject* Target = FindInteractTarget())
 	{
+		// poste de combat posé sur un réceptacle : E maintenu le démonte, un simple appui (relâché avant) installe au poste
+		if (StartDismount(Cast<AYSShipStation>(Target)))
+		{
+			return;
+		}
 		Target->Interact(this);
 	}
+}
+
+bool AYSPlayerCharacter::StartDismount(AYSShipStation* Post)
+{
+	AYSCombatPostReceptacle* Receptacle = Post ? Post->GetHostReceptacle() : nullptr;
+	if (!HasAuthority() || !Receptacle || !Receptacle->CanDismount(this))
+	{
+		return false;
+	}
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	PendingDismountPost = Post;
+	PendingDismountEndTime = Now + Receptacle->GetDismountHoldDuration();
+	Post->SetDismountEndServerTime(PendingDismountEndTime);
+	UE_LOG(LogTemp, Log, TEXT("[YSCombatPost] %s commence à démonter %s (E maintenu %.1f s)"), *GetName(), *Post->GetName(), Receptacle->GetDismountHoldDuration());
+	return true;
+}
+
+void AYSPlayerCharacter::InteractReleased()
+{
+	if (HasAuthority())
+	{
+		InteractReleasedOnServer();
+	}
+	else
+	{
+		ServerInteractReleased();
+	}
+}
+
+void AYSPlayerCharacter::ServerInteractReleased_Implementation()
+{
+	InteractReleasedOnServer();
+}
+
+void AYSPlayerCharacter::InteractReleasedOnServer()
+{
+	AYSShipStation* Post = PendingDismountPost.Get();
+	if (!Post)
+	{
+		return;
+	}
+	// relâché avant la fin : simple appui = s'installer au poste
+	PendingDismountPost.Reset();
+	Post->SetDismountEndServerTime(0.0);
+	UE_LOG(LogTemp, Log, TEXT("[YSCombatPost] %s relâche E avant la fin : s'installe à %s"), *GetName(), *Post->GetName());
+	if (Post->CanInteract(this))
+	{
+		Post->Interact(this);
+	}
+}
+
+void AYSPlayerCharacter::UpdatePendingDismount()
+{
+	AYSShipStation* Post = PendingDismountPost.Get();
+	if (!HasAuthority() || !Post)
+	{
+		return;
+	}
+	AYSCombatPostReceptacle* Receptacle = Post->GetHostReceptacle();
+	const float Reach = InteractionDistance + 100.0f;
+	if (!Receptacle || !Receptacle->CanDismount(this) || FVector::DistSquared2D(Post->GetActorLocation(), GetActorLocation()) > FMath::Square(Reach))
+	{
+		PendingDismountPost.Reset();
+		Post->SetDismountEndServerTime(0.0);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSCombatPost] %s : démontage de %s annulé"), *GetName(), *Post->GetName());
+		return;
+	}
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	if (Now >= PendingDismountEndTime)
+	{
+		PendingDismountPost.Reset();
+		Receptacle->Dismount(this);
+	}
+}
+
+void AYSPlayerCharacter::ConsumeCarriedObject(const TCHAR* Reason)
+{
+	AYSInteractiveObject* Object = CarriedObject;
+	if (!HasAuthority() || !IsValid(Object))
+	{
+		return;
+	}
+	CarriedObject = nullptr;
+	Object->SetCarrier(nullptr, GetActorLocation(), GetActorRotation().Yaw);
+	ApplyCarryVisuals();
+	UpdateMaxWalkSpeed();
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s utilise %s (%s)"), *GetName(), *Object->GetName(), Reason);
+	Object->Destroy();
 }
 
 void AYSPlayerCharacter::StartCarrying(AYSInteractiveObject* Object)

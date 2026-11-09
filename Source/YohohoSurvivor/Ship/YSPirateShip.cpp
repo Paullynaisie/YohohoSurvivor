@@ -17,6 +17,7 @@
 #include "Ship/YSLongboatLauncher.h"
 #include "Ship/YSShipBoarding.h"
 #include "Ship/YSShipCannon.h"
+#include "Ship/YSCombatPost.h"
 #include "Ship/YSShipCore.h"
 #include "Ship/YSShipHelm.h"
 #include "Ship/YSShipPath.h"
@@ -87,6 +88,7 @@ AYSPirateShip::AYSPirateShip(const FObjectInitializer& ObjectInitializer)
 	CannonRight = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonRight"), AYSShipCannon::StaticClass(), FVector(900.0f, 933.0f, 210.0f), 90.0f);
 	CannonLeft2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonLeft2"), AYSShipCannon::StaticClass(), FVector(-700.0f, -933.0f, 210.0f), -90.0f);
 	CannonRight2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonRight2"), AYSShipCannon::StaticClass(), FVector(-700.0f, 933.0f, 210.0f), 90.0f);
+	CannonFront2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonFront2"), nullptr, FVector(3000.0f, 300.0f, 210.0f), 15.0f);
 	// accès : flanc bâbord (-Y), à l'ouverture du bastingage et de la planche d'embarquement, au niveau de la mer
 	BoardingAccess = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccess"), AYSShipBoarding::StaticClass(), FVector(0.0f, -1000.0f, 0.0f), -90.0f);
 	// second accès, côté tribord : on peut monter des deux côtés
@@ -254,16 +256,39 @@ TArray<AYSShipStation*> AYSPirateShip::GetStations() const
 		{
 			Stations.Add(Station);
 		}
+		// poste de combat posé sur un réceptacle
+		else if (const AYSCombatPostReceptacle* Receptacle = Cast<AYSCombatPostReceptacle>(Component->GetChildActor()))
+		{
+			if (AYSShipStation* Post = Receptacle->GetInstalledPost())
+			{
+				Stations.Add(Post);
+			}
+		}
 	}
 	return Stations;
+}
+
+TArray<AYSCombatPostReceptacle*> AYSPirateShip::GetCombatPostReceptacles() const
+{
+	TArray<AYSCombatPostReceptacle*> Receptacles;
+	TInlineComponentArray<UChildActorComponent*> Components(this);
+	for (const UChildActorComponent* Component : Components)
+	{
+		if (AYSCombatPostReceptacle* Receptacle = Cast<AYSCombatPostReceptacle>(Component->GetChildActor()))
+		{
+			Receptacles.Add(Receptacle);
+		}
+	}
+	return Receptacles;
 }
 
 TArray<UChildActorComponent*, TInlineAllocator<8>> AYSPirateShip::GetCannonComponents() const
 {
 	TArray<UChildActorComponent*, TInlineAllocator<8>> Cannons;
-	for (UChildActorComponent* Component : { CannonFront.Get(), CannonLeft.Get(), CannonRight.Get(), CannonLeft2.Get(), CannonRight2.Get() })
+	for (UChildActorComponent* Component : { CannonFront.Get(), CannonLeft.Get(), CannonRight.Get(), CannonLeft2.Get(), CannonRight2.Get(), CannonFront2.Get() })
 	{
-		if (Component)
+		// emplacement vide (Cannon Front 2 par défaut) : pas un canon
+		if (Component && Component->GetChildActorClass())
 		{
 			Cannons.Add(Component);
 		}

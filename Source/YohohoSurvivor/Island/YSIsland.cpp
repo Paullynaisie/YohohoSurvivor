@@ -527,7 +527,7 @@ void AYSIsland::SpawnGameplayActors()
 	for (FYSIslandObjectiveState& State : Objectives)
 	{
 		State.DisplayName = State.Def.DisplayName;
-		State.DeliveryClass = State.Def.DeliveryClass ? State.Def.DeliveryClass : State.Def.ItemClass;
+		State.DeliveryClass = State.Def.bRandomCombatPost ? nullptr : State.Def.DeliveryClass ? State.Def.DeliveryClass : State.Def.ItemClass;
 	}
 	SpawnDueObjectives();
 	RefreshOpenDeliveryClasses();
@@ -585,13 +585,19 @@ bool AYSIsland::FindFreeSpot(float MinDistanceFromBoat, float MaxDistanceFromBoa
 
 void AYSIsland::SpawnObjective(FYSIslandObjectiveState& State)
 {
-	const FYSIslandObjectiveDef& Def = State.Def;
+	FYSIslandObjectiveDef Def = State.Def;
 	State.bSpawned = true;
+	UWorld* World = GetWorld();
+	// poste de combat au hasard parmi tous ceux qui existent
+	if (Def.bRandomCombatPost)
+	{
+		const AYSGameMode* GameMode = World->GetAuthGameMode<AYSGameMode>();
+		Def.ItemClass = GameMode ? GameMode->PickRandomCombatPostItem() : nullptr;
+	}
 	if (!Def.ItemClass)
 	{
 		return;
 	}
-	UWorld* World = GetWorld();
 	AYSInteractiveObject* Item = nullptr;
 	const AYSTreasureMap* MapSettings = Cast<AYSTreasureMap>(Def.ItemClass->GetDefaultObject());
 	// le plus au nord possible dans l'espace accessible

@@ -420,6 +420,10 @@ struct FYSIslandObjectiveDef
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective")
 	bool bNorthMost = false;
+
+	/** Objet = un « poste de combat [item] » tiré au hasard (Combat Post Item Classes du GameMode ; Item Class ignoré) : rien à ramener */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective")
+	bool bRandomCombatPost = false;
 };
 
 /** Spawn constant d'une île du flow : quelques NME à intervalle régulier, sur le côté de l'île le plus loin des joueurs */

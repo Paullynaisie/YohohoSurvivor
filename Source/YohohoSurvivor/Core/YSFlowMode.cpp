@@ -16,6 +16,9 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Ship/YSPirateShip.h"
 #include "Ship/YSShipHelm.h"
+#include "Ship/YSCombatPost.h"
+#include "Ship/YSShipStation.h"
+#include "Interaction/YSInteractiveObject.h"
 
 namespace YSFlowMode
 {
@@ -630,6 +633,7 @@ void AYSFlowMode::UpgradeGameBoat()
 	if (!bFromLongboat)
 	{
 		TransferAboard(OldBoat, NewBoat);
+		TransferCombatPosts(OldBoat, NewBoat);
 	}
 	OldBoat->Destroy();
 }
@@ -700,7 +704,8 @@ void AYSFlowMode::TransferAboard(AYSPirateShip* OldBoat, AYSPirateShip* NewBoat)
 	int32 Objects = 0;
 	for (AActor* Actor : Attached)
 	{
-		if (!Actor || Actor->IsChildActor() || Actor->IsA<APawn>() || Actor->IsActorBeingDestroyed())
+		// pas les postes (acteurs enfants, ou postes de combat posés sur un réceptacle : TransferCombatPosts)
+		if (!Actor || Actor->IsChildActor() || Actor->IsA<APawn>() || Actor->IsA<AYSShipStation>() || Actor->IsActorBeingDestroyed())
 		{
 			continue;
 		}
@@ -711,4 +716,45 @@ void AYSFlowMode::TransferAboard(AYSPirateShip* OldBoat, AYSPirateShip* NewBoat)
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] %s -> %s : %d personnage(s) et %d objet(s) à bord passés sur le nouveau bateau (échelle %.2f x %.2f)"), *OldBoat->GetName(), *NewBoat->GetName(),
 		Characters, Objects, Scale.X, Scale.Y);
+}
+
+void AYSFlowMode::TransferCombatPosts(AYSPirateShip* OldBoat, AYSPirateShip* NewBoat)
+{
+	// postes de combat posés : sur le réceptacle de même rang du nouveau bateau, sinon le premier libre, sinon rendus en objet sur le pont
+	TArray<TSubclassOf<AYSShipStation>> Posts;
+	for (AYSCombatPostReceptacle* Receptacle : OldBoat->GetCombatPostReceptacles())
+	{
+		Posts.Add(Receptacle->RemovePost(TEXT("le bateau change")));
+	}
+	TArray<AYSCombatPostReceptacle*> NewReceptacles = NewBoat->GetCombatPostReceptacles();
+	int32 Moved = 0;
+	int32 Returned = 0;
+	for (int32 Index = 0; Index < Posts.Num(); ++Index)
+	{
+		if (!Posts[Index])
+		{
+			continue;
+		}
+		AYSCombatPostReceptacle* Target = NewReceptacles.IsValidIndex(Index) && !NewReceptacles[Index]->GetInstalledPost() ? NewReceptacles[Index] : nullptr;
+		for (int32 K = 0; !Target && K < NewReceptacles.Num(); ++K)
+		{
+			Target = NewReceptacles[K]->GetInstalledPost() ? nullptr : NewReceptacles[K];
+		}
+		if (Target && Target->InstallPost(Posts[Index], TEXT("transféré de l'ancien bateau")))
+		{
+			++Moved;
+			continue;
+		}
+		const AYSShipStation* PostDefaults = Posts[Index]->GetDefaultObject<AYSShipStation>();
+		if (PostDefaults && PostDefaults->GetCombatPostItemClass())
+		{
+			AYSInteractiveObject* Item = AYSInteractiveObject::SpawnOnGround(GetWorld(), PostDefaults->GetCombatPostItemClass(), NewBoat->GetActorLocation() + FVector(0.0f, 0.0f, 400.0f), 0.0f);
+			if (Item)
+			{
+				Item->AttachToShipBelow();
+				++Returned;
+			}
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] Postes de combat : %d reposé(s) sur %s, %d rendu(s) en objet"), Moved, *NewBoat->GetName(), Returned);
 }

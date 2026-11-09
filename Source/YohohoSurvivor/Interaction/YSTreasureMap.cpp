@@ -348,8 +348,36 @@ void AYSTreasureMap::Complete()
 		Character->DropCarriedObject(TEXT("trésor trouvé"));
 	}
 
-	const AYSInteractiveObject* Reward = AYSInteractiveObject::SpawnOnGround(GetWorld(), RewardClass, PathPoints.Last(), GetActorRotation().Yaw);
-	UE_LOG(LogTemp, Log, TEXT("[YSTreasureMap] %s terminée : %s"), *GetName(), Reward ? *Reward->GetName() : TEXT("pas de récompense (Reward Class vide ?)"));
+	// récompenses : un cercle autour du dernier point (Reward Classes + poste de combat au hasard), sinon Reward Class au point
+	TArray<TSubclassOf<AYSInteractiveObject>> Rewards;
+	for (const TSubclassOf<AYSInteractiveObject>& Class : RewardClasses)
+	{
+		if (Class)
+		{
+			Rewards.Add(Class);
+		}
+	}
+	const AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	if (bRewardRandomCombatPost && GameMode && GameMode->PickRandomCombatPostItem())
+	{
+		Rewards.Add(GameMode->PickRandomCombatPostItem());
+	}
+	if (Rewards.Num() == 0 && RewardClass)
+	{
+		Rewards.Add(RewardClass);
+	}
+	FString Names;
+	const float Spacing = Rewards.Num() > 1 ? RewardSpacing : 0.0f;
+	for (int32 Index = 0; Index < Rewards.Num(); ++Index)
+	{
+		const float Angle = GetActorRotation().Yaw + 360.0f * Index / Rewards.Num();
+		const FVector Location = PathPoints.Last() + FRotator(0.0f, Angle, 0.0f).Vector() * Spacing;
+		if (const AYSInteractiveObject* Reward = AYSInteractiveObject::SpawnOnGround(GetWorld(), Rewards[Index], Location + FVector(0.0f, 0.0f, 100.0f), Angle))
+		{
+			Names += (Names.IsEmpty() ? TEXT("") : TEXT(", ")) + Reward->GetName();
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSTreasureMap] %s terminée : %s"), *GetName(), Names.IsEmpty() ? TEXT("pas de récompense (Reward Classes vide ?)") : *Names);
 	Destroy();
 }
 

@@ -128,13 +128,10 @@ AYSGameBoatSeat::AYSGameBoatSeat()
 }
 
 AYSSloop::AYSSloop(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer
-		.DoNotCreateDefaultSubobject(TEXT("CannonFront"))
-		.DoNotCreateDefaultSubobject(TEXT("CannonLeft2"))
-		.DoNotCreateDefaultSubobject(TEXT("CannonRight2")))
+	: Super(ObjectInitializer.DoNotCreateDefaultSubobject(TEXT("CannonFront")))
 {
-	// demande de Paul (2026-11-08) : 2 canons à l'avant, écartés et tournés de 15° vers l'extérieur = Cannon Left / Cannon Right
-	// (placés par Tools/EditorScripts/setup_game_boat_stages.py)
+	// demande de Paul (2026-11-09) : 4 réceptacles à poste de combat = les 2 emplacements à l'avant (Cannon Left / Cannon Right, tournés de 15°
+	// vers l'extérieur) + 1 de chaque côté (Cannon Left 2 / Cannon Right 2) ; placés par Tools/EditorScripts/setup_combat_posts.py
 	ShipName = NSLOCTEXT("YS", "SloopName", "Sloop");
 	bObjectiveShip = false;
 	bDrivable = true;
@@ -147,21 +144,11 @@ AYSSloop::AYSSloop(const FObjectInitializer& ObjectInitializer)
 	};
 }
 
-AYSSlooplus::AYSSlooplus(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer
-		.DoNotCreateDefaultSubobject(TEXT("CannonLeft2"))
-		.DoNotCreateDefaultSubobject(TEXT("CannonRight2")))
-{
-	// 1 canon à l'avant (centré), 1 à bâbord, 1 à tribord
-	ShipName = NSLOCTEXT("YS", "SlooplusName", "Slooplus");
-	bObjectiveShip = false;
-	bDrivable = true;
-}
-
 AYSBrigantin::AYSBrigantin(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer.DoNotCreateDefaultSubobject(TEXT("CannonFront")))
+	: Super(ObjectInitializer)
 {
-	// 2 canons à l'avant tournés de 45° vers l'extérieur (Cannon Left 2 / Cannon Right 2), 1 à bâbord, 1 à tribord
+	// demande de Paul (2026-11-09) : 5 réceptacles à poste de combat = 1 à l'avant au centre (Cannon Front) + 2 de chaque côté
+	// (Cannon Left / Left 2, Cannon Right / Right 2) ; placés par Tools/EditorScripts/setup_combat_posts.py
 	ShipName = NSLOCTEXT("YS", "BrigantinName", "Brigantin");
 	bObjectiveShip = false;
 	bDrivable = true;

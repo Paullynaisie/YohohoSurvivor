@@ -4,6 +4,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
+#include "TimerManager.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Enemies/YSFoeGalion.h"
 #include "EngineUtils.h"
@@ -182,7 +183,47 @@ void AYSShipCannon::Fire(APawn* Shooter, const FVector& AimLocation, bool bFoeSh
 	const float AimYaw = ComputeAimYaw(AimLocation);
 	CurrentAimYaw = AimYaw;
 	CannonPivot->SetRelativeRotation(FRotator(0.0f, AimYaw, 0.0f));
-	const float BaseYaw = GetActorRotation().Yaw + AimYaw;
+	SpawnVolley(Shooter, GetActorRotation().Yaw + AimYaw, bFoeShooter);
+
+	// rafale (Gatling) : les tirs suivants partent vers la visée du moment
+	BurstShotsLeft = ShotsPerBurst - 1;
+	BurstShooter = Shooter;
+	bBurstFoeShooter = bFoeShooter;
+	if (BurstShotsLeft > 0)
+	{
+		GetWorldTimerManager().SetTimer(BurstTimer, this, &AYSShipCannon::FireNextBurstShot, BurstInterval, true);
+	}
+
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const float ShotCooldown = Cooldown * (Shooter->IsPlayerControlled() ? 1.0f : NonPlayerCooldownMultiplier);
+	ReadyServerTime = (GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds()) + ShotCooldown;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : tir de %s, %d x %d AMMO x %.0f dégâts (+/- %.0f°), angle %.0f°, recharge %.1f s"), *GetName(), *Shooter->GetName(),
+		ShotsPerBurst, AmmoPerShot, Damage, Spread, AimYaw, ShotCooldown);
+}
+
+void AYSShipCannon::FireNextBurstShot()
+{
+	APawn* Shooter = BurstShooter.Get();
+	if (!HasAuthority() || !Shooter || !IsUsable() || BurstShotsLeft <= 0)
+	{
+		BurstShotsLeft = 0;
+		GetWorldTimerManager().ClearTimer(BurstTimer);
+		return;
+	}
+	// vers la visée actuelle de celui qui est au poste (regard du joueur ou du minion, angle visé du NME)
+	const float AimYaw = GetOccupant() || GetFoeOccupant() ? GetTargetAimYaw() : CurrentAimYaw;
+	CurrentAimYaw = AimYaw;
+	CannonPivot->SetRelativeRotation(FRotator(0.0f, AimYaw, 0.0f));
+	SpawnVolley(Shooter, GetActorRotation().Yaw + AimYaw, bBurstFoeShooter);
+	if (--BurstShotsLeft <= 0)
+	{
+		GetWorldTimerManager().ClearTimer(BurstTimer);
+	}
+}
+
+void AYSShipCannon::SpawnVolley(APawn* Shooter, float BaseYaw, bool bFoeShooter)
+{
 	const FVector MuzzleLocation = Muzzle->GetComponentLocation();
 	AYSPirateShip* Ship = GetShip();
 
@@ -201,14 +242,7 @@ void AYSShipCannon::Fire(APawn* Shooter, const FVector& AimLocation, bool bFoeSh
 		Projectile->SetShipShot(FGameplayTagContainer(bFoeShooter ? YSTags::Team_Player : YSTags::Team_Foe));
 		Projectile->FinishSpawning(SpawnTransform);
 	}
-
-	const AGameStateBase* GameState = GetWorld()->GetGameState();
-	const float ShotCooldown = Cooldown * (Shooter->IsPlayerControlled() ? 1.0f : NonPlayerCooldownMultiplier);
-	ReadyServerTime = (GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds()) + ShotCooldown;
-	ForceNetUpdate();
 	MulticastFired();
-	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : tir de canon de %s, %d AMMO x %.0f dégâts (+/- %.0f°), angle %.0f°, recharge %.1f s"), *GetName(), *Shooter->GetName(),
-		AmmoPerShot, Damage, Spread, AimYaw, ShotCooldown);
 }
 
 void AYSShipCannon::MulticastFired_Implementation()

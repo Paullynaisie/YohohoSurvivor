@@ -240,6 +240,9 @@ private:
 	/** Passe ceux qui sont à bord de OldBoat (joueurs, minions, NME, objets posés, PNJ livrés) sur NewBoat, aux mêmes places proportionnellement */
 	void TransferAboard(AYSPirateShip* OldBoat, AYSPirateShip* NewBoat);
 
+	/** Postes de combat posés sur les réceptacles de OldBoat : reposés sur ceux de NewBoat (même rang d'abord), sinon rendus en objet sur son pont */
+	void TransferCombatPosts(AYSPirateShip* OldBoat, AYSPirateShip* NewBoat);
+
 	/** Chaloupe de départ encore en route, ou nullptr */
 	AYSGameBoatLongboat* GetArrivingBoat() const;
 };

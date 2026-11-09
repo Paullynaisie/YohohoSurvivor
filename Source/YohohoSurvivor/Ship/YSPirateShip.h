@@ -101,6 +101,10 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UChildActorComponent> CannonRight2;
 
+	/** Second emplacement à l'avant (vide par défaut : réceptacle à poste de combat du Galion des joueurs) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> CannonFront2;
+
 	/** Barre de vie du bateau (PV du core), au-dessus du pont, affichée dès qu'il est abîmé (hauteur = position du composant) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UWidgetComponent> ShipHealthBar;
@@ -379,6 +383,9 @@ public:
 
 	/** Postes du bateau (barre, nid d'pie, chalouperie, canonneries ; pas le core), acteurs enfants existants */
 	TArray<AYSShipStation*> GetStations() const;
+
+	/** Réceptacles à poste de combat du bateau, dans l'ordre des composants */
+	TArray<class AYSCombatPostReceptacle*> GetCombatPostReceptacles() const;
 
 	/** Commandes du pilote (serveur) : Throttle Z / S, Steer D / Q, de -1 à 1 */
 	void SetPilotInput(float Throttle, float Steer);
