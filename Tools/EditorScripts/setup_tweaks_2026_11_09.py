@@ -4,6 +4,7 @@ modifiée que si elle a encore sa valeur d'avant (sinon le rapport le signale et
   - DA_I_StartIsland_Map1 : pontons de la plage 1.5x moins longs (2720 -> 1813) ; le sloop garde sa place dans l'eau (Berth Distance From Shore
     = moitié de sa coque + 200, il dépasse du bout des pontons)
   - caméra des personnages joueurs dézoomée de 15 % (CameraBoom 1680 -> 1932, 1600 -> 1840) ; BP_GameBoatSeat (caméra pendant la traversée) idem
+    REMPLACÉ ensuite à la demande de Paul : tous les personnages à 1840 (défaut C++ aussi), BP_GameBoatSeat remis à 1680
   - /Game/Placeable/AMMO/ExplosiveAMMO : durée de vie x2
   - BP_FlowMod : 2 relances max par sélection d'upgrade (Max Upgrade Rerolls)
   - personnages joueurs : perte de dégâts multi-cibles 5 % par NME (min 50 %)

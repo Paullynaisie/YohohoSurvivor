@@ -106,7 +106,7 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->SetUsingAbsoluteRotation(true);
 	CameraBoom->SetRelativeRotation(FRotator(-60.0f, 0.0f, 0.0f));
-	CameraBoom->TargetArmLength = 1932.0f;
+	CameraBoom->TargetArmLength = 1840.0f;
 	CameraBoom->bDoCollisionTest = false;
 
 	TopDownCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));

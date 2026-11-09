@@ -122,7 +122,7 @@ AYSGameBoatSeat::AYSGameBoatSeat()
 	bHandsOnStation = false;
 	bLockAim = false;
 	// caméra du joueur à pied pendant la traversée
-	CameraArmLength = 1932.0f;
+	CameraArmLength = 1680.0f;
 	bCameraOnShip = false;
 	CameraOffsetMode = EYSStationCameraOffset::None;
 }
