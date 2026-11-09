@@ -184,6 +184,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Bottom")
 	int32 RerollFontSize = 28;
 
+	/** Texte du bouton avec un nombre de relances limité ({0} = relances restantes) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Bottom")
+	FText RerollCountFormat = NSLOCTEXT("YS", "UpgradeRerollCount", "Relance ({0})");
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Bottom")
 	FLinearColor RerollButtonColor = FLinearColor(0.2f, 0.2f, 0.22f);
 
@@ -236,6 +240,9 @@ public:
 	/** Bouton « Relance » visible (pas pour un choix de classe) ; caché, « Valider » reste seul au centre */
 	void SetRerollVisible(bool bVisible);
 
+	/** Relances restantes affichées sur le bouton (-1 = illimité : « Relance ») */
+	void SetRerollsLeft(int32 Count);
+
 	/** Clic reçu d'un bouton (via son proxy) */
 	void NotifyButtonClicked(int32 Index);
 
@@ -269,6 +276,11 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UWidget> RerollRow;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> RerollLabel;
+
+	int32 DisplayedRerollsLeft = -2;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UButton>> CardButtons;

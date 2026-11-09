@@ -29,6 +29,7 @@ void AYSPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AYSPlayerState, bReady);
 	DOREPLIFETIME(AYSPlayerState, BoatSeat);
 	DOREPLIFETIME(AYSPlayerState, UpgradeOffers);
+	DOREPLIFETIME(AYSPlayerState, UpgradeRerollsLeft);
 	DOREPLIFETIME(AYSPlayerState, ChosenUpgradeOffer);
 	DOREPLIFETIME(AYSPlayerState, ColorIndex);
 	DOREPLIFETIME(AYSPlayerState, FaceIndex);

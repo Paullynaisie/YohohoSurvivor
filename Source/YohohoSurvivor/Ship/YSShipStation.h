@@ -129,7 +129,7 @@ protected:
 	UFUNCTION()
 	void OnRep_Health();
 
-	/** Caméra du joueur au poste : longueur du bras (à pied : 1680) */
+	/** Caméra du joueur au poste : longueur du bras (à pied : 1932) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Camera", meta=(ClampMin="0", Units="Centimeters"))
 	float CameraArmLength = 3600.0f;
 

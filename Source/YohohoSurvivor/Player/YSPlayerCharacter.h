@@ -478,11 +478,11 @@ protected:
 	float CriticalDamageMultiplier = 1.5f;
 
 	/** Attaque qui touche plusieurs NME (swing, balle qui traverse, explosion) : chaque NME au-delà du premier prend cette part
-	 *  de dégâts en moins (cumulé : 2e x 0.9, 3e x 0.8...), le plus proche en premier */
+	 *  de dégâts en moins (cumulé : 2e x 0.95, 3e x 0.9...), le plus proche en premier */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Combat", meta=(ClampMin="0", ClampMax="1"))
-	float MultiHitDamageFalloff = 0.1f;
+	float MultiHitDamageFalloff = 0.05f;
 
-	/** Attaque qui touche plusieurs NME : multiplicateur de dégâts minimal (atteint au 6e NME avec 0.1 par NME) */
+	/** Attaque qui touche plusieurs NME : multiplicateur de dégâts minimal (atteint au 11e NME avec 0.05 par NME) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Combat", meta=(ClampMin="0", ClampMax="1"))
 	float MultiHitMinDamageMultiplier = 0.5f;
 

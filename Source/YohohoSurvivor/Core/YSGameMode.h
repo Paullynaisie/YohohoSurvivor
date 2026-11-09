@@ -122,6 +122,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level")
 	bool bAllowUpgradeReroll = true;
 
+	/** Relances par joueur et par sélection d'upgrade (-1 = illimité) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="-1", EditCondition="bAllowUpgradeReroll"))
+	int32 MaxUpgradeRerolls = -1;
+
 	/** Niveau d'équipe où chaque joueur choisit sa classe (upgrades de classe de son personnage, sans hasard) ; ignoré avec Doubloon Rewards */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1", EditCondition="!bDoubloonRewards"))
 	int32 ClassUpgradeLevel = 5;

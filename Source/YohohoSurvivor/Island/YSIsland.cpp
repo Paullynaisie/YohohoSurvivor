@@ -1544,7 +1544,17 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 				// flow : « Survivez et défendez le navire », la phase ne change pas
 				if (UsesObjectiveFlow())
 				{
-					UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : « %s » (phase %d gardée)"), *Data->GetName(), *Data->DefendText.ToString(), static_cast<int32>(Phase));
+					// demande de Paul : la zone de dépôt (bleue) et le CoreBoat disparaissent ; à l'image suivante (on est dans l'appel de la zone)
+					TWeakObjectPtr<AActor> Zone = StartBoat.Get();
+					TWeakObjectPtr<AActor> Delivered = Object;
+					StartBoat = nullptr;
+					GetWorldTimerManager().SetTimerForNextTick([Zone, Delivered]()
+					{
+						if (Zone.IsValid()) { Zone->Destroy(); }
+						if (Delivered.IsValid()) { Delivered->Destroy(); }
+					});
+					UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : « %s » (phase %d gardée), zone de dépôt et %s retirés"), *Data->GetName(), *Data->DefendText.ToString(),
+						static_cast<int32>(Phase), Object ? *Object->GetName() : TEXT("-"));
 					UpdateFlowStatus();
 					return;
 				}

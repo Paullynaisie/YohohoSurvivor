@@ -112,7 +112,8 @@ void UYSUpgradeMenuWidget::BuildWidgetTree()
 	RerollRow = RerollSize;
 	UButton* RerollButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Reroll"));
 	RerollButton->SetBackgroundColor(RerollButtonColor);
-	RerollButton->AddChild(MakeText(NSLOCTEXT("YS", "UpgradeReroll", "Relance"), RerollFontSize, FLinearColor::White, true, false));
+	RerollLabel = MakeText(NSLOCTEXT("YS", "UpgradeReroll", "Relance"), RerollFontSize, FLinearColor::White, true, false);
+	RerollButton->AddChild(RerollLabel);
 	RerollSize->AddChild(RerollButton);
 	RerollProxy = NewObject<UYSUpgradeMenuButtonProxy>(this);
 	RerollProxy->Menu = this;
@@ -356,6 +357,16 @@ void UYSUpgradeMenuWidget::SetRerollVisible(bool bVisible)
 		// retiré de la ligne : « Valider » reste seul, centré (la hauteur de la ligne ne change pas, les cartes ne bougent pas)
 		RerollRow->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
+}
+
+void UYSUpgradeMenuWidget::SetRerollsLeft(int32 Count)
+{
+	if (!RerollLabel || Count == DisplayedRerollsLeft)
+	{
+		return;
+	}
+	DisplayedRerollsLeft = Count;
+	RerollLabel->SetText(Count < 0 ? NSLOCTEXT("YS", "UpgradeReroll", "Relance") : FText::Format(RerollCountFormat, FText::AsNumber(Count)));
 }
 
 void UYSUpgradeMenuWidget::NotifyButtonClicked(int32 Index)

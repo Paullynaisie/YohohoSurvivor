@@ -43,6 +43,10 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Upgrades")
 	int32 ChosenUpgradeOffer = INDEX_NONE;
 
+	/** Relances encore permises pour la sélection en cours (-1 = illimité) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Upgrades")
+	int32 UpgradeRerollsLeft = -1;
+
 	/** Personnalisation (écran de sélection) : index dans AYSGameState::CustomizationColors / CustomizationFaces */
 	UPROPERTY(ReplicatedUsing=OnRep_Customization, BlueprintReadOnly, Category="Customization")
 	int32 ColorIndex = 0;
@@ -115,6 +119,11 @@ public:
 
 	/** Serveur uniquement */
 	void SetChosenUpgradeOffer(int32 OfferIndex) { ChosenUpgradeOffer = OfferIndex; ForceNetUpdate(); }
+
+	int32 GetUpgradeRerollsLeft() const { return UpgradeRerollsLeft; }
+
+	/** Serveur uniquement (-1 = illimité) */
+	void SetUpgradeRerollsLeft(int32 Count) { UpgradeRerollsLeft = Count; ForceNetUpdate(); }
 
 	int32 GetColorIndex() const { return ColorIndex; }
 	int32 GetFaceIndex() const { return FaceIndex; }

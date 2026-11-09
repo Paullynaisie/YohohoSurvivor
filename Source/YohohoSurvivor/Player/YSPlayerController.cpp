@@ -1753,7 +1753,9 @@ void AYSPlayerController::UpdateUpgradeMenu()
 	UpgradeMenu->SetValidatedIndex(MyState->GetChosenUpgradeOffer());
 	// relance (et changement de choix) : tant que la sélection dure, jamais pour un choix de classe
 	const AYSGameMode* AuthGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
-	UpgradeMenu->SetRerollVisible(MyState->HasUpgradeOffers() && !bClassChoice && (!AuthGameMode || AuthGameMode->IsUpgradeRerollAllowed()));
+	// plus de relance : bouton caché
+	UpgradeMenu->SetRerollVisible(MyState->HasUpgradeOffers() && !bClassChoice && (!AuthGameMode || AuthGameMode->IsUpgradeRerollAllowed()) && MyState->GetUpgradeRerollsLeft() != 0);
+	UpgradeMenu->SetRerollsLeft(MyState->GetUpgradeRerollsLeft());
 
 	// debug / tests automatisés en réseau : -YSAutoUpgrade choisit la première proposition
 	if (MyState->IsChoosingUpgrade() && FParse::Param(FCommandLine::Get(), TEXT("YSAutoUpgrade")))

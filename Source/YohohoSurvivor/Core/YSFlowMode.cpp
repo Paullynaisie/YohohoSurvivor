@@ -29,6 +29,8 @@ AYSFlowMode::AYSFlowMode()
 	bJollyShipWaves = false;
 	bGalionWaves = false;
 	NavalBattleRows = { FName(TEXT("Base")), FName(TEXT("Base")) };
+	// demande de Paul (2026-11-09) : 2 relances par sélection d'upgrade
+	MaxUpgradeRerolls = 2;
 }
 
 void AYSFlowMode::InitGameState()

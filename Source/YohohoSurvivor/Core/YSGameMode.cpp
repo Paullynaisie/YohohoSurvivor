@@ -446,6 +446,7 @@ void AYSGameMode::StartUpgradeSelection()
 				Offers = PickOffersForKind(Character, Kind, PlayerKind);
 			}
 			PlayerState->SetUpgradeOffers(Offers);
+			PlayerState->SetUpgradeRerollsLeft(MaxUpgradeRerolls);
 			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s : sélection %s%s"), *PlayerState->GetPlayerName(), *UEnum::GetValueAsString(Kind),
 				PlayerKind != Kind ? *FString::Printf(TEXT(" -> %s (rien à proposer)"), *UEnum::GetValueAsString(PlayerKind)) : TEXT(""));
 			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s (%s, pool de %d, armes G %s / D %s) : %d proposition(s)"), *PlayerState->GetPlayerName(),
@@ -633,7 +634,7 @@ void AYSGameMode::PlayerRerolledUpgrades(APlayerController* Player)
 	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
 	const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
 	if (!bAllowUpgradeReroll || !YSGameState || !YSGameState->IsUpgradeSelectionActive() || !PlayerState || !Character || !Character->IsAlive()
-		|| !PlayerState->HasUpgradeOffers())
+		|| !PlayerState->HasUpgradeOffers() || PlayerState->GetUpgradeRerollsLeft() == 0)
 	{
 		return;
 	}
@@ -651,8 +652,10 @@ void AYSGameMode::PlayerRerolledUpgrades(APlayerController* Player)
 	const TArray<FYSUpgradeOffer> Offers = PickOffersForKind(Character, CurrentSelectionKind == EYSUpgradeSelectionKind::Class ? EYSUpgradeSelectionKind::LevelUp : CurrentSelectionKind, PlayerKind);
 	if (Offers.Num() > 0)
 	{
+		const int32 RerollsLeft = PlayerState->GetUpgradeRerollsLeft();
 		PlayerState->SetUpgradeOffers(Offers);
-		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s relance ses upgrades : %d proposition(s)"), *PlayerState->GetPlayerName(), Offers.Num());
+		PlayerState->SetUpgradeRerollsLeft(RerollsLeft > 0 ? RerollsLeft - 1 : RerollsLeft);
+		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s relance ses upgrades : %d proposition(s), %d relance(s) restante(s)"), *PlayerState->GetPlayerName(), Offers.Num(), PlayerState->GetUpgradeRerollsLeft());
 	}
 }
 
