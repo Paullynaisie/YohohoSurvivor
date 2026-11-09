@@ -917,13 +917,26 @@ void AYSIsland::TickEvacuation()
 		UE_LOG(LogTemp, Log, TEXT("[YSIsland] Évacuation : %d / %d joueur(s) à bord"), Boarded, Total);
 		UpdateFlowStatus();
 	}
-	if (Total > 0 && Boarded == Total)
+	// tant que le CoreBoat n'est pas ramené, il n'y a pas de bateau où monter : seule la fin du temps compte
+	if (bMainObjectivesDone && Total > 0 && Boarded == Total)
 	{
 		FinishEvacuation(TEXT("tous les joueurs sont à bord"));
 	}
 	else if (PhaseElapsed >= Data->EvacuationDuration)
 	{
-		FinishEvacuation(TEXT("temps écoulé"));
+		if (bMainObjectivesDone)
+		{
+			FinishEvacuation(TEXT("temps écoulé"));
+		}
+		else if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+		{
+			bFlowVictory = false;
+			PendingCenterSpawns.Reset();
+			StartPhaseEvents(nullptr);
+			Phase = EYSIslandPhase::Sinking;
+			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : fin de l'évacuation sans le CoreBoat : GAME OVER"), *Data->GetName());
+			GameMode->GameOver(TEXT("CoreBoat pas ramené à la fin de l'évacuation"));
+		}
 	}
 }
 
@@ -1425,17 +1438,10 @@ void AYSIsland::OnGlobalDayChanged(int32 Day)
 	{
 		return;
 	}
-	// flow : nuit finie (élites morts) avec les objectifs livrés = « Quittez l'île ! », sinon nouveau jour (pas de Max Days)
+	// flow : nuit finie (élites morts) = « Quittez l'île ! », objectifs livrés ou non (demande de Paul : sans le CoreBoat à la fin, game over)
 	if (UsesObjectiveFlow())
 	{
-		if (bMainObjectivesDone)
-		{
-			StartEvacuation();
-		}
-		else
-		{
-			StartDayPhase();
-		}
+		StartEvacuation();
 		return;
 	}
 	if (Data->bInfiniteDays)
