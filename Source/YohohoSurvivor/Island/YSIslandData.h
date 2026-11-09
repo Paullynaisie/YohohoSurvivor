@@ -352,6 +352,37 @@ struct FYSIslandGenerationRules
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers")
 	TObjectPtr<UMaterialInterface> PierMaterial;
+
+	/**
+	 *  Deux pontons parallèles sur la plage, de la plage vers le large (sud), de part et d'autre de l'axe d'arrivée de la chaloupe :
+	 *  elle se gare entre eux et le sloop y apparaît, tourné vers le sud. Hauteur, épaisseur, poteaux et matériau : réglages 12 Piers
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers")
+	bool bBeachPiers = false;
+
+	/** Écart entre les bords intérieurs des deux pontons (largeur du sloop + marge ; réglé par Tools/EditorScripts/setup_flow_part1.py) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="100", Units="Centimeters", EditCondition="bBeachPiers"))
+	float BeachPierGap = 1000.0f;
+
+	/** Largeur de chaque ponton */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="50", Units="Centimeters", EditCondition="bBeachPiers"))
+	float BeachPierWidth = 300.0f;
+
+	/** Longueur au-dessus de l'eau, depuis le bord de l'eau sur l'axe (longueur du sloop + marge) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="100", Units="Centimeters", EditCondition="bBeachPiers"))
+	float BeachPierLength = 3000.0f;
+
+	/** Le ponton commence à cette distance sur la plage, avant le bord de l'eau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="0", Units="Centimeters", EditCondition="bBeachPiers"))
+	float BeachPierLandLength = 200.0f;
+
+	/** Place du sloop entre les pontons : distance de son milieu au bord de l'eau (0 = milieu des pontons) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="0", Units="Centimeters", EditCondition="bBeachPiers"))
+	float BerthDistanceFromShore = 0.0f;
+
+	/** Objectif « le plus au nord » : distance minimale au bord de la falaise (pas trop dans le vide) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="14 North Spot", meta=(ClampMin="0", Units="Centimeters"))
+	float NorthSpotShoreInset = 350.0f;
 };
 
 /** Un objectif : un objet à trouver sur l'île et à ramener dans la zone du bateau de départ */
@@ -382,6 +413,50 @@ struct FYSIslandObjectiveDef
 	/** Apparaît seulement dans la ville (Port Town) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective")
 	bool bInTown = false;
+
+	/**
+	 *  Le plus au nord possible dans l'espace accessible à pied depuis la plage, à North Spot Shore Inset du bord de la falaise
+	 *  (Distance From Boat et In Town sont ignorés)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective")
+	bool bNorthMost = false;
+};
+
+/** Spawn constant d'une île du flow : quelques NME à intervalle régulier, sur le côté de l'île le plus loin des joueurs */
+USTRUCT(BlueprintType)
+struct FYSIslandConstantSpawn
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Constant Spawn")
+	bool bEnabled = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Constant Spawn", meta=(ClampMin="0.1", Units="s"))
+	float Interval = 2.0f;
+
+	/** NME par intervalle (pour 1 joueur si Scale With Players) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Constant Spawn", meta=(ClampMin="1"))
+	int32 Count = 2;
+
+	/** Nombre x Spawn Multiplier du nombre de joueurs */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Constant Spawn")
+	bool bScaleWithPlayers = true;
+
+	/** Jour, nuit avant l'overtime, évacuation : au hasard dans la liste */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Constant Spawn")
+	TArray<TSubclassOf<AYSFoeCharacter>> Foes;
+
+	/** Pendant l'overtime de la nuit */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Constant Spawn")
+	TArray<TSubclassOf<AYSFoeCharacter>> OvertimeFoes;
+
+	/** Pendant l'évacuation (Quittez l'île) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Constant Spawn")
+	bool bDuringEvacuation = true;
+
+	/** Écart entre deux NME d'un même spawn, le long du bord de l'île */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Constant Spawn", meta=(ClampMin="0", Units="Centimeters"))
+	float Spacing = 250.0f;
 };
 
 /** Un type de NME d'une vague */
@@ -472,7 +547,7 @@ struct FYSIslandSpawnEvent
  *  Une île (DA_I_...) : tout ce qui la définit. À copier pour créer une nouvelle île.
  *  Plusieurs îles peuvent être actives en même temps, chacune dans sa phase : le jour global passe au suivant dès qu'une nuit se termine quelque part.
  */
-UCLASS(BlueprintType, meta=(PrioritizeCategories="Generation Objectives Time DayCycle NightCycle SinkRoutine Start"))
+UCLASS(BlueprintType, meta=(PrioritizeCategories="Generation Objectives Flow Time DayCycle NightCycle SinkRoutine Start"))
 class UYSIslandData : public UPrimaryDataAsset
 {
 	GENERATED_BODY()
@@ -508,6 +583,42 @@ public:
 	/** Sans effet sur la coulaison */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objectives")
 	TArray<FYSIslandObjectiveDef> SecondaryObjectives;
+
+	/**
+	 *  Flow en 3 parties, partie 1 (île de départ) : objectif et timer de phase affichés en haut de l'écran.
+	 *  Accostage : Find Text, jour de Day Duration. Fin du jour : nuit de Night Duration (objectif inchangé), puis OVERTIME (Overtime Events).
+	 *  Objectifs principaux livrés : Defend Text, même phase, bateau non pilotable. Nuit finie (élites morts) : objectifs livrés -> Evacuate Text
+	 *  pendant Evacuation Duration (compteur de joueurs à bord) ; tous à bord ou temps écoulé : bateau pilotable, l'île coule, partie 2 (Victory Text) ;
+	 *  sinon nouveau jour. Max Days et la routine de coulaison sont ignorés.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow")
+	bool bObjectiveFlow = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(ClampMin="1", Units="s", EditCondition="bObjectiveFlow"))
+	float NightDuration = 90.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(ClampMin="1", Units="s", EditCondition="bObjectiveFlow"))
+	float EvacuationDuration = 30.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	FText FindText = NSLOCTEXT("YS", "FlowFindCore", "Trouve et ramène un CoreBoat");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	FText DefendText = NSLOCTEXT("YS", "FlowDefend", "Survivez et défendez le navire");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	FText EvacuateText = NSLOCTEXT("YS", "FlowEvacuate", "Quittez l'île !");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	FText VictoryText = NSLOCTEXT("YS", "FlowVictory", "Victoire !");
+
+	/** Vagues de l'overtime : comptées depuis le début de l'overtime (nuit écoulée) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	TArray<FYSIslandSpawnEvent> OvertimeEvents;
+
+	/** Jour, nuit et évacuation (pas après la victoire) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	FYSIslandConstantSpawn ConstantSpawn;
 
 	/** Temps pour finir les objectifs : quand le jour global atteint jour d'activation + Max Days - 1, l'île lance sa routine de coulaison */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Time", meta=(ClampMin="1", EditCondition="!bInfiniteDays"))

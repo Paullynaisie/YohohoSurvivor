@@ -61,7 +61,7 @@ void AYSFlowMode::BeginPlay()
 		Island->InitIsland(StartIsland, Seed, true);
 		Island->FinishSpawning(Transform);
 		// îles suivantes générées dès maintenant, sous l'eau
-		if (bPregenerateNextIslands && NextIslandsSubmergedDepth > 0.0f)
+		if (bNextIslandsEnabled && bPregenerateNextIslands && NextIslandsSubmergedDepth > 0.0f)
 		{
 			SpawnNextIslands(Island, true);
 			SpawnFinalIsland(true);
@@ -147,7 +147,7 @@ void AYSFlowMode::RequestGameBoatUpgrade(const TCHAR* Reason)
 
 void AYSFlowMode::BringNextIslands(const AYSIsland* From)
 {
-	if (bNextIslandsBrought)
+	if (bNextIslandsBrought || !bNextIslandsEnabled)
 	{
 		return;
 	}
@@ -594,12 +594,33 @@ void AYSFlowMode::UpgradeGameBoat()
 	{
 		return;
 	}
+	// chaloupe garée entre les pontons de la plage : le bateau y apparaît, coque centrée sur la place, tourné vers le sud
+	FTransform Berth;
+	const bool bAtBerth = bFromLongboat && Island && Island->GetBerthTransform(Berth);
 	FVector Location = From + Away * GameBoatData->WaterSearchDistance;
-	if (!NewBoat->FindWaterPlacement(From, Away, Yaw, GameBoatData->WaterSearchDistance, GameBoatData->WaterSearchStep, Location))
+	if (!bAtBerth && !NewBoat->FindWaterPlacement(From, Away, Yaw, GameBoatData->WaterSearchDistance, GameBoatData->WaterSearchStep, Location))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[YSGameBoat] %s : pas assez de fond à moins de %.0f cm, posé au plus loin"), *NewBoat->GetName(), GameBoatData->WaterSearchDistance);
 	}
+	if (bAtBerth)
+	{
+		Yaw = Berth.Rotator().Yaw;
+		Location = Berth.GetLocation();
+	}
 	NewBoat->FinishSpawning(FTransform(FRotator(0.0f, Yaw, 0.0f), Location));
+	if (bAtBerth)
+	{
+		TArray<FVector> HullPoints;
+		NewBoat->GetWorldHullPoints(HullPoints);
+		FBox HullBox(HullPoints);
+		if (HullBox.IsValid)
+		{
+			const FVector Shift = (Berth.GetLocation() - HullBox.GetCenter()) * FVector(1.0f, 1.0f, 0.0f);
+			NewBoat->SetActorLocation(NewBoat->GetActorLocation() + Shift, false, nullptr, ETeleportType::TeleportPhysics);
+		}
+		Location = NewBoat->GetActorLocation();
+		UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] %s posé entre les pontons de la plage (yaw %.0f°)"), *NewBoat->GetName(), Yaw);
+	}
 	NewBoat->SyncMotionToActor();
 	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] Étape %d : %s remplace %s, en %s (%.0f cm de l'ancien)"), NextStage, *NewBoat->GetName(), *OldBoat->GetName(), *Location.ToCompactString(), FVector::Dist2D(From, Location));
 	GameBoatStage = NextStage;

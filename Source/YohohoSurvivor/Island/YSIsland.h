@@ -23,7 +23,9 @@ enum class EYSIslandPhase : uint8
 	Day,
 	Night,
 	/** Routine de coulaison : plus d'objectif principal, ou temps écoulé */
-	Sinking
+	Sinking,
+	/** Flow : « Quittez l'île ! », en attendant que tout le monde soit à bord (ou la fin du temps) */
+	Evacuation
 };
 
 /** État d'un objectif (serveur) */
@@ -173,6 +175,15 @@ public:
 	/** Milieu du morceau de ponton Index, dans le monde (faux s'il n'existe pas) */
 	bool GetPierSegmentLocation(int32 Index, FVector& OutLocation) const;
 
+	/** Île du flow à objectifs affichés (Objective Flow du Data Asset) */
+	bool UsesObjectiveFlow() const;
+
+	/** Place du bateau entre les pontons de la plage : milieu au niveau de la mer, tourné vers le sud (faux sans pontons) */
+	bool GetBerthTransform(FTransform& OutTransform) const;
+
+	/** Debug : évacuation finie tout de suite (victoire) */
+	void DebugFinishEvacuation();
+
 protected:
 
 	UPROPERTY(VisibleAnywhere, Category="Components")
@@ -272,6 +283,31 @@ private:
 
 	/** Objectifs et zone de dépôt en attente de la remontée (serveur) */
 	bool bGameplayActorsPending = false;
+
+	/** Vagues d'une liste depuis Elapsed secondes (Fired = répétitions faites de chaque vague) */
+	void TickEventList(const TArray<FYSIslandSpawnEvent>& Events, TArray<int32>& Fired, float Elapsed);
+
+	/** Flow à objectifs (serveur) : état du HUD, overtime, spawn constant, évacuation */
+	void UpdateFlowStatus();
+	void StartOvertime();
+	void StartEvacuation();
+	void TickEvacuation();
+	void FinishEvacuation(const TCHAR* Reason);
+	void TickConstantSpawn(float DeltaSeconds);
+
+	/** Le bord de l'île (hors plage) le plus loin des joueurs : Classes côte à côte, Spacing entre eux */
+	int32 SpawnFarSide(const TArray<UClass*>& Classes, float Spacing);
+
+	/** Objectif « le plus au nord » : le point du plan, ou le point libre le plus au nord autour */
+	bool FindNorthSpot(FVector2f& OutSpot) const;
+
+	bool bOvertime = false;
+	bool bFlowVictory = false;
+	float ConstantSpawnTimer = 0.0f;
+	TArray<int32> OvertimeEventsFired;
+	int32 FlowBoarded = INDEX_NONE;
+	int32 FlowBoardingTotal = INDEX_NONE;
+	float FlowFinalMatchTime = -1.0f;
 
 	/** Vagues (serveur) */
 	void FireEvent(const FYSIslandSpawnEvent& Event, int32 Repeat);

@@ -19,6 +19,7 @@
 #include "NPC/YSBrookerNPC.h"
 #include "Player/YSPlayerCharacter.h"
 #include "ProceduralMeshComponent.h"
+#include "Ship/YSPirateShip.h"
 #include "Async/Async.h"
 
 namespace YSIslandActor
@@ -593,6 +594,12 @@ void AYSIsland::SpawnObjective(FYSIslandObjectiveState& State)
 	UWorld* World = GetWorld();
 	AYSInteractiveObject* Item = nullptr;
 	const AYSTreasureMap* MapSettings = Cast<AYSTreasureMap>(Def.ItemClass->GetDefaultObject());
+	// le plus au nord possible dans l'espace accessible
+	FVector2f NorthSpot;
+	if (Def.bNorthMost && !MapSettings && FindNorthSpot(NorthSpot))
+	{
+		Item = AYSInteractiveObject::SpawnOnGround(World, Def.ItemClass, LocalToWorld(NorthSpot, Terrain.Height(NorthSpot.X, NorthSpot.Y)), ServerRng.FRandRange(0.0f, 360.0f));
+	}
 	for (int32 Attempt = 0; Attempt < 30 && !Item; ++Attempt)
 	{
 		FVector2f Spot;
@@ -682,6 +689,24 @@ void AYSIsland::Tick(float DeltaSeconds)
 	PhaseElapsed += DeltaSeconds;
 	TickPhaseEvents();
 	TickPendingCenterSpawns(DeltaSeconds);
+
+	// flow : overtime une fois la nuit écoulée (ses vagues comptées depuis), spawn constant, évacuation
+	if (UsesObjectiveFlow())
+	{
+		if (Phase == EYSIslandPhase::Night && !bOvertime && PhaseElapsed >= Data->NightDuration)
+		{
+			StartOvertime();
+		}
+		if (bOvertime && Phase == EYSIslandPhase::Night)
+		{
+			TickEventList(Data->OvertimeEvents, OvertimeEventsFired, PhaseElapsed - Data->NightDuration);
+		}
+		TickConstantSpawn(DeltaSeconds);
+		if (Phase == EYSIslandPhase::Evacuation)
+		{
+			TickEvacuation();
+		}
+	}
 
 	if (Phase == EYSIslandPhase::Day && PhaseElapsed >= Data->DayDuration)
 	{
@@ -817,6 +842,8 @@ void AYSIsland::StartDayPhase()
 	StartPhaseEvents(&Data->DayEvents);
 	SpawnDueObjectives();
 	RefreshOpenDeliveryClasses();
+	bOvertime = false;
+	UpdateFlowStatus();
 	ForceNetUpdate();
 }
 
@@ -824,9 +851,281 @@ void AYSIsland::StartNightPhase()
 {
 	Phase = EYSIslandPhase::Night;
 	NightElites.Reset();
-	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : tombée de la nuit %d de l'île"), *Data->GetName(), GetIslandDay());
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : tombée de la nuit %d de l'île%s"), *Data->GetName(), GetIslandDay(),
+		UsesObjectiveFlow() ? *FString::Printf(TEXT(" (overtime dans %.0f s)"), Data->NightDuration) : TEXT(""));
 	StartPhaseEvents(&Data->NightEvents);
+	bOvertime = false;
+	UpdateFlowStatus();
 	ForceNetUpdate();
+}
+
+bool AYSIsland::UsesObjectiveFlow() const
+{
+	return Data && Data->bObjectiveFlow;
+}
+
+void AYSIsland::StartOvertime()
+{
+	bOvertime = true;
+	OvertimeEventsFired.Reset();
+	OvertimeEventsFired.SetNumZeroed(Data->OvertimeEvents.Num());
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : OVERTIME (nuit %d écoulée, %d vague(s) d'overtime)"), *Data->GetName(), GetIslandDay(), Data->OvertimeEvents.Num());
+	UpdateFlowStatus();
+}
+
+void AYSIsland::StartEvacuation()
+{
+	Phase = EYSIslandPhase::Evacuation;
+	StartPhaseEvents(nullptr);
+	PendingCenterSpawns.Reset();
+	bOvertime = false;
+	FlowBoarded = INDEX_NONE;
+	FlowBoardingTotal = INDEX_NONE;
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : « %s » (%.0f s pour monter à bord)"), *Data->GetName(), *Data->EvacuateText.ToString(), Data->EvacuationDuration);
+	TickEvacuation();
+	UpdateFlowStatus();
+	ForceNetUpdate();
+}
+
+void AYSIsland::TickEvacuation()
+{
+	// joueurs vivants, et ceux d'entre eux qui sont sur le bateau des joueurs (debout dessus ou à un poste)
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPirateShip* GameBoat = YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	int32 Total = 0;
+	int32 Boarded = 0;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AYSPlayerCharacter* Character = It->Get() ? Cast<AYSPlayerCharacter>(It->Get()->GetPawn()) : nullptr;
+		if (!Character || !Character->IsAlive())
+		{
+			continue;
+		}
+		++Total;
+		Boarded += GameBoat && Character->GetShipUnderFeet() == GameBoat ? 1 : 0;
+	}
+	if (Boarded != FlowBoarded || Total != FlowBoardingTotal)
+	{
+		FlowBoarded = Boarded;
+		FlowBoardingTotal = Total;
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] Évacuation : %d / %d joueur(s) à bord"), Boarded, Total);
+		UpdateFlowStatus();
+	}
+	if (Total > 0 && Boarded == Total)
+	{
+		FinishEvacuation(TEXT("tous les joueurs sont à bord"));
+	}
+	else if (PhaseElapsed >= Data->EvacuationDuration)
+	{
+		FinishEvacuation(TEXT("temps écoulé"));
+	}
+}
+
+void AYSIsland::FinishEvacuation(const TCHAR* Reason)
+{
+	if (bFlowVictory)
+	{
+		return;
+	}
+	// partie 2 du flow : le bateau devient pilotable et l'île coule tout de suite (pas de routine de coulaison)
+	bFlowVictory = true;
+	if (const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>())
+	{
+		FlowFinalMatchTime = YSGameState->GetMatchElapsedTime();
+	}
+	Phase = EYSIslandPhase::Sinking;
+	StartPhaseEvents(nullptr);
+	PendingCenterSpawns.Reset();
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : fin de l'évacuation (%s, %d / %d à bord) : bateau pilotable, l'île coule, partie 2 du flow (VICTOIRE, %.0f s de partie)"),
+		*Data->GetName(), Reason, FlowBoarded, FlowBoardingTotal, FlowFinalMatchTime);
+	UpdateFlowStatus();
+	if (!bSinkStarted)
+	{
+		StartSinking();
+	}
+	ForceNetUpdate();
+}
+
+void AYSIsland::DebugFinishEvacuation()
+{
+	FinishEvacuation(TEXT("debug"));
+}
+
+void AYSIsland::UpdateFlowStatus()
+{
+	AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (!UsesObjectiveFlow() || !YSGameState || !HasAuthority())
+	{
+		return;
+	}
+	FYSFlowStatus Status;
+	if (bFlowVictory)
+	{
+		Status.Objective = EYSFlowObjective::Victory;
+		Status.ObjectiveText = Data->VictoryText;
+	}
+	else if (Phase == EYSIslandPhase::Evacuation)
+	{
+		Status.Objective = EYSFlowObjective::Evacuate;
+		Status.ObjectiveText = Data->EvacuateText;
+		Status.PhaseDuration = Data->EvacuationDuration;
+		Status.BoardedPlayers = FMath::Max(FlowBoarded, 0);
+		Status.BoardingTotal = FMath::Max(FlowBoardingTotal, 0);
+	}
+	else if (Phase == EYSIslandPhase::Day || Phase == EYSIslandPhase::Night)
+	{
+		Status.Objective = bMainObjectivesDone ? EYSFlowObjective::Defend : EYSFlowObjective::FindCore;
+		Status.ObjectiveText = bMainObjectivesDone ? Data->DefendText : Data->FindText;
+		Status.PhaseDuration = Phase == EYSIslandPhase::Day ? Data->DayDuration : Data->NightDuration;
+		Status.bNight = Phase == EYSIslandPhase::Night;
+		Status.bOvertime = bOvertime;
+	}
+	else
+	{
+		return;
+	}
+	Status.PhaseStartServerTime = FMath::Max(YSIslandActor::GetServerTime(GetWorld()) - PhaseElapsed, 0.001);
+	Status.bHelmLocked = !bFlowVictory;
+	Status.FinalMatchTime = FlowFinalMatchTime;
+	YSGameState->SetFlowStatus(Status);
+}
+
+void AYSIsland::TickConstantSpawn(float DeltaSeconds)
+{
+	const FYSIslandConstantSpawn& Rule = Data->ConstantSpawn;
+	const bool bActive = Rule.bEnabled && !bFlowVictory
+		&& (Phase == EYSIslandPhase::Day || Phase == EYSIslandPhase::Night || (Phase == EYSIslandPhase::Evacuation && Rule.bDuringEvacuation));
+	if (!bActive)
+	{
+		ConstantSpawnTimer = 0.0f;
+		return;
+	}
+	ConstantSpawnTimer += DeltaSeconds;
+	if (ConstantSpawnTimer < Rule.Interval)
+	{
+		return;
+	}
+	ConstantSpawnTimer -= Rule.Interval;
+
+	const TArray<TSubclassOf<AYSFoeCharacter>>& Pool = bOvertime && Rule.OvertimeFoes.Num() > 0 ? Rule.OvertimeFoes : Rule.Foes;
+	if (Pool.Num() == 0)
+	{
+		return;
+	}
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	const int32 Count = Rule.bScaleWithPlayers && GameMode ? GameMode->ScaleEnemyCount(Rule.Count) : Rule.Count;
+	TArray<UClass*> Classes;
+	for (int32 K = 0; K < Count; ++K)
+	{
+		if (UClass* Class = Pool[ServerRng.RandRange(0, Pool.Num() - 1)].Get())
+		{
+			Classes.Add(Class);
+		}
+	}
+	const int32 Spawned = SpawnFarSide(Classes, Rule.Spacing);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSIsland] Spawn constant%s : %d / %d %s"), bOvertime ? TEXT(" (overtime)") : TEXT(""), Spawned, Classes.Num(), Classes.Num() > 0 ? *Classes[0]->GetName() : TEXT("-"));
+}
+
+int32 AYSIsland::SpawnFarSide(const TArray<UClass*>& Classes, float Spacing)
+{
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	TArray<FVector> Players;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AYSPlayerCharacter* Character = It->Get() ? Cast<AYSPlayerCharacter>(It->Get()->GetPawn()) : nullptr;
+		if (Character && Character->IsAlive())
+		{
+			Players.Add(Character->GetActorLocation());
+		}
+	}
+	if (!GameMode || Classes.Num() == 0 || Players.Num() == 0)
+	{
+		return 0;
+	}
+
+	// le bord de l'île (tour sauf la plage, comme le circle spawn) dont le joueur le plus proche est le plus loin
+	constexpr int32 Samples = 72;
+	const float EndAngle = FMath::DegreesToRadians(Data->Generation.BeachAngleEnd);
+	const float Start = PI + EndAngle;
+	const float Arc = 2.0f * PI - 2.0f * EndAngle;
+	float BestAngle = Start + Arc * 0.5f;
+	double BestScore = -1.0;
+	for (int32 Index = 0; Index < Samples; ++Index)
+	{
+		const float Angle = Start + Arc * (Index + 0.5f) / Samples;
+		const float Coast = Terrain.CoastRadius(Angle);
+		const FVector Point = LocalToWorld(FVector2f(Coast * FMath::Cos(Angle), Coast * FMath::Sin(Angle)), 0.0f);
+		double Nearest = TNumericLimits<double>::Max();
+		for (const FVector& Player : Players)
+		{
+			Nearest = FMath::Min(Nearest, FVector::DistSquared2D(Player, Point));
+		}
+		if (Nearest > BestScore)
+		{
+			BestScore = Nearest;
+			BestAngle = Angle;
+		}
+	}
+
+	// côte à côte le long du bord, tournés vers le centre
+	const float Coast = FMath::Max(Terrain.CoastRadius(BestAngle), 100.0f);
+	const FVector Facing = LocalToWorld(Plan.CenterSpot, Data->Generation.PlateauHeight);
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < Classes.Num(); ++Index)
+	{
+		const float Offset = (Index - (Classes.Num() - 1) * 0.5f) * Spacing / Coast;
+		FVector Ground;
+		if (FindCirclePoint(BestAngle + Offset, Ground))
+		{
+			Spawned += GameMode->SpawnFoeOnGround(Classes[Index], Ground, Facing, INDEX_NONE, 0) ? 1 : 0;
+		}
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSIsland] Côté le plus loin des joueurs : %.0f° (joueur le plus proche à %.0f m)"), FMath::RadiansToDegrees(BestAngle), FMath::Sqrt(BestScore) / 100.0);
+	return Spawned;
+}
+
+bool AYSIsland::FindNorthSpot(FVector2f& OutSpot) const
+{
+	if (!Plan.bHasNorthSpot)
+	{
+		return false;
+	}
+	// le point du plan s'il est libre (un trio peut y avoir été posé), sinon le plus au nord des anneaux autour
+	for (int32 Ring = 0; Ring <= 12; ++Ring)
+	{
+		const int32 Spots = Ring == 0 ? 1 : 8 * Ring;
+		bool bFound = false;
+		FVector2f Best = Plan.NorthSpot;
+		for (int32 Index = 0; Index < Spots; ++Index)
+		{
+			const float Angle = 2.0f * PI * Index / Spots;
+			const FVector2f Spot = Plan.NorthSpot + FVector2f(FMath::Cos(Angle), FMath::Sin(Angle)) * (Ring * 100.0f);
+			if (Terrain.Inland(Spot.X, Spot.Y) >= Data->Generation.NorthSpotShoreInset && IsSpotFree(Spot, YSIslandActor::SpotMargin) && (!bFound || Spot.X > Best.X))
+			{
+				Best = Spot;
+				bFound = true;
+			}
+		}
+		if (bFound)
+		{
+			OutSpot = Best;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool AYSIsland::GetBerthTransform(FTransform& OutTransform) const
+{
+	if (!Plan.bHasBerth)
+	{
+		return false;
+	}
+	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+	FVector Location = LocalToWorld(Plan.BerthLocation, 0.0f);
+	Location.Z = Ocean ? Ocean->GetSeaLevel() : 0.0f;
+	OutTransform = FTransform(FRotator(0.0f, GetActorRotation().Yaw + 180.0f, 0.0f), Location);
+	return true;
 }
 
 void AYSIsland::StartSinkRoutine(const TCHAR* Reason)
@@ -852,27 +1151,39 @@ void AYSIsland::StartPhaseEvents(const TArray<FYSIslandSpawnEvent>* Events)
 
 void AYSIsland::TickPhaseEvents()
 {
-	if (!PhaseEvents)
+	if (PhaseEvents)
 	{
-		return;
+		TickEventList(*PhaseEvents, EventsFired, PhaseElapsed);
+	}
+}
+
+void AYSIsland::TickEventList(const TArray<FYSIslandSpawnEvent>& Events, TArray<int32>& Fired, float Elapsed)
+{
+	if (Fired.Num() != Events.Num())
+	{
+		Fired.SetNumZeroed(Events.Num());
 	}
 	const int32 Day = GetIslandDay();
-	for (int32 Index = 0; Index < PhaseEvents->Num(); ++Index)
+	for (int32 Index = 0; Index < Events.Num(); ++Index)
 	{
-		const FYSIslandSpawnEvent& Event = (*PhaseEvents)[Index];
+		const FYSIslandSpawnEvent& Event = Events[Index];
 		// vague d'un seul jour (ou d'une seule nuit) de l'île
 		if (!Event.IsForIslandDay(Day))
 		{
 			continue;
 		}
-		while ((Event.RepeatCount == 0 || EventsFired[Index] < Event.RepeatCount) && PhaseElapsed >= Event.Time + EventsFired[Index] * Event.RepeatInterval)
+		// jusqu'à la fin de la phase sans intervalle : une seule fois (sinon boucle sans fin)
+		if (Event.RepeatCount == 0 && Event.RepeatInterval <= 0.0f && Fired[Index] > 0)
 		{
-			FireEvent(Event, EventsFired[Index]);
-			++EventsFired[Index];
-			// jusqu'à la fin de la phase sans intervalle : une seule fois
+			continue;
+		}
+		while ((Event.RepeatCount == 0 || Fired[Index] < Event.RepeatCount) && Elapsed >= Event.Time + Fired[Index] * Event.RepeatInterval)
+		{
+			FireEvent(Event, Fired[Index]);
+			++Fired[Index];
 			if (Event.RepeatInterval <= 0.0f)
 			{
-				EventsFired[Index] = FMath::Max(EventsFired[Index], Event.RepeatCount);
+				Fired[Index] = FMath::Max(Fired[Index], Event.RepeatCount);
 				if (Event.RepeatCount == 0)
 				{
 					break;
@@ -1090,8 +1401,21 @@ int32 AYSIsland::SpawnCircle(const TArray<UClass*>& Classes, int32 ForcedLevel, 
 
 void AYSIsland::OnGlobalDayChanged(int32 Day)
 {
-	if (!Data || Phase == EYSIslandPhase::Inactive || Phase == EYSIslandPhase::Sinking)
+	if (!Data || Phase == EYSIslandPhase::Inactive || Phase == EYSIslandPhase::Sinking || Phase == EYSIslandPhase::Evacuation)
 	{
+		return;
+	}
+	// flow : nuit finie (élites morts) avec les objectifs livrés = « Quittez l'île ! », sinon nouveau jour (pas de Max Days)
+	if (UsesObjectiveFlow())
+	{
+		if (bMainObjectivesDone)
+		{
+			StartEvacuation();
+		}
+		else
+		{
+			StartDayPhase();
+		}
 		return;
 	}
 	if (Data->bInfiniteDays)
@@ -1217,6 +1541,13 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 				{
 					FlowMode->OnIslandMainObjectivesDone(this);
 				}
+				// flow : « Survivez et défendez le navire », la phase ne change pas
+				if (UsesObjectiveFlow())
+				{
+					UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : « %s » (phase %d gardée)"), *Data->GetName(), *Data->DefendText.ToString(), static_cast<int32>(Phase));
+					UpdateFlowStatus();
+					return;
+				}
 				// plus d'objectif principal : on passe au jour suivant, ce qui lance la routine de coulaison (OnGlobalDayChanged)
 				AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
 				if (GameMode && Phase != EYSIslandPhase::Sinking)
@@ -1305,6 +1636,7 @@ void AYSIsland::DebugSkipTime(float Seconds)
 {
 	PhaseElapsed += Seconds;
 	UE_LOG(LogTemp, Log, TEXT("[YSIsland] Temps de phase avancé de %.0f s : %.0f s"), Seconds, PhaseElapsed);
+	UpdateFlowStatus();
 }
 
 void AYSIsland::DebugSinkNow()

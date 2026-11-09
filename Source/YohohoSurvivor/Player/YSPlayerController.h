@@ -131,6 +131,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSShipBoardingWidget> ShipBoardingWidgetClass;
 
+	/** HUD du flow (chronomètre haut droite, objectif et temps de la phase haut milieu) : Widget Blueprint enfant de YSFlowHUDWidget (WBP_FlowHUD, réglages Layout) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<class UYSFlowHUDWidget> FlowHUDClass;
+
 	/** BL stacks du Bloodlust (à droite de l'icône d'Ability ; Widget Blueprint réglable WBP_BloodlustStacks) */
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSBloodlustStacksWidget> BloodlustWidgetClass;
@@ -207,6 +211,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UYSShipBoardingWidget> ShipBoarding;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UYSFlowHUDWidget> FlowHUD;
 
 	/** Victoire vue par cette machine : secondes avant le retour au menu (-1 = pas de victoire, -2 = déjà parti) */
 	float VictoryReturnTimer = -1.0f;
@@ -533,6 +540,14 @@ public:
 	/** Debug (hôte) : tue les élites vivants */
 	UFUNCTION(Exec)
 	void YSIslandKillElite();
+
+	/** Debug (hôte) : flow, fin de l'évacuation tout de suite (bateau pilotable, l'île coule, victoire) */
+	UFUNCTION(Exec)
+	void YSIslandEvacuate();
+
+	/** Debug (hôte) : téléporté sur le pont du bateau des joueurs */
+	UFUNCTION(Exec)
+	void YSGoToGameBoat();
 
 	/** Debug (hôte) : téléporté à côté du bateau de départ de l'île la plus proche, sinon au core du bateau des joueurs le plus proche */
 	UFUNCTION(Exec)

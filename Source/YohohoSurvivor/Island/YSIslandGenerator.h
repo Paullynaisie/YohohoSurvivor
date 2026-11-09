@@ -141,6 +141,20 @@ struct FYSIslandPlan
 	/** Point le plus dégagé du plateau (élite) */
 	UPROPERTY()
 	FVector2f CenterSpot = FVector2f::ZeroVector;
+
+	/** Pontons de la plage : place du bateau entre eux (milieu, au niveau de la mer ; bateau tourné vers le sud) */
+	UPROPERTY()
+	bool bHasBerth = false;
+
+	UPROPERTY()
+	FVector2f BerthLocation = FVector2f::ZeroVector;
+
+	/** Point accessible à pied le plus au nord (à North Spot Shore Inset de la falaise) */
+	UPROPERTY()
+	bool bHasNorthSpot = false;
+
+	UPROPERTY()
+	FVector2f NorthSpot = FVector2f::ZeroVector;
 };
 
 /** Forme et relief de l'île : ne dépendent que des règles et de la graine (mêmes sur toutes les machines) */

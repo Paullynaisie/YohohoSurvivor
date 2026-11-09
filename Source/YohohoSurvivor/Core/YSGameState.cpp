@@ -53,6 +53,7 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, bMatchStarted);
 	DOREPLIFETIME(AYSGameState, bBoatIntro);
 	DOREPLIFETIME(AYSGameState, GameBoat);
+	DOREPLIFETIME(AYSGameState, FlowStatus);
 	DOREPLIFETIME(AYSGameState, MatchStartServerTime);
 	DOREPLIFETIME(AYSGameState, TeamLevel);
 	DOREPLIFETIME(AYSGameState, TeamExperience);
@@ -249,6 +250,15 @@ void AYSGameState::SetMatchStarted()
 	bMatchStarted = true;
 	MatchStartServerTime = GetServerWorldTimeSeconds();
 	StartDay(1);
+}
+
+float AYSGameState::GetFlowPhaseRemaining() const
+{
+	if (FlowStatus.PhaseDuration <= 0.0f || FlowStatus.PhaseStartServerTime <= 0.0)
+	{
+		return 0.0f;
+	}
+	return FMath::Clamp(FlowStatus.PhaseDuration - static_cast<float>(GetServerWorldTimeSeconds() - FlowStatus.PhaseStartServerTime), 0.0f, FlowStatus.PhaseDuration);
 }
 
 float AYSGameState::GetMatchElapsedTime() const

@@ -36,6 +36,7 @@
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "UI/YSEliteHealthWidget.h"
 #include "UI/YSObjectiveWidget.h"
+#include "UI/YSFlowHUDWidget.h"
 #include "UI/YSShipBoardingWidget.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "Interaction/YSPlayerCorpse.h"
@@ -207,6 +208,14 @@ void AYSPlayerController::BeginPlay()
 			ObjectiveSlot.Offsets = FMargin(-Objective->ScreenOffset.X, Objective->ScreenOffset.Y, 0.0f, 0.0f);
 			ObjectiveSlot.ZOrder = 1;
 			ViewportSubsystem->AddWidgetForPlayer(Objective, GetLocalPlayer(), ObjectiveSlot);
+
+			// flow : chronomètre en haut à droite, objectif et temps de la phase en haut au milieu (placements dans le Widget Blueprint)
+			FlowHUD = CreateWidget<UYSFlowHUDWidget>(this, FlowHUDClass ? FlowHUDClass.Get() : UYSFlowHUDWidget::StaticClass());
+			FlowHUD->SetVisibility(ESlateVisibility::HitTestInvisible);
+			FGameViewportWidgetSlot FlowSlot;
+			FlowSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
+			FlowSlot.ZOrder = 1;
+			ViewportSubsystem->AddWidgetForPlayer(FlowHUD, GetLocalPlayer(), FlowSlot);
 
 			// fin de jeu temporaire : plein écran (texte en bas, « BRAVO » au centre ; placements dans le Widget Blueprint)
 			ShipBoarding = CreateWidget<UYSShipBoardingWidget>(this, ShipBoardingWidgetClass ? ShipBoardingWidgetClass.Get() : UYSShipBoardingWidget::StaticClass());
@@ -1066,6 +1075,31 @@ void AYSPlayerController::YSIslandKillElite()
 	}
 }
 
+void AYSPlayerController::YSIslandEvacuate()
+{
+	if (AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), GetPawn() ? GetPawn()->GetActorLocation() : FVector::ZeroVector) : nullptr)
+	{
+		Island->DebugFinishEvacuation();
+	}
+}
+
+void AYSPlayerController::YSGoToGameBoat()
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPirateShip* Boat = YSGameState && HasAuthority() ? YSGameState->GetGameBoat() : nullptr;
+	if (!Boat || !GetPawn())
+	{
+		return;
+	}
+	// milieu de la coque, au-dessus du pont (même hauteur de pont pour toutes les étapes)
+	TArray<FVector> HullPoints;
+	Boat->GetWorldHullPoints(HullPoints);
+	const FBox Box(HullPoints);
+	const FVector Target = (Box.IsValid ? Box.GetCenter() : Boat->GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f) + FVector(0.0f, 0.0f, Boat->GetActorLocation().Z + 330.0f);
+	const bool bTeleported = GetPawn()->TeleportTo(Target, GetPawn()->GetActorRotation());
+	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] Debug : téléporté sur %s en %s%s"), *Boat->GetName(), *Target.ToCompactString(), bTeleported ? TEXT("") : TEXT(" : REFUSÉ"));
+}
+
 void AYSPlayerController::YSIslandGoToBoat()
 {
 	const AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), GetPawn() ? GetPawn()->GetActorLocation() : FVector::ZeroVector) : nullptr;
@@ -1381,6 +1415,12 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 		Objective->SetShipLevel(YSGameState->GetShipLevel());
 		Objective->SetPhoenixFeathers(YSGameState->GetPhoenixFeathers());
 		Objective->SetVisibility(YSGameState->IsMatchStarted() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
+
+	// flow : chronomètre, objectif, temps de la phase
+	if (FlowHUD)
+	{
+		FlowHUD->Refresh(YSGameState->GetFlowStatus(), YSGameState->GetFlowPhaseRemaining(), YSGameState->GetMatchElapsedTime(), YSGameState->IsMatchStarted());
 	}
 }
 

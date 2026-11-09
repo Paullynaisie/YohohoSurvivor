@@ -54,6 +54,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow")
 	TObjectPtr<UYSGameBoatData> GameBoatData;
 
+	/**
+	 *  Îles suivantes, batailles navales et île finale après l'île de départ ; décoché = rien après l'île de départ
+	 *  (demande de Paul du 2026-11-09 : déroulé repris à 0, flow en 3 parties)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands")
+	bool bNextIslandsEnabled = true;
+
 	/** Îles qui apparaissent quand l'île de départ commence à couler : en triangle (cercle) autour d'elle, places tirées au hasard */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Next Islands")
 	TArray<TObjectPtr<UYSIslandData>> NextIslands;

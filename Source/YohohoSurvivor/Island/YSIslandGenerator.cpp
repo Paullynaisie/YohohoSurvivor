@@ -532,6 +532,60 @@ namespace YSIslandGen
 		}
 	}
 
+	/** Bord de l'eau (hauteur Z) en partant de X vers le sud (-X), à Y fixe */
+	float FindShoreX(const FYSIslandTerrain& Terrain, float X, float Y, float Z)
+	{
+		const float Limit = -2.0f * Terrain.GetHalfSize();
+		while (X > Limit && Terrain.Height(X, Y) > Z)
+		{
+			X -= 25.0f;
+		}
+		return X;
+	}
+
+	/**
+	 *  Deux pontons parallèles sur la plage, de part et d'autre de l'axe d'arrivée de la chaloupe (Y du bateau), du bord de l'eau vers le large ;
+	 *  la place du bateau est entre eux
+	 */
+	void BuildBeachPiers(const FYSIslandTerrain& Terrain, FYSIslandPlan& OutPlan)
+	{
+		const FYSIslandGenerationRules& Rules = Terrain.GetRules();
+		if (!Rules.bBeachPiers)
+		{
+			return;
+		}
+		const float Deck = SeaLevel + Rules.PierDeckHeight;
+		const float AxisY = OutPlan.BoatLocation.Y;
+		// vrai bord de l'eau sur l'axe : longueur des pontons et place du bateau comptées depuis là (les planches commencent plus haut sur la plage)
+		const float AxisShore = FindShoreX(Terrain, OutPlan.BoatLocation.X, AxisY, SeaLevel);
+		const float EndX = AxisShore - Rules.BeachPierLength;
+		const float Offset = Rules.BeachPierGap * 0.5f + Rules.BeachPierWidth * 0.5f;
+		for (const float Side : { -1.0f, 1.0f })
+		{
+			const float Y = AxisY + Side * Offset;
+			const float StartX = FindShoreX(Terrain, OutPlan.BoatLocation.X, Y, Deck) + Rules.BeachPierLandLength;
+			FYSIslandPierSegment& Segment = OutPlan.PierSegments.AddDefaulted_GetRef();
+			Segment.A = FVector3f(StartX, Y, Deck);
+			Segment.B = FVector3f(EndX, Y, Deck);
+			Segment.bPosts = true;
+			Segment.Width = Rules.BeachPierWidth;
+		}
+		OutPlan.bHasBerth = true;
+		OutPlan.BerthLocation = FVector2f(AxisShore - (Rules.BerthDistanceFromShore > 0.0f ? Rules.BerthDistanceFromShore : Rules.BeachPierLength * 0.5f), AxisY);
+	}
+
+	/** Point près des pontons de la plage (props de plage, palmiers du désert) */
+	bool IsNearBeachPiers(const FYSIslandTerrain& Terrain, const FYSIslandPlan& Plan, const FVector2f& P, float Margin)
+	{
+		const FYSIslandGenerationRules& Rules = Terrain.GetRules();
+		if (!Plan.bHasBerth)
+		{
+			return false;
+		}
+		const float HalfSpan = Rules.BeachPierGap * 0.5f + Rules.BeachPierWidth + Margin;
+		return FMath::Abs(P.Y - Plan.BerthLocation.Y) <= HalfSpan && P.X <= Plan.BoatLocation.X + Margin;
+	}
+
 	/**
 	 *  Pontons de Port Town : à chaque ouverture de la ceinture côté ville, une rampe descend du haut de la falaise jusqu'à un ponton qui longe
 	 *  la côte au large et relie les rampes ; au bout de chaque quai et régulièrement le long du ponton, une pente plonge dans l'eau pour
@@ -648,6 +702,7 @@ namespace YSIslandGen
 		OutPlan.Seed = Seed;
 		OutPlan.Biome = EYSIslandGeneration::Desert;
 		PlaceBoatAndPlayers(Terrain, Rng, OutPlan);
+		BuildBeachPiers(Terrain, OutPlan);
 
 		const float Spacing = Rules.DesertPalmSpacing;
 		const float Jitter = Spacing * Rules.DesertPalmJitter;
@@ -661,7 +716,7 @@ namespace YSIslandGen
 			{
 				const FVector2f P(X + Rng.FRandRange(-Jitter, Jitter), Y + Rng.FRandRange(-Jitter, Jitter));
 				const bool bTrio = Rng.FRand() < Rules.DesertTrioChance;
-				bool bFree = Terrain.Inland(P.X, P.Y) >= Rules.DesertShoreMargin && (P - OutPlan.BoatLocation).Size() >= 1200.0f;
+				bool bFree = Terrain.Inland(P.X, P.Y) >= Rules.DesertShoreMargin && (P - OutPlan.BoatLocation).Size() >= 1200.0f && !IsNearBeachPiers(Terrain, OutPlan, P, 300.0f);
 				for (const FVector2f& Spot : OutPlan.PlayerSpots) { bFree = bFree && (P - Spot).Size() >= 700.0f; }
 				if (!bFree)
 				{
@@ -737,6 +792,7 @@ namespace YSIslandGen
 		}
 
 		PlaceBoatAndPlayers(Terrain, Rng, OutPlan);
+		BuildBeachPiers(Terrain, OutPlan);
 
 		TArray<FPlacedProp> Props;
 
@@ -751,7 +807,7 @@ namespace YSIslandGen
 				const float Normalized = FMath::Atan2(FMath::Sin(Theta), FMath::Cos(Theta));
 				const float R = Terrain.CoastRadius(Normalized) - Rng.FRandRange(0.25f, 0.65f) * Terrain.BeachDepth(Normalized);
 				const FVector2f P(R * FMath::Cos(Normalized), R * FMath::Sin(Normalized));
-				bool bFree = Terrain.Height(P.X, P.Y) >= SeaLevel + 40.0f && (P - OutPlan.BoatLocation).Size() >= 1200.0f;
+				bool bFree = Terrain.Height(P.X, P.Y) >= SeaLevel + 40.0f && (P - OutPlan.BoatLocation).Size() >= 1200.0f && !IsNearBeachPiers(Terrain, OutPlan, P, 300.0f);
 				for (const FVector2f& Spot : OutPlan.PlayerSpots) { bFree = bFree && (P - Spot).Size() >= 700.0f; }
 				for (const FVector2f& Other : Placed) { bFree = bFree && (P - Other).Size() >= Rules.BeachPropSpacing; }
 				if (bFree)
@@ -996,6 +1052,33 @@ namespace YSIslandGen
 		Blocked = TerrainBlocked;
 		StampDiscs(Grid, Props, PlayerRadius, Blocked);
 		Flood(Grid, Blocked, BeachStart, Reached);
+
+		// objectif « le plus au nord » : case atteinte à pied depuis la plage la plus au nord (+X), pas trop près du bord de la falaise ;
+		// à égalité, la plus proche de l'axe nord-sud
+		{
+			int32 Best = INDEX_NONE;
+			for (int32 K = 0; K < Grid.Total(); ++K)
+			{
+				const FVector2f P = Grid.World(K % N, K / N);
+				if (!Reached[K] || Terrain.Inland(P.X, P.Y) < Rules.NorthSpotShoreInset)
+				{
+					continue;
+				}
+				if (Best == INDEX_NONE)
+				{
+					Best = K;
+					continue;
+				}
+				const FVector2f B = Grid.World(Best % N, Best / N);
+				if (P.X > B.X + 1.0f || (FMath::IsNearlyEqual(P.X, B.X, 1.0f) && FMath::Abs(P.Y) < FMath::Abs(B.Y)))
+				{
+					Best = K;
+				}
+			}
+			OutPlan.bHasNorthSpot = Best != INDEX_NONE;
+			OutPlan.NorthSpot = Best != INDEX_NONE ? Grid.World(Best % N, Best / N) : FVector2f::ZeroVector;
+		}
+
 		int32 Inside = 0;
 		for (int32 K = 0; K < Grid.Total(); ++K)
 		{

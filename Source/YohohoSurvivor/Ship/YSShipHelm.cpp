@@ -1,5 +1,7 @@
 #include "Ship/YSShipHelm.h"
 #include "Components/SceneComponent.h"
+#include "Core/YSGameState.h"
+#include "Engine/World.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Ship/YSPirateShip.h"
 
@@ -21,12 +23,23 @@ AYSShipHelm::AYSShipHelm()
 bool AYSShipHelm::CanInteract(const AYSPlayerCharacter* Character) const
 {
 	const AYSPirateShip* Ship = GetShip();
+	// flow : pas de pilotage tant que l'objectif le bloque (défendre le navire, attendre l'équipage)
+	const AYSGameState* YSGameState = GetWorld() ? GetWorld()->GetGameState<AYSGameState>() : nullptr;
+	if (YSGameState && YSGameState->IsHelmLockedFor(Ship))
+	{
+		return false;
+	}
 	return Ship && Ship->IsDrivable() && Ship->GetHelm() == this && Super::CanInteract(Character);
 }
 
 void AYSShipHelm::ApplyPilotInput(AYSPlayerCharacter* Character, const FVector2D& Input)
 {
 	AYSPirateShip* Ship = GetShip();
+	const AYSGameState* YSGameState = GetWorld() ? GetWorld()->GetGameState<AYSGameState>() : nullptr;
+	if (YSGameState && YSGameState->IsHelmLockedFor(Ship))
+	{
+		return;
+	}
 	if (Ship && Ship->GetHelm() == this && Character == GetOccupant())
 	{
 		Ship->SetPilotInput(Input.Y, Input.X);

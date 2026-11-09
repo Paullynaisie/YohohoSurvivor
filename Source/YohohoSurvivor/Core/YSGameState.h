@@ -13,6 +13,65 @@ class AYSPirateShip;
 class UTexture2D;
 class UMaterialInterface;
 
+/** Objectif affiché du flow en 3 parties (partie 1 : île de départ) */
+UENUM(BlueprintType)
+enum class EYSFlowObjective : uint8
+{
+	/** Rien d'affiché (traversée, pas d'île à objectifs) */
+	None,
+	/** Trouve et ramène un CoreBoat */
+	FindCore,
+	/** Survivez et défendez le navire (bateau non pilotable) */
+	Defend,
+	/** Quittez l'île : compteur de joueurs à bord, puis l'île coule */
+	Evacuate,
+	/** Partie 2 atteinte : « Victoire » (temporaire) */
+	Victory
+};
+
+/** État du flow affiché par le HUD (UYSFlowHUDWidget), écrit par l'île à objectifs (serveur) */
+USTRUCT(BlueprintType)
+struct FYSFlowStatus
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	EYSFlowObjective Objective = EYSFlowObjective::None;
+
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	FText ObjectiveText;
+
+	/** Heure serveur du début de la phase (jour, nuit, évacuation) et sa durée (0 = pas de barre) */
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	double PhaseStartServerTime = 0.0;
+
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	float PhaseDuration = 0.0f;
+
+	/** Phase de nuit (couleur de la barre) */
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	bool bNight = false;
+
+	/** Nuit dont le temps est écoulé : « OVERTIME » à la place de la barre */
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	bool bOvertime = false;
+
+	/** Évacuation : joueurs vivants à bord du bateau des joueurs / joueurs vivants */
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	int32 BoardedPlayers = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	int32 BoardingTotal = 0;
+
+	/** Le bateau des joueurs ne peut pas être piloté (barre refusée) */
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	bool bHelmLocked = false;
+
+	/** Chronomètre arrêté à la victoire (temps de partie, -1 = il tourne) */
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	float FinalMatchTime = -1.0f;
+};
+
 /**
  *  État de partie partagé. Sert de canal pour les événements visuels globaux
  *  (chiffres de dégâts) : il existe toujours, même quand la victime vient d'être détruite.
@@ -55,6 +114,10 @@ protected:
 	/** FlowMod : le bateau des joueurs, à son étape actuelle */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Game Boat")
 	TObjectPtr<AYSPirateShip> GameBoat;
+
+	/** Objectif et timer du flow (HUD) */
+	UPROPERTY(Replicated)
+	FYSFlowStatus FlowStatus;
 
 	/** Temps serveur (GetServerWorldTimeSeconds) du démarrage de la partie */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Match")
@@ -201,6 +264,17 @@ public:
 
 	/** Serveur uniquement */
 	void SetGameBoat(AYSPirateShip* Boat) { GameBoat = Boat; ForceNetUpdate(); }
+
+	const FYSFlowStatus& GetFlowStatus() const { return FlowStatus; }
+
+	/** Serveur uniquement (île à objectifs du flow) */
+	void SetFlowStatus(const FYSFlowStatus& Status) { FlowStatus = Status; ForceNetUpdate(); }
+
+	/** Temps restant de la phase du flow (0 sans barre) */
+	float GetFlowPhaseRemaining() const;
+
+	/** Ce bateau est celui des joueurs et sa barre est verrouillée par l'objectif en cours */
+	bool IsHelmLockedFor(const AYSPirateShip* Ship) const { return FlowStatus.bHelmLocked && Ship && Ship == GameBoat; }
 
 	/** Serveur uniquement (AYSGameMode) */
 	void SetSelectableCharacters(const TArray<TSubclassOf<AYSPlayerCharacter>>& Characters) { SelectableCharacters = Characters; }
