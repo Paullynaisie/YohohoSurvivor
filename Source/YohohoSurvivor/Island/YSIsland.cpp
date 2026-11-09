@@ -524,6 +524,13 @@ void AYSIsland::SpawnGameplayActors()
 		FYSIslandObjectiveState& State = Objectives.AddDefaulted_GetRef();
 		State.Def = Def;
 	}
+	// objets des zones d'intérêt répartis par le flow
+	for (const TPair<FYSIslandObjectiveDef, bool>& Extra : ExtraObjectives)
+	{
+		FYSIslandObjectiveState& State = Objectives.AddDefaulted_GetRef();
+		State.Def = Extra.Key;
+		State.bMain = Extra.Value;
+	}
 	for (FYSIslandObjectiveState& State : Objectives)
 	{
 		State.DisplayName = State.Def.DisplayName;
@@ -531,6 +538,11 @@ void AYSIsland::SpawnGameplayActors()
 	}
 	SpawnDueObjectives();
 	RefreshOpenDeliveryClasses();
+}
+
+void AYSIsland::AddExtraObjective(const FYSIslandObjectiveDef& Def, bool bMain)
+{
+	ExtraObjectives.Emplace(Def, bMain);
 }
 
 void AYSIsland::SpawnDueObjectives()
@@ -662,6 +674,17 @@ void AYSIsland::Tick(float DeltaSeconds)
 	if (!HasAuthority() || !Data)
 	{
 		return;
+	}
+
+	// coulaison finie : le flow est prévenu (île de départ : la partie 2 commence)
+	if (SinkStartServerTime > 0.0 && !bSinkFinished && !IsSinking())
+	{
+		bSinkFinished = true;
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s a fini de couler"), *Data->GetName());
+		if (AYSFlowMode* SunkFlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())
+		{
+			SunkFlowMode->OnIslandSunk(this);
+		}
 	}
 
 	// plan calculé sur un autre fil : construction sur le fil du jeu
@@ -860,6 +883,22 @@ void AYSIsland::StartNightPhase()
 	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : tombée de la nuit %d de l'île%s"), *Data->GetName(), GetIslandDay(),
 		UsesObjectiveFlow() ? *FString::Printf(TEXT(" (overtime dans %.0f s)"), Data->NightDuration) : TEXT(""));
 	StartPhaseEvents(&Data->NightEvents);
+
+	// flow : les élites / boss de la nuit suivent la séquence de nuits de la partie (quelle que soit l'île), à la place des vagues « au centre »
+	TArray<UClass*> SetupClasses;
+	AYSFlowMode* NightFlowMode = UsesObjectiveFlow() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
+	bNightSetupOverride = NightFlowMode && NightFlowMode->TakeNightSetup(this, ServerRng, SetupClasses);
+	for (UClass* Class : SetupClasses)
+	{
+		if (AYSFoeCharacter* Foe = TrySpawnAtCenter(Class, INDEX_NONE, 0))
+		{
+			TrackNightElite(Foe);
+		}
+		else
+		{
+			PendingCenterSpawns.Add({ Class, INDEX_NONE, 0 });
+		}
+	}
 	bOvertime = false;
 	UpdateFlowStatus();
 	ForceNetUpdate();
@@ -917,14 +956,16 @@ void AYSIsland::TickEvacuation()
 		UE_LOG(LogTemp, Log, TEXT("[YSIsland] Évacuation : %d / %d joueur(s) à bord"), Boarded, Total);
 		UpdateFlowStatus();
 	}
-	// tant que le CoreBoat n'est pas ramené, il n'y a pas de bateau où monter : seule la fin du temps compte
-	if (bMainObjectivesDone && Total > 0 && Boarded == Total)
+	// île de départ : tant que le CoreBoat n'est pas ramené, il n'y a pas de bateau où monter, seule la fin du temps compte
+	// (îles de la partie 2 : le bateau est déjà là, les objectifs ne sont pas obligatoires)
+	const bool bCanLeave = bMainObjectivesDone || !Data->bGameOverWithoutMainObjectives;
+	if (bCanLeave && Total > 0 && Boarded == Total)
 	{
 		FinishEvacuation(TEXT("tous les joueurs sont à bord"));
 	}
 	else if (PhaseElapsed >= Data->EvacuationDuration)
 	{
-		if (bMainObjectivesDone)
+		if (bCanLeave)
 		{
 			FinishEvacuation(TEXT("temps écoulé"));
 		}
@@ -946,37 +987,20 @@ void AYSIsland::FinishEvacuation(const TCHAR* Reason)
 	{
 		return;
 	}
-	// partie 2 du flow : le bateau devient pilotable et l'île coule tout de suite (pas de routine de coulaison)
+	// le bateau devient pilotable et l'île coule tout de suite (pas de routine de coulaison) ; île de départ : la partie 2 commence quand elle a
+	// fini de couler (AYSFlowMode::OnIslandSunk). Le chronomètre continue (la partie continue)
 	bFlowVictory = true;
-	if (const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>())
-	{
-		FlowFinalMatchTime = YSGameState->GetMatchElapsedTime();
-	}
 	Phase = EYSIslandPhase::Sinking;
 	StartPhaseEvents(nullptr);
 	PendingCenterSpawns.Reset();
-	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : fin de l'évacuation (%s, %d / %d à bord) : bateau pilotable, l'île coule, partie 2 du flow (VICTOIRE, %.0f s de partie)"),
-		*Data->GetName(), Reason, FlowBoarded, FlowBoardingTotal, FlowFinalMatchTime);
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : fin de l'évacuation (%s, %d / %d à bord) : bateau pilotable, l'île coule%s"),
+		*Data->GetName(), Reason, FlowBoarded, FlowBoardingTotal, Data->bVictoryOnEvacuation ? TEXT(" (VICTOIRE, la partie 2 commencera quand elle aura coulé)") : TEXT(""));
 	UpdateFlowStatus();
 	if (!bSinkStarted)
 	{
 		StartSinking();
 	}
 	ForceNetUpdate();
-
-	// tests : « BRAVO » (fin de jeu temporaire) un peu après le passage en partie 2 ; temps de jeu (figé en pause)
-	if (Data->BravoDelayAfterVictory > 0.0f)
-	{
-		FTimerHandle BravoTimer;
-		GetWorldTimerManager().SetTimer(BravoTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
-		{
-			if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
-			{
-				GameMode->TriggerVictory(TEXT("partie 2 du flow atteinte"));
-			}
-		}), Data->BravoDelayAfterVictory, false);
-		UE_LOG(LogTemp, Log, TEXT("[YSIsland] BRAVO dans %.0f s"), Data->BravoDelayAfterVictory);
-	}
 }
 
 void AYSIsland::DebugFinishEvacuation()
@@ -992,6 +1016,12 @@ void AYSIsland::UpdateFlowStatus()
 		return;
 	}
 	FYSFlowStatus Status;
+	if (bFlowVictory && !Data->bVictoryOnEvacuation)
+	{
+		// île de la partie 2 évacuée : plus rien d'affiché, bateau libre
+		YSGameState->SetFlowStatus(Status);
+		return;
+	}
 	if (bFlowVictory)
 	{
 		Status.Objective = EYSFlowObjective::Victory;
@@ -1018,7 +1048,7 @@ void AYSIsland::UpdateFlowStatus()
 		return;
 	}
 	Status.PhaseStartServerTime = FMath::Max(YSIslandActor::GetServerTime(GetWorld()) - PhaseElapsed, 0.001);
-	Status.bHelmLocked = !bFlowVictory;
+	Status.bHelmLocked = !bFlowVictory && Data->bLockHelmUntilEvacuation;
 	Status.FinalMatchTime = FlowFinalMatchTime;
 	YSGameState->SetFlowStatus(Status);
 }
@@ -1200,8 +1230,8 @@ void AYSIsland::TickEventList(const TArray<FYSIslandSpawnEvent>& Events, TArray<
 	for (int32 Index = 0; Index < Events.Num(); ++Index)
 	{
 		const FYSIslandSpawnEvent& Event = Events[Index];
-		// vague d'un seul jour (ou d'une seule nuit) de l'île
-		if (!Event.IsForIslandDay(Day))
+		// vague d'un seul jour (ou d'une seule nuit) de l'île ; élites « au centre » de la nuit remplacés par la séquence de nuits du flow
+		if (!Event.IsForIslandDay(Day) || (bNightSetupOverride && Phase == EYSIslandPhase::Night && &Events == &Data->NightEvents && Event.Shape == EYSIslandSpawnShape::Center))
 		{
 			continue;
 		}
@@ -1571,8 +1601,9 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 				if (UsesObjectiveFlow())
 				{
 					// demande de Paul : la zone de dépôt (bleue) et le CoreBoat disparaissent ; à l'image suivante (on est dans l'appel de la zone)
+					// (île sans zone de dépôt : objets posés au core du bateau, ils y restent)
 					TWeakObjectPtr<AActor> Zone = StartBoat.Get();
-					TWeakObjectPtr<AActor> Delivered = Object;
+					TWeakObjectPtr<AActor> Delivered = Zone.IsValid() ? Object : nullptr;
 					StartBoat = nullptr;
 					GetWorldTimerManager().SetTimerForNextTick([Zone, Delivered]()
 					{

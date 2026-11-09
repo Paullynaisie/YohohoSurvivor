@@ -2,9 +2,13 @@
 
 #include "CoreMinimal.h"
 #include "Core/YSGameMode.h"
+#include "Island/YSIslandData.h"
 #include "YSFlowMode.generated.h"
 
 class AYSIsland;
+class AYSFoeGalion;
+class AYSInteractiveObject;
+class AYSPlayerCharacter;
 class UDataTable;
 class UYSIslandData;
 class UYSGameBoatData;
@@ -32,6 +36,17 @@ struct FYSNavigationWave
 	/** Nombres x Spawn Multiplier du nombre de joueurs */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Navigation")
 	bool bScaleWithPlayers = false;
+};
+
+/** Une nuit de la séquence du flow : les élites / boss qui apparaissent au centre de l'île */
+USTRUCT(BlueprintType)
+struct FYSFlowNightSetup
+{
+	GENERATED_BODY()
+
+	/** Count NME par entrée (pas multiplié par le nombre de joueurs) ; Random Foe Classes = tiré au hasard pour chacun */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Night")
+	TArray<FYSIslandFoeEntry> Foes;
 };
 
 /**
@@ -123,6 +138,66 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Navigation")
 	TArray<FYSNavigationWave> NavigationWaves;
 
+	/**
+	 *  Zones d'intérêt (ZI) de la partie 2 : les îles suivantes (Next Islands) et les batailles navales (Naval Battle Rows) sont générées dès le
+	 *  lancement, à la surface, sur les sommets d'un polygone régulier (pentagone pour 3 + 2) centré sur l'île de départ, places tirées au hasard.
+	 *  Les objets ci-dessous y sont répartis : un CoreBoat par ZI, Compass Count boussoles (une au plus par ZI), les membres d'équipage sur les ZI
+	 *  sans boussole, la Super Treasure Map sur une ZI au hasard. Sur une île ce sont des objectifs principaux (la Super Treasure Map : secondaire) ;
+	 *  dans une bataille navale ils sont posés sur le pont du Galion à côté du capitaine. Pas d'île finale tant que c'est coché (partie 3 à venir)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest")
+	bool bZonesOfInterest = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(EditCondition="bZonesOfInterest"))
+	TSubclassOf<AYSInteractiveObject> BoatCoreItemClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(EditCondition="bZonesOfInterest"))
+	TSubclassOf<AYSInteractiveObject> CompassItemClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(ClampMin="0", EditCondition="bZonesOfInterest"))
+	int32 CompassCount = 3;
+
+	/** Membres d'équipage (Medic, Charpentier) : un par ZI sans boussole */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(EditCondition="bZonesOfInterest"))
+	TArray<TSubclassOf<AYSInteractiveObject>> CrewItemClasses;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(EditCondition="bZonesOfInterest"))
+	TSubclassOf<AYSInteractiveObject> SuperTreasureMapClass;
+
+	/** Sur une île : distance à la plage (min, max) où apparaissent ces objets */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(Units="Centimeters", EditCondition="bZonesOfInterest"))
+	FVector2D ZoneItemDistanceFromBeach = FVector2D(3000.0, 9000.0);
+
+	/**
+	 *  Élites / boss de chaque nuit de la partie, dans l'ordre, quelle que soit l'île (nuit 1 = île de départ) ; ils remplacent les vagues
+	 *  « au centre » des Night Events des îles du flow. Au-delà de la liste : la dernière nuit. Vide = Night Events des îles. Les capitaines
+	 *  des Galions n'en font pas partie
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Night Sequence")
+	TArray<FYSFlowNightSetup> NightSequence;
+
+	/** Partie 2 : durée avant l'overtime (grand timer sous l'objectif des îles) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 2", meta=(ClampMin="1", Units="s"))
+	float Part2Duration = 1200.0f;
+
+	/** Overtime de la partie 2 : un Galion Nemesis tout de suite puis toutes les ... ; il fonce aborder le bateau des joueurs */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 2", meta=(ClampMin="1", Units="s"))
+	float Part2OvertimeInterval = 60.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 2")
+	TSubclassOf<AYSFoeGalion> Part2OvertimeGalionClass;
+
+	/** Apparition du Galion de l'overtime : sur l'eau, à au moins / au plus cette distance de tous les joueurs (hors caméra) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 2", meta=(ClampMin="0", Units="Centimeters"))
+	float Part2OvertimeGalionMinDistance = 6000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 2", meta=(ClampMin="0", Units="Centimeters"))
+	float Part2OvertimeGalionMaxDistance = 15000.0f;
+
+	/** Partie 3 (à venir) : « BRAVO » (fin de jeu temporaire) puis retour au menu, ces secondes de jeu après son début (0 = jamais) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 3", meta=(ClampMin="0", Units="s"))
+	float BravoDelayAfterPart3 = 60.0f;
+
 	AYSFlowMode();
 
 	virtual void InitGameState() override;
@@ -190,6 +265,31 @@ public:
 
 	virtual void OnEliteKilled(AYSFoeCharacter* Elite) override;
 
+	/** Une île a fini de couler (serveur) : l'île de départ = début de la partie 2 */
+	void OnIslandSunk(AYSIsland* SunkIsland);
+
+	/** La partie 2 commence (serveur, une fois) : grand timer, objectif de l'île de départ effacé */
+	void StartPart2(const TCHAR* Reason);
+
+	/** Partie 3 (pas encore appelée) : « BRAVO » puis retour au menu après Bravo Delay After Part 3 */
+	void StartPart3(const TCHAR* Reason);
+
+	bool IsPart2Started() const { return bPart2Started; }
+
+	/**
+	 *  Nuit qui commence sur une île du flow (serveur) : élites / boss de la nuit suivante de la séquence (OutClasses) ; faux sans séquence
+	 *  (Night Events de l'île)
+	 */
+	bool TakeNightSetup(const AYSIsland* NightIsland, FRandomStream& Rng, TArray<UClass*>& OutClasses);
+
+	/**
+	 *  Triche (flèche bas, partie 1) : sloop avec un poste de combat de chaque, joueurs sur son pont, l'île de départ coule, partie 2 tout de suite
+	 */
+	void DebugSkipToPart2();
+
+	/** Debug : Galion de l'overtime de la partie 2 tout de suite */
+	void DebugSpawnPart2Galion();
+
 	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
 
 protected:
@@ -245,4 +345,19 @@ private:
 
 	/** Chaloupe de départ encore en route, ou nullptr */
 	AYSGameBoatLongboat* GetArrivingBoat() const;
+
+	/** Zones d'intérêt (serveur, au lancement) : îles et batailles navales en polygone autour de l'île de départ, objets répartis */
+	void SpawnZonesOfInterest();
+
+	/** Galion de l'overtime de la partie 2 (serveur) : faux s'il n'y a pas de place */
+	bool SpawnPart2Galion();
+
+	bool bPart2Started = false;
+	bool bPart3Started = false;
+
+	/** Nuits commencées sur les îles du flow (séquence de nuits) */
+	int32 FlowNightsStarted = 0;
+
+	/** Partie 2 : temps écoulé (depuis son début) du prochain Galion de l'overtime */
+	float NextPart2GalionElapsed = -1.0f;
 };

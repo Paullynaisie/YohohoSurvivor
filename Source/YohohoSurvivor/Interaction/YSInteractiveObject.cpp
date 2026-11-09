@@ -2,6 +2,7 @@
 #include "Core/YSGameMode.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/World.h"
+#include "TimerManager.h"
 #include "GameFramework/WorldSettings.h"
 #include "Map/YSOcean.h"
 #include "Net/UnrealNetwork.h"
@@ -14,6 +15,9 @@ namespace YSInteractiveObject
 	/** Recherche du sol : depuis un peu au-dessus du point jusqu'à loin en dessous */
 	constexpr float GroundTraceUp = 200.0f;
 	constexpr float GroundTraceDown = 5000.0f;
+	/** Objet sous l'eau : vérifié toutes les ..., à partir de cette profondeur sous la surface */
+	constexpr float UnderwaterCheckInterval = 0.25f;
+	constexpr float UnderwaterTolerance = 50.0f;
 }
 
 AYSInteractiveObject::AYSInteractiveObject()
@@ -64,6 +68,34 @@ void AYSInteractiveObject::BeginPlay()
 		InteractPrompt->SetWidgetClass(PromptWidgetClass);
 	}
 	ApplyCarryState();
+
+	// objectif : remonte à la surface s'il finit sous l'eau (île ou bateau qui coule)
+	if (HasAuthority() && RisesToSurface())
+	{
+		GetWorldTimerManager().SetTimer(UnderwaterTimer, this, &AYSInteractiveObject::CheckUnderwater, YSInteractiveObject::UnderwaterCheckInterval, true,
+			FMath::FRandRange(0.0f, YSInteractiveObject::UnderwaterCheckInterval));
+	}
+}
+
+void AYSInteractiveObject::CheckUnderwater()
+{
+	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+	if (!Ocean || Carrier || bDelivered || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	const FVector Location = GetActorLocation();
+	const float Sea = Ocean->GetSeaLevel();
+	if (Location.Z >= Sea - YSInteractiveObject::UnderwaterTolerance)
+	{
+		return;
+	}
+	const AActor* Parent = GetAttachParentActor();
+	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	SetActorLocationAndRotation(FVector(Location.X, Location.Y, Sea), FRotator(0.0f, GetActorRotation().Yaw, 0.0f), false, nullptr, ETeleportType::TeleportPhysics);
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s sous l'eau (%.0f cm sous la surface%s) : remonte et flotte en %s"), *GetName(), Sea - Location.Z,
+		Parent ? *FString::Printf(TEXT(", était accroché à %s"), *Parent->GetName()) : TEXT(""), *GetActorLocation().ToCompactString());
 }
 
 bool AYSInteractiveObject::CanInteract(const AYSPlayerCharacter* Character) const

@@ -60,13 +60,23 @@ void UYSFlowHUDWidget::BuildWidgetTree()
 	ChronoSlot->SetVerticalAlignment(VAlign_Top);
 	ChronoSlot->SetPadding(FMargin(0.0f, ChronoMargin.Y, ChronoMargin.X, 0.0f));
 
-	// objectif : en haut au milieu
-	ObjectiveColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ObjectiveColumn"));
-	ObjectiveColumn->SetVisibility(ESlateVisibility::Collapsed);
-	UOverlaySlot* ColumnSlot = Root->AddChildToOverlay(ObjectiveColumn);
+	// objectif : en haut au milieu ; le timer de la partie 2 dessous
+	UVerticalBox* TopColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("TopColumn"));
+	UOverlaySlot* ColumnSlot = Root->AddChildToOverlay(TopColumn);
 	ColumnSlot->SetHorizontalAlignment(HAlign_Center);
 	ColumnSlot->SetVerticalAlignment(VAlign_Top);
 	ColumnSlot->SetPadding(FMargin(0.0f, ObjectiveTopMargin, 0.0f, 0.0f));
+
+	ObjectiveColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ObjectiveColumn"));
+	ObjectiveColumn->SetVisibility(ESlateVisibility::Collapsed);
+	TopColumn->AddChildToVerticalBox(ObjectiveColumn)->SetHorizontalAlignment(HAlign_Center);
+
+	Part2Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Part2Timer"));
+	YSFlowHUD::StyleText(Part2Label, Part2FontSize, Part2Color);
+	Part2Label->SetVisibility(ESlateVisibility::Collapsed);
+	UVerticalBoxSlot* Part2Slot = TopColumn->AddChildToVerticalBox(Part2Label);
+	Part2Slot->SetHorizontalAlignment(HAlign_Center);
+	Part2Slot->SetPadding(FMargin(0.0f, Part2Spacing, 0.0f, 0.0f));
 
 	ObjectiveLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Objective"));
 	YSFlowHUD::StyleText(ObjectiveLabel, ObjectiveFontSize, ObjectiveColor);
@@ -115,7 +125,7 @@ void UYSFlowHUDWidget::BuildWidgetTree()
 	BoardingSlot->SetPadding(FMargin(0.0f, BoardingSpacing, 0.0f, 0.0f));
 }
 
-void UYSFlowHUDWidget::Refresh(const FYSFlowStatus& Status, float PhaseRemaining, float MatchTime, bool bMatchStarted)
+void UYSFlowHUDWidget::Refresh(const FYSFlowStatus& Status, float PhaseRemaining, float MatchTime, bool bMatchStarted, float Part2Elapsed, float Part2Duration)
 {
 	if (!ChronoLabel)
 	{
@@ -129,6 +139,23 @@ void UYSFlowHUDWidget::Refresh(const FYSFlowStatus& Status, float PhaseRemaining
 	{
 		DisplayedChronoSeconds = ChronoSeconds;
 		ChronoLabel->SetText(YSFlowHUD::FormatTime(ChronoSeconds));
+	}
+
+	// partie 2 : temps restant avant l'overtime, puis « OVERTIME » qui clignote
+	const bool bPart2 = bMatchStarted && Part2Elapsed >= 0.0f && Part2Duration > 0.0f;
+	Part2Label->SetVisibility(bPart2 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	if (bPart2)
+	{
+		const bool bPart2Overtime = Part2Elapsed >= Part2Duration;
+		const int32 Part2Seconds = bPart2Overtime ? -1 : FMath::CeilToInt32(Part2Duration - Part2Elapsed);
+		if (Part2Seconds != DisplayedPart2Seconds)
+		{
+			DisplayedPart2Seconds = Part2Seconds;
+			Part2Label->SetText(bPart2Overtime ? Part2OvertimeText : FText::Format(Part2Format, YSFlowHUD::FormatTime(Part2Seconds)));
+			YSFlowHUD::StyleText(Part2Label, Part2FontSize, bPart2Overtime ? OvertimeColor : Part2Color);
+		}
+		const double Blink = FMath::Frac(FPlatformTime::Seconds() * OvertimeBlinkFrequency);
+		Part2Label->SetRenderOpacity(!bPart2Overtime || Blink < OvertimeVisibleRatio ? 1.0f : 0.0f);
 	}
 
 	const bool bShowObjective = bMatchStarted && Status.Objective != EYSFlowObjective::None;

@@ -292,6 +292,7 @@ void AYSPlayerController::SetupInputComponent()
 	// codes de triche pour les tests (absents des builds Shipping)
 	InputComponent->BindKey(EKeys::Right, IE_Pressed, this, &AYSPlayerController::YSCheatAtkSpeed);
 	InputComponent->BindKey(EKeys::Up, IE_Pressed, this, &AYSPlayerController::YSCheatLevelUp);
+	InputComponent->BindKey(EKeys::Down, IE_Pressed, this, &AYSPlayerController::YSCheatPart2);
 #endif
 
 	// pavé numérique : apparition manuelle de NME (seulement si le GameMode de la map l'autorise, ex. TestMap)
@@ -391,6 +392,46 @@ void AYSPlayerController::ServerCheatLevelUp_Implementation()
 	const float Missing = FMath::Max(State->GetExperienceToNextLevel() - State->GetTeamExperience(), 0.01f);
 	UE_LOG(LogTemp, Log, TEXT("[YSCheat] %s : +1 niveau (%.1f XP)"), *GetName(), Missing);
 	GameMode->AddTeamExperience(Missing);
+}
+
+void AYSPlayerController::YSCheatPart2()
+{
+	ServerCheatPart2();
+}
+
+void AYSPlayerController::ServerCheatPart2_Implementation()
+{
+	if (AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSCheat] %s : passage en partie 2"), *GetName());
+		FlowMode->DebugSkipToPart2();
+	}
+}
+
+void AYSPlayerController::YSPart2Galion()
+{
+	if (AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr)
+	{
+		FlowMode->DebugSpawnPart2Galion();
+	}
+}
+
+void AYSPlayerController::YSCarryGuardedItem(int32 BattleIndex)
+{
+	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
+	AYSPlayerCharacter* MyCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSNavalBattle* Battle = FlowMode && FlowMode->GetNavalBattles().IsValidIndex(BattleIndex) ? FlowMode->GetNavalBattles()[BattleIndex].Get() : nullptr;
+	const AYSFoeGalion* Galion = Battle && Battle->GetGalions().Num() > 0 ? Battle->GetGalions()[0].Get() : nullptr;
+	AYSInteractiveObject* Item = Galion ? Galion->GetGuardedItem() : nullptr;
+	if (!MyCharacter || !Item)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSGalion] Debug : pas d'objet gardé dans la bataille %d"), BattleIndex);
+		return;
+	}
+	MyCharacter->LeaveStation(TEXT("debug"), true);
+	MyCharacter->TeleportTo(Item->GetActorLocation() + FVector(0.0f, 0.0f, 120.0f), MyCharacter->GetActorRotation());
+	MyCharacter->StartCarrying(Item);
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] Debug : %s porte %s (%s)"), *MyCharacter->GetName(), *Item->GetName(), *Galion->GetName());
 }
 
 void AYSPlayerController::YSCheatAtkSpeed()
@@ -1466,7 +1507,8 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 	// flow : chronomètre, objectif, temps de la phase
 	if (FlowHUD)
 	{
-		FlowHUD->Refresh(YSGameState->GetFlowStatus(), YSGameState->GetFlowPhaseRemaining(), YSGameState->GetMatchElapsedTime(), YSGameState->IsMatchStarted());
+		FlowHUD->Refresh(YSGameState->GetFlowStatus(), YSGameState->GetFlowPhaseRemaining(), YSGameState->GetMatchElapsedTime(), YSGameState->IsMatchStarted(),
+			YSGameState->GetPart2Elapsed(), YSGameState->GetPart2Duration());
 	}
 }
 

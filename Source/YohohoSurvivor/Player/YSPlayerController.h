@@ -651,6 +651,21 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerCheatLevelUp();
 
+	/** Triche (flèche bas, builds non Shipping, FlowMod en partie 1) : partie 2 tout de suite (sloop, un poste de combat de chaque, joueurs à bord, l'île coule) */
+	UFUNCTION(Exec)
+	void YSCheatPart2();
+
+	UFUNCTION(Server, Reliable)
+	void ServerCheatPart2();
+
+	/** Debug (hôte, FlowMod) : Galion de l'overtime de la partie 2 tout de suite */
+	UFUNCTION(Exec)
+	void YSPart2Galion();
+
+	/** Debug (hôte) : prend dans ses mains un objectif posé à côté du capitaine du Galion de la bataille navale Index (téléporté à côté) */
+	UFUNCTION(Exec)
+	void YSCarryGuardedItem(int32 BattleIndex);
+
 	/** Triche (flèche droite, builds non Shipping) : 10 bonus Atk speed Silver (CD reduction de l'Auto atk), sans dépasser le maximum */
 	UFUNCTION(Exec)
 	void YSCheatAtkSpeed();

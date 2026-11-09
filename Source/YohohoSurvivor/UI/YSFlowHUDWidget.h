@@ -107,10 +107,31 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Boarding")
 	float BoardingSpacing = 6.0f;
 
+	/** Partie 2 : grand timer sous l'objectif de l'île ({0} = temps restant avant l'overtime) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Part 2")
+	FText Part2Format = NSLOCTEXT("YS", "FlowPart2Timer", "{0}");
+
+	/** À la place du timer une fois le temps de la partie 2 écoulé (clignote comme l'overtime de la nuit) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Part 2")
+	FText Part2OvertimeText = NSLOCTEXT("YS", "FlowPart2Overtime", "OVERTIME");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Part 2", meta=(ClampMin="1"))
+	int32 Part2FontSize = 48;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Part 2")
+	FLinearColor Part2Color = FLinearColor::White;
+
+	/** Écart avec l'objectif de l'île au-dessus */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Part 2")
+	float Part2Spacing = 10.0f;
+
 	virtual bool Initialize() override;
 
-	/** Chaque image : état du flow, temps restant de la phase, temps de partie (chrono caché avant le début de la partie) */
-	void Refresh(const FYSFlowStatus& Status, float PhaseRemaining, float MatchTime, bool bMatchStarted);
+	/**
+	 *  Chaque image : état du flow, temps restant de la phase, temps de partie (chrono caché avant le début de la partie),
+	 *  partie 2 (temps écoulé, -1 = pas commencée ; durée avant l'overtime)
+	 */
+	void Refresh(const FYSFlowStatus& Status, float PhaseRemaining, float MatchTime, bool bMatchStarted, float Part2Elapsed, float Part2Duration);
 
 private:
 
@@ -139,6 +160,11 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> BoardingLabel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> Part2Label;
+
+	int32 DisplayedPart2Seconds = TNumericLimits<int32>::Min();
 
 	int32 DisplayedChronoSeconds = INDEX_NONE;
 	int32 DisplayedRemainingSeconds = INDEX_NONE;

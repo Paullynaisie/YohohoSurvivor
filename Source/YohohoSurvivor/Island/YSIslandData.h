@@ -616,9 +616,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
 	FText VictoryText = NSLOCTEXT("YS", "FlowVictory", "Victoire !");
 
-	/** Tests (demande de Paul) : « BRAVO » puis retour au menu, ces secondes de jeu après le passage en partie 2 (0 = jamais) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(ClampMin="0", Units="s", EditCondition="bObjectiveFlow"))
-	float BravoDelayAfterVictory = 60.0f;
+	/**
+	 *  Île de départ (partie 1) : à la fin de l'évacuation, Victory Text s'affiche pendant que l'île coule (la partie 2 commence quand elle a fini
+	 *  de couler). Décoché (îles de la partie 2) : rien d'affiché après l'évacuation, l'île coule
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	bool bVictoryOnEvacuation = true;
+
+	/** Le bateau des joueurs n'est pas pilotable tant que l'île n'est pas évacuée (île de départ) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	bool bLockHelmUntilEvacuation = true;
+
+	/**
+	 *  Fin de l'évacuation sans les objectifs principaux livrés : GAME OVER (île de départ). Décoché : l'île coule quand même, et tous les joueurs
+	 *  à bord terminent l'évacuation même sans les objectifs
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	bool bGameOverWithoutMainObjectives = true;
 
 	/** Vagues de l'overtime : comptées depuis le début de l'overtime (nuit écoulée) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))

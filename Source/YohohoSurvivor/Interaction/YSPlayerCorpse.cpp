@@ -10,6 +10,8 @@ AYSPlayerCorpse::AYSPlayerCorpse()
 	bAlwaysRelevant = true;
 	// lâché dans la mer : il flotte
 	bFloatsOnWater = true;
+	// sa flottaison est gérée par le ragdoll (un peu sous la surface) : pas de remontée des objectifs
+	bRisesToSurface = false;
 }
 
 void AYSPlayerCorpse::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

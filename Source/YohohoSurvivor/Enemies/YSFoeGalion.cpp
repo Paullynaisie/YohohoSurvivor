@@ -7,6 +7,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
+#include "Interaction/YSInteractiveObject.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Ship/YSBoardingPlank.h"
 #include "Ship/YSLongboat.h"
@@ -71,8 +72,131 @@ void AYSFoeGalion::SpawnCrew()
 		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : capitaine %s"), *GetName(), *Chosen->GetName());
 	}
 
+	// capitaines en plus : sur le pont, boss eux aussi, avec l'équipage (ils servent aux canons)
+	const FTransform& DeckTransform = GetActorTransform();
+	for (int32 Index = 0; Index < ExtraCaptainClasses.Num(); ++Index)
+	{
+		if (!ExtraCaptainClasses[Index])
+		{
+			continue;
+		}
+		const FVector2D Point(FMath::Lerp(DeckSpawnMin.X, DeckSpawnMax.X, 0.3f + 0.4f * Index / FMath::Max(ExtraCaptainClasses.Num() - 1, 1)), 0.0f);
+		const FVector Feet = DeckTransform.TransformPositionNoScale(FVector(Point.X, Point.Y, DeckHeight + YSGalion::CrewSpawnHeight));
+		if (AYSFoeCharacter* Extra = SpawnCrewMember(ExtraCaptainClasses[Index], Feet, INDEX_NONE))
+		{
+			Extra->SetShipCaptainBoss();
+			ExtraCaptains.Add(Extra);
+			Crew.Add(Extra);
+			bHadCaptain = true;
+			UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : capitaine en plus %s"), *GetName(), *ExtraCaptainClasses[Index]->GetName());
+		}
+	}
+
 	SpawnCrewGroups(CrewGroups, false);
-	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s apparaît en (%.0f, %.0f) : capitaine %s, %d matelots"), *GetName(), GetActorLocation().X, GetActorLocation().Y, *GetNameSafe(Captain), Crew.Num());
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s apparaît en (%.0f, %.0f) : capitaine %s (+%d), %d matelots"), *GetName(), GetActorLocation().X, GetActorLocation().Y, *GetNameSafe(Captain),
+		ExtraCaptains.Num(), Crew.Num());
+}
+
+bool AYSFoeGalion::IsFoeAlive(const AYSFoeCharacter* Foe)
+{
+	return IsValid(Foe) && !Foe->IsDying() && Foe->GetHealth() > 0.0f;
+}
+
+void AYSFoeGalion::PromoteCaptain()
+{
+	if (IsFoeAlive(Captain))
+	{
+		return;
+	}
+	ExtraCaptains.RemoveAll([](const AYSFoeCharacter* Foe) { return !IsFoeAlive(Foe); });
+	if (ExtraCaptains.Num() == 0)
+	{
+		return;
+	}
+	AYSFoeCharacter* NewCaptain = ExtraCaptains[0];
+	ExtraCaptains.RemoveAt(0);
+	Crew.Remove(NewCaptain);
+	// il quitte son canon ; la répartition de l'équipage l'envoie à la barre
+	NewCaptain->SetCrewPost(nullptr);
+	if (NewCaptain->IsRidingShip())
+	{
+		UnseatCrewMember(NewCaptain);
+	}
+	Captain = NewCaptain;
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : capitaine tué, %s prend la barre"), *GetName(), *NewCaptain->GetName());
+}
+
+void AYSFoeGalion::TriggerRam(const TCHAR* Reason)
+{
+	if (!HasAuthority() || RamState != ERamState::None || IsSinking())
+	{
+		return;
+	}
+	SetDormant(false);
+	if (BattleActivationTime < 0.0)
+	{
+		BattleActivationTime = GetWorld()->GetTimeSeconds();
+	}
+	RamState = ERamState::Ramming;
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s fonce sur le bateau des joueurs pour l'aborder (%s)"), *GetName(), Reason);
+}
+
+void AYSFoeGalion::SpawnGuardedItems(const TArray<TSubclassOf<AYSInteractiveObject>>& Classes)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	// autour du capitaine (pieds à la barre), côté proue, sur le même pont
+	const FVector Center = GetSeatFeetLocation(0);
+	const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
+	int32 Placed = 0;
+	for (int32 Index = 0; Index < Classes.Num(); ++Index)
+	{
+		if (!Classes[Index])
+		{
+			continue;
+		}
+		const float Angle = (Placed - (Classes.Num() - 1) * 0.5f) * GuardedItemAngleStep;
+		const FVector Location = Center + Forward.RotateAngleAxis(Angle, FVector::UpVector) * GuardedItemDistance;
+		AYSInteractiveObject* Item = AYSInteractiveObject::SpawnOnGround(GetWorld(), Classes[Index], Location, GetActorRotation().Yaw + Angle);
+		if (Item)
+		{
+			if (Item->GetAttachParentActor() != this)
+			{
+				Item->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+			}
+			GuardedItems.Add(Item);
+			++Placed;
+			UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : objectif %s posé à côté du capitaine en %s"), *GetName(), *Item->GetName(), *Item->GetActorLocation().ToCompactString());
+		}
+	}
+}
+
+AYSInteractiveObject* AYSFoeGalion::GetGuardedItem() const
+{
+	for (const TWeakObjectPtr<AYSInteractiveObject>& Item : GuardedItems)
+	{
+		if (Item.IsValid() && !Item->GetCarrier())
+		{
+			return Item.Get();
+		}
+	}
+	return nullptr;
+}
+
+bool AYSFoeGalion::IsGuardedItemTaken()
+{
+	for (int32 Index = GuardedItems.Num() - 1; Index >= 0; --Index)
+	{
+		const AYSInteractiveObject* Item = GuardedItems[Index].Get();
+		if (!Item || Item->GetCarrier() || Item->GetAttachParentActor() != this)
+		{
+			GuardedItems.RemoveAt(Index);
+			return true;
+		}
+	}
+	return false;
 }
 
 void AYSFoeGalion::SpawnCrewGroups(const TArray<FYSGalionCrewGroup>& Groups, bool bFree)
@@ -140,7 +264,7 @@ void AYSFoeGalion::ActivateBattle(float InRamDelay)
 
 bool AYSFoeGalion::IsDefeated() const
 {
-	return IsActorBeingDestroyed() || IsSinking() || !IsValid(Captain) || Captain->IsDying() || Captain->GetHealth() <= 0.0f;
+	return IsActorBeingDestroyed() || IsSinking() || (!IsFoeAlive(Captain) && !ExtraCaptains.ContainsByPredicate([](const AYSFoeCharacter* Foe) { return IsFoeAlive(Foe); }));
 }
 
 void AYSFoeGalion::OnShipCollision(AYSPirateShip* Other)
@@ -419,15 +543,36 @@ void AYSFoeGalion::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	// barre de vie du capitaine dans le HUD seulement quand la bataille navale est active (navire réveillé)
-	if (HasAuthority() && IsValid(Captain))
+	// barre de vie des capitaines dans le HUD seulement quand la bataille navale est active (navire réveillé)
+	if (HasAuthority())
 	{
-		Captain->SetHudHealthBar(!IsDormant() && !IsSinking());
+		if (IsValid(Captain))
+		{
+			Captain->SetHudHealthBar(!IsDormant() && !IsSinking());
+		}
+		for (AYSFoeCharacter* Extra : ExtraCaptains)
+		{
+			if (IsValid(Extra))
+			{
+				Extra->SetHudHealthBar(!IsDormant() && !IsSinking());
+			}
+		}
 	}
 
 	if (!HasAuthority() || IsActorBeingDestroyed() || IsSinking())
 	{
 		return;
+	}
+	// capitaine de la barre mort : un capitaine en plus prend sa place
+	PromoteCaptain();
+	// objectif gardé pris pendant que le capitaine est à la barre : il fonce aborder le bateau des joueurs
+	if (RamState == ERamState::None && GuardedItems.Num() > 0 && IsGuardedItemTaken())
+	{
+		const AYSShipStation* Helm = GetSeatStation(0);
+		if (IsFoeAlive(Captain) && Helm && Helm->GetFoeOccupant() == Captain)
+		{
+			TriggerRam(TEXT("objectif pris pendant que le capitaine pilote"));
+		}
 	}
 	// capitaine tué : le Galion coule (demande de Paul) ; l'abordage se termine avec lui (EndBoarding dans OnShipDestroyedByDamage)
 	if (bSinkWhenCaptainKilled && bHadCaptain && IsDefeated())

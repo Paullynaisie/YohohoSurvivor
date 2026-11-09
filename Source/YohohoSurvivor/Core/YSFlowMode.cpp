@@ -6,6 +6,8 @@
 #include "EngineUtils.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Enemies/YSNavalBattle.h"
+#include "Enemies/YSFoeGalion.h"
+#include "TimerManager.h"
 #include "Island/YSIsland.h"
 #include "Island/YSIslandData.h"
 #include "Misc/CommandLine.h"
@@ -65,8 +67,13 @@ void AYSFlowMode::BeginPlay()
 	{
 		Island->InitIsland(StartIsland, Seed, true);
 		Island->FinishSpawning(Transform);
+		// partie 2 : îles et batailles navales générées dès maintenant, à la surface, en polygone autour de l'île de départ
+		if (bNextIslandsEnabled && bZonesOfInterest)
+		{
+			SpawnZonesOfInterest();
+		}
 		// îles suivantes générées dès maintenant, sous l'eau
-		if (bNextIslandsEnabled && bPregenerateNextIslands && NextIslandsSubmergedDepth > 0.0f)
+		else if (bNextIslandsEnabled && bPregenerateNextIslands && NextIslandsSubmergedDepth > 0.0f)
 		{
 			SpawnNextIslands(Island, true);
 			SpawnFinalIsland(true);
@@ -85,10 +92,26 @@ void AYSFlowMode::Tick(float DeltaSeconds)
 		UpgradeGameBoat();
 	}
 
-	// île finale : quand toutes les îles suivantes et toutes les batailles navales sont faites
-	if (FinalIsland && bNextIslandsBrought && !bFinalIslandBrought && AreNextIslandsAndBattlesDone())
+	// île finale : quand toutes les îles suivantes et toutes les batailles navales sont faites (pas avec les zones d'intérêt : partie 3 à venir)
+	if (FinalIsland && !bZonesOfInterest && bNextIslandsBrought && !bFinalIslandBrought && AreNextIslandsAndBattlesDone())
 	{
 		BringFinalIsland(TEXT("îles suivantes et batailles navales faites"));
+	}
+
+	// partie 2 écoulée : overtime, un Galion Nemesis tout de suite puis toutes les Part 2 Overtime Interval
+	const AYSGameState* Part2State = GetGameState<AYSGameState>();
+	if (bPart2Started && Part2State && Part2OvertimeGalionClass && NextPart2GalionElapsed >= 0.0f)
+	{
+		const float Elapsed = Part2State->GetPart2Elapsed();
+		if (Elapsed >= NextPart2GalionElapsed)
+		{
+			if (NextPart2GalionElapsed <= Part2Duration)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Partie 2 : OVERTIME (%.0f s écoulées), un Galion Nemesis toutes les %.0f s"), Elapsed, Part2OvertimeInterval);
+			}
+			// pas de place : réessayé dans 2 s
+			NextPart2GalionElapsed = SpawnPart2Galion() ? NextPart2GalionElapsed + Part2OvertimeInterval : Elapsed + 2.0f;
+		}
 	}
 
 	// « go naviguer » : vagues en mer programmées
@@ -757,4 +780,334 @@ void AYSFlowMode::TransferCombatPosts(AYSPirateShip* OldBoat, AYSPirateShip* New
 		}
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] Postes de combat : %d reposé(s) sur %s, %d rendu(s) en objet"), Moved, *NewBoat->GetName(), Returned);
+}
+
+void AYSFlowMode::SpawnZonesOfInterest()
+{
+	if (bNextIslandsSpawned || !Island)
+	{
+		return;
+	}
+	// tout est là dès le lancement : rien n'apparaît ni ne remonte plus tard
+	bNextIslandsSpawned = true;
+	bNextIslandsBrought = true;
+	bNavalBattlesSpawned = true;
+
+	// les ZI : îles suivantes puis batailles navales
+	struct FZone
+	{
+		UYSIslandData* IslandData = nullptr;
+		const FYSNavalBattleRow* Battle = nullptr;
+		FName BattleRow;
+		TArray<TSubclassOf<AYSInteractiveObject>> MainItems;
+		TArray<TSubclassOf<AYSInteractiveObject>> SecondaryItems;
+	};
+	TArray<FZone> Zones;
+	for (UYSIslandData* Data : NextIslands)
+	{
+		if (Data)
+		{
+			Zones.AddDefaulted_GetRef().IslandData = Data;
+		}
+	}
+	for (const FName& RowName : NavalBattleRows)
+	{
+		const FYSNavalBattleRow* Row = NavalBattleTable ? NavalBattleTable->FindRow<FYSNavalBattleRow>(RowName, TEXT("SpawnZonesOfInterest")) : nullptr;
+		if (Row)
+		{
+			FZone& Zone = Zones.AddDefaulted_GetRef();
+			Zone.Battle = Row;
+			Zone.BattleRow = RowName;
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[YSFlowMode] Zones d'intérêt : ligne %s absente de %s"), *RowName.ToString(), *GetNameSafe(NavalBattleTable));
+		}
+	}
+	if (Zones.Num() == 0)
+	{
+		return;
+	}
+
+	// objets : un CoreBoat par ZI, des boussoles (une au plus par ZI), l'équipage sur les ZI sans boussole, la Super Treasure Map n'importe où
+	TArray<int32> Order;
+	for (int32 Index = 0; Index < Zones.Num(); ++Index)
+	{
+		Order.Add(Index);
+	}
+	for (int32 K = Order.Num() - 1; K > 0; --K)
+	{
+		Order.Swap(K, FMath::RandRange(0, K));
+	}
+	for (FZone& Zone : Zones)
+	{
+		if (BoatCoreItemClass)
+		{
+			Zone.MainItems.Add(BoatCoreItemClass);
+		}
+	}
+	const int32 Compasses = CompassItemClass ? FMath::Min(CompassCount, Zones.Num()) : 0;
+	for (int32 K = 0; K < Compasses; ++K)
+	{
+		Zones[Order[K]].MainItems.Add(CompassItemClass);
+	}
+	TArray<TSubclassOf<AYSInteractiveObject>> Crew = CrewItemClasses;
+	Crew.RemoveAll([](const TSubclassOf<AYSInteractiveObject>& Class) { return !Class; });
+	for (int32 K = 0; K < Crew.Num(); ++K)
+	{
+		// ZI sans boussole d'abord ; s'il y a plus de membres d'équipage que de ZI sans boussole, les suivants vont n'importe où (choix de Claude)
+		const int32 Slot = Compasses + K < Order.Num() ? Order[Compasses + K] : Order[K % Order.Num()];
+		Zones[Slot].MainItems.Add(Crew[K]);
+	}
+	if (SuperTreasureMapClass)
+	{
+		Zones[FMath::RandRange(0, Zones.Num() - 1)].SecondaryItems.Add(SuperTreasureMapClass);
+	}
+
+	// sommets du polygone (pentagone pour 5 ZI), quelle ZI va où : au hasard
+	TArray<int32> Slots = Order;
+	for (int32 K = Slots.Num() - 1; K > 0; --K)
+	{
+		Slots.Swap(K, FMath::RandRange(0, K));
+	}
+	float MeanIslandRadius = 0.0f;
+	int32 IslandCount = 0;
+	for (const FZone& Zone : Zones)
+	{
+		if (Zone.IslandData)
+		{
+			MeanIslandRadius += Zone.IslandData->Generation.Radius;
+			++IslandCount;
+		}
+	}
+	MeanIslandRadius = IslandCount > 0 ? MeanIslandRadius / IslandCount : 7500.0f;
+	const float BaseAngle = FMath::FRandRange(0.0f, 360.0f);
+	const FVector Center = Island->GetActorLocation() * FVector(1.0f, 1.0f, 0.0f);
+	const float StartRadius = Island->GetRadius();
+	// même distance pour tous les sommets (polygone régulier), jamais au point que les côtes se touchent
+	const float Distance = FMath::Max((StartRadius + NextIslandsGap + MeanIslandRadius) * NextIslandsDistanceMultiplier, StartRadius + MeanIslandRadius + 2000.0f);
+
+	const auto ItemNames = [](const TArray<TSubclassOf<AYSInteractiveObject>>& Items)
+	{
+		FString Names;
+		for (const TSubclassOf<AYSInteractiveObject>& Item : Items)
+		{
+			Names += (Names.IsEmpty() ? TEXT("") : TEXT(", ")) + Item->GetName();
+		}
+		return Names.IsEmpty() ? FString(TEXT("-")) : Names;
+	};
+
+	for (int32 Index = 0; Index < Zones.Num(); ++Index)
+	{
+		FZone& Zone = Zones[Index];
+		const float Angle = FMath::DegreesToRadians(BaseAngle + 360.0f * Slots[Index] / Zones.Num());
+		const FVector Location = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Distance;
+		if (Zone.IslandData)
+		{
+			const float Yaw = Zone.IslandData->bRandomRotation ? FMath::FRandRange(0.0f, 360.0f) : 0.0f;
+			const FTransform Transform(FRotator(0.0f, Yaw, 0.0f), Location);
+			AYSIsland* NewIsland = GetWorld()->SpawnActorDeferred<AYSIsland>(AYSIsland::StaticClass(), Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+			if (!NewIsland)
+			{
+				continue;
+			}
+			NewIsland->InitIsland(Zone.IslandData, 0, false);
+			for (int32 Pass = 0; Pass < 2; ++Pass)
+			{
+				for (const TSubclassOf<AYSInteractiveObject>& Item : Pass == 0 ? Zone.MainItems : Zone.SecondaryItems)
+				{
+					FYSIslandObjectiveDef Def;
+					Def.DisplayName = Item->GetDefaultObject<AYSInteractiveObject>()->GetDisplayName();
+					Def.ItemClass = Item;
+					Def.DistanceFromBoat = ZoneItemDistanceFromBeach;
+					NewIsland->AddExtraObjective(Def, Pass == 0);
+				}
+			}
+			NewIsland->FinishSpawning(Transform);
+			SpawnedIslands.Add(NewIsland);
+			UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] ZI %d (sommet %d) : île %s en %s (yaw %.0f°, %.0f m du centre de départ) ; objets : %s ; secondaires en plus : %s"), Index, Slots[Index],
+				*Zone.IslandData->GetName(), *Location.ToCompactString(), Yaw, Distance / 100.0f, *ItemNames(Zone.MainItems), *ItemNames(Zone.SecondaryItems));
+		}
+		else if (Zone.Battle)
+		{
+			const FTransform Transform(FRotator::ZeroRotator, Location);
+			AYSNavalBattle* Battle = GetWorld()->SpawnActorDeferred<AYSNavalBattle>(AYSNavalBattle::StaticClass(), Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+			if (!Battle)
+			{
+				continue;
+			}
+			Battle->InitBattle(*Zone.Battle, Zone.BattleRow);
+			Battle->FinishSpawning(Transform);
+			NavalBattles.Add(Battle);
+			TArray<TSubclassOf<AYSInteractiveObject>> Items = Zone.MainItems;
+			Items.Append(Zone.SecondaryItems);
+			Battle->SpawnObjectiveItems(Items);
+			UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] ZI %d (sommet %d) : bataille navale %s en %s (%.0f m du centre de départ) ; objets : %s"), Index, Slots[Index], *Zone.BattleRow.ToString(),
+				*Location.ToCompactString(), Distance / 100.0f, *ItemNames(Items));
+		}
+	}
+}
+
+void AYSFlowMode::OnIslandSunk(AYSIsland* SunkIsland)
+{
+	if (SunkIsland && SunkIsland == Island)
+	{
+		StartPart2(TEXT("l'île de départ a fini de couler"));
+	}
+}
+
+void AYSFlowMode::StartPart2(const TCHAR* Reason)
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (bPart2Started || !YSGameState)
+	{
+		return;
+	}
+	bPart2Started = true;
+	YSGameState->StartFlowPart2(YSGameState->GetMatchElapsedTime(), Part2Duration);
+	// « Victoire » de l'île de départ effacé ; les îles de la partie 2 affichent le leur en s'activant
+	YSGameState->SetFlowStatus(FYSFlowStatus());
+	NextPart2GalionElapsed = Part2Duration;
+	// la nuit de l'île de départ compte comme la nuit 1 de la séquence, même sautée
+	FlowNightsStarted = FMath::Max(FlowNightsStarted, 1);
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] PARTIE 2 (%s) : %.0f s avant l'overtime (Galion Nemesis toutes les %.0f s ensuite)"), Reason, Part2Duration, Part2OvertimeInterval);
+}
+
+void AYSFlowMode::StartPart3(const TCHAR* Reason)
+{
+	if (bPart3Started)
+	{
+		return;
+	}
+	bPart3Started = true;
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] PARTIE 3 (%s)%s"), Reason, BravoDelayAfterPart3 > 0.0f ? *FString::Printf(TEXT(" : BRAVO dans %.0f s"), BravoDelayAfterPart3) : TEXT(""));
+	// tests : « BRAVO » (fin de jeu temporaire) un peu après le passage en partie 3 ; temps de jeu (figé en pause)
+	if (BravoDelayAfterPart3 > 0.0f)
+	{
+		FTimerHandle BravoTimer;
+		GetWorldTimerManager().SetTimer(BravoTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			TriggerVictory(TEXT("partie 3 du flow atteinte"));
+		}), BravoDelayAfterPart3, false);
+	}
+}
+
+bool AYSFlowMode::TakeNightSetup(const AYSIsland* NightIsland, FRandomStream& Rng, TArray<UClass*>& OutClasses)
+{
+	if (NightSequence.Num() == 0)
+	{
+		return false;
+	}
+	const int32 Night = FlowNightsStarted++;
+	const FYSFlowNightSetup& Setup = NightSequence[FMath::Min(Night, NightSequence.Num() - 1)];
+	for (const FYSIslandFoeEntry& Entry : Setup.Foes)
+	{
+		for (int32 K = 0; K < Entry.Count; ++K)
+		{
+			UClass* Class = Entry.RandomFoeClasses.Num() > 0 ? Entry.RandomFoeClasses[Rng.RandRange(0, Entry.RandomFoeClasses.Num() - 1)].Get() : Entry.FoeClass.Get();
+			if (Class)
+			{
+				OutClasses.Add(Class);
+			}
+		}
+	}
+	FString Names;
+	for (const UClass* Class : OutClasses)
+	{
+		Names += (Names.IsEmpty() ? TEXT("") : TEXT(", ")) + Class->GetName();
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Nuit %d de la partie (%s) : %s"), Night + 1, NightIsland && NightIsland->GetData() ? *NightIsland->GetData()->GetName() : TEXT("?"),
+		Names.IsEmpty() ? TEXT("personne") : *Names);
+	return true;
+}
+
+bool AYSFlowMode::SpawnPart2Galion()
+{
+	AYSFoeGalion* Galion = AYSFoeGalion::SpawnAtSea(GetWorld(), Part2OvertimeGalionClass, Part2OvertimeGalionMinDistance, Part2OvertimeGalionMaxDistance);
+	if (!Galion)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Overtime de la partie 2 : pas de place pour %s, réessayé"), *GetNameSafe(Part2OvertimeGalionClass));
+		return false;
+	}
+	Galion->TriggerRam(TEXT("overtime de la partie 2"));
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Overtime de la partie 2 : %s en %s"), *Galion->GetName(), *Galion->GetActorLocation().ToCompactString());
+	return true;
+}
+
+void AYSFlowMode::DebugSpawnPart2Galion()
+{
+	SpawnPart2Galion();
+}
+
+void AYSFlowMode::DebugSkipToPart2()
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (bPart2Started || !YSGameState || !YSGameState->IsMatchStarted() || !Island)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSCheat] Partie 2 : refusé (%s)"), bPart2Started ? TEXT("déjà en partie 2") : TEXT("partie pas commencée"));
+		return;
+	}
+
+	// joueurs vivants : plus à un poste (places de la chaloupe), plus d'objet en main
+	TArray<AYSPlayerCharacter*> Players;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		AYSPlayerCharacter* Character = It->Get() ? Cast<AYSPlayerCharacter>(It->Get()->GetPawn()) : nullptr;
+		if (Character && Character->IsAlive())
+		{
+			Character->LeaveStation(TEXT("triche : partie 2"), true);
+			Character->DropCarriedObject(TEXT("triche : partie 2"));
+			Players.Add(Character);
+		}
+	}
+
+	// le GameBoat jusqu'au sloop (étape 1)
+	PendingGameBoatUpgrades = 0;
+	while (GameBoatStage < 1)
+	{
+		const int32 Before = GameBoatStage;
+		UpgradeGameBoat();
+		if (GameBoatStage == Before)
+		{
+			break;
+		}
+	}
+	AYSPirateShip* Boat = YSGameState->GetGameBoat();
+	if (!Boat)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSCheat] Partie 2 : pas de bateau des joueurs"));
+		return;
+	}
+
+	// un poste de combat de chaque sorte, sur les réceptacles libres
+	TArray<AYSCombatPostReceptacle*> Receptacles = Boat->GetCombatPostReceptacles();
+	int32 Installed = 0;
+	for (const TSubclassOf<AYSInteractiveObject>& ItemClass : GetCombatPostItemClasses())
+	{
+		const AYSCombatPostItem* Item = ItemClass ? Cast<AYSCombatPostItem>(ItemClass->GetDefaultObject()) : nullptr;
+		AYSCombatPostReceptacle** Free = Receptacles.FindByPredicate([](const AYSCombatPostReceptacle* Receptacle) { return Receptacle && !Receptacle->GetInstalledPost(); });
+		if (Item && Item->GetPostClass() && Free && (*Free)->InstallPost(Item->GetPostClass(), TEXT("triche : partie 2")))
+		{
+			++Installed;
+		}
+	}
+
+	// joueurs sur le pont, au milieu de la coque, en file le long du bateau
+	TArray<FVector> HullPoints;
+	Boat->GetWorldHullPoints(HullPoints);
+	const FBox HullBox(HullPoints);
+	const FVector HullCenter = (HullBox.IsValid ? HullBox.GetCenter() : Boat->GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
+	const FVector Forward = Boat->GetActorForwardVector().GetSafeNormal2D();
+	for (int32 Index = 0; Index < Players.Num(); ++Index)
+	{
+		const float Offset = (Index - (Players.Num() - 1) * 0.5f) * 180.0f;
+		const FVector Target = HullCenter + Forward * Offset + FVector(0.0f, 0.0f, Boat->GetActorLocation().Z + 330.0f);
+		const bool bTeleported = Players[Index]->TeleportTo(Target, Forward.Rotation());
+		UE_LOG(LogTemp, Log, TEXT("[YSCheat] Partie 2 : %s sur %s en %s%s"), *Players[Index]->GetName(), *Boat->GetName(), *Target.ToCompactString(), bTeleported ? TEXT("") : TEXT(" : REFUSÉ"));
+	}
+
+	// l'île de départ : évacuation finie tout de suite (bateau pilotable, elle coule), partie 2 tout de suite
+	Island->DebugFinishEvacuation();
+	UE_LOG(LogTemp, Log, TEXT("[YSCheat] Partie 2 : %s, %d poste(s) de combat posé(s), %d joueur(s) à bord, l'île de départ coule"), *Boat->GetName(), Installed, Players.Num());
+	StartPart2(TEXT("triche : flèche bas"));
 }

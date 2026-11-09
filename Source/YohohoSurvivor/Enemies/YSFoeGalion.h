@@ -47,6 +47,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
 	TArray<TSubclassOf<AYSFoeCharacter>> CaptainClasses;
 
+	/**
+	 *  Capitaines en plus (Galion Nemesis : un Skull et un Gun) : sur le pont, boss comme le capitaine (barre « Capitaine »), ils servent aux canons ;
+	 *  le capitaine de la barre mort, l'un d'eux prend la barre. Le Galion n'est vaincu que quand tous les capitaines sont morts
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
+	TArray<TSubclassOf<AYSFoeCharacter>> ExtraCaptainClasses;
+
 	/** Le capitaine tué : le Galion coule (tout le monde à l'eau, comme un core détruit) ; pendant un abordage les planches sont retirées */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
 	bool bSinkWhenCaptainKilled = true;
@@ -229,10 +236,45 @@ public:
 	/** Bataille navale activée (serveur) : il se réveille ; InRamDelay < 0 = garde Ram Delay */
 	void ActivateBattle(float InRamDelay);
 
-	/** Vaincu : coulé (ou en train d'être détruit) ou capitaine mort */
+	/** Vaincu : coulé (ou en train d'être détruit) ou tous les capitaines morts */
 	bool IsDefeated() const;
 
+	/** Il fonce tout de suite sur le bateau des joueurs pour l'aborder (serveur ; réveillé s'il dormait) */
+	void TriggerRam(const TCHAR* Reason);
+
+	/**
+	 *  Objets posés sur le pont à côté du capitaine (serveur, objectifs d'une bataille navale) : si l'un d'eux est pris pendant que le capitaine
+	 *  est à la barre, le Galion fonce sur le bateau des joueurs pour l'aborder
+	 */
+	void SpawnGuardedItems(const TArray<TSubclassOf<class AYSInteractiveObject>>& Classes);
+
+	/** Debug : premier objet gardé encore sur le pont, ou nullptr */
+	AYSInteractiveObject* GetGuardedItem() const;
+
+	/** Distance entre le capitaine (barre) et chaque objet gardé */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Guarded Items", meta=(ClampMin="50", Units="Centimeters"))
+	float GuardedItemDistance = 220.0f;
+
+	/** Écart d'angle entre deux objets gardés (autour du capitaine, côté proue) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Guarded Items", meta=(ClampMin="5", Units="Degrees"))
+	float GuardedItemAngleStep = 40.0f;
+
 private:
+
+	/** Capitaines en plus encore suivis (aussi dans Crew tant qu'ils ne sont pas à la barre) */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<AYSFoeCharacter>> ExtraCaptains;
+
+	/** Objectifs posés à côté du capitaine */
+	TArray<TWeakObjectPtr<class AYSInteractiveObject>> GuardedItems;
+
+	/** Un capitaine en plus prend la place du capitaine mort (serveur) */
+	void PromoteCaptain();
+
+	/** Un objet gardé a été pris (porté, ou plus sur le pont) */
+	bool IsGuardedItemTaken();
+
+	static bool IsFoeAlive(const AYSFoeCharacter* Foe);
 
 	enum class ERamState : uint8 { None, Ramming, Boarded, Done };
 	ERamState RamState = ERamState::None;

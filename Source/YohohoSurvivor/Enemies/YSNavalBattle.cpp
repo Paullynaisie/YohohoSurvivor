@@ -3,6 +3,7 @@
 #include "Enemies/YSFoeGalion.h"
 #include "Enemies/YSFoeJollyShip.h"
 #include "Engine/World.h"
+#include "Interaction/YSInteractiveObject.h"
 #include "Net/UnrealNetwork.h"
 #include "EngineUtils.h"
 #include "Ship/YSPirateShip.h"
@@ -107,6 +108,19 @@ AYSPirateShip* AYSNavalBattle::SpawnShip(UClass* ShipClass, bool bDormant)
 	Ship->SetDormant(bDormant);
 	Ship->FinishSpawning(Transform);
 	return Ship;
+}
+
+void AYSNavalBattle::SpawnObjectiveItems(const TArray<TSubclassOf<AYSInteractiveObject>>& Classes)
+{
+	for (AYSFoeGalion* Galion : Galions)
+	{
+		if (IsValid(Galion))
+		{
+			Galion->SpawnGuardedItems(Classes);
+			return;
+		}
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[YSNavalBattle] %s : pas de Galion pour poser %d objectif(s)"), *GetName(), Classes.Num());
 }
 
 bool AYSNavalBattle::IsPlayerShipNear() const

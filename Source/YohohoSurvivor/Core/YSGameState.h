@@ -119,6 +119,17 @@ protected:
 	UPROPERTY(Replicated)
 	FYSFlowStatus FlowStatus;
 
+	/** Flow : partie en cours (1 = île de départ, 2 = îles et batailles navales, 3 = à venir) */
+	UPROPERTY(Replicated)
+	int32 FlowPart = 1;
+
+	/** Partie 2 : temps de partie (GetMatchElapsedTime) de son début (-1 = pas commencée) et durée avant l'overtime */
+	UPROPERTY(Replicated)
+	float Part2StartMatchTime = -1.0f;
+
+	UPROPERTY(Replicated)
+	float Part2Duration = 0.0f;
+
 	/** Temps serveur (GetServerWorldTimeSeconds) du démarrage de la partie */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Match")
 	double MatchStartServerTime = 0.0;
@@ -272,6 +283,16 @@ public:
 
 	/** Temps restant de la phase du flow (0 sans barre) */
 	float GetFlowPhaseRemaining() const;
+
+	int32 GetFlowPart() const { return FlowPart; }
+
+	/** Serveur uniquement (AYSFlowMode) : partie 2 commencée maintenant (temps de partie), Duration avant l'overtime */
+	void StartFlowPart2(float StartMatchTime, float Duration) { FlowPart = 2; Part2StartMatchTime = StartMatchTime; Part2Duration = Duration; ForceNetUpdate(); }
+
+	/** Partie 2 : temps écoulé depuis son début (-1 = pas commencée) */
+	float GetPart2Elapsed() const { return Part2StartMatchTime >= 0.0f ? FMath::Max(GetMatchElapsedTime() - Part2StartMatchTime, 0.0f) : -1.0f; }
+
+	float GetPart2Duration() const { return Part2Duration; }
 
 	/** Ce bateau est celui des joueurs et sa barre est verrouillée par l'objectif en cours */
 	bool IsHelmLockedFor(const AYSPirateShip* Ship) const { return FlowStatus.bHelmLocked && Ship && Ship == GameBoat; }

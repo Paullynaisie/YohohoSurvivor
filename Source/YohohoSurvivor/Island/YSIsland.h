@@ -184,6 +184,15 @@ public:
 	/** Debug : évacuation finie tout de suite (victoire) */
 	void DebugFinishEvacuation();
 
+	/**
+	 *  Objectif en plus de ceux du Data Asset (serveur, avant que le plan soit prêt) : objets des zones d'intérêt répartis par le flow
+	 *  (boussole, CoreBoat, membre d'équipage...)
+	 */
+	void AddExtraObjective(const FYSIslandObjectiveDef& Def, bool bMain);
+
+	/** La coulaison est finie (serveur : l'île est sous l'eau) */
+	bool HasSunk() const { return bSinkFinished; }
+
 protected:
 
 	UPROPERTY(VisibleAnywhere, Category="Components")
@@ -339,6 +348,15 @@ private:
 	TArray<int32> EventsFired;
 
 	bool bSinkStarted = false;
+
+	/** Coulaison finie, flow prévenu (serveur) */
+	bool bSinkFinished = false;
+
+	/** Objectifs ajoutés par le flow (zones d'intérêt) : objectif, principal */
+	TArray<TPair<FYSIslandObjectiveDef, bool>> ExtraObjectives;
+
+	/** Nuit en cours imposée par la séquence de nuits du flow : les vagues « au centre » de Night Events sont remplacées */
+	bool bNightSetupOverride = false;
 
 	UPROPERTY(Replicated)
 	bool bMainObjectivesDone = false;

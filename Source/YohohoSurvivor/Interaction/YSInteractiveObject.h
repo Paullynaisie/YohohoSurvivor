@@ -81,6 +81,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Carry")
 	bool bFloatsOnWater = false;
 
+	/**
+	 *  Objet portable (objectif) : s'il se retrouve sous la surface de la mer (île ou bateau qui coule, lâché à l'eau), il remonte et flotte
+	 *  à la surface (demande de Paul) ; il flotte aussi quand on le lâche dans la mer
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Carry", meta=(EditCondition="bCarriable"))
+	bool bRisesToSurface = true;
+
 	/** Valeur de rachat par un Brooker, en doublons (0 = ne s'achète pas) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Brooker", meta=(ClampMin="0"))
 	int32 DoubloonValue = 0;
@@ -158,7 +165,9 @@ public:
 
 	float GetDropDistance() const { return DropDistance; }
 
-	bool FloatsOnWater() const { return bFloatsOnWater; }
+	bool FloatsOnWater() const { return bFloatsOnWater || RisesToSurface(); }
+
+	bool RisesToSurface() const { return bRisesToSurface && bCarriable; }
 
 	int32 GetDoubloonValue() const { return DoubloonValue; }
 	int32 GetPhoenixFeatherValue() const { return PhoenixFeatherValue; }
@@ -202,6 +211,11 @@ private:
 
 	/** Collisions et invite selon l'état porté / posé (toutes machines) */
 	void ApplyCarryState();
+
+	/** Serveur, régulièrement : sous la surface de la mer et pas porté -> détaché, posé à la surface (Rises To Surface) */
+	void CheckUnderwater();
+
+	FTimerHandle UnderwaterTimer;
 
 	/** Échelle de l'objet à son apparition : gardée quand il est porté (un porteur plus grand, ex. Quartermaster, ne le fait pas grossir) */
 	FVector OriginalScale = FVector::OneVector;
