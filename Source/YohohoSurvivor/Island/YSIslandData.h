@@ -616,6 +616,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
 	FText VictoryText = NSLOCTEXT("YS", "FlowVictory", "Victoire !");
 
+	/** Tests (demande de Paul) : « BRAVO » puis retour au menu, ces secondes de jeu après le passage en partie 2 (0 = jamais) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(ClampMin="0", Units="s", EditCondition="bObjectiveFlow"))
+	float BravoDelayAfterVictory = 60.0f;
+
 	/** Vagues de l'overtime : comptées depuis le début de l'overtime (nuit écoulée) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
 	TArray<FYSIslandSpawnEvent> OvertimeEvents;

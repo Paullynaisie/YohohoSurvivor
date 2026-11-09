@@ -950,6 +950,20 @@ void AYSIsland::FinishEvacuation(const TCHAR* Reason)
 		StartSinking();
 	}
 	ForceNetUpdate();
+
+	// tests : « BRAVO » (fin de jeu temporaire) un peu après le passage en partie 2 ; temps de jeu (figé en pause)
+	if (Data->BravoDelayAfterVictory > 0.0f)
+	{
+		FTimerHandle BravoTimer;
+		GetWorldTimerManager().SetTimer(BravoTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+			{
+				GameMode->TriggerVictory(TEXT("partie 2 du flow atteinte"));
+			}
+		}), Data->BravoDelayAfterVictory, false);
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] BRAVO dans %.0f s"), Data->BravoDelayAfterVictory);
+	}
 }
 
 void AYSIsland::DebugFinishEvacuation()

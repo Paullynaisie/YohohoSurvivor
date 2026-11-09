@@ -550,6 +550,9 @@ public:
 	/** Game over (serveur, une fois) : « GAME OVER » chez tous les joueurs puis retour au menu */
 	void GameOver(const TCHAR* Reason);
 
+	/** Fin de jeu temporaire (serveur) : « BRAVO » pour tous, puis retour au menu après Victory Return Delay */
+	void TriggerVictory(const TCHAR* Reason);
+
 	/** Récompense de la N-ième jauge de doublons remplie (0 = la première) */
 	EYSUpgradeSelectionKind GetDoubloonReward(int32 FillIndex) const;
 
