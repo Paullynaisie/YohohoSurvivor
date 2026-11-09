@@ -166,6 +166,11 @@ void AYSShipCore::ReceiveObject(AYSInteractiveObject* Object)
 	// (l'île a déjà été prévenue par TryBuy)
 	if (Object && Object->GetDoubloonValue() <= 0)
 	{
+		// boussole : une de moins à trouver dans l'objectif en mer
+		if (FlowMode && FlowMode->IsCompass(Object) && !Object->IsDelivered())
+		{
+			FlowMode->NotifyCompassDelivered(Object);
+		}
 		UE_LOG(LogTemp, Log, TEXT("[YSShipCore] %s : %s posé dans la zone du bateau (objectif)"), *GetName(), *Object->GetName());
 		Object->OnDelivered();
 		return;

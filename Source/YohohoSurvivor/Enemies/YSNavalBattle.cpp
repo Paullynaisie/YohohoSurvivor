@@ -33,6 +33,7 @@ void AYSNavalBattle::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AYSNavalBattle, bWon);
+	DOREPLIFETIME(AYSNavalBattle, bActive);
 }
 
 void AYSNavalBattle::UpdateWon()
@@ -143,6 +144,7 @@ void AYSNavalBattle::Activate(const TCHAR* Reason)
 		return;
 	}
 	bActive = true;
+	ForceNetUpdate();
 	ReinforcementTimer = Settings.ReinforcementInterval;
 	for (AYSFoeGalion* Galion : Galions)
 	{

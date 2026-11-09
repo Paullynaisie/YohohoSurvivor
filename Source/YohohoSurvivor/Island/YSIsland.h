@@ -130,6 +130,9 @@ public:
 
 	/** Coordonnées de l'île <-> monde */
 	FVector LocalToWorld(const FVector2f& Local, float LocalZ) const;
+
+	/** Debug : point sur la mer face au milieu de la plage, à Distance du bord de l'eau ; OutYaw = tourné vers l'île */
+	FVector GetBeachApproachPoint(float Distance, float& OutYaw) const;
 	FVector2f WorldToLocal(const FVector& World) const;
 
 	/** Point de départ de la chaloupe du GameBoat : sur la mer, Distance au large du bord de l'eau, en face de la plage */
@@ -310,8 +313,15 @@ private:
 	/** Objectif « le plus au nord » : le point du plan, ou le point libre le plus au nord autour */
 	bool FindNorthSpot(FVector2f& OutSpot) const;
 
+	/** Îles de la partie 2 : bateau des joueurs échoué devant la plage -> bloqué à quai jusqu'à la fin de l'évacuation (serveur) */
+	void TickDocking();
+
+	/** Texte de l'objectif « ramène » : objets des objectifs principaux restants (Find Objective Format), sinon Find Text */
+	FText BuildFindText() const;
+
 	bool bOvertime = false;
 	bool bFlowVictory = false;
+	bool bBoatDocked = false;
 	float ConstantSpawnTimer = 0.0f;
 	TArray<int32> OvertimeEventsFired;
 	int32 FlowBoarded = INDEX_NONE;

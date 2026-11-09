@@ -26,7 +26,9 @@ enum class EYSFlowObjective : uint8
 	/** Quittez l'île : compteur de joueurs à bord, puis l'île coule */
 	Evacuate,
 	/** Partie 2 atteinte : « Victoire » (temporaire) */
-	Victory
+	Victory,
+	/** En mer (après l'île de départ) : boussoles à trouver, ou Galion à couler pendant une bataille navale */
+	Sea
 };
 
 /** État du flow affiché par le HUD (UYSFlowHUDWidget), écrit par l'île à objectifs (serveur) */
@@ -70,6 +72,10 @@ struct FYSFlowStatus
 	/** Chronomètre arrêté à la victoire (temps de partie, -1 = il tourne) */
 	UPROPERTY(BlueprintReadOnly, Category="Flow")
 	float FinalMatchTime = -1.0f;
+
+	/** Île qui affiche cet objectif (en mer, chaque joueur voit l'objectif de la mer tant qu'il n'est pas sur elle) */
+	UPROPERTY(BlueprintReadOnly, Category="Flow")
+	TObjectPtr<AActor> Island;
 };
 
 /**
@@ -139,6 +145,16 @@ protected:
 
 	UPROPERTY(Replicated)
 	int32 NextStageCoreBoatCost = 0;
+
+	/** Objectif en mer affiché (fin de l'île de départ) : boussoles ramenées au bateau / posées dans les zones d'intérêt */
+	UPROPERTY(Replicated)
+	bool bSeaObjectives = false;
+
+	UPROPERTY(Replicated)
+	int32 CompassTotal = 0;
+
+	UPROPERTY(Replicated)
+	int32 CompassesFound = 0;
 
 	/** Temps serveur (GetServerWorldTimeSeconds) du démarrage de la partie */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Match")
@@ -307,6 +323,19 @@ public:
 	bool UsesCoreBoatStock() const { return bCoreBoatStock; }
 	int32 GetCoreBoatStock() const { return CoreBoatStock; }
 	int32 GetNextStageCoreBoatCost() const { return NextStageCoreBoatCost; }
+
+	bool ShowsSeaObjectives() const { return bSeaObjectives; }
+	int32 GetCompassTotal() const { return CompassTotal; }
+	int32 GetCompassesFound() const { return CompassesFound; }
+
+	/** Serveur uniquement (AYSFlowMode) */
+	void SetSeaObjectives(bool bShow, int32 Total, int32 Found)
+	{
+		bSeaObjectives = bShow;
+		CompassTotal = Total;
+		CompassesFound = Found;
+		ForceNetUpdate();
+	}
 
 	/** Serveur uniquement (AYSFlowMode) */
 	void SetCoreBoatStock(bool bUsed, int32 Stock, int32 NextCost)

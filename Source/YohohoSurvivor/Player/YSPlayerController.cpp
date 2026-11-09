@@ -1274,6 +1274,26 @@ void AYSPlayerController::YSShipToNavalBattle(int32 Index, float Distance)
 	UE_LOG(LogTemp, Log, TEXT("[YSNavalBattle] Debug : %s posé à %.0f m de la bataille %d, en %s"), *Ship->GetName(), FVector::Dist2D(Point, Center) / 100.0f, Index, *Point.ToCompactString());
 }
 
+void AYSPlayerController::YSShipToBeach(int32 Index, float Distance)
+{
+	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	AYSPirateShip* Ship = YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	const AYSIsland* Island = FlowMode ? FlowMode->GetIslandByIndex(Index) : nullptr;
+	if (!Ship || !Island || !GetPawn())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSIsland] Debug : pas de bateau des joueurs ou pas d'île %d"), Index);
+		return;
+	}
+	float Yaw = 0.0f;
+	const FVector Point = Island->GetBeachApproachPoint(Distance > 0.0f ? Distance : 3000.0f, Yaw);
+	Ship->SetActorLocationAndRotation(FVector(Point.X, Point.Y, Ship->GetActorLocation().Z), FRotator(0.0f, Yaw, 0.0f));
+	Ship->SyncMotionToActor();
+	GetPawn()->TeleportTo(Ship->GetActorLocation() + FVector(0.0f, 0.0f, 350.0f), GetPawn()->GetActorRotation());
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] Debug : %s posé face à la plage de l'île %d (%s) en %s, yaw %.0f"), *Ship->GetName(), Index,
+		Island->GetData() ? *Island->GetData()->GetName() : TEXT("?"), *Point.ToCompactString(), Yaw);
+}
+
 void AYSPlayerController::YSIslandSinkNow()
 {
 	if (AYSIsland* Island = HasAuthority() ? AYSIsland::FindAt(GetWorld(), GetPawn() ? GetPawn()->GetActorLocation() : FVector::ZeroVector) : nullptr)
@@ -1444,6 +1464,12 @@ UYSEliteHealthWidget* AYSPlayerController::GetEliteHealthBar(int32 Index)
 	return ExtraEliteHealths[Index - 1];
 }
 
+namespace YSFlowSeaHUD
+{
+	/** Objectif de l'île affiché jusqu'à cette distance au-delà de son bord (bateau près de la plage) */
+	constexpr float IslandObjectiveMargin = 6000.0f;
+}
+
 void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 {
 	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
@@ -1516,8 +1542,27 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 	// flow : chronomètre, objectif, temps de la phase
 	if (FlowHUD)
 	{
+		// en mer (partie 2) : l'objectif de l'île seulement pour un joueur qui est sur elle (ou sur son bateau à côté), sinon celui de la mer
+		FYSFlowSeaObjective Sea;
+		if (YSGameState->ShowsSeaObjectives())
+		{
+			const FYSFlowStatus& Status = YSGameState->GetFlowStatus();
+			const AYSIsland* StatusIsland = Cast<AYSIsland>(Status.Island);
+			const AActor* ViewTarget = GetViewTarget();
+			// (bateau bloqué à quai devant elle : objectif de l'île aussi, même au large de la plage)
+			const bool bOnStatusIsland = Status.Objective != EYSFlowObjective::None && StatusIsland && ViewTarget
+				&& (Status.bHelmLocked || FVector::DistSquared2D(ViewTarget->GetActorLocation(), StatusIsland->GetActorLocation())
+					<= FMath::Square(FMath::Max(StatusIsland->GetReach(), StatusIsland->GetRadius()) + YSFlowSeaHUD::IslandObjectiveMargin));
+			Sea.bShow = !bOnStatusIsland;
+			for (TActorIterator<AYSNavalBattle> It(GetWorld()); It && Sea.bShow && !Sea.bNavalBattle; ++It)
+			{
+				Sea.bNavalBattle = It->IsActive() && !It->IsWon();
+			}
+			Sea.CompassTotal = YSGameState->GetCompassTotal();
+			Sea.CompassesRemaining = YSGameState->GetCompassTotal() - YSGameState->GetCompassesFound();
+		}
 		FlowHUD->Refresh(YSGameState->GetFlowStatus(), YSGameState->GetFlowPhaseRemaining(), YSGameState->GetMatchElapsedTime(), YSGameState->IsMatchStarted(),
-			YSGameState->GetPart2Elapsed(), YSGameState->GetPart2Duration());
+			YSGameState->GetPart2Elapsed(), YSGameState->GetPart2Duration(), Sea);
 	}
 }
 

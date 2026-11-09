@@ -20,6 +20,7 @@
 #include "Player/YSPlayerCharacter.h"
 #include "ProceduralMeshComponent.h"
 #include "Ship/YSPirateShip.h"
+#include "Ship/YSShipHelm.h"
 #include "Async/Async.h"
 
 namespace YSIslandActor
@@ -538,6 +539,11 @@ void AYSIsland::SpawnGameplayActors()
 	}
 	SpawnDueObjectives();
 	RefreshOpenDeliveryClasses();
+	// flow sans objectif principal : directement « Survivez »
+	if (UsesObjectiveFlow() && CountOpenMainObjectives() == 0)
+	{
+		bMainObjectivesDone = true;
+	}
 }
 
 void AYSIsland::AddExtraObjective(const FYSIslandObjectiveDef& Def, bool bMain)
@@ -703,6 +709,13 @@ void AYSIsland::Tick(float DeltaSeconds)
 	if (Plan.Seed == 0)
 	{
 		return;
+	}
+
+	// îles de la partie 2 : le bateau des joueurs qui accoste devant la plage y reste bloqué (et active l'île)
+	if (UsesObjectiveFlow() && Data->bLockHelmWhenDocked && !bBoatDocked && !bFlowVictory && IsEmerged()
+		&& (Phase == EYSIslandPhase::Inactive || Phase == EYSIslandPhase::Day || Phase == EYSIslandPhase::Night))
+	{
+		TickDocking();
 	}
 
 	if (Phase == EYSIslandPhase::Inactive)
@@ -994,7 +1007,7 @@ void AYSIsland::FinishEvacuation(const TCHAR* Reason)
 	StartPhaseEvents(nullptr);
 	PendingCenterSpawns.Reset();
 	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : fin de l'évacuation (%s, %d / %d à bord) : bateau pilotable, l'île coule%s"),
-		*Data->GetName(), Reason, FlowBoarded, FlowBoardingTotal, Data->bVictoryOnEvacuation ? TEXT(" (VICTOIRE, la partie 2 commencera quand elle aura coulé)") : TEXT(""));
+		*Data->GetName(), Reason, FlowBoarded, FlowBoardingTotal, bStartIsland ? TEXT(" (la partie 2 commencera quand elle aura coulé)") : TEXT(""));
 	UpdateFlowStatus();
 	if (!bSinkStarted)
 	{
@@ -1016,18 +1029,14 @@ void AYSIsland::UpdateFlowStatus()
 		return;
 	}
 	FYSFlowStatus Status;
-	if (bFlowVictory && !Data->bVictoryOnEvacuation)
+	if (bFlowVictory)
 	{
-		// île de la partie 2 évacuée : plus rien d'affiché, bateau libre
+		// île évacuée : plus rien de l'île, bateau libre ; le HUD affiche l'objectif en mer (demande de Paul : plus de « Victoire »)
 		YSGameState->SetFlowStatus(Status);
 		return;
 	}
-	if (bFlowVictory)
-	{
-		Status.Objective = EYSFlowObjective::Victory;
-		Status.ObjectiveText = Data->VictoryText;
-	}
-	else if (Phase == EYSIslandPhase::Evacuation)
+	Status.Island = this;
+	if (Phase == EYSIslandPhase::Evacuation)
 	{
 		Status.Objective = EYSFlowObjective::Evacuate;
 		Status.ObjectiveText = Data->EvacuateText;
@@ -1038,7 +1047,7 @@ void AYSIsland::UpdateFlowStatus()
 	else if (Phase == EYSIslandPhase::Day || Phase == EYSIslandPhase::Night)
 	{
 		Status.Objective = bMainObjectivesDone ? EYSFlowObjective::Defend : EYSFlowObjective::FindCore;
-		Status.ObjectiveText = bMainObjectivesDone ? Data->DefendText : Data->FindText;
+		Status.ObjectiveText = bMainObjectivesDone ? Data->DefendText : BuildFindText();
 		Status.PhaseDuration = Phase == EYSIslandPhase::Day ? Data->DayDuration : Data->NightDuration;
 		Status.bNight = Phase == EYSIslandPhase::Night;
 		Status.bOvertime = bOvertime;
@@ -1048,9 +1057,79 @@ void AYSIsland::UpdateFlowStatus()
 		return;
 	}
 	Status.PhaseStartServerTime = FMath::Max(YSIslandActor::GetServerTime(GetWorld()) - PhaseElapsed, 0.001);
-	Status.bHelmLocked = !bFlowVictory && Data->bLockHelmUntilEvacuation;
+	Status.bHelmLocked = !bFlowVictory && (Data->bLockHelmUntilEvacuation || bBoatDocked);
 	Status.FinalMatchTime = FlowFinalMatchTime;
 	YSGameState->SetFlowStatus(Status);
+}
+
+FVector AYSIsland::GetBeachApproachPoint(float Distance, float& OutYaw) const
+{
+	// plage au sud de l'île (-X local)
+	const FVector2f Local(-(Terrain.CoastRadius(PI) + Distance), 0.0f);
+	OutYaw = GetActorRotation().Yaw;
+	return LocalToWorld(Local, 0.0f);
+}
+
+FText AYSIsland::BuildFindText() const
+{
+	if (Data->FindObjectiveFormat.IsEmpty())
+	{
+		return Data->FindText;
+	}
+	TArray<FText> Names;
+	for (const FYSIslandObjectiveState& State : Objectives)
+	{
+		if (!State.bMain || State.bDone)
+		{
+			continue;
+		}
+		const UClass* Class = State.Item ? State.Item->GetClass() : State.Def.ItemClass.Get();
+		const AYSInteractiveObject* Settings = Class ? Class->GetDefaultObject<AYSInteractiveObject>() : nullptr;
+		const FText Name = Settings ? Settings->GetObjectiveName() : State.DisplayName;
+		if (!Name.IsEmpty() && !Names.ContainsByPredicate([&Name](const FText& Other) { return Other.EqualTo(Name); }))
+		{
+			Names.Add(Name);
+		}
+	}
+	return Names.Num() > 0 ? FText::Format(Data->FindObjectiveFormat, FText::Join(Data->FindObjectiveSeparator, Names)) : Data->FindText;
+}
+
+void AYSIsland::TickDocking()
+{
+	AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	AYSPirateShip* GameBoat = YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	if (!GameBoat || !GameBoat->IsHullGrounded() || GameBoat->IsSinking())
+	{
+		return;
+	}
+	// échoué devant la plage (pas contre une falaise, ni contre un autre bateau au large)
+	const FVector2f Local = WorldToLocal(GameBoat->GetActorLocation());
+	const float FromShore = -Terrain.Inland(Local.X, Local.Y);
+	const float BeachWeight = Terrain.BeachWeight(FMath::Atan2(Local.Y, Local.X));
+	if (FromShore > Data->DockMaxDistanceFromShore || BeachWeight < Data->DockMinBeachWeight)
+	{
+		return;
+	}
+	bBoatDocked = true;
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : %s accoste devant la plage (%.0f cm du bord de l'eau, plage %.2f) : bloqué à quai jusqu'à la fin de l'évacuation"),
+		*Data->GetName(), *GameBoat->GetName(), FromShore, BeachWeight);
+	// le pilote lâche la barre
+	GameBoat->SetPilotInput(0.0f, 0.0f);
+	if (AYSShipHelm* Helm = GameBoat->GetHelm())
+	{
+		if (AYSPlayerCharacter* Pilot = Helm->GetOccupant())
+		{
+			Pilot->LeaveStation(TEXT("bateau bloqué à quai"), true);
+		}
+	}
+	if (Phase == EYSIslandPhase::Inactive)
+	{
+		Activate();
+	}
+	else
+	{
+		UpdateFlowStatus();
+	}
 }
 
 void AYSIsland::TickConstantSpawn(float DeltaSeconds)

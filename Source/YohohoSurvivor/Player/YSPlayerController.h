@@ -581,6 +581,10 @@ public:
 	UFUNCTION(Exec)
 	void YSShipToNavalBattle(int32 Index, float Distance);
 
+	/** Debug (hôte, FlowMod) : bateau des joueurs posé face à la plage de l'île Index (1.. = îles suivantes), à Distance (cm) du bord de l'eau, le joueur sur son pont */
+	UFUNCTION(Exec)
+	void YSShipToBeach(int32 Index, float Distance);
+
 	/** Debug (hôte) : l'île la plus proche commence à couler tout de suite (sans attendre Sink Delay) */
 	UFUNCTION(Exec)
 	void YSIslandSinkNow();

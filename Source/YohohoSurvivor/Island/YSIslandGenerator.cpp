@@ -1226,7 +1226,7 @@ namespace YSIslandGen
 		}
 
 		// Port Town : pontons depuis les ouvertures côté ville
-		if (Biome == EYSIslandGeneration::PortTown)
+		if (Biome == EYSIslandGeneration::PortTown && Rules.bPortTownPiers)
 		{
 			BuildPiers(Terrain, OutPlan.WaterSpots, OutPlan.PierSegments);
 		}

@@ -165,7 +165,6 @@ try:
             data.set_editor_property("evacuation_duration", EVACUATION_DURATION)
             data.set_editor_property("find_text", unreal.Text("Ramène les objets de l'île au bateau"))
             data.set_editor_property("defend_text", unreal.Text("Survivez à la nuit"))
-            data.set_editor_property("victory_on_evacuation", False)
             data.set_editor_property("lock_helm_until_evacuation", False)
             data.set_editor_property("game_over_without_main_objectives", False)
             assets.save_loaded_asset(data, only_if_is_dirty=False)

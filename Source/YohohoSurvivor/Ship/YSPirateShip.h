@@ -289,6 +289,19 @@ protected:
 	/** Serveur : la coque en percute une autre et s'arrête, une fois par arrêt */
 	virtual void OnShipCollision(AYSPirateShip* Other) {}
 
+	/**
+	 *  Voiles : les formes dont le nom contient Open Sail Tag (voiles déployées) ne sont visibles que quand le bateau peut naviguer, celles qui
+	 *  contiennent Furled Sail Tag (voiles carguées, sans Open Sail Tag) seulement quand il est bloqué. Décoché : formes laissées comme dans le BP
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sails")
+	bool bToggleSails = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sails", meta=(EditCondition="bToggleSails"))
+	FString OpenSailTag = TEXT("_SailOpen");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sails", meta=(EditCondition="bToggleSails"))
+	FString FurledSailTag = TEXT("_Sail");
+
 	/** Abordage : la chaloupe qui percute la coque près d'un poste à 0 PV (mesuré sur la coque, en face du poste) peut aborder */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding", meta=(ClampMin="0", Units="Centimeters"))
 	float BoardingStationRadius = 600.0f;
@@ -423,6 +436,12 @@ public:
 	/** En train de couler (hors d'usage, plus de déplacement) */
 	bool IsSinking() const { return SinkStartServerTime > 0.0; }
 
+	/** Serveur : la coque a touché le fond (pas un autre bateau) il y a moins d'une demi-seconde */
+	bool IsHullGrounded() const;
+
+	/** Voiles déployées = le bateau peut naviguer ; carguées = bloqué (barre verrouillée, hors d'usage, en sommeil, abordé, qui coule) */
+	bool AreSailsDeployed() const { return bSailsDeployed; }
+
 	/**
 	 *  Point sur l'eau pour un bateau (serveur) : direction au hasard autour d'un joueur tiré au hasard, premier point à partir de MinDistance
 	 *  (loin de tous les joueurs, jusqu'à MaxDistance) avec assez de fond sur ClearanceRadius autour, hors de l'emprise (+ ShipMargin) des
@@ -498,6 +517,25 @@ private:
 
 	/** Bloqué contre le fond (log une fois) */
 	bool bGrounded = false;
+
+	/** Dernier arrêt contre le fond (temps du monde, serveur) */
+	double LastHullBlockedTime = -1.0e6;
+
+	/** Voiles : calculé par le serveur (CanSailNow), appliqué sur chaque machine (visibilité des formes) */
+	UPROPERTY(Replicated)
+	bool bSailsDeployed = true;
+
+	/** Voiles affichées sur cette machine (-1 = pas encore) */
+	int8 AppliedSails = -1;
+
+	TArray<TWeakObjectPtr<USceneComponent>> OpenSailComponents;
+	TArray<TWeakObjectPtr<USceneComponent>> FurledSailComponents;
+
+	/** Serveur : le bateau peut naviguer maintenant */
+	bool CanSailNow() const;
+
+	/** Visibilité des voiles déployées / carguées selon bSailsDeployed (chaque machine, aux changements) */
+	void UpdateSails();
 
 	/** Mode playtest sans trajet dans la map (log une fois) */
 	bool bPlaytestPathMissingLogged = false;

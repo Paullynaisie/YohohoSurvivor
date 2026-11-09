@@ -60,6 +60,9 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, bCoreBoatStock);
 	DOREPLIFETIME(AYSGameState, CoreBoatStock);
 	DOREPLIFETIME(AYSGameState, NextStageCoreBoatCost);
+	DOREPLIFETIME(AYSGameState, bSeaObjectives);
+	DOREPLIFETIME(AYSGameState, CompassTotal);
+	DOREPLIFETIME(AYSGameState, CompassesFound);
 	DOREPLIFETIME(AYSGameState, MatchStartServerTime);
 	DOREPLIFETIME(AYSGameState, TeamLevel);
 	DOREPLIFETIME(AYSGameState, TeamExperience);

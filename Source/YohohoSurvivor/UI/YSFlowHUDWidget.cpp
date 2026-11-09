@@ -125,11 +125,26 @@ void UYSFlowHUDWidget::BuildWidgetTree()
 	BoardingSlot->SetPadding(FMargin(0.0f, BoardingSpacing, 0.0f, 0.0f));
 }
 
-void UYSFlowHUDWidget::Refresh(const FYSFlowStatus& Status, float PhaseRemaining, float MatchTime, bool bMatchStarted, float Part2Elapsed, float Part2Duration)
+void UYSFlowHUDWidget::Refresh(const FYSFlowStatus& InStatus, float PhaseRemaining, float MatchTime, bool bMatchStarted, float Part2Elapsed, float Part2Duration,
+	const FYSFlowSeaObjective& Sea)
 {
 	if (!ChronoLabel)
 	{
 		return;
+	}
+
+	// en mer (pas sur l'île qui affiche son objectif) : boussoles à trouver, ou Galion à couler pendant une bataille navale ; pas de barre
+	FYSFlowStatus Status = InStatus;
+	if (Sea.bShow)
+	{
+		Status = FYSFlowStatus();
+		Status.Objective = EYSFlowObjective::Sea;
+		Status.FinalMatchTime = InStatus.FinalMatchTime;
+		const int32 Remaining = FMath::Max(Sea.CompassesRemaining, 0);
+		Status.ObjectiveText = Sea.bNavalBattle ? NavalBattleObjectiveText
+			: Remaining == 0 ? CompassDoneText
+			: Remaining == 1 ? CompassLastObjectiveText
+			: FText::Format(CompassObjectiveFormat, FText::AsNumber(Remaining));
 	}
 
 	// chronomètre (arrêté à la victoire)

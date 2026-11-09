@@ -313,6 +313,14 @@ public:
 	/** Debug : CoreBoats ajoutés au stock */
 	void DebugAddCoreBoats(int32 Count);
 
+	/** Boussole posée dans la zone du core du bateau des joueurs (serveur) : une de moins à trouver dans l'objectif en mer */
+	void NotifyCompassDelivered(AYSInteractiveObject* Compass);
+
+	bool IsCompass(const AYSInteractiveObject* Object) const;
+
+	/** L'objectif en mer (boussoles, Galion à couler) remplace celui de l'île de départ dans le HUD (serveur, une fois) */
+	void StartSeaObjectives(const TCHAR* Reason);
+
 	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
 
 protected:
@@ -386,6 +394,11 @@ private:
 
 	/** CoreBoats en stock (serveur ; copié dans le GameState pour le HUD) */
 	int32 CoreBoatStock = 0;
+
+	/** Boussoles posées dans les zones d'intérêt, et ramenées au bateau */
+	int32 CompassTotal = 0;
+	int32 CompassesFound = 0;
+	bool bSeaObjectivesStarted = false;
 
 	/** Objets des zones d'intérêt posés sur les Galions */
 	TArray<TWeakObjectPtr<AYSInteractiveObject>> ZoneItems;

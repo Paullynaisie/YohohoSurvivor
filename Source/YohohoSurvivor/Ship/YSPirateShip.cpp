@@ -128,6 +128,7 @@ void AYSPirateShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AYSPirateShip, SinkStartServerTime);
 	DOREPLIFETIME(AYSPirateShip, SinkStartLocation);
 	DOREPLIFETIME(AYSPirateShip, SinkStartYaw);
+	DOREPLIFETIME(AYSPirateShip, bSailsDeployed);
 }
 
 void AYSPirateShip::BeginPlay()
@@ -203,6 +204,66 @@ void AYSPirateShip::SetDormant(bool bInDormant)
 	{
 		bDormant = bInDormant;
 		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s %s"), *GetName(), bDormant ? TEXT("en sommeil (immobile)") : TEXT("se réveille"));
+	}
+}
+
+bool AYSPirateShip::IsHullGrounded() const
+{
+	return GetWorld() && GetWorld()->GetTimeSeconds() - LastHullBlockedTime < 0.5;
+}
+
+bool AYSPirateShip::CanSailNow() const
+{
+	if ((!bDrivable && !IsFoeShip()) || bDisabled || bDormant || bGrappled || IsSinking())
+	{
+		return false;
+	}
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	return !(YSGameState && YSGameState->IsHelmLockedFor(this));
+}
+
+void AYSPirateShip::UpdateSails()
+{
+	const int8 Wanted = bSailsDeployed ? 1 : 0;
+	if (!bToggleSails || Wanted == AppliedSails)
+	{
+		return;
+	}
+	if (AppliedSails < 0)
+	{
+		TInlineComponentArray<USceneComponent*> Components(this);
+		for (USceneComponent* Component : Components)
+		{
+			const FString Name = Component->GetName();
+			if (!OpenSailTag.IsEmpty() && Name.Contains(OpenSailTag))
+			{
+				OpenSailComponents.Add(Component);
+			}
+			else if (!FurledSailTag.IsEmpty() && Name.Contains(FurledSailTag))
+			{
+				FurledSailComponents.Add(Component);
+			}
+		}
+		// pas de voiles déployées dans ce Blueprint : on ne touche à rien (chaloupes, bateaux pas encore équipés)
+		if (OpenSailComponents.Num() == 0)
+		{
+			FurledSailComponents.Reset();
+		}
+	}
+	AppliedSails = Wanted;
+	for (const TWeakObjectPtr<USceneComponent>& Component : OpenSailComponents)
+	{
+		if (Component.IsValid())
+		{
+			Component->SetVisibility(Wanted == 1);
+		}
+	}
+	for (const TWeakObjectPtr<USceneComponent>& Component : FurledSailComponents)
+	{
+		if (Component.IsValid())
+		{
+			Component->SetVisibility(Wanted == 0);
+		}
 	}
 }
 
@@ -564,6 +625,19 @@ void AYSPirateShip::Tick(float DeltaSeconds)
 
 	UpdateShipHealthBar();
 
+	// voiles déployées = il peut naviguer, carguées = bloqué
+	if (HasAuthority())
+	{
+		const bool bCanSail = CanSailNow();
+		if (bCanSail != bSailsDeployed)
+		{
+			bSailsDeployed = bCanSail;
+			ForceNetUpdate();
+			UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : voiles %s"), *GetName(), bSailsDeployed ? TEXT("déployées (peut naviguer)") : TEXT("carguées (bloqué)"));
+		}
+	}
+	UpdateSails();
+
 	// coulé : il descend, plus de pilotage
 	if (IsSinking())
 	{
@@ -883,6 +957,10 @@ void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 			if (FMath::Abs(Motion.Speed) < YSPirateShip::MinImpactSpeed)
 			{
 				bGrounded = bGrounded || BlockingShip != nullptr;
+			}
+			if (!BlockingShip)
+			{
+				LastHullBlockedTime = GetWorld()->GetTimeSeconds();
 			}
 			Motion.Speed = 0.0f;
 			Motion.YawRate = bTurnOk ? Next.YawRate : 0.0f;

@@ -275,7 +275,7 @@ struct FYSIslandGenerationRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="10 Desert", meta=(ClampMin="0", Units="Centimeters"))
 	float DesertShoreMargin = 400.0f;
 
-	/** Port Town : la ville occupe les massifs dont le milieu est à moins de cet angle du nord (à l'opposé de la plage) */
+	/** Port Town : la ville occupe les massifs dont le milieu est à moins de cet angle du nord (à l'opposé de la plage) ; 180 = tous (tout sauf la plage) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="11 Port Town", meta=(ClampMin="0", ClampMax="180", Units="Degrees"))
 	float TownHalfAngle = 65.0f;
 
@@ -302,6 +302,10 @@ struct FYSIslandGenerationRules
 	/** Bouchons de la ville (trous du bord des massifs) : petites maisons ; réduites à cette échelle quand une maison entière ne tient pas */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="11 Port Town", meta=(ClampMin="0.2", ClampMax="1"))
 	float TownPlugHouseScale = 0.6f;
+
+	/** Port Town : pontons de la mer à la falaise aux ouvertures côté ville (retirés par défaut, demande de Paul du 2026-11-09) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers")
+	bool bPortTownPiers = false;
 
 	/** Pontons : largeur du ponton de la côte et des quais (15 PJ) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="12 Piers", meta=(ClampMin="50", Units="Centimeters"))
@@ -592,8 +596,8 @@ public:
 	 *  Flow en 3 parties, partie 1 (île de départ) : objectif et timer de phase affichés en haut de l'écran.
 	 *  Accostage : Find Text, jour de Day Duration. Fin du jour : nuit de Night Duration (objectif inchangé), puis OVERTIME (Overtime Events).
 	 *  Objectifs principaux livrés : Defend Text, même phase, bateau non pilotable. Nuit finie (élites morts) : objectifs livrés -> Evacuate Text
-	 *  pendant Evacuation Duration (compteur de joueurs à bord) ; tous à bord ou temps écoulé : bateau pilotable, l'île coule, partie 2 (Victory Text) ;
-	 *  sinon nouveau jour. Max Days et la routine de coulaison sont ignorés.
+	 *  pendant Evacuation Duration (compteur de joueurs à bord) ; tous à bord ou temps écoulé : bateau pilotable, l'île coule (île de départ : la
+	 *  partie 2 commence quand elle a fini de couler) et le HUD affiche l'objectif en mer. Max Days et la routine de coulaison sont ignorés.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow")
 	bool bObjectiveFlow = false;
@@ -607,25 +611,41 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
 	FText FindText = NSLOCTEXT("YS", "FlowFindCore", "Trouve et ramène un CoreBoat");
 
+	/**
+	 *  Texte d'objectif construit avec les objets des objectifs principaux restants ({0} = leurs Objective Name, « la boussole et le Medic ») ;
+	 *  vide = Find Text
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	FText FindObjectiveFormat;
+
+	/** Entre deux objets dans Find Objective Format */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	FText FindObjectiveSeparator = NSLOCTEXT("YS", "FlowFindSeparator", " et ");
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
 	FText DefendText = NSLOCTEXT("YS", "FlowDefend", "Survivez et défendez le navire");
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
 	FText EvacuateText = NSLOCTEXT("YS", "FlowEvacuate", "Quittez l'île !");
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
-	FText VictoryText = NSLOCTEXT("YS", "FlowVictory", "Victoire !");
-
-	/**
-	 *  Île de départ (partie 1) : à la fin de l'évacuation, Victory Text s'affiche pendant que l'île coule (la partie 2 commence quand elle a fini
-	 *  de couler). Décoché (îles de la partie 2) : rien d'affiché après l'évacuation, l'île coule
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
-	bool bVictoryOnEvacuation = true;
-
 	/** Le bateau des joueurs n'est pas pilotable tant que l'île n'est pas évacuée (île de départ) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
 	bool bLockHelmUntilEvacuation = true;
+
+	/**
+	 *  Îles de la partie 2 : le bateau des joueurs qui touche le fond devant la plage est bloqué à quai (barre verrouillée, voiles carguées) jusqu'à
+	 *  la fin de l'évacuation, comme sur l'île de départ ; l'île s'active à l'accostage (jour 1)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	bool bLockHelmWhenDocked = false;
+
+	/** Accostage : centre du bateau à au plus cette distance du bord de l'eau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(ClampMin="0", Units="Centimeters", EditCondition="bObjectiveFlow && bLockHelmWhenDocked"))
+	float DockMaxDistanceFromShore = 5000.0f;
+
+	/** Accostage : seulement devant la plage (poids de plage de la côte à cet endroit, 1 = plage pleine, 0 = falaise) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(ClampMin="0", ClampMax="1", EditCondition="bObjectiveFlow && bLockHelmWhenDocked"))
+	float DockMinBeachWeight = 0.5f;
 
 	/**
 	 *  Fin de l'évacuation sans les objectifs principaux livrés : GAME OVER (île de départ). Décoché : l'île coule quand même, et tous les joueurs

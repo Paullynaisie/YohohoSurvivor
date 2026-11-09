@@ -10,6 +10,17 @@ class USizeBox;
 class UTextBlock;
 class UVerticalBox;
 
+/** Objectif en mer à afficher à la place de celui de l'île (calculé par le PlayerController pour son joueur) */
+struct FYSFlowSeaObjective
+{
+	/** Le joueur n'est pas sur l'île qui affiche son objectif (ou aucune île n'en affiche) */
+	bool bShow = false;
+	/** Une bataille navale est en cours : « Coule le Galion » */
+	bool bNavalBattle = false;
+	int32 CompassesRemaining = 0;
+	int32 CompassTotal = 0;
+};
+
 /**
  *  HUD du flow (plein écran, ne capte pas la souris) : chronomètre du temps de partie tout en haut à droite ; en haut au milieu (symétrique des
  *  icônes d'actions) le texte d'objectif, dessous la barre du temps restant de la phase (« OVERTIME » qui clignote à sa place quand la nuit est
@@ -125,13 +136,30 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Part 2")
 	float Part2Spacing = 10.0f;
 
+	/** En mer : boussoles à trouver ({0} = boussoles restantes) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Sea")
+	FText CompassObjectiveFormat = NSLOCTEXT("YS", "FlowSeaCompasses", "Trouve les {0} boussoles");
+
+	/** En mer, une seule boussole restante */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Sea")
+	FText CompassLastObjectiveText = NSLOCTEXT("YS", "FlowSeaLastCompass", "Trouve la dernière boussole");
+
+	/** En mer, toutes les boussoles trouvées */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Sea")
+	FText CompassDoneText = NSLOCTEXT("YS", "FlowSeaCompassesDone", "Toutes les boussoles sont trouvées");
+
+	/** Bataille navale en cours, jusqu'à ce que son Galion soit coulé */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Sea")
+	FText NavalBattleObjectiveText = NSLOCTEXT("YS", "FlowSeaNavalBattle", "Coule le Galion");
+
 	virtual bool Initialize() override;
 
 	/**
 	 *  Chaque image : état du flow, temps restant de la phase, temps de partie (chrono caché avant le début de la partie),
-	 *  partie 2 (temps écoulé, -1 = pas commencée ; durée avant l'overtime)
+	 *  partie 2 (temps écoulé, -1 = pas commencée ; durée avant l'overtime), objectif en mer (remplace celui de l'île quand bShow)
 	 */
-	void Refresh(const FYSFlowStatus& Status, float PhaseRemaining, float MatchTime, bool bMatchStarted, float Part2Elapsed, float Part2Duration);
+	void Refresh(const FYSFlowStatus& InStatus, float PhaseRemaining, float MatchTime, bool bMatchStarted, float Part2Elapsed, float Part2Duration,
+		const FYSFlowSeaObjective& Sea);
 
 private:
 

@@ -46,6 +46,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction")
 	FText DisplayName;
 
+	/** Nom dans le texte d'objectif du flow (« Ramène {0} au bateau » : « la boussole », « le Medic »...) ; vide = Display Name */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction")
+	FText ObjectiveName;
+
 	/** Widget de l'invite : Widget Blueprint enfant de YSInteractPromptWidget (réglages dans Class Defaults, catégorie Layout) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction")
 	TSubclassOf<UUserWidget> PromptWidgetClass;
@@ -180,6 +184,7 @@ public:
 	FVector GetIndicatorLocation() const { return GetActorLocation() + FVector(0.0f, 0.0f, IndicatorHeight); }
 
 	FText GetDisplayName() const { return DisplayName; }
+	FText GetObjectiveName() const { return ObjectiveName.IsEmpty() ? DisplayName : ObjectiveName; }
 
 	/** Point au sol (WorldStatic) sous Location, ou Location s'il n'y en a pas */
 	static FVector FindGround(const UWorld* World, const FVector& Location, const AActor* IgnoredActor);

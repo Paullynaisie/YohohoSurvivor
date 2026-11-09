@@ -156,6 +156,11 @@ void AYSFlowMode::OnIslandSinkStarted(AYSIsland* SinkingIsland)
 	if (SinkingIsland && SinkingIsland == Island)
 	{
 		BringNextIslands(SinkingIsland);
+		// fin de la partie 1 : l'objectif en mer remplace celui de l'île (demande de Paul : plus de « Victoire »)
+		if (bZonesOfInterest)
+		{
+			StartSeaObjectives(TEXT("l'île de départ coule"));
+		}
 	}
 }
 
@@ -847,10 +852,12 @@ void AYSFlowMode::SpawnZonesOfInterest()
 	{
 		if (BoatCoreItemClass)
 		{
-			Zone.MainItems.Add(BoatCoreItemClass);
+			// îles : le CoreBoat est secondaire, l'objectif du jour 1 est la boussole ou le membre d'équipage (demande de Paul)
+			(Zone.IslandData ? Zone.SecondaryItems : Zone.MainItems).Add(BoatCoreItemClass);
 		}
 	}
 	const int32 Compasses = CompassItemClass ? FMath::Min(CompassCount, Zones.Num()) : 0;
+	CompassTotal = Compasses;
 	for (int32 K = 0; K < Compasses; ++K)
 	{
 		Zones[Order[K]].MainItems.Add(CompassItemClass);
@@ -977,6 +984,10 @@ void AYSFlowMode::StartPart2(const TCHAR* Reason)
 	NextPart2GalionElapsed = Part2Duration;
 	// la nuit de l'île de départ compte comme la nuit 1 de la séquence, même sautée
 	FlowNightsStarted = FMath::Max(FlowNightsStarted, 1);
+	if (bZonesOfInterest)
+	{
+		StartSeaObjectives(Reason);
+	}
 	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] PARTIE 2 (%s) : %.0f s avant l'overtime (Galion Nemesis toutes les %.0f s ensuite)"), Reason, Part2Duration, Part2OvertimeInterval);
 }
 
@@ -1176,4 +1187,31 @@ void AYSFlowMode::DebugAddCoreBoats(int32 Count)
 {
 	CoreBoatStock = FMath::Max(CoreBoatStock + Count, 0);
 	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] Debug : %d CoreBoat(s) en stock"), CoreBoatStock);
+}
+
+void AYSFlowMode::StartSeaObjectives(const TCHAR* Reason)
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (bSeaObjectivesStarted || !YSGameState)
+	{
+		return;
+	}
+	bSeaObjectivesStarted = true;
+	YSGameState->SetSeaObjectives(true, CompassTotal, CompassesFound);
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Objectif en mer (%s) : %d / %d boussole(s) trouvée(s)"), Reason, CompassesFound, CompassTotal);
+}
+
+bool AYSFlowMode::IsCompass(const AYSInteractiveObject* Object) const
+{
+	return Object && CompassItemClass && Object->IsA(CompassItemClass);
+}
+
+void AYSFlowMode::NotifyCompassDelivered(AYSInteractiveObject* Compass)
+{
+	++CompassesFound;
+	if (AYSGameState* YSGameState = GetGameState<AYSGameState>())
+	{
+		YSGameState->SetSeaObjectives(bSeaObjectivesStarted, CompassTotal, CompassesFound);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Boussole %s ramenée au bateau : %d / %d"), *GetNameSafe(Compass), CompassesFound, CompassTotal);
 }

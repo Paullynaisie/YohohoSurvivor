@@ -100,6 +100,9 @@ private:
 
 	FYSNavalBattleRow Settings;
 	FName RowName;
+
+	/** Réveillée (répliqué : objectif « Coule le Galion » du HUD) */
+	UPROPERTY(Replicated)
 	bool bActive = false;
 	bool bReinforcementsStopped = false;
 	float ReinforcementTimer = 0.0f;
