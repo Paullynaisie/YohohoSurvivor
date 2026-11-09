@@ -91,6 +91,10 @@ void AYSFlowMode::Tick(float DeltaSeconds)
 		--PendingGameBoatUpgrades;
 		UpgradeGameBoat();
 	}
+	else if (StocksCoreBoats())
+	{
+		UpdateCoreBoatStock();
+	}
 
 	// île finale : quand toutes les îles suivantes et toutes les batailles navales sont faites (pas avec les zones d'intérêt : partie 3 à venir)
 	if (FinalIsland && !bZonesOfInterest && bNextIslandsBrought && !bFinalIslandBrought && AreNextIslandsAndBattlesDone())
@@ -941,7 +945,10 @@ void AYSFlowMode::SpawnZonesOfInterest()
 			NavalBattles.Add(Battle);
 			TArray<TSubclassOf<AYSInteractiveObject>> Items = Zone.MainItems;
 			Items.Append(Zone.SecondaryItems);
-			Battle->SpawnObjectiveItems(Items);
+			for (AYSInteractiveObject* Spawned : Battle->SpawnObjectiveItems(Items))
+			{
+				ZoneItems.Add(Spawned);
+			}
 			UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] ZI %d (sommet %d) : bataille navale %s en %s (%.0f m du centre de départ) ; objets : %s"), Index, Slots[Index], *Zone.BattleRow.ToString(),
 				*Location.ToCompactString(), Distance / 100.0f, *ItemNames(Items));
 		}
@@ -1110,4 +1117,63 @@ void AYSFlowMode::DebugSkipToPart2()
 	Island->DebugFinishEvacuation();
 	UE_LOG(LogTemp, Log, TEXT("[YSCheat] Partie 2 : %s, %d poste(s) de combat posé(s), %d joueur(s) à bord, l'île de départ coule"), *Boat->GetName(), Installed, Players.Num());
 	StartPart2(TEXT("triche : flèche bas"));
+}
+
+int32 AYSFlowMode::GetNextStageCoreBoatCost() const
+{
+	const int32 NextStage = GameBoatStage + 1;
+	const bool bStageExists = GameBoatData && GameBoatData->Stages.IsValidIndex(NextStage);
+	return bStageExists && CoreBoatCostPerStage.IsValidIndex(NextStage) ? FMath::Max(CoreBoatCostPerStage[NextStage], 0) : 0;
+}
+
+void AYSFlowMode::UpdateCoreBoatStock()
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState)
+	{
+		return;
+	}
+	// assez de CoreBoats pour l'étape suivante : consommés, le bateau change (une étape par image)
+	const int32 Cost = GetNextStageCoreBoatCost();
+	if (Cost > 0 && CoreBoatStock >= Cost && YSGameState->GetGameBoat())
+	{
+		CoreBoatStock -= Cost;
+		UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] %d CoreBoat(s) consommé(s) pour l'étape %d (%d en stock)"), Cost, GameBoatStage + 1, CoreBoatStock);
+		RequestGameBoatUpgrade(TEXT("CoreBoats du stock"));
+	}
+	const int32 NextCost = PendingGameBoatUpgrades > 0 ? CoreBoatCostPerStage.IsValidIndex(GameBoatStage + 2) ? CoreBoatCostPerStage[GameBoatStage + 2] : 0 : GetNextStageCoreBoatCost();
+	// inventaire affiché à partir de la partie 2 (ou dès le premier CoreBoat rangé)
+	const bool bShown = bPart2Started || CoreBoatStock > 0;
+	if (YSGameState->UsesCoreBoatStock() != bShown || YSGameState->GetCoreBoatStock() != CoreBoatStock || YSGameState->GetNextStageCoreBoatCost() != NextCost)
+	{
+		YSGameState->SetCoreBoatStock(bShown, CoreBoatStock, NextCost);
+	}
+}
+
+bool AYSFlowMode::IsStockedCoreBoat(const AYSInteractiveObject* Object) const
+{
+	return StocksCoreBoats() && Object && Object->IsA(BoatCoreItemClass) && !Object->IsDelivered();
+}
+
+bool AYSFlowMode::IsZoneItem(const AYSInteractiveObject* Object) const
+{
+	return Object && !Object->IsDelivered() && ZoneItems.ContainsByPredicate([Object](const TWeakObjectPtr<AYSInteractiveObject>& Item) { return Item.Get() == Object; });
+}
+
+void AYSFlowMode::StoreCoreBoat(AYSInteractiveObject* Object)
+{
+	if (!IsValid(Object))
+	{
+		return;
+	}
+	++CoreBoatStock;
+	ZoneItems.RemoveAll([Object](const TWeakObjectPtr<AYSInteractiveObject>& Item) { return !Item.IsValid() || Item.Get() == Object; });
+	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] %s rangé dans le stock : %d CoreBoat(s) (%d pour l'étape suivante)"), *Object->GetName(), CoreBoatStock, GetNextStageCoreBoatCost());
+	Object->Destroy();
+}
+
+void AYSFlowMode::DebugAddCoreBoats(int32 Count)
+{
+	CoreBoatStock = FMath::Max(CoreBoatStock + Count, 0);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameBoat] Debug : %d CoreBoat(s) en stock"), CoreBoatStock);
 }

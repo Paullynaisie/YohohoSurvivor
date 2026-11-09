@@ -86,7 +86,7 @@ public:
 	void Activate(const TCHAR* Reason);
 
 	/** Objectifs de la bataille (serveur, après l'apparition) : posés sur le pont de son premier Galion, à côté du capitaine */
-	void SpawnObjectiveItems(const TArray<TSubclassOf<class AYSInteractiveObject>>& Classes);
+	TArray<class AYSInteractiveObject*> SpawnObjectiveItems(const TArray<TSubclassOf<class AYSInteractiveObject>>& Classes);
 
 	const TArray<TObjectPtr<AYSFoeGalion>>& GetGalions() const { return Galions; }
 

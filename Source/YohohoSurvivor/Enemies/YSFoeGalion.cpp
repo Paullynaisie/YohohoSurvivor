@@ -141,11 +141,12 @@ void AYSFoeGalion::TriggerRam(const TCHAR* Reason)
 	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s fonce sur le bateau des joueurs pour l'aborder (%s)"), *GetName(), Reason);
 }
 
-void AYSFoeGalion::SpawnGuardedItems(const TArray<TSubclassOf<AYSInteractiveObject>>& Classes)
+TArray<AYSInteractiveObject*> AYSFoeGalion::SpawnGuardedItems(const TArray<TSubclassOf<AYSInteractiveObject>>& Classes)
 {
+	TArray<AYSInteractiveObject*> Spawned;
 	if (!HasAuthority())
 	{
-		return;
+		return Spawned;
 	}
 	// autour du capitaine (pieds à la barre), côté proue, sur le même pont
 	const FVector Center = GetSeatFeetLocation(0);
@@ -167,10 +168,12 @@ void AYSFoeGalion::SpawnGuardedItems(const TArray<TSubclassOf<AYSInteractiveObje
 				Item->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
 			}
 			GuardedItems.Add(Item);
+			Spawned.Add(Item);
 			++Placed;
 			UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : objectif %s posé à côté du capitaine en %s"), *GetName(), *Item->GetName(), *Item->GetActorLocation().ToCompactString());
 		}
 	}
+	return Spawned;
 }
 
 AYSInteractiveObject* AYSFoeGalion::GetGuardedItem() const

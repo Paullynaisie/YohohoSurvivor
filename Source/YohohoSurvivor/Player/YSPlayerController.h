@@ -666,6 +666,10 @@ public:
 	UFUNCTION(Exec)
 	void YSCarryGuardedItem(int32 BattleIndex);
 
+	/** Debug (hôte, FlowMod) : CoreBoats ajoutés au stock (négatif = retirés) */
+	UFUNCTION(Exec)
+	void YSAddCoreBoats(int32 Count);
+
 	/** Triche (flèche droite, builds non Shipping) : 10 bonus Atk speed Silver (CD reduction de l'Auto atk), sans dépasser le maximum */
 	UFUNCTION(Exec)
 	void YSCheatAtkSpeed();

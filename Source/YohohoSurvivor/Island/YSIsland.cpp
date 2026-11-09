@@ -1583,7 +1583,8 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 			RefreshOpenDeliveryClasses();
 			// core du bateau ramené d'une île suivante : le GameBoat passe à l'étape suivante (île de départ : quand tous ses objectifs principaux sont livrés)
 			AYSFlowMode* DeliveryFlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
-			if (DeliveryFlowMode && Object && Object->UpgradesGameBoat() && DeliveryFlowMode->GetStartIslandActor() != this)
+			// (zones d'intérêt : il part dans le stock, l'étape se fait quand il y en a assez)
+			if (DeliveryFlowMode && Object && Object->UpgradesGameBoat() && DeliveryFlowMode->GetStartIslandActor() != this && !DeliveryFlowMode->StocksCoreBoats())
 			{
 				DeliveryFlowMode->RequestGameBoatUpgrade(*FString::Printf(TEXT("%s livré (%s)"), *Object->GetName(), *Data->GetName()));
 			}
@@ -1637,12 +1638,22 @@ AYSIsland* AYSIsland::FindExpecting(const UWorld* World, const AYSInteractiveObj
 			return *It;
 		}
 	}
+	// par type d'objet : seulement les objectifs dont l'objet à ramener n'est pas celui posé (coffre d'une carte au trésor) ; un objet posé par
+	// un objectif (CoreBoat, boussole...) ne valide que le sien, pas celui d'une autre île
+	const auto ExpectsByClass = [Object](const AYSIsland* Island)
+	{
+		return Island->Objectives.ContainsByPredicate([Object](const FYSIslandObjectiveState& State)
+		{
+			return !State.bDone && State.DeliveryClass && Object->IsA(State.DeliveryClass) && (State.Def.DeliveryClass || !State.bSpawned);
+		});
+	};
 	AYSIsland* Nearest = nullptr;
 	double NearestDistSq = TNumericLimits<double>::Max();
 	for (TActorIterator<AYSIsland> It(World); It && Object; ++It)
 	{
 		const double DistSq = FVector::DistSquared2D(It->GetActorLocation(), Location);
-		if (DistSq < NearestDistSq && It->IsObjectExpected(Object))
+		// (objectifs connus du serveur seulement : un client garde le test par type)
+		if (DistSq < NearestDistSq && It->IsObjectExpected(Object) && (!World->GetAuthGameMode() || ExpectsByClass(*It)))
 		{
 			NearestDistSq = DistSq;
 			Nearest = *It;

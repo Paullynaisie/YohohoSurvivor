@@ -2,6 +2,7 @@
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSCombat.h"
+#include "Core/YSFlowMode.h"
 #include "Core/YSGameplayTags.h"
 #include "Engine/StaticMesh.h"
 #include "Interaction/YSPlayerCorpse.h"
@@ -126,7 +127,17 @@ bool AYSShipCore::AcceptsObject(const AYSInteractiveObject* Object) const
 bool AYSShipCore::IsIslandObjective(const AYSInteractiveObject* Object) const
 {
 	const AYSPirateShip* Ship = AYSPirateShip::GetShipOf(this);
-	return Object && Ship && !Ship->IsFoeShip() && AYSIsland::FindExpecting(GetWorld(), Object, GetActorLocation()) != nullptr;
+	if (!Object || !Ship || Ship->IsFoeShip())
+	{
+		return false;
+	}
+	// zones d'intérêt (serveur) : CoreBoat à ranger dans le stock, objet posé sur un Galion
+	const AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	if (FlowMode && (FlowMode->IsStockedCoreBoat(Object) || FlowMode->IsZoneItem(Object)))
+	{
+		return true;
+	}
+	return AYSIsland::FindExpecting(GetWorld(), Object, GetActorLocation()) != nullptr;
 }
 
 bool AYSShipCore::IsAvailable() const
@@ -143,7 +154,15 @@ void AYSShipCore::ReceiveObject(AYSInteractiveObject* Object)
 		Super::ReceiveObject(Object);
 		return;
 	}
-	// objectif d'une île qui ne vaut pas de doublons (Charpentier, Medic, core du bateau...) : livré, il reste au bateau
+	// zones d'intérêt : un CoreBoat part dans le stock (inventaire sous les plumes de phoenix), le bateau change d'étape quand il y en a assez
+	AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	if (FlowMode && FlowMode->IsStockedCoreBoat(Object))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSShipCore] %s : %s posé dans la zone du bateau -> stock"), *GetName(), *Object->GetName());
+		FlowMode->StoreCoreBoat(Object);
+		return;
+	}
+	// objectif d'une île qui ne vaut pas de doublons (Charpentier, Medic, boussole...) : livré, il reste au bateau
 	// (l'île a déjà été prévenue par TryBuy)
 	if (Object && Object->GetDoubloonValue() <= 0)
 	{

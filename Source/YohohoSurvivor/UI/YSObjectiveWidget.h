@@ -69,11 +69,31 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Phoenix")
 	float FeatherSpacing = 4.0f;
 
+	/** Stock de CoreBoats (partie 2 du flow), sous les plumes : {0} = stock, {1} = CoreBoats pour l'étape suivante du bateau */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|CoreBoat")
+	FText CoreBoatFormat = NSLOCTEXT("YS", "ObjectiveCoreBoats", "CoreBoat : {0} / {1}");
+
+	/** Sans étape suivante (bateau au maximum) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|CoreBoat")
+	FText CoreBoatMaxFormat = NSLOCTEXT("YS", "ObjectiveCoreBoatsMax", "CoreBoat : {0}");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|CoreBoat", meta=(ClampMin="1"))
+	int32 CoreBoatFontSize = 16;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|CoreBoat")
+	FLinearColor CoreBoatColor = FLinearColor(0.45f, 0.85f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|CoreBoat")
+	float CoreBoatSpacing = 2.0f;
+
 	virtual bool Initialize() override;
 
 	void SetProgress(int32 Doubloons, int32 Goal);
 
 	void SetPhoenixFeathers(int32 Feathers);
+
+	/** bVisible faux = ligne cachée ; NextCost <= 0 = pas d'étape suivante */
+	void SetCoreBoats(bool bVisible, int32 Stock, int32 NextCost);
 
 	/** Niveau du bateau (0 = pas encore arrivé : titre Title) */
 	void SetShipLevel(int32 Level);
@@ -95,6 +115,12 @@ private:
 	TObjectPtr<UTextBlock> FeatherLabel;
 
 	int32 DisplayedFeathers = INDEX_NONE;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> CoreBoatLabel;
+
+	int32 DisplayedCoreBoats = INDEX_NONE;
+	int32 DisplayedCoreBoatCost = INDEX_NONE;
 
 	int32 DisplayedShipLevel = INDEX_NONE;
 

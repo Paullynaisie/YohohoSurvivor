@@ -416,6 +416,14 @@ void AYSPlayerController::YSPart2Galion()
 	}
 }
 
+void AYSPlayerController::YSAddCoreBoats(int32 Count)
+{
+	if (AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr)
+	{
+		FlowMode->DebugAddCoreBoats(Count);
+	}
+}
+
 void AYSPlayerController::YSCarryGuardedItem(int32 BattleIndex)
 {
 	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
@@ -1501,6 +1509,7 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 		Objective->SetProgress(YSGameState->GetDoubloons(), YSGameState->GetDoubloonGoal());
 		Objective->SetShipLevel(YSGameState->GetShipLevel());
 		Objective->SetPhoenixFeathers(YSGameState->GetPhoenixFeathers());
+		Objective->SetCoreBoats(YSGameState->UsesCoreBoatStock(), YSGameState->GetCoreBoatStock(), YSGameState->GetNextStageCoreBoatCost());
 		Objective->SetVisibility(YSGameState->IsMatchStarted() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 

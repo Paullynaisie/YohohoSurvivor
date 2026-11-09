@@ -110,17 +110,17 @@ AYSPirateShip* AYSNavalBattle::SpawnShip(UClass* ShipClass, bool bDormant)
 	return Ship;
 }
 
-void AYSNavalBattle::SpawnObjectiveItems(const TArray<TSubclassOf<AYSInteractiveObject>>& Classes)
+TArray<AYSInteractiveObject*> AYSNavalBattle::SpawnObjectiveItems(const TArray<TSubclassOf<AYSInteractiveObject>>& Classes)
 {
 	for (AYSFoeGalion* Galion : Galions)
 	{
 		if (IsValid(Galion))
 		{
-			Galion->SpawnGuardedItems(Classes);
-			return;
+			return Galion->SpawnGuardedItems(Classes);
 		}
 	}
 	UE_LOG(LogTemp, Warning, TEXT("[YSNavalBattle] %s : pas de Galion pour poser %d objectif(s)"), *GetName(), Classes.Num());
+	return {};
 }
 
 bool AYSNavalBattle::IsPlayerShipNear() const

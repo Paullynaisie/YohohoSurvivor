@@ -246,7 +246,7 @@ public:
 	 *  Objets posés sur le pont à côté du capitaine (serveur, objectifs d'une bataille navale) : si l'un d'eux est pris pendant que le capitaine
 	 *  est à la barre, le Galion fonce sur le bateau des joueurs pour l'aborder
 	 */
-	void SpawnGuardedItems(const TArray<TSubclassOf<class AYSInteractiveObject>>& Classes);
+	TArray<class AYSInteractiveObject*> SpawnGuardedItems(const TArray<TSubclassOf<class AYSInteractiveObject>>& Classes);
 
 	/** Debug : premier objet gardé encore sur le pont, ou nullptr */
 	AYSInteractiveObject* GetGuardedItem() const;

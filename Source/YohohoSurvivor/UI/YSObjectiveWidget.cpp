@@ -81,7 +81,31 @@ void UYSObjectiveWidget::BuildWidgetTree()
 	FeatherSlot->SetHorizontalAlignment(HAlign_Right);
 	FeatherSlot->SetPadding(FMargin(0.0f, FeatherSpacing, 0.0f, 0.0f));
 
+	CoreBoatLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("CoreBoats"));
+	YSObjective::StyleText(CoreBoatLabel, CoreBoatFontSize);
+	CoreBoatLabel->SetColorAndOpacity(FSlateColor(CoreBoatColor));
+	CoreBoatLabel->SetVisibility(ESlateVisibility::Collapsed);
+	UVerticalBoxSlot* CoreBoatSlot = Column->AddChildToVerticalBox(CoreBoatLabel);
+	CoreBoatSlot->SetHorizontalAlignment(HAlign_Right);
+	CoreBoatSlot->SetPadding(FMargin(0.0f, CoreBoatSpacing, 0.0f, 0.0f));
+
 	SetProgress(0, 0);
+}
+
+void UYSObjectiveWidget::SetCoreBoats(bool bVisible, int32 Stock, int32 NextCost)
+{
+	if (!CoreBoatLabel)
+	{
+		return;
+	}
+	CoreBoatLabel->SetVisibility(bVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	if (!bVisible || (Stock == DisplayedCoreBoats && NextCost == DisplayedCoreBoatCost))
+	{
+		return;
+	}
+	DisplayedCoreBoats = Stock;
+	DisplayedCoreBoatCost = NextCost;
+	CoreBoatLabel->SetText(NextCost > 0 ? FText::Format(CoreBoatFormat, FText::AsNumber(Stock), FText::AsNumber(NextCost)) : FText::Format(CoreBoatMaxFormat, FText::AsNumber(Stock)));
 }
 
 void UYSObjectiveWidget::SetPhoenixFeathers(int32 Feathers)

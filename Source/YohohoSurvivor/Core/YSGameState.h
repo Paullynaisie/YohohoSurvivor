@@ -130,6 +130,16 @@ protected:
 	UPROPERTY(Replicated)
 	float Part2Duration = 0.0f;
 
+	/** Flow (zones d'intérêt) : CoreBoats en stock (inventaire du HUD), et combien il en faut pour l'étape suivante du bateau (0 = aucune) */
+	UPROPERTY(Replicated)
+	bool bCoreBoatStock = false;
+
+	UPROPERTY(Replicated)
+	int32 CoreBoatStock = 0;
+
+	UPROPERTY(Replicated)
+	int32 NextStageCoreBoatCost = 0;
+
 	/** Temps serveur (GetServerWorldTimeSeconds) du démarrage de la partie */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Match")
 	double MatchStartServerTime = 0.0;
@@ -293,6 +303,19 @@ public:
 	float GetPart2Elapsed() const { return Part2StartMatchTime >= 0.0f ? FMath::Max(GetMatchElapsedTime() - Part2StartMatchTime, 0.0f) : -1.0f; }
 
 	float GetPart2Duration() const { return Part2Duration; }
+
+	bool UsesCoreBoatStock() const { return bCoreBoatStock; }
+	int32 GetCoreBoatStock() const { return CoreBoatStock; }
+	int32 GetNextStageCoreBoatCost() const { return NextStageCoreBoatCost; }
+
+	/** Serveur uniquement (AYSFlowMode) */
+	void SetCoreBoatStock(bool bUsed, int32 Stock, int32 NextCost)
+	{
+		bCoreBoatStock = bUsed;
+		CoreBoatStock = Stock;
+		NextStageCoreBoatCost = NextCost;
+		ForceNetUpdate();
+	}
 
 	/** Ce bateau est celui des joueurs et sa barre est verrouillée par l'objectif en cours */
 	bool IsHelmLockedFor(const AYSPirateShip* Ship) const { return FlowStatus.bHelmLocked && Ship && Ship == GameBoat; }

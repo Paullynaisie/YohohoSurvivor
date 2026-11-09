@@ -164,6 +164,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(EditCondition="bZonesOfInterest"))
 	TSubclassOf<AYSInteractiveObject> SuperTreasureMapClass;
 
+	/**
+	 *  Zones d'intérêt : un CoreBoat posé dans la zone du core du bateau des joueurs disparaît et part dans le stock (affiché sous les plumes de
+	 *  phoenix) ; le bateau passe à l'étape Index dès que le stock atteint Core Boat Cost Per Stage[Index], qui est consommé
+	 *  (défaut : sloop -> brigantin 2, brigantin -> galion 3 ; 0 = étape qui ne se gagne pas avec des CoreBoats : chaloupe -> sloop sur l'île de départ)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(EditCondition="bZonesOfInterest"))
+	TArray<int32> CoreBoatCostPerStage = { 0, 0, 2, 3 };
+
 	/** Sur une île : distance à la plage (min, max) où apparaissent ces objets */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(Units="Centimeters", EditCondition="bZonesOfInterest"))
 	FVector2D ZoneItemDistanceFromBeach = FVector2D(3000.0, 9000.0);
@@ -290,6 +298,21 @@ public:
 	/** Debug : Galion de l'overtime de la partie 2 tout de suite */
 	void DebugSpawnPart2Galion();
 
+	/** Les CoreBoats livrés au bateau des joueurs partent dans le stock (zones d'intérêt) */
+	bool StocksCoreBoats() const { return bZonesOfInterest && BoatCoreItemClass; }
+
+	/** Objet à stocker : un CoreBoat (serveur) */
+	bool IsStockedCoreBoat(const AYSInteractiveObject* Object) const;
+
+	/** Objet d'une zone d'intérêt posé sur un Galion (boussole, équipage...) : le core du bateau des joueurs le prend */
+	bool IsZoneItem(const AYSInteractiveObject* Object) const;
+
+	/** CoreBoat posé dans la zone du core du bateau des joueurs (serveur) : détruit, +1 au stock ; l'étape suivante se fait à l'image suivante */
+	void StoreCoreBoat(AYSInteractiveObject* Object);
+
+	/** Debug : CoreBoats ajoutés au stock */
+	void DebugAddCoreBoats(int32 Count);
+
 	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
 
 protected:
@@ -360,4 +383,16 @@ private:
 
 	/** Partie 2 : temps écoulé (depuis son début) du prochain Galion de l'overtime */
 	float NextPart2GalionElapsed = -1.0f;
+
+	/** CoreBoats en stock (serveur ; copié dans le GameState pour le HUD) */
+	int32 CoreBoatStock = 0;
+
+	/** Objets des zones d'intérêt posés sur les Galions */
+	TArray<TWeakObjectPtr<AYSInteractiveObject>> ZoneItems;
+
+	/** CoreBoats nécessaires pour l'étape après GameBoatStage (0 = aucune) */
+	int32 GetNextStageCoreBoatCost() const;
+
+	/** Stock et coût de l'étape suivante dans le GameState ; étape suivante si le stock suffit (serveur, Tick) */
+	void UpdateCoreBoatStock();
 };
