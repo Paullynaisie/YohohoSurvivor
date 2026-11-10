@@ -1,5 +1,10 @@
 #include "Abilities/YSAutoSwingAbility.h"
 #include "Components/BoxComponent.h"
+#include "Core/YSGameState.h"
+#include "Core/YSPlayerState.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "ProceduralMeshComponent.h"
+#include "Summons/YSCaptainMinion.h"
 #include "Core/YSDamageTypes.h"
 #include "Core/YSGameplayTags.h"
 #include "DrawDebugHelpers.h"
@@ -56,6 +61,12 @@ void UYSAutoSwingAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 		}
 	}
 #endif
+
+	// VFX de slash : local, sur toutes les machines (l'animation des mains y est jouée)
+	if (bSlashTrail || SlashSamples.Num() > 0)
+	{
+		UpdateSlashTrail();
+	}
 
 	// logique de combat : serveur uniquement (les clients ne font que jouer l'animation). Autorité du PORTEUR :
 	// une arme de NME n'est pas répliquée, chaque machine a la sienne et en est « autorité »
@@ -476,3 +487,151 @@ void UYSAutoSwingAbility::GetUnusedProperties(TArray<FName>& OutNames) const
 	}
 }
 #endif
+
+// ==================================================================== VFX de slash (test)
+
+FLinearColor UYSAutoSwingAbility::GetSlashColor() const
+{
+	FLinearColor Color = SlashColor;
+	if (bSlashUsePlayerColor)
+	{
+		// joueur : sa couleur de personnalisation ; minion : celle de son Captain
+		const AYSPlayerCharacter* Holder = Cast<AYSPlayerCharacter>(GetOwner() ? GetOwner()->GetOwner() : nullptr);
+		if (const AYSCaptainMinion* Minion = Cast<AYSCaptainMinion>(Holder))
+		{
+			Holder = Minion->GetCaptain();
+		}
+		const AYSPlayerState* State = Holder ? Holder->GetPlayerState<AYSPlayerState>() : nullptr;
+		const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+		if (State && YSGameState && YSGameState->GetCustomizationColors().IsValidIndex(State->GetColorIndex()))
+		{
+			Color = YSGameState->GetCustomizationColors()[State->GetColorIndex()].ButtonColor;
+		}
+	}
+	return FMath::Lerp(Color, FLinearColor::White, SlashWhiteMix);
+}
+
+void UYSAutoSwingAbility::UpdateSlashTrail()
+{
+	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
+	const AActor* Holder = Weapon ? Weapon->GetOwner() : nullptr;
+	const UBoxComponent* Hitbox = Weapon ? Weapon->FindComponentByClass<UBoxComponent>() : nullptr;
+	if (!Holder || !Hitbox)
+	{
+		return;
+	}
+	const float Now = GetWorld()->GetTimeSeconds();
+	const FTransform HolderTransform = Holder->GetActorTransform();
+
+	// points de la coupe : pendant la fenêtre de coupe, plus une image après (la lame finit son mouvement entre deux images)
+	const float Elapsed = GetSwingElapsed();
+	const bool bInWindow = bSlashTrail && IsInSwingWindow(Elapsed) && !Weapon->IsHidden();
+	const bool bEmit = bInWindow || bSlashEmitting;
+	if (bInWindow && !bSlashEmitting)
+	{
+		++SlashStroke;
+	}
+	bSlashEmitting = bInWindow;
+	if (bEmit)
+	{
+		// bords de la traînée : l'axe le plus long de la hitbox, de son bout côté porteur à la pointe (la plus loin du porteur)
+		const FVector Extent = Hitbox->GetScaledBoxExtent();
+		const FQuat Rotation = Hitbox->GetComponentQuat();
+		const FVector Axis = Extent.X >= Extent.Y && Extent.X >= Extent.Z ? Rotation.GetAxisX() * Extent.X
+			: Extent.Y >= Extent.Z ? Rotation.GetAxisY() * Extent.Y : Rotation.GetAxisZ() * Extent.Z;
+		const FVector Center = Hitbox->GetComponentLocation();
+		FVector Tip = Center + Axis;
+		FVector Base = Center - Axis;
+		if (FVector::DistSquared2D(Base, Holder->GetActorLocation()) > FVector::DistSquared2D(Tip, Holder->GetActorLocation()))
+		{
+			Swap(Tip, Base);
+		}
+		const FVector Inner = FMath::Lerp(Tip, Base, SlashLengthRatio);
+		// repère du porteur : la traînée le suit quand il bouge
+		SlashSamples.Add({ HolderTransform.InverseTransformPosition(Inner), HolderTransform.InverseTransformPosition(Tip), Now, SlashStroke });
+	}
+
+	// points trop vieux retirés
+	SlashSamples.RemoveAll([this, Now](const FSlashSample& Sample) { return Now - Sample.Time > SlashLifetime; });
+	if (SlashSamples.Num() == 0)
+	{
+		if (SlashMesh && SlashMesh->GetNumSections() > 0)
+		{
+			SlashMesh->ClearAllMeshSections();
+		}
+		return;
+	}
+
+	if (!SlashMesh)
+	{
+		SlashMesh = NewObject<UProceduralMeshComponent>(GetOwner(), TEXT("SlashTrail"));
+		SlashMesh->SetUsingAbsoluteLocation(true);
+		SlashMesh->SetUsingAbsoluteRotation(true);
+		SlashMesh->SetUsingAbsoluteScale(true);
+		SlashMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		SlashMesh->SetCastShadow(false);
+		SlashMesh->bUseAsyncCooking = false;
+		SlashMesh->SetupAttachment(GetOwner()->GetRootComponent());
+		SlashMesh->RegisterComponent();
+		SlashMesh->SetWorldLocation(FVector::ZeroVector);
+		SlashMesh->SetWorldRotation(FRotator::ZeroRotator);
+		UMaterialInterface* Material = SlashMaterial ? SlashMaterial.Get()
+			: LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Core/Ship/M_ShipPreview.M_ShipPreview"));
+		if (Material)
+		{
+			SlashMaterialInstance = UMaterialInstanceDynamic::Create(Material, this);
+		}
+	}
+	if (SlashMaterialInstance)
+	{
+		SlashMaterialInstance->SetScalarParameterValue(TEXT("Glow"), SlashGlow);
+	}
+
+	// ruban : entre deux points d'une même coupe, Slash Subdivisions points intermédiaires sur un arc autour du porteur
+	// (angle, distance et hauteur interpolés), opacité selon l'âge et le long de la lame
+	const FLinearColor Color = GetSlashColor();
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FLinearColor> Colors;
+	const auto ArcLerp = [](const FVector& A, const FVector& B, float T)
+	{
+		const float AngleA = FMath::Atan2(A.Y, A.X);
+		const float AngleB = FMath::Atan2(B.Y, B.X);
+		const float Angle = AngleA + FMath::FindDeltaAngleRadians(AngleA, AngleB) * T;
+		const float Radius = FMath::Lerp(A.Size2D(), B.Size2D(), T);
+		return FVector(FMath::Cos(Angle) * Radius, FMath::Sin(Angle) * Radius, FMath::Lerp(A.Z, B.Z, T));
+	};
+	const auto AddPair = [&](const FVector& InnerLocal, const FVector& OuterLocal, float Time, bool bConnect)
+	{
+		const float Alpha = FMath::Pow(FMath::Clamp(1.0f - (Now - Time) / SlashLifetime, 0.0f, 1.0f), SlashFadeExponent);
+		const int32 Index = Vertices.Add(HolderTransform.TransformPosition(InnerLocal));
+		Vertices.Add(HolderTransform.TransformPosition(OuterLocal));
+		Colors.Add(FLinearColor(Color.R, Color.G, Color.B, Alpha * SlashInnerAlpha));
+		Colors.Add(FLinearColor(Color.R, Color.G, Color.B, Alpha * SlashOuterAlpha));
+		if (bConnect)
+		{
+			Triangles.Append({ Index - 2, Index, Index - 1, Index - 1, Index, Index + 1 });
+		}
+	};
+	for (int32 Index = 0; Index < SlashSamples.Num(); ++Index)
+	{
+		const FSlashSample& Sample = SlashSamples[Index];
+		const bool bSameStroke = Index > 0 && SlashSamples[Index - 1].Stroke == Sample.Stroke;
+		if (bSameStroke)
+		{
+			const FSlashSample& Previous = SlashSamples[Index - 1];
+			for (int32 Step = 1; Step <= SlashSubdivisions; ++Step)
+			{
+				const float T = static_cast<float>(Step) / (SlashSubdivisions + 1);
+				AddPair(ArcLerp(Previous.Inner, Sample.Inner, T), ArcLerp(Previous.Outer, Sample.Outer, T), FMath::Lerp(Previous.Time, Sample.Time, T), true);
+			}
+		}
+		AddPair(Sample.Inner, Sample.Outer, Sample.Time, bSameStroke);
+	}
+	SlashMesh->CreateMeshSection_LinearColor(0, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
+	if (SlashMaterialInstance)
+	{
+		SlashMaterialInstance->SetScalarParameterValue(TEXT("Glow"), SlashGlow);
+		SlashMesh->SetMaterial(0, SlashMaterialInstance);
+	}
+}

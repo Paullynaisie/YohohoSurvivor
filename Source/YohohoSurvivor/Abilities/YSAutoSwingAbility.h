@@ -5,6 +5,8 @@
 #include "GameplayTagContainer.h"
 #include "YSAutoSwingAbility.generated.h"
 
+class UMaterialInterface;
+
 /** Catégorie d'une attaque de mêlée (comme le Shoot system des Guns) : définit son comportement face aux upgrades */
 UENUM(BlueprintType)
 enum class EYSMeleeSystem : uint8
@@ -154,6 +156,52 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Debug")
 	FColor HitboxColor = FColor(255, 0, 0, 90);
+
+	/** VFX de slash (TEST, 2026-11-10) : traînée qui suit la hitbox de l'arme pendant la coupe (sa longueur = celle de la hitbox, donc la
+	 *  taille de l'arme, Melee Range compris), à la couleur du joueur ; locale sur chaque machine, suit le porteur */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX")
+	bool bSlashTrail = false;
+
+	/** Durée de vie d'un point de la traînée (elle s'efface derrière la lame) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX", meta=(ClampMin="0.02", Units="s"))
+	float SlashLifetime = 0.2f;
+
+	/** Courbe d'effacement (1 = linéaire, plus = s'efface plus vite au début) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX", meta=(ClampMin="0.1"))
+	float SlashFadeExponent = 1.5f;
+
+	/** Points intermédiaires entre deux images (arc autour du porteur : la coupe ne dure que quelques images) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX", meta=(ClampMin="0", ClampMax="32"))
+	int32 SlashSubdivisions = 8;
+
+	/** Part de la hitbox couverte par la traînée, depuis la pointe (1 = toute la longueur, 0.6 = 60 % côté pointe) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX", meta=(ClampMin="0.05", ClampMax="1"))
+	float SlashLengthRatio = 0.6f;
+
+	/** Opacité côté main et côté pointe (dégradé le long de la lame) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX", meta=(ClampMin="0", ClampMax="1"))
+	float SlashInnerAlpha = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX", meta=(ClampMin="0", ClampMax="1"))
+	float SlashOuterAlpha = 0.85f;
+
+	/** Couleur : celle du joueur (personnalisation ; le Captain pour ses minions), sinon Slash Color ; mélangée à du blanc (Slash White Mix) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX")
+	bool bSlashUsePlayerColor = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX")
+	FLinearColor SlashColor = FLinearColor::White;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX", meta=(ClampMin="0", ClampMax="1"))
+	float SlashWhiteMix = 0.1f;
+
+	/** Matériau (M_SlashFX : translucide non éclairé, émissif = couleur des sommets x Glow, opacité = alpha des sommets) ; vide = M_ShipPreview */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX")
+	TObjectPtr<UMaterialInterface> SlashMaterial;
+
+	/** Paramètre Glow du matériau (éclat) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Slash FX", meta=(ClampMin="0"))
+	float SlashGlow = 1.5f;
 
 	/** Phase 1 : la main se place sur le flanc */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing|Animation", meta=(ClampMin="0.01", Units="Seconds"))
@@ -355,6 +403,30 @@ protected:
 	virtual void GetCurrentEases(float& OutWindup, float& OutSwing, float& OutRecover) const;
 
 private:
+
+	/** VFX de slash : un point = bords de la traînée (repère du porteur) à un instant d'une coupe (Stroke) */
+	struct FSlashSample
+	{
+		FVector Inner;
+		FVector Outer;
+		float Time;
+		int32 Stroke;
+	};
+	TArray<FSlashSample> SlashSamples;
+	int32 SlashStroke = 0;
+	bool bSlashEmitting = false;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UProceduralMeshComponent> SlashMesh;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UMaterialInstanceDynamic> SlashMaterialInstance;
+
+	/** Chaque image, local : points de la coupe en cours, maillage de la traînée */
+	void UpdateSlashTrail();
+
+	/** Couleur du joueur qui tient l'arme */
+	FLinearColor GetSlashColor() const;
 
 	/** Vrai en akimbo si cette épée est dans l'autre main que la principale (elle suit la principale) */
 	bool IsOffHandOfAkimbo() const;
