@@ -375,7 +375,8 @@ private:
 
 	bool bSinkStarted = false;
 
-	/** Coulée par ForceSinkNow : plus de cycle */
+	/** Coulée par ForceSinkNow (partie 3) : plus de cycle ; répliqué : chaque machine la fait disparaître d un coup (UpdateSink) */
+	UPROPERTY(Replicated)
 	bool bForceSunk = false;
 
 	/** Coulaison finie, flow prévenu (serveur) */
@@ -392,6 +393,9 @@ private:
 
 	/** Descente sur cette machine : composants rendus mobiles, position de départ */
 	bool bSinkGathered = false;
+
+	/** Coulée de force : île et acteurs accrochés déjà cachés sur cette machine */
+	bool bForceSunkHidden = false;
 	FVector SinkOrigin = FVector::ZeroVector;
 
 	/** Apparitions au centre (élite) qui n'ont pas trouvé de place : réessayées, sinon la nuit ne finirait jamais */

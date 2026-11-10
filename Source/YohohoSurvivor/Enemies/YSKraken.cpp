@@ -4,6 +4,7 @@
 #include "Components/ChildActorComponent.h"
 #include "Components/DecalComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Components/MeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Core/YSCombat.h"
 #include "Engine/DamageEvents.h"
@@ -909,9 +910,18 @@ AYSKrakenTentacleMelee::AYSKrakenTentacleMelee()
 {
 	FoeName = NSLOCTEXT("YS", "KrakenTentacleMeleeName", "Tentacule");
 	EmergeDistance = 500.0f;
-	TentacleWindupDuration = 2.0f;
-	// attaque 2x plus tôt après la sortie que la tentacule à distance (demande de Paul, 2026-11-10)
+	// amorce (bande rouge au sol) 1 s ; attaque 2x plus tôt après la sortie que la tentacule à distance (demandes de Paul, 2026-11-10)
+	TentacleWindupDuration = 1.0f;
 	AttackDelay = 2.5f;
+
+	// corps violet (la tentacule à distance reste rouge) ; ventouses roses inchangées
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> RedMaterial(TEXT("/Game/Art/Materials/PH_materials/m_PH_monochrome_Red.m_PH_monochrome_Red"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> PurpleMaterial(TEXT("/Game/Art/Materials/PH_materials/m_PH_monochrome_Purple.m_PH_monochrome_Purple"));
+	if (RedMaterial.Succeeded() && PurpleMaterial.Succeeded())
+	{
+		BodyMaterialFrom = RedMaterial.Object;
+		BodyMaterialTo = PurpleMaterial.Object;
+	}
 
 	SlamWarning = CreateDefaultSubobject<UYSGroundZoneComponent>(TEXT("SlamWarning"));
 	SlamWarning->SetupAttachment(GetRootComponent());
@@ -935,6 +945,29 @@ void AYSKrakenTentacleMelee::TickKraken(float DeltaSeconds)
 	if (!Visual->GetRelativeScale3D().Equals(FVector(VisualScale), 0.001f))
 	{
 		Visual->SetRelativeScale3D(FVector(VisualScale));
+	}
+
+	// couleur du corps : remplace Body Material From par Body Material To sur les formes du prop (une fois qu'il existe)
+	if (!bRecolored && BodyMaterialFrom && BodyMaterialTo)
+	{
+		if (AActor* VisualActor = Visual->GetChildActor())
+		{
+			bRecolored = true;
+			int32 Recolored = 0;
+			TInlineComponentArray<UMeshComponent*> Meshes(VisualActor);
+			for (UMeshComponent* PropMesh : Meshes)
+			{
+				for (int32 Slot = 0; Slot < PropMesh->GetNumMaterials(); ++Slot)
+				{
+					if (PropMesh->GetMaterial(Slot) == BodyMaterialFrom)
+					{
+						PropMesh->SetMaterial(Slot, BodyMaterialTo);
+						++Recolored;
+					}
+				}
+			}
+			UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s : %d forme(s) en %s"), *GetName(), Recolored, *BodyMaterialTo->GetName());
+		}
 	}
 
 	// signe au sol pendant l'amorce : la bande qui va être frappée

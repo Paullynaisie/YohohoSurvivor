@@ -86,6 +86,7 @@ void AYSIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	DOREPLIFETIME(AYSIsland, OpenDeliveryClasses);
 	DOREPLIFETIME(AYSIsland, StartBoat);
 	DOREPLIFETIME(AYSIsland, SinkStartServerTime);
+	DOREPLIFETIME(AYSIsland, bForceSunk);
 	DOREPLIFETIME(AYSIsland, bMainObjectivesDone);
 	DOREPLIFETIME(AYSIsland, SubmergedDepth);
 	DOREPLIFETIME(AYSIsland, RiseStartServerTime);
@@ -806,6 +807,42 @@ void AYSIsland::UpdateSink()
 {
 	if (SinkStartServerTime <= 0.0 || !Data)
 	{
+		return;
+	}
+
+	// coulée de force (partie 3, îles loin du combat) : disparaît d'un coup au lieu de descendre ; descendre déplaçait chaque image
+	// les milliers de props accrochés (mesuré : ~50 ms du fil du jeu par image pour 3 îles, moins de 10 FPS au début du combat)
+	if (bForceSunk)
+	{
+		if (!bForceSunkHidden)
+		{
+			bForceSunkHidden = true;
+			TArray<AActor*> Attached;
+			GetAttachedActors(Attached, false, true);
+			Attached.Insert(this, 0);
+			int32 Destroyed = 0;
+			for (AActor* Actor : Attached)
+			{
+				if (!IsValid(Actor))
+				{
+					continue;
+				}
+				// objets posés (coffres, objectifs) : retirés par le serveur ; le reste (terrain, props locaux, pontons, PNJ) caché sans collision
+				if (Actor->IsA<AYSInteractiveObject>() && Actor->GetIsReplicated())
+				{
+					if (HasAuthority())
+					{
+						Actor->Destroy();
+						++Destroyed;
+					}
+					continue;
+				}
+				Actor->SetActorHiddenInGame(true);
+				Actor->SetActorEnableCollision(false);
+			}
+			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s coulée d'un coup : %d acteur(s) cachés, %d objet(s) retirés (%s)"), *Data->GetName(), Attached.Num() - Destroyed,
+				Destroyed, HasAuthority() ? TEXT("serveur") : TEXT("client"));
+		}
 		return;
 	}
 

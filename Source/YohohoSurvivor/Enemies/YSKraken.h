@@ -613,6 +613,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam", meta=(ClampMin="0.1"))
 	float VisualScale = 1.25f;
 
+	/** Couleur du corps : le matériau From du prop (rouge, commun avec la tentacule à distance) est remplacé par To sur cette tentacule (local,
+	 *  chaque machine) ; vide = inchangé */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam|Look")
+	TObjectPtr<UMaterialInterface> BodyMaterialFrom;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam|Look")
+	TObjectPtr<UMaterialInterface> BodyMaterialTo;
+
 	/** Signe au sol de l'amorce (zone frappée) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam|Warning")
 	TObjectPtr<UMaterialInterface> WarningMaterial;
@@ -645,6 +653,7 @@ private:
 	float GrabSpawnAccumulator = 0.0f;
 	bool bHoldingBoat = false;
 	bool bWarningShown = false;
+	bool bRecolored = false;
 
 	/** Bande frappée : premier point dans la coque du bateau (faux s'il est raté) */
 	bool FindSlamHit(FVector& OutPoint) const;
