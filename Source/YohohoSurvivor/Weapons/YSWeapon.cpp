@@ -53,9 +53,7 @@ AYSWeapon::AYSWeapon()
 	OffHandSocket = CreateDefaultSubobject<USceneComponent>(TEXT("OffHandSocket"));
 	OffHandSocket->SetupAttachment(Root);
 
-	MainHandMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Art/Materials/PH_materials/m_PH_emissive_turboBlue.m_PH_emissive_turboBlue")));
-	OffHandMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Art/Materials/PH_materials/m_PH_emissive_turboGreen.m_PH_emissive_turboGreen")));
-	ClassUpgradeMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Art/Materials/PH_materials/m_PH_emissive_turboYellow.m_PH_emissive_turboYellow")));
+	FallbackMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Art/Materials/PH_materials/m_PH_emissive_turboWhite.m_PH_emissive_turboWhite")));
 }
 
 void AYSWeapon::OptimizeForCrowd(bool bCastShadow)
@@ -109,21 +107,14 @@ void AYSWeapon::OptimizeForCrowd(bool bCastShadow)
 	UE_LOG(LogTemp, Verbose, TEXT("[YSWeapon] %s optimisée (%s, %d primitive(s))"), *GetName(), MergedMesh ? TEXT("mesh fusionné") : TEXT("formes du Blueprint"), Primitives.Num());
 }
 
-void AYSWeapon::SetColoration(EYSWeaponColoration NewColoration)
+void AYSWeapon::SetColoration(UMaterialInterface* InMaterial)
 {
-	if (NewColoration == AppliedColoration || NewColoration == EYSWeaponColoration::None)
+	UMaterialInterface* Material = InMaterial ? InMaterial : FallbackMaterial.LoadSynchronous();
+	if (!Material || AppliedColoration.Get() == Material)
 	{
 		return;
 	}
-	AppliedColoration = NewColoration;
-
-	const TSoftObjectPtr<UMaterialInterface>& MaterialPtr = NewColoration == EYSWeaponColoration::MainHand ? MainHandMaterial
-		: NewColoration == EYSWeaponColoration::OffHand ? OffHandMaterial : ClassUpgradeMaterial;
-	UMaterialInterface* Material = MaterialPtr.LoadSynchronous();
-	if (!Material)
-	{
-		return;
-	}
+	AppliedColoration = Material;
 
 	// composant Coloration du Blueprint (nom de variable, espaces ignorés), puis tous ses descendants
 	const FString WantedName = ColorationComponentName.ToString().Replace(TEXT(" "), TEXT(""));

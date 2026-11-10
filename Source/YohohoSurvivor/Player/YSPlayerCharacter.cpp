@@ -1,4 +1,5 @@
 #include "Player/YSPlayerCharacter.h"
+#include "Core/YSCustomization.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/BlendSpace.h"
 #include "Camera/CameraComponent.h"
@@ -2664,13 +2665,19 @@ void AYSPlayerCharacter::RefreshCustomization()
 	{
 		UMaterialInterface* ColorMaterial = YSGameState->GetCustomizationMaterial(YSPlayerState->GetColorIndex());
 		UTexture2D* FaceTexture = YSGameState->GetCustomizationFace(YSPlayerState->GetFaceIndex());
-		ApplyCustomization(ColorMaterial, FaceTexture);
+		ApplyCustomization(ColorMaterial, FaceTexture, YSGameState->GetCustomizationEmissive(YSPlayerState->GetColorIndex()));
 		bCustomizationApplied = ColorMaterial && FaceTexture;
 	}
 }
 
-void AYSPlayerCharacter::ApplyCustomization(UMaterialInterface* ColorMaterial, UTexture2D* FaceTexture)
+void AYSPlayerCharacter::ApplyCustomization(UMaterialInterface* ColorMaterial, UTexture2D* FaceTexture, UMaterialInterface* EmissiveMaterial)
 {
+	if (EmissiveMaterial && CustomizationEmissive.Get() != EmissiveMaterial)
+	{
+		CustomizationEmissive = EmissiveMaterial;
+		UpdateWeaponColoration();
+	}
+
 	if (FaceTexture && FaceDecal)
 	{
 		FaceDecal->SetFaceTexture(FaceTexture);
@@ -3786,18 +3793,19 @@ void AYSPlayerCharacter::UpdateWeaponColoration()
 		return;
 	}
 
-	// set différent de celui du Blueprint du personnage = obtenu par une upgrade de classe (joueurs seulement : le set d'un
-	// minion est tiré au hasard)
-	const AYSPlayerCharacter* Defaults = GetClass()->GetDefaultObject<AYSPlayerCharacter>();
-	const bool bClassUpgraded = (GetPlayerState() || bShowcasePreview) && WeaponSet && Defaults && Defaults->WeaponSet && WeaponSet != Defaults->WeaponSet;
-
-	if (AYSWeapon* MainWeapon = GetMainHandWeapon())
+	// émissif de la couleur du joueur, pour les deux mains (plus de couleur par main ni par classe) ; sans couleur connue : Fallback Material
+	UMaterialInterface* Emissive = CustomizationEmissive.Get();
+	if (!Emissive)
 	{
-		MainWeapon->SetColoration(bClassUpgraded ? EYSWeaponColoration::ClassUpgrade : EYSWeaponColoration::MainHand);
+		const FYSCustomizationColor* PlayerColor = YSPlayerColor::Find(this);
+		Emissive = PlayerColor ? PlayerColor->EmissiveMaterial.Get() : nullptr;
 	}
-	if (AYSWeapon* OffWeapon = GetOffHandWeapon())
+	for (AYSWeapon* Weapon : { GetMainHandWeapon(), GetOffHandWeapon() })
 	{
-		OffWeapon->SetColoration(bClassUpgraded ? EYSWeaponColoration::ClassUpgrade : EYSWeaponColoration::OffHand);
+		if (Weapon)
+		{
+			Weapon->SetColoration(Emissive);
+		}
 	}
 }
 

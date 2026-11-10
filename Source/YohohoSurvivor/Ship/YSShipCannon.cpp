@@ -1,4 +1,5 @@
 #include "Ship/YSShipCannon.h"
+#include "Core/YSCustomization.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
 #include "ProceduralMeshComponent.h"
@@ -506,13 +507,11 @@ void AYSShipCannon::UpdatePreview()
 	}
 	PreviewMesh->SetVisibility(true);
 
-	// couleur du joueur (personnalisation)
+	// couleur émissive du joueur (personnalisation)
 	FLinearColor PlayerColor = FLinearColor::White;
-	const AYSPlayerState* State = User->GetPlayerState<AYSPlayerState>();
-	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
-	if (State && YSGameState && YSGameState->GetCustomizationColors().IsValidIndex(State->GetColorIndex()))
+	if (const FYSCustomizationColor* Customization = YSPlayerColor::Find(User))
 	{
-		PlayerColor = YSGameState->GetCustomizationColors()[State->GetColorIndex()].ButtonColor;
+		PlayerColor = Customization->EmissiveColor;
 	}
 
 	// repère du poste (+X = alignement d'origine), depuis le pivot du canon
@@ -720,15 +719,19 @@ void AYSShipMortar::BuildAimPreview(TArray<FVector>& Vertices, TArray<int32>& Tr
 	const float CircleZ = Local.Z + Data->HeightOffset;
 	const float Radius = GetShellRadius();
 	const int32 Segments = FMath::Max(Data->MortarCircleSegments, 8);
+	// couleur émissive du joueur au poste (BuiltPreviewColor, calculée par UpdatePreview juste avant)
+	const bool bPlayerColor = Data->bMortarUsePlayerColor && BuiltPreviewColor.A > 0.0f;
+	const FLinearColor FillColor = bPlayerColor ? FLinearColor(BuiltPreviewColor.R, BuiltPreviewColor.G, BuiltPreviewColor.B, Data->MortarFillColor.A) : Data->MortarFillColor;
+	const FLinearColor CircleColor = bPlayerColor ? FLinearColor(BuiltPreviewColor.R, BuiltPreviewColor.G, BuiltPreviewColor.B, Data->MortarCircleColor.A) : Data->MortarCircleColor;
 	const int32 CenterIndex = Vertices.Num();
 	Vertices.Add(FVector(Center.X, Center.Y, CircleZ));
-	Colors.Add(Data->MortarFillColor);
+	Colors.Add(FillColor);
 	for (int32 Segment = 0; Segment <= Segments; ++Segment)
 	{
 		const float Angle = 2.0f * PI * Segment / Segments;
 		const FVector2D Point = Center + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * Radius;
 		Vertices.Add(FVector(Point.X, Point.Y, CircleZ));
-		Colors.Add(FLinearColor(Data->MortarFillColor.R, Data->MortarFillColor.G, Data->MortarFillColor.B, Data->MortarFillColor.A * 0.5f));
+		Colors.Add(FLinearColor(FillColor.R, FillColor.G, FillColor.B, FillColor.A * 0.5f));
 		if (Segment > 0)
 		{
 			Triangles.Append({ CenterIndex, CenterIndex + Segment, CenterIndex + Segment + 1 });
@@ -739,7 +742,7 @@ void AYSShipMortar::BuildAimPreview(TArray<FVector>& Vertices, TArray<int32>& Tr
 		const float A0 = 2.0f * PI * Segment / Segments;
 		const float A1 = 2.0f * PI * (Segment + 1) / Segments;
 		YSCannonPreview::AddLine(Vertices, Triangles, Colors, Center + FVector2D(FMath::Cos(A0), FMath::Sin(A0)) * Radius,
-			Center + FVector2D(FMath::Cos(A1), FMath::Sin(A1)) * Radius, Data->MortarCircleWidth, CircleZ + 1.0f, Data->MortarCircleColor);
+			Center + FVector2D(FMath::Cos(A1), FMath::Sin(A1)) * Radius, Data->MortarCircleWidth, CircleZ + 1.0f, CircleColor);
 	}
 	YSCannonPreview::AddLine(Vertices, Triangles, Colors, Origin, Center, Data->AngleLineWidth, Z, Data->AimLineColor);
 }

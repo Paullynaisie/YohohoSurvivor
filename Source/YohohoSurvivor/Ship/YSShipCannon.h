@@ -282,9 +282,14 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<class UProceduralMeshComponent> PreviewMesh;
 
-	/** Couleur et angle de visée déjà construits (ne reconstruit qu'aux changements) */
-	FLinearColor BuiltPreviewColor = FLinearColor::Transparent;
 	float BuiltPreviewAimYaw = 1.0e6f;
+
+protected:
+
+	/** Couleur (émissive du joueur au poste) déjà construite (ne reconstruit qu'aux changements) ; lue par la prévisu du mortier */
+	FLinearColor BuiltPreviewColor = FLinearColor::Transparent;
+
+private:
 
 	/** Joueur local au poste : prévisus construits / mis à jour ; sinon cachés */
 	void UpdatePreview();

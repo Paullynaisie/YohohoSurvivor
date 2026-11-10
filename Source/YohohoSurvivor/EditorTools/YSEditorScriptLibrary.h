@@ -6,6 +6,9 @@
 #include "YSEditorScriptLibrary.generated.h"
 
 class UAnimSequence;
+class UMaterial;
+class UMaterialInterface;
+class UDataTable;
 class UBlendSpace;
 class USkeleton;
 
@@ -21,6 +24,18 @@ class UYSEditorScriptLibrary : public UBlueprintFunctionLibrary
 public:
 
 #if WITH_EDITOR
+	/** Couleurs constantes d'un matériau (nœuds Constant3Vector / Constant4Vector, défaut des VectorParameter), dans l'ordre des nœuds */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static TArray<FLinearColor> GetMaterialColorConstants(UMaterial* Material);
+
+	/** Remplace (RGB, à Tolerance près) la couleur From par To dans les nœuds de couleur constants du matériau, puis le recompile ; renvoie le nombre de nœuds changés */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static int32 ReplaceMaterialColorConstants(UMaterial* Material, FLinearColor From, FLinearColor To, float Tolerance = 0.01f);
+
+	/** Ligne RowName de DT_CustomizationColors : Emissive Material et Emissive Color */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static bool SetCustomizationColorEmissive(UDataTable* Table, FName RowName, UMaterialInterface* EmissiveMaterial, FLinearColor EmissiveColor);
+
 	/** Configure un axe d'un BlendSpace (0 = X, 1 = Y) */
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static void SetBlendSpaceAxis(UBlendSpace* BlendSpace, int32 AxisIndex, const FString& DisplayName, float Min, float Max, int32 GridNum, bool bWrapInput);

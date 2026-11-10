@@ -1,4 +1,5 @@
 #include "Abilities/YSAutoSwingAbility.h"
+#include "Core/YSCustomization.h"
 #include "Components/BoxComponent.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
@@ -495,17 +496,10 @@ FLinearColor UYSAutoSwingAbility::GetSlashColor() const
 	FLinearColor Color = SlashColor;
 	if (bSlashUsePlayerColor)
 	{
-		// joueur : sa couleur de personnalisation ; minion : celle de son Captain
-		const AYSPlayerCharacter* Holder = Cast<AYSPlayerCharacter>(GetOwner() ? GetOwner()->GetOwner() : nullptr);
-		if (const AYSCaptainMinion* Minion = Cast<AYSCaptainMinion>(Holder))
+		// joueur : couleur émissive de sa personnalisation (rouge / noir : blanc) ; minion : celle de son Captain
+		if (const FYSCustomizationColor* PlayerColor = YSPlayerColor::Find(GetOwner()))
 		{
-			Holder = Minion->GetCaptain();
-		}
-		const AYSPlayerState* State = Holder ? Holder->GetPlayerState<AYSPlayerState>() : nullptr;
-		const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
-		if (State && YSGameState && YSGameState->GetCustomizationColors().IsValidIndex(State->GetColorIndex()))
-		{
-			Color = YSGameState->GetCustomizationColors()[State->GetColorIndex()].ButtonColor;
+			Color = PlayerColor->EmissiveColor;
 		}
 	}
 	return FMath::Lerp(Color, FLinearColor::White, SlashWhiteMix);
@@ -564,7 +558,8 @@ void UYSAutoSwingAbility::UpdateSlashTrail()
 
 	if (!SlashMesh)
 	{
-		SlashMesh = NewObject<UProceduralMeshComponent>(GetOwner(), TEXT("SlashTrail"));
+		// nom unique : une arme peut avoir plusieurs actions de coupe (Auto swing + Dashing Slash...), chacune avec sa traînée
+		SlashMesh = NewObject<UProceduralMeshComponent>(GetOwner(), MakeUniqueObjectName(GetOwner(), UProceduralMeshComponent::StaticClass(), TEXT("SlashTrail")));
 		SlashMesh->SetUsingAbsoluteLocation(true);
 		SlashMesh->SetUsingAbsoluteRotation(true);
 		SlashMesh->SetUsingAbsoluteScale(true);

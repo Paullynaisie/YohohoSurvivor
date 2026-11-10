@@ -9,18 +9,6 @@ class UStaticMeshComponent;
 class UMaterialInterface;
 class UYSAbilityComponent;
 
-/** Couleur d'une arme de joueur selon la main qui la tient et la classe du set */
-UENUM(BlueprintType)
-enum class EYSWeaponColoration : uint8
-{
-	/** Matériaux du Blueprint (armes de NME) */
-	None,
-	MainHand,
-	OffHand,
-	/** Set obtenu par une upgrade de classe */
-	ClassUpgrade
-};
-
 /**
  *  Arme tenue dans une main du joueur : un mesh, une bouche (Muzzle) et une action.
  *  L'action est un composant de capacité (UYSAbilityComponent, ex. Coup d'Petoir) ajouté dans le
@@ -89,17 +77,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Coloration")
 	FName ColorationComponentName = TEXT("Coloration");
 
-	/** Arme dans la main principale du joueur (droite, gauche pour un gaucher) */
+	/**
+	 *  Arme d'un joueur : le composant Coloration prend l'émissif de la couleur du joueur (Emissive Material de DT_CustomizationColors).
+	 *  Ce matériau-ci ne sert que sans couleur de joueur connue (vue du Blueprint, aperçu sans joueur). Ex-Main Hand Material.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Coloration")
-	TSoftObjectPtr<UMaterialInterface> MainHandMaterial;
-
-	/** Arme dans l'autre main */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Coloration")
-	TSoftObjectPtr<UMaterialInterface> OffHandMaterial;
-
-	/** Arme d'un set obtenu par une upgrade de classe (les deux mains) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Coloration")
-	TSoftObjectPtr<UMaterialInterface> ClassUpgradeMaterial;
+	TSoftObjectPtr<UMaterialInterface> FallbackMaterial;
 
 	/**
 	 *  Perf (armes des NME) : toutes les formes du Blueprint fusionnées en un seul mesh (Tools/EditorScripts/merge_foe_weapons.py,
@@ -117,8 +100,8 @@ public:
 	 */
 	void OptimizeForCrowd(bool bCastShadow);
 
-	/** Colore les sous-composants du composant Coloration (rien si déjà appliquée ou None) ; local, sur chaque machine */
-	void SetColoration(EYSWeaponColoration NewColoration);
+	/** Colore les sous-composants du composant Coloration avec Material (nullptr = Fallback Material ; rien si déjà appliqué) ; local, sur chaque machine */
+	void SetColoration(UMaterialInterface* Material);
 
 	/**
 	 *  Recul actuel de l'arme (réglages Recoil de ses actions de tir : Coup d'Petoir, Auto shot), d'après la plus récente
@@ -186,7 +169,7 @@ public:
 
 private:
 
-	EYSWeaponColoration AppliedColoration = EYSWeaponColoration::None;
+	TWeakObjectPtr<UMaterialInterface> AppliedColoration;
 
 	bool bCrowdOptimized = false;
 

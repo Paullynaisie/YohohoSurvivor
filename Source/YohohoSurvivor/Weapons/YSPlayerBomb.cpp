@@ -1,4 +1,5 @@
 #include "Weapons/YSPlayerBomb.h"
+#include "Core/YSCustomization.h"
 #include "Ship/YSPirateShip.h"
 #include "Ship/YSShipStation.h"
 #include "Components/StaticMeshComponent.h"
@@ -176,6 +177,18 @@ void AYSPlayerBomb::BeginPlay()
 	if (Flight.bThrown)
 	{
 		SetActorLocation(GetFlightLocation(Flight, 0.0f));
+	}
+
+	// couleur du joueur qui l'a posée / tirée (mèche, disque, explosion)
+	if (bUsePlayerColor)
+	{
+		if (const FYSCustomizationColor* PlayerColor = YSPlayerColor::Find(this))
+		{
+			const FLinearColor& Emissive = PlayerColor->EmissiveColor;
+			FuseColor = FLinearColor(Emissive.R, Emissive.G, Emissive.B, FuseColor.A);
+			ZoneColor = FLinearColor(Emissive.R, Emissive.G, Emissive.B, ZoneColor.A);
+			ExplosionColor = FLinearColor(Emissive.R, Emissive.G, Emissive.B, ExplosionColor.A);
+		}
 	}
 
 	BombMaterialInstance = BombMaterial ? Mesh->CreateDynamicMaterialInstance(0, BombMaterial) : nullptr;

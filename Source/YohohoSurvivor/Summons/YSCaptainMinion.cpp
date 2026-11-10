@@ -116,7 +116,7 @@ void AYSCaptainMinion::RefreshCustomization()
 		UMaterialInterface* ColorMaterial = YSGameState->GetCustomizationMaterial(CaptainState->GetColorIndex());
 		// même visage que le Captain
 		UTexture2D* FaceTexture = YSGameState->GetCustomizationFace(CaptainState->GetFaceIndex());
-		ApplyCustomization(ColorMaterial, FaceTexture);
+		ApplyCustomization(ColorMaterial, FaceTexture, YSGameState->GetCustomizationEmissive(CaptainState->GetColorIndex()));
 		bCustomizationApplied = ColorMaterial && FaceTexture;
 	}
 }

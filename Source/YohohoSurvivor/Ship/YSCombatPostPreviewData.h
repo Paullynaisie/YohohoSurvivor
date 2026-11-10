@@ -76,4 +76,8 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Preview|Mortar")
 	FLinearColor MortarFillColor = FLinearColor(1.0f, 0.4f, 0.1f, 0.25f);
+
+	/** Bord et intérieur du cercle à la couleur émissive du joueur (opacités de Mortar Circle / Fill Color gardées) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Preview|Mortar")
+	bool bMortarUsePlayerColor = true;
 };

@@ -123,6 +123,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Explosion")
 	FLinearColor ExplosionColor = FLinearColor(1.0f, 0.45f, 0.0f, 0.35f);
 
+	/**
+	 *  Posée / tirée par un joueur (ses minions, un poste de combat qu'il utilise) : Fuse Color, Zone Color et Explosion Color prennent la
+	 *  couleur émissive du joueur (Emissive Color de DT_CustomizationColors ; opacités gardées), sur chaque machine. NME : inchangées.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Player Color")
+	bool bUsePlayerColor = true;
+
 	/** La sphère grossit de 0 au rayon en ce temps, puis s'efface en Explosion Fade Duration */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bomb|Explosion", meta=(ClampMin="0", Units="Seconds"))
 	float ExplosionGrowDuration = 0.14f;

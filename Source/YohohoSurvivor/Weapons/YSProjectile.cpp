@@ -1,4 +1,5 @@
 #include "Weapons/YSProjectile.h"
+#include "Core/YSCustomization.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSGameplayTags.h"
@@ -113,11 +114,45 @@ void AYSProjectile::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME_CONDITION(AYSProjectile, LifeTime, COND_InitialOnly);
 }
 
+void AYSProjectile::OnRep_Instigator()
+{
+	Super::OnRep_Instigator();
+	if (HasActorBegunPlay())
+	{
+		ApplyPlayerColor();
+	}
+}
+
+void AYSProjectile::ApplyPlayerColor()
+{
+	if (!bUsePlayerColor || bPlayerColorApplied)
+	{
+		return;
+	}
+	const FYSCustomizationColor* PlayerColor = YSPlayerColor::Find(this);
+	UMaterialInterface* Emissive = PlayerColor ? PlayerColor->EmissiveMaterial.Get() : nullptr;
+	if (!Emissive)
+	{
+		return;
+	}
+	bPlayerColorApplied = true;
+	TInlineComponentArray<UMeshComponent*> Meshes(this);
+	for (UMeshComponent* MeshComponent : Meshes)
+	{
+		for (int32 Slot = 0; Slot < MeshComponent->GetNumMaterials(); ++Slot)
+		{
+			MeshComponent->SetMaterial(Slot, Emissive);
+		}
+	}
+	UE_LOG(LogTemp, VeryVerbose, TEXT("[YSProjectile] %s : couleur du joueur %s"), *GetName(), *Emissive->GetName());
+}
+
 void AYSProjectile::BeginPlay()
 {
 	Super::BeginPlay();
 
 	SetLifeSpan(LifeTime);
+	ApplyPlayerColor();
 
 	// traverse tous les NME (DragonBreathAMMO, critique de Golden aiming)
 	if (bPierceAllTargets)

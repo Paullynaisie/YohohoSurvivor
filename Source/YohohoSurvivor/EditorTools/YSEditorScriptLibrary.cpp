@@ -19,6 +19,10 @@
 #include "LandscapeEditLayer.h"
 #include "LandscapeInfo.h"
 #include "LandscapeProxy.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialExpressionConstant3Vector.h"
+#include "Materials/MaterialExpressionConstant4Vector.h"
+#include "Materials/MaterialExpressionVectorParameter.h"
 #include "Materials/MaterialInterface.h"
 #include "Upgrades/YSShardUpgrade.h"
 #endif
@@ -206,6 +210,86 @@ bool UYSEditorScriptLibrary::SetLandscapeHeights(ALandscape* Landscape, const TA
 		Landscape->ForceUpdateLayersContent();
 	}
 	Landscape->MarkPackageDirty();
+	return true;
+}
+
+TArray<FLinearColor> UYSEditorScriptLibrary::GetMaterialColorConstants(UMaterial* Material)
+{
+	TArray<FLinearColor> Colors;
+	if (!Material)
+	{
+		return Colors;
+	}
+	for (UMaterialExpression* Expression : Material->GetExpressions())
+	{
+		if (const UMaterialExpressionConstant3Vector* C3 = Cast<UMaterialExpressionConstant3Vector>(Expression))
+		{
+			Colors.Add(C3->Constant);
+		}
+		else if (const UMaterialExpressionConstant4Vector* C4 = Cast<UMaterialExpressionConstant4Vector>(Expression))
+		{
+			Colors.Add(C4->Constant);
+		}
+		else if (const UMaterialExpressionVectorParameter* Parameter = Cast<UMaterialExpressionVectorParameter>(Expression))
+		{
+			Colors.Add(Parameter->DefaultValue);
+		}
+	}
+	return Colors;
+}
+
+int32 UYSEditorScriptLibrary::ReplaceMaterialColorConstants(UMaterial* Material, FLinearColor From, FLinearColor To, float Tolerance)
+{
+	if (!Material)
+	{
+		return 0;
+	}
+	const auto Matches = [&](const FLinearColor& Color)
+	{
+		return FMath::Abs(Color.R - From.R) <= Tolerance && FMath::Abs(Color.G - From.G) <= Tolerance && FMath::Abs(Color.B - From.B) <= Tolerance;
+	};
+	const auto Replaced = [&](const FLinearColor& Color) { return FLinearColor(To.R, To.G, To.B, Color.A); };
+	int32 Count = 0;
+	Material->Modify();
+	for (UMaterialExpression* Expression : Material->GetExpressions())
+	{
+		if (UMaterialExpressionConstant3Vector* C3 = Cast<UMaterialExpressionConstant3Vector>(Expression))
+		{
+			if (Matches(C3->Constant)) { C3->Modify(); C3->Constant = Replaced(C3->Constant); ++Count; }
+		}
+		else if (UMaterialExpressionConstant4Vector* C4 = Cast<UMaterialExpressionConstant4Vector>(Expression))
+		{
+			if (Matches(C4->Constant)) { C4->Modify(); C4->Constant = Replaced(C4->Constant); ++Count; }
+		}
+		else if (UMaterialExpressionVectorParameter* Parameter = Cast<UMaterialExpressionVectorParameter>(Expression))
+		{
+			if (Matches(Parameter->DefaultValue)) { Parameter->Modify(); Parameter->DefaultValue = Replaced(Parameter->DefaultValue); ++Count; }
+		}
+	}
+	if (Count > 0)
+	{
+		Material->PreEditChange(nullptr);
+		Material->PostEditChange();
+		Material->MarkPackageDirty();
+	}
+	return Count;
+}
+
+bool UYSEditorScriptLibrary::SetCustomizationColorEmissive(UDataTable* Table, FName RowName, UMaterialInterface* EmissiveMaterial, FLinearColor EmissiveColor)
+{
+	if (!Table || Table->GetRowStruct() != FYSCustomizationColor::StaticStruct())
+	{
+		return false;
+	}
+	FYSCustomizationColor* Row = Table->FindRow<FYSCustomizationColor>(RowName, TEXT("SetCustomizationColorEmissive"), false);
+	if (!Row)
+	{
+		return false;
+	}
+	Table->Modify();
+	Row->EmissiveMaterial = EmissiveMaterial;
+	Row->EmissiveColor = EmissiveColor;
+	Table->MarkPackageDirty();
 	return true;
 }
 

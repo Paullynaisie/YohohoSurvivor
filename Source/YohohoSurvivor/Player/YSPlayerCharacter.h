@@ -387,7 +387,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Aiming", meta=(ClampMin="0"))
 	float ProneBlendSpeed = 8.0f;
 
-	/** Armes colorées selon la main (principale / autre / set d'upgrade de classe) ; faux = matériaux de base de leur Blueprint (minions) */
+	/** Armes colorées avec l'émissif de la couleur du joueur (composant Coloration) ; faux = matériaux de base de leur Blueprint (minions) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Customization")
 	bool bWeaponColoration = true;
 
@@ -1077,8 +1077,11 @@ public:
 	/** Applique la personnalisation de son joueur (couleur, visage ; AYSPlayerState) ; minion : couleur de son Captain */
 	virtual void RefreshCustomization();
 
-	/** Applique un matériau au composant CustomizationColorComponentName et à ses sous-composants, et un visage (nullptr = inchangé) */
-	void ApplyCustomization(UMaterialInterface* ColorMaterial, UTexture2D* FaceTexture);
+	/**
+	 *  Applique un matériau au composant CustomizationColorComponentName et à ses sous-composants, et un visage (nullptr = inchangé) ;
+	 *  EmissiveMaterial (émissif de la couleur du joueur) colore le composant Coloration des armes
+	 */
+	void ApplyCustomization(UMaterialInterface* ColorMaterial, UTexture2D* FaceTexture, UMaterialInterface* EmissiveMaterial = nullptr);
 
 	/** Reprend la progression d'upgrades d'un autre personnage (OldPool = son pool) et la réapplique (serveur) */
 	void RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& OldPool, const TArray<FYSUpgradeProgress>& OldProgress);
@@ -1662,6 +1665,9 @@ protected:
 
 	/** Couleur des armes (composant Coloration) : main principale, autre main, ou set d'upgrade de classe ; local */
 	void UpdateWeaponColoration();
+
+	/** Émissif reçu par ApplyCustomization (aperçus sans joueur compris) */
+	TWeakObjectPtr<UMaterialInterface> CustomizationEmissive;
 
 	/** Melee Range : échelle des armes de mêlée (composant d'arme de la main), local d'après MeleeRangeMultiplier répliqué */
 	void UpdateWeaponRangeScale();

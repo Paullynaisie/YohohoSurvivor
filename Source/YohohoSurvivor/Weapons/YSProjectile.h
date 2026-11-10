@@ -116,6 +116,13 @@ protected:
 	UPROPERTY(EditAnywhere, Category="AMMO|Appearance")
 	FName ColorParameterName = TEXT("Color");
 
+	/**
+	 *  Tirée par un joueur (ou un de ses minions, un poste de combat qu'il utilise) : tous les meshes de l'AMMO prennent l'émissif de la
+	 *  couleur du joueur (Emissive Material de DT_CustomizationColors), sur chaque machine. AMMO des NME : inchangées.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Appearance")
+	bool bUsePlayerColor = true;
+
 	/** Dégâts infligés, fixés par la capacité au moment du tir (serveur) */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="AMMO")
 	float Damage = 0.0f;
@@ -185,6 +192,10 @@ protected:
 	bool bBumpElites = true;
 
 private:
+
+	/** Use Player Color : émissif du joueur appliqué (une fois ; BeginPlay, ou à l'arrivée de l'Instigator chez un client) */
+	bool bPlayerColorApplied = false;
+	void ApplyPlayerColor();
 
 	/** Shoot system Pierce : critique sur un NME en train d'être bumpé (fixé au tir) */
 	bool bCriticalOnBumped = false;
@@ -286,6 +297,8 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	virtual void BeginPlay() override;
+
+	virtual void OnRep_Instigator() override;
 
 	virtual void Tick(float DeltaSeconds) override;
 

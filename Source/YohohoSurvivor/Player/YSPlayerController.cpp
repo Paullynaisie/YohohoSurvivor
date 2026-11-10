@@ -877,7 +877,7 @@ void AYSPlayerController::UpdateBoatSeatPreviews()
 				UE_LOG(LogTemp, Verbose, TEXT("[YSGameBoat] %s : %s à la place %d (local)"), *YSPlayer->GetPlayerName(), *PreviewClass->GetName(), YSPlayer->GetBoatSeat());
 			}
 			Preview->SetActorLocationAndRotation(Seat.GetLocation() + FVector(0.0f, 0.0f, Preview->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()), FRotator(0.0f, Seat.Rotator().Yaw, 0.0f));
-			Preview->ApplyCustomization(YSGameState->GetCustomizationMaterial(YSPlayer->GetColorIndex()), YSGameState->GetCustomizationFace(YSPlayer->GetFaceIndex()));
+			Preview->ApplyCustomization(YSGameState->GetCustomizationMaterial(YSPlayer->GetColorIndex()), YSGameState->GetCustomizationFace(YSPlayer->GetFaceIndex()), YSGameState->GetCustomizationEmissive(YSPlayer->GetColorIndex()));
 		}
 	}
 
@@ -1040,7 +1040,7 @@ void AYSPlayerController::UpdatePreviewScene(FYSCharacterPreviewScene& Scene, TS
 	// personnalisation choisie
 	if (YSGameState && MyPlayerState)
 	{
-		Scene.Character->ApplyCustomization(YSGameState->GetCustomizationMaterial(MyPlayerState->GetColorIndex()), YSGameState->GetCustomizationFace(MyPlayerState->GetFaceIndex()));
+		Scene.Character->ApplyCustomization(YSGameState->GetCustomizationMaterial(MyPlayerState->GetColorIndex()), YSGameState->GetCustomizationFace(MyPlayerState->GetFaceIndex()), YSGameState->GetCustomizationEmissive(MyPlayerState->GetColorIndex()));
 	}
 }
 

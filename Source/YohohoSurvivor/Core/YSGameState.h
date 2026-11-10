@@ -404,6 +404,7 @@ public:
 
 	/** Matériau de couleur / texture de visage d'un index (nullptr si invalide) */
 	UMaterialInterface* GetCustomizationMaterial(int32 ColorIndex) const { return CustomizationColors.IsValidIndex(ColorIndex) ? CustomizationColors[ColorIndex].Material.Get() : nullptr; }
+	UMaterialInterface* GetCustomizationEmissive(int32 ColorIndex) const { return CustomizationColors.IsValidIndex(ColorIndex) ? CustomizationColors[ColorIndex].EmissiveMaterial.Get() : nullptr; }
 	UTexture2D* GetCustomizationFace(int32 FaceIndex) const { return CustomizationFaces.IsValidIndex(FaceIndex) ? CustomizationFaces[FaceIndex].Get() : nullptr; }
 	void SetMatchStarted();
 
