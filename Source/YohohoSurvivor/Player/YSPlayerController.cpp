@@ -3242,6 +3242,29 @@ void AYSPlayerController::YSGoToBoarding(float Distance, float Side)
 	UE_LOG(LogTemp, Log, TEXT("[YSBoarding] %s à %.0f cm de l'accès %s (%s)"), *MyPawn->GetName(), Distance, *Best->GetName(), *Location.ToCompactString());
 }
 
+void AYSPlayerController::YSTestBoardingAccesses()
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPirateShip* Ship = YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	const AYSPlayerCharacter* TestCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	if (!HasAuthority() || !Ship || !TestCharacter)
+	{
+		return;
+	}
+	for (TActorIterator<AYSShipBoarding> It(GetWorld()); It; ++It)
+	{
+		if (AYSPirateShip::GetShipOf(*It) != Ship)
+		{
+			continue;
+		}
+		const FVector Nominal = It->GetBoardPointLocation();
+		const FVector Landing = It->FindLandingPoint(TestCharacter);
+		UE_LOG(LogTemp, Log, TEXT("[YSBoarding] Test %s / %s : point prévu %s %s, arrivée %s (%.0f cm, hauteur +%.0f)"), *Ship->GetName(), *It->GetName(),
+			*Nominal.ToCompactString(), It->IsBoardPointFree(TestCharacter) ? TEXT("libre") : TEXT("BLOQUÉ"), *Landing.ToCompactString(), FVector::Dist(Landing, Nominal),
+			Landing.Z - Ship->GetActorLocation().Z);
+	}
+}
+
 void AYSPlayerController::YSGoToCorpse()
 {
 	if (!HasAuthority())

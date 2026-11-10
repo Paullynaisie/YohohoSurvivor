@@ -483,6 +483,10 @@ public:
 	UFUNCTION(Exec)
 	void YSGoToBoarding(float Distance = 300.0f, float Side = 0.0f);
 
+	/** Debug (hôte) : pour chaque accès (échelle) du bateau des joueurs, point prévu libre ou non et point d'arrivée retenu, dans le log */
+	UFUNCTION(Exec)
+	void YSTestBoardingAccesses();
+
 	/** Debug d'un client : YSGoToBrooker (0) / YSGoToMedic (1) / YSGoToCorpse (2) / YSGoToBoarding (3) faits par le serveur */
 	UFUNCTION(Server, Reliable)
 	void ServerGoToDebug(uint8 Kind, float Distance, float Side = 0.0f);

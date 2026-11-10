@@ -1,4 +1,5 @@
 #include "Ship/YSShipBoarding.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Engine/StaticMesh.h"
@@ -146,7 +147,66 @@ void AYSShipBoarding::Interact(AYSPlayerCharacter* Character)
 		return;
 	}
 	const bool bWasSwimming = Character->IsSwimming();
-	Character->TeleportToFeetLocation(BoardPoint->GetComponentLocation(), BoardPoint->GetForwardVector());
-	UE_LOG(LogTemp, Log, TEXT("[YSBoarding] %s monte à bord de %s%s (pieds en %s)"), *Character->GetName(), *GetNameSafe(GetShip()),
-		bWasSwimming ? TEXT(" depuis l'eau") : TEXT(""), *BoardPoint->GetComponentLocation().ToCompactString());
+	const FVector Feet = FindLandingPoint(Character);
+	Character->TeleportToFeetLocation(Feet, BoardPoint->GetForwardVector());
+	UE_LOG(LogTemp, Log, TEXT("[YSBoarding] %s monte à bord de %s%s (pieds en %s, %.0f cm du point prévu)"), *Character->GetName(), *GetNameSafe(GetShip()),
+		bWasSwimming ? TEXT(" depuis l'eau") : TEXT(""), *Feet.ToCompactString(), FVector::Dist(Feet, BoardPoint->GetComponentLocation()));
+}
+
+FVector AYSShipBoarding::GetBoardPointLocation() const
+{
+	return BoardPoint->GetComponentLocation();
+}
+
+bool AYSShipBoarding::IsBoardPointFree(const AYSPlayerCharacter* Character) const
+{
+	if (!Character)
+	{
+		return false;
+	}
+	const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSBoardingFree), false, Character);
+	const FVector Center = BoardPoint->GetComponentLocation() + FVector(0.0f, 0.0f, Capsule->GetScaledCapsuleHalfHeight() + 5.0f);
+	return !GetWorld()->OverlapBlockingTestByChannel(Center, FQuat::Identity, ECC_Pawn,
+		FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight()), Params);
+}
+
+FVector AYSShipBoarding::FindLandingPoint(const AYSPlayerCharacter* Character) const
+{
+	// le point prévu peut tomber dans une cabine ou sous le gaillard (échelles du fond du galion / brigantin) : première place libre sur le
+	// dessus du bateau (sol tracé par le dessus, capsule du personnage qui y tient), en avançant vers l'intérieur et le long de la coque
+	const AYSPirateShip* Ship = GetShip();
+	const FVector Nominal = BoardPoint->GetComponentLocation();
+	if (!Ship || !Character)
+	{
+		return Nominal;
+	}
+	const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+	const float Radius = Capsule->GetScaledCapsuleRadius();
+	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	const FVector Inward = BoardPoint->GetForwardVector().GetSafeNormal2D();
+	const FVector Along(-Inward.Y, Inward.X, 0.0f);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSBoardingLanding), false, Character);
+	const float Top = Ship->GetActorLocation().Z + LandingSearchHeight;
+	for (float Depth = 0.0f; Depth <= LandingSearchDepth; Depth += LandingSearchStep)
+	{
+		for (const float Side : { 0.0f, 1.0f, -1.0f, 2.0f, -2.0f, 3.0f, -3.0f })
+		{
+			const FVector Candidate = Nominal + Inward * Depth + Along * (Side * LandingSearchStep);
+			FHitResult Hit;
+			if (!GetWorld()->LineTraceSingleByChannel(Hit, FVector(Candidate.X, Candidate.Y, Top), FVector(Candidate.X, Candidate.Y, Ship->GetActorLocation().Z - 200.0f), ECC_WorldStatic, Params)
+				|| Hit.ImpactNormal.Z < 0.7f || AYSPirateShip::GetShipOf(Hit.GetActor()) != Ship)
+			{
+				continue;
+			}
+			// la capsule tient au-dessus de ce sol (ni mât, ni bastingage, ni toit)
+			const FVector Center = Hit.ImpactPoint + FVector(0.0f, 0.0f, HalfHeight + 5.0f);
+			if (!GetWorld()->OverlapBlockingTestByChannel(Center, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(Radius, HalfHeight), Params))
+			{
+				return Hit.ImpactPoint;
+			}
+		}
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[YSBoarding] %s : pas de place libre trouvée sur %s, point prévu gardé"), *GetName(), *Ship->GetName());
+	return Nominal;
 }

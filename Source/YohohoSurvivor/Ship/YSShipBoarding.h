@@ -34,6 +34,32 @@ private:
 
 protected:
 
+	/**
+	 *  Arrivée à bord : Board Point s'il est libre, sinon la première place libre sur le dessus du bateau (sol tracé depuis Landing Search
+	 *  Height au-dessus de la flottaison, capsule du personnage qui y tient), en avançant vers l'intérieur jusqu'à Landing Search Depth
+	 *  et le long de la coque, par pas de Landing Search Step (échelles du fond : sinon dans la cabine, joueur bloqué)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding", meta=(ClampMin="0", Units="Centimeters"))
+	float LandingSearchHeight = 700.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding", meta=(ClampMin="0", Units="Centimeters"))
+	float LandingSearchDepth = 1200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding", meta=(ClampMin="10", Units="Centimeters"))
+	float LandingSearchStep = 100.0f;
+
+public:
+
+	/** Point d'arrivée des pieds (serveur) */
+	FVector FindLandingPoint(const AYSPlayerCharacter* Character) const;
+
+	/** Debug : le personnage tiendrait-il debout au point prévu (Board Point) */
+	bool IsBoardPointFree(const AYSPlayerCharacter* Character) const;
+
+	FVector GetBoardPointLocation() const;
+
+protected:
+
 	/** Échelle de corde affichée contre le flanc, de la mer au-dessus du bastingage (bateaux des joueurs ; visuel seulement) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder")
 	bool bShowLadder = false;
