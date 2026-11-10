@@ -613,7 +613,7 @@ public:
 	UFUNCTION(Exec)
 	void YSShipToNavalBattle(int32 Index, float Distance);
 
-	/** Debug (hôte, FlowMod) : bateau des joueurs posé à Distance (cm, 0 = 120 m) du centre de la zone du Kraken, tourné vers elle, le joueur sur son pont */
+	/** Debug (hôte, FlowMod) : bateau des joueurs posé à Distance (cm, 0 = 220 m) du centre de la zone du Kraken, tourné vers elle, le joueur sur son pont */
 	UFUNCTION(Exec)
 	void YSShipToKraken(float Distance);
 

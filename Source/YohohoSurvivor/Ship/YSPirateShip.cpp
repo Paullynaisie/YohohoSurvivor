@@ -1635,7 +1635,7 @@ void AYSPirateShip::GetWorldHullPoints(TArray<FVector>& OutPoints) const
 
 void AYSPirateShip::RepairCore(float DeltaSeconds)
 {
-	RepairCoreBy(CoreRepairPerSecond * DeltaSeconds);
+	RepairCoreBy(GetMaxHealth() * CoreRepairPercentPerSecond / 100.0f * DeltaSeconds);
 }
 
 void AYSPirateShip::RepairCoreBy(float Amount)

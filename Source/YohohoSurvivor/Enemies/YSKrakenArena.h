@@ -14,7 +14,7 @@ class UInstancedStaticMeshComponent;
 class UProceduralMeshComponent;
 
 /**
- *  « Boss fight final » (partie 3 du flow) : zone d'eau sombre en mer (Radius 100 m), posée au lancement par AYSFlowMode à 750 m du centre.
+ *  « Boss fight final » (partie 3 du flow) : zone d'eau sombre en mer (Radius 200 m), posée au lancement par AYSFlowMode à 750 m du centre.
  *  Pointillés géants du bateau des joueurs à son centre une fois toutes les boussoles ramenées (« Trouvez la créature »).
  *  Le bateau des joueurs qui y entre lance la partie 3 (toutes les îles coulent, « Affrontez le Kraken ») et le combat en 3 étapes :
  *    1) tête + tentacules (barre du boss = PV de la tête ; tête morte : tentacules restantes retirées),
@@ -65,11 +65,11 @@ protected:
 
 	/** Rayon de la zone (le bateau qui y entre lance la partie 3) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Arena", meta=(ClampMin="100", Units="Centimeters"))
-	float Radius = 10000.0f;
+	float Radius = 20000.0f;
 
 	/** Eau sombre : opaque jusqu'à Inner Radius, puis s'estompe jusqu'au bord (Radius) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Arena|Water", meta=(ClampMin="0", Units="Centimeters"))
-	float InnerRadius = 7500.0f;
+	float InnerRadius = 15000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Arena|Water")
 	FLinearColor WaterColor = FLinearColor(0.004f, 0.015f, 0.06f, 1.0f);

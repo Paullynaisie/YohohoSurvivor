@@ -299,6 +299,9 @@ public:
 	/** Debug : toutes les boussoles comptées comme ramenées */
 	void DebugFindAllCompasses();
 
+	/** Triche (flèche bas, partie 2) : GameBoat jusqu'à sa dernière étape (galion), toutes les boussoles à bord (« Trouvez la créature ») */
+	void DebugGalionWithCompasses();
+
 	bool IsPart2Started() const { return bPart2Started; }
 
 	/**

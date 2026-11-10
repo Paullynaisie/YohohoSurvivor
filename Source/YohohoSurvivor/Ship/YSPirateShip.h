@@ -291,11 +291,11 @@ protected:
 	float SinkCollisionOffDepth = 700.0f;
 
 	/**
-	 *  Réparation du core (bateau des joueurs abîmé, hors d'usage compris) : E au core, chaque joueur qui répare rend Core Repair Per Second PV
+	 *  Réparation du core (bateau des joueurs abîmé, hors d'usage compris) : E au core, chaque joueur qui répare rend ce % des PV max du bateau
 	 *  par seconde (cumulés à plusieurs), jusqu'aux PV max ; repassé au-dessus de Core Repair Max Health, un bateau hors d'usage redevient utilisable ; partir garde les PV rendus
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Repair", meta=(ClampMin="0"))
-	float CoreRepairPerSecond = 50.0f;
+	float CoreRepairPercentPerSecond = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Repair", meta=(ClampMin="1"))
 	float CoreRepairMaxHealth = 1.0f;

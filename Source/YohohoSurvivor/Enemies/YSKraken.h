@@ -145,7 +145,7 @@ protected:
 
 	/** VFX d'aspiration : anneaux qui se resserrent vers la tête (maillage local, M_ShipPreview) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Suction|VFX", meta=(ClampMin="0", Units="Centimeters"))
-	float VfxOuterRadius = 9000.0f;
+	float VfxOuterRadius = 18000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Suction|VFX", meta=(ClampMin="1"))
 	int32 VfxRingCount = 4;
@@ -266,7 +266,7 @@ protected:
 
 	/** Portée (au-delà les balles disparaissent) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
-	float BulletRange = 13000.0f;
+	float BulletRange = 23000.0f;
 
 	/** Départ des balles : rayon autour du centre (bord de la tête) et hauteur au-dessus de la mer */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
@@ -395,7 +395,7 @@ protected:
 
 	/** Sortie : à moins de cette distance du centre de l'arène (le bateau au bord : sortie ramenée vers l'intérieur) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle", meta=(ClampMin="0", Units="Centimeters"))
-	float MaxDistanceFromArenaCenter = 9500.0f;
+	float MaxDistanceFromArenaCenter = 19000.0f;
 
 	/** Et jamais dans la tête (à plus de cette distance du centre) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle", meta=(ClampMin="0", Units="Centimeters"))

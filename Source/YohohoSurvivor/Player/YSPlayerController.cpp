@@ -406,6 +406,13 @@ void AYSPlayerController::ServerCheatPart2_Implementation()
 {
 	if (AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())
 	{
+		// partie 2 : GameBoat jusqu'au galion, toutes les boussoles à bord ; sinon passage en partie 2
+		if (FlowMode->IsPart2Started() && !FlowMode->IsPart3Started())
+		{
+			UE_LOG(LogTemp, Log, TEXT("[YSCheat] %s : galion et boussoles"), *GetName());
+			FlowMode->DebugGalionWithCompasses();
+			return;
+		}
 		UE_LOG(LogTemp, Log, TEXT("[YSCheat] %s : passage en partie 2"), *GetName());
 		FlowMode->DebugSkipToPart2();
 	}
@@ -1352,7 +1359,7 @@ void AYSPlayerController::YSShipToKraken(float Distance)
 		return;
 	}
 	const FVector Center = Arena->GetActorLocation();
-	const float Range = Distance > 0.0f ? Distance : 12000.0f;
+	const float Range = Distance > 0.0f ? Distance : 22000.0f;
 	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
 	const FVector Point = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Range;
 	Ship->SetActorLocationAndRotation(FVector(Point.X, Point.Y, Ship->GetActorLocation().Z), ((Center - Point) * FVector(1.0f, 1.0f, 0.0f)).Rotation());

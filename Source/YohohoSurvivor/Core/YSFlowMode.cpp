@@ -1058,6 +1058,28 @@ void AYSFlowMode::SpawnKrakenArena()
 	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Zone du Kraken en %s (%.0f m du centre, %.0f°)"), *Location.ToCompactString(), KrakenArenaDistance / 100.0f, FMath::RadiansToDegrees(Angle));
 }
 
+void AYSFlowMode::DebugGalionWithCompasses()
+{
+	// GameBoat jusqu'à la dernière étape (galion) : à sa place, ceux qui sont à bord passent dessus
+	PendingGameBoatUpgrades = 0;
+	const int32 LastStage = GameBoatData ? GameBoatData->Stages.Num() - 1 : GameBoatStage;
+	while (GameBoatStage < LastStage)
+	{
+		const int32 Before = GameBoatStage;
+		UpgradeGameBoat();
+		if (GameBoatStage == Before)
+		{
+			break;
+		}
+	}
+	// toutes les boussoles comptées à bord (celles encore dans le monde ne changent plus rien)
+	StartSeaObjectives(TEXT("triche : flèche bas"));
+	DebugFindAllCompasses();
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	UE_LOG(LogTemp, Log, TEXT("[YSCheat] Partie 2 : %s (étape %d), %d / %d boussole(s) à bord"),
+		YSGameState ? *GetNameSafe(YSGameState->GetGameBoat()) : TEXT("?"), GameBoatStage, CompassesFound, CompassTotal);
+}
+
 void AYSFlowMode::DebugFindAllCompasses()
 {
 	CompassesFound = FMath::Max(CompassesFound, CompassTotal);

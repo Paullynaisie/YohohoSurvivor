@@ -222,7 +222,7 @@ void AYSShipStation::SetFoeOccupant(AYSFoeCharacter* NewOccupant)
 
 float AYSShipStation::GetRepairRemaining() const
 {
-	return MaxHealth > 0.0f ? FMath::Max(0.0f, (MaxHealth - Health) / MaxHealth * RepairDuration) : 0.0f;
+	return MaxHealth > 0.0f ? FMath::Max(0.0f, (MaxHealth - Health) / MaxHealth * GetFullRepairDuration()) : 0.0f;
 }
 
 void AYSShipStation::GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSStationActionIcon& OutRight, FYSStationActionIcon& OutSpace) const
@@ -256,7 +256,7 @@ void AYSShipStation::GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSSta
 		if (IsRepairing())
 		{
 			OutSpace.Remaining = GetRepairRemaining();
-			OutSpace.Duration = RepairDuration;
+			OutSpace.Duration = GetFullRepairDuration();
 		}
 	}
 }
@@ -307,7 +307,7 @@ void AYSShipStation::UpdateWork(float DeltaSeconds)
 		}
 		else
 		{
-			Health = FMath::Min(MaxHealth, Health + MaxHealth / FMath::Max(RepairDuration, 0.1f) * DeltaSeconds);
+			Health = FMath::Min(MaxHealth, Health + MaxHealth * RepairPercentPerSecond / 100.0f * DeltaSeconds);
 			ForceNetUpdate();
 			if (Health >= MaxHealth)
 			{

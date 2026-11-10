@@ -159,9 +159,12 @@ protected:
 	UPROPERTY(Replicated, EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", EditCondition="bTakesDamage"))
 	float MaxHealth = 0.0f;
 
-	/** Réparation (Espace maintenu au poste) : temps pour rendre tous les PV (de 0 au max) ; relâché, les PV rendus restent */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", Units="s", EditCondition="bTakesDamage"))
-	float RepairDuration = 10.0f;
+	/** Réparation (Espace maintenu au poste) : % des PV max du module rendus par seconde (0.5 = 200 s de 0 au max) ; relâché, les PV rendus restent */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0.01", EditCondition="bTakesDamage"))
+	float RepairPercentPerSecond = 0.5f;
+
+	/** Temps pour rendre tous les PV (de 0 au max) */
+	float GetFullRepairDuration() const { return 100.0f / FMath::Max(RepairPercentPerSecond, 0.01f); }
 
 	/** Icône de l'action « Réparer » (Espace, en bas de l'écran) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(EditCondition="bTakesDamage"))
