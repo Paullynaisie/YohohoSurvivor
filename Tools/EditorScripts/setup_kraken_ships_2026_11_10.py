@@ -42,6 +42,9 @@ KEEP_SIZE = ("MainMast", "ForeMast", "MizzenMast", "CrowsNest", "Helm", "HelmWhe
 NATIVE_PLACED = ("HelmStation", "CoreStation", "CrowsNestStation", "LongboatStation", "CannonFront", "CannonFront2", "CannonLeft", "CannonRight",
                  "CannonLeft2", "CannonRight2", "BoardingAccess", "BoardingAccessStarboard", "BoardingAccess2", "BoardingAccess3", "BoardingAccess4",
                  "BoardingAccessStarboard2", "BoardingAccessStarboard3", "BoardingAccessStarboard4", "ShipHealthBar")
+# 2e passe : rotation de BP_PirateShip (25 °/s) x1.5 pour les bateaux des joueurs ; caméra de la barre galion 6480 x1.35, brigantin 5832 x1.25
+TURN_MULTIPLIER = 1.5
+HELM_CAMERA = {f"{SHIP_DIR}/BP_GameBoat_Galion": 6480.0 * 1.35, f"{SHIP_DIR}/BP_GameBoat_Brigantin": 5832.0 * 1.25}
 CANNON_SLOTS = ("CannonFront", "CannonFront2", "CannonLeft", "CannonRight", "CannonLeft2", "CannonRight2")
 EDGE_INSET = 140.0
 
@@ -81,9 +84,11 @@ def setup_kraken():
     values = {
         HEAD: {"BaseHealth": 25000.0, "SuctionSpeedMultiplier": 0.6, "SmashDamage": 2000.0},
         RANGE: {"BaseHealth": 4000.0, "InkDamage": 500.0, "InkBallsPerAttack": 3, "InkBallInterval": 0.25, "InkScatterRadius": 3500.0,
-                "InkFlightDuration": 4.5},
+                "InkFlightDuration": 4.5, "InkRadius": 900.0},
         MELEE: {"BaseHealth": 4000.0},
-        FINAL: {"BaseHealth": 40000.0, "SmashDamage": 2000.0, "PatternInterval": 3.0,
+        FINAL: {"BaseHealth": 40000.0, "SmashDamage": 2000.0, "PatternInterval": 3.0, "ShotRadius": 1200.0, "ShotSpacing": 2200.0,
+                "RingCount": 5, "FirstRingRadius": unreal.Vector2D(2000.0, 7000.0), "RingBoatGap": 1800.0, "RingMinRadius": 2000.0,
+                "RingMaxRadius": 0.0, "SpiralBoatGap": 1800.0,
                 "Patterns": [unreal.YSKrakenInkPattern.RINGS, unreal.YSKrakenInkPattern.LINES, unreal.YSKrakenInkPattern.SPIRAL]},
     }
     for path, props in values.items():
@@ -222,6 +227,22 @@ def rescale_ship(path, label, size_from, size_to, inherited):
     log(f"{label} x{size_from} -> x{size_to} : {shapes} formes, postes et coque x{f:.3f}")
 
 
+def tune_helm():
+    """2e passe de Paul (2026-11-10) : rotation des bateaux des joueurs x1.5, caméra de la barre du galion +35 %, du brigantin +25 %
+    (valeurs absolues : relançable)"""
+    base_turn = cdo(f"{SHIP_DIR}/BP_PirateShip").get_editor_property("MaxTurnRate")
+    for path, label in ((f"{SHIP_DIR}/BP_GameBoat_Sloop", "sloop"), (BRIGANTIN_BP, "brigantin"), (GALION_BP, "galion")):
+        ship = cdo(path)
+        before = ship.get_editor_property("MaxTurnRate")
+        ship.set_editor_property("MaxTurnRate", base_turn * TURN_MULTIPLIER)
+        if path in HELM_CAMERA:
+            ship.set_editor_property("HelmCameraArmLength", HELM_CAMERA[path])
+            ship.get_editor_property("HelmStation").get_editor_property("child_actor_template").set_editor_property("CameraArmLength", HELM_CAMERA[path])
+        compile_save(path)
+        ship = cdo(path)
+        log(f"{label} : rotation max {before:.1f} -> {ship.get_editor_property('MaxTurnRate'):.1f} °/s, caméra de la barre {ship.get_editor_property('HelmCameraArmLength'):.0f}")
+
+
 def dump_ship(path, label):
     ship = cdo(path)
     hull = ship.get_editor_property("HullProbePoints")
@@ -237,6 +258,7 @@ try:
     pirate_before = max(p.x for p in cdo(f"{SHIP_DIR}/BP_PirateShip").get_editor_property("HullProbePoints"))
     rescale_ship(GALION_BP, "galion", GALION_FROM, GALION_TO, True)
     rescale_ship(BRIGANTIN_BP, "brigantin", BRIGANTIN_FROM, BRIGANTIN_TO, False)
+    tune_helm()
     dump_ship(GALION_BP, "galion")
     dump_ship(BRIGANTIN_BP, "brigantin")
     dump_ship(f"{SHIP_DIR}/BP_GameBoat_Sloop", "sloop")

@@ -119,7 +119,7 @@ void AYSKrakenPart::BeginPlay()
 		}
 	}
 	TargetableTags = GameplayTags;
-	UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s en %s : %.0f PV (%s)"), *GetName(), *GetActorLocation().ToCompactString(), MaxHealth, HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s en %s : %.0f PV (x%.2f pour le nombre de joueurs, %s)"), *GetName(), *GetActorLocation().ToCompactString(), MaxHealth, PlayerCountHealthMultiplier, HasAuthority() ? TEXT("serveur") : TEXT("client"));
 }
 
 void AYSKrakenPart::Tick(float DeltaSeconds)
@@ -517,8 +517,7 @@ float AYSKrakenHeadFinal::FirePattern(EYSKrakenInkPattern Pattern)
 	const float Outer = MaxPatternRadius > 0.0f ? MaxPatternRadius : (KrakenArena ? KrakenArena->GetRadius() : 20000.0f) - ShotRadius;
 	const float Inner = FMath::Min(MinPatternRadius, Outer);
 	const float Spacing = FMath::Max(ShotSpacing, 50.0f);
-	// d'un cercle (ou d'un tour) au suivant : deux impacts de rayon Shot Radius et l'écart libre où tient le bateau
-	const float Pitch = 2.0f * ShotRadius + BoatGap;
+	float UsedGap = 0.0f;
 
 	TArray<FYSKrakenInkShot> Shots;
 	const auto AddShot = [&](float Radius, float AngleDeg, float Delay)
@@ -535,11 +534,24 @@ float AYSKrakenHeadFinal::FirePattern(EYSKrakenInkPattern Pattern)
 	{
 	case EYSKrakenInkPattern::Rings:
 	{
-		// cercles concentriques : le premier à un rayon au hasard (placement jamais le même), puis tous les Pitch ; décalage angulaire au hasard
+		// cercles concentriques : d'un cercle au suivant, deux demi-impacts et l'écart libre où tient le bateau ; le premier à un rayon
+		// au hasard (placement jamais le même) parmi ceux qui laissent tenir tous les cercles ; décalage angulaire au hasard
 		PatternName = TEXT("cercles");
-		float Radius = FMath::Clamp(FMath::FRandRange(FirstRingRadius.X, FMath::Max(FirstRingRadius.X, FirstRingRadius.Y)), Inner, Outer);
+		const int32 Rings = FMath::Max(RingCount, 1);
+		const float RingOuter = RingMaxRadius > 0.0f ? RingMaxRadius : (KrakenArena ? KrakenArena->GetRadius() : 20000.0f);
+		const float RingInner = FMath::Min(RingMinRadius, RingOuter);
+		float Pitch = 2.0f * ShotRadius + RingBoatGap;
+		if (Rings > 1 && RingInner + (Rings - 1) * Pitch > RingOuter)
+		{
+			Pitch = (RingOuter - RingInner) / (Rings - 1);
+			UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s : %d cercles ne tiennent pas avec un écart de %.0f, écart réduit à %.0f"), *GetName(), Rings, RingBoatGap, Pitch - 2.0f * ShotRadius);
+		}
+		UsedGap = Pitch - 2.0f * ShotRadius;
+		const float FirstMax = FMath::Min(FMath::Max(FirstRingRadius.X, FirstRingRadius.Y), RingOuter - (Rings - 1) * Pitch);
+		const float FirstMin = FMath::Min(FMath::Max(FirstRingRadius.X, RingInner), FirstMax);
+		float Radius = FMath::FRandRange(FirstMin, FirstMax);
 		const float Offset = FMath::FRandRange(0.0f, 360.0f);
-		for (int32 Ring = 0; Ring < FMath::Max(RingCount, 1) && Radius <= Outer + 1.0f; ++Ring, Radius += Pitch)
+		for (int32 Ring = 0; Ring < Rings && Radius <= RingOuter + 1.0f; ++Ring, Radius += Pitch)
 		{
 			const int32 Count = FMath::Max(FMath::CeilToInt(2.0f * PI * Radius / Spacing), 3);
 			for (int32 K = 0; K < Count; ++K)
@@ -567,10 +579,12 @@ float AYSKrakenHeadFinal::FirePattern(EYSKrakenInkPattern Pattern)
 	}
 	case EYSKrakenInkPattern::Spiral:
 	{
-		// spirale d'Archimède : le rayon grandit de Pitch à chaque tour (écart du bateau entre deux tours), un impact tous les Spacing le long de la courbe
+		// spirale d Archimède : le rayon grandit de deux demi-impacts + Spiral Boat Gap à chaque tour, un impact tous les Spacing le long de la courbe
 		PatternName = TEXT("spirale");
 		const float Sign = FMath::RandBool() ? 1.0f : -1.0f;
 		const float StartAngle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const float Pitch = 2.0f * ShotRadius + SpiralBoatGap;
+		UsedGap = SpiralBoatGap;
 		const float B = Pitch / (2.0f * PI);
 		float Radius = FMath::Clamp(FMath::FRandRange(SpiralStartRadius.X, FMath::Max(SpiralStartRadius.X, SpiralStartRadius.Y)), Inner, Outer);
 		float Angle = 0.0f;
@@ -607,7 +621,7 @@ float AYSKrakenHeadFinal::FirePattern(EYSKrakenInkPattern Pattern)
 		Barrage->FinishSpawning(Transform);
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s : motif %s, %d tirs d'encre en cloche (%.0f dégâts chacun, écart %.0f, de %.0f à %.0f du centre, %.1f s)"),
-		*GetName(), PatternName, Shots.Num(), ShotDamage, BoatGap, Inner, Outer, MaxDelay + ShotFlightDuration);
+		*GetName(), PatternName, Shots.Num(), ShotDamage, UsedGap, Inner, Outer, MaxDelay + ShotFlightDuration);
 	return MarkerLeadTime + MaxDelay + ShotFlightDuration;
 }
 

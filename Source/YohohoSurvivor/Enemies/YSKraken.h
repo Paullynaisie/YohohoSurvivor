@@ -42,6 +42,9 @@ public:
 
 	virtual bool IsImmovable() const override { return true; }
 
+	/** Boss : PV x multiplicateur des élites du nombre de joueurs (1 / 2 / 3 / 4 par défaut), pas celui des NME */
+	virtual bool UsesEliteHealthScaling() const override { return true; }
+
 	/** Serveur : posé par l'arène qui le gère */
 	void SetArena(AYSKrakenArena* InArena) { Arena = InArena; }
 
@@ -265,7 +268,7 @@ protected:
 
 	/** Rayon de l'impact (signe au sol) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="1", Units="Centimeters"))
-	float ShotRadius = 600.0f;
+	float ShotRadius = 1200.0f;
 
 	/** Taille de la boule (diamètre) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="1", Units="Centimeters"))
@@ -287,27 +290,36 @@ protected:
 
 	/** Distance entre deux impacts voisins d'une ligne / d'un cercle / de la spirale (moins de 2 x Shot Radius = sans trou) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="50", Units="Centimeters"))
-	float ShotSpacing = 1100.0f;
+	float ShotSpacing = 2200.0f;
 
-	/** Écart libre entre deux cercles / deux tours de spirale (bord à bord des impacts) : de quoi placer le bateau
-	 *  (galion des joueurs x0.7 = 41 m de long, 14 m de large) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
-	float BoatGap = 4500.0f;
-
-	/** Pas d'impact plus près du centre (la tête) */
+	/** Pas d'impact plus près du centre (la tête) : lignes et spirale */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
 	float MinPatternRadius = 3000.0f;
 
-	/** Bord des motifs (0 = rayon de l'arène - Shot Radius) */
+	/** Bord des lignes et de la spirale (0 = rayon de l'arène - Shot Radius) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
 	float MaxPatternRadius = 0.0f;
 
-	/** Cercles : nombre, rayon du premier tiré au hasard dans cet intervalle, écart de départ entre deux cercles (du centre vers le bord) */
+	/** Cercles : nombre, rayon du premier tiré au hasard dans cet intervalle (ramené à ce qui laisse tenir tous les cercles),
+	 *  écart de départ entre deux cercles (du centre vers le bord) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(ClampMin="1"))
-	int32 RingCount = 3;
+	int32 RingCount = 5;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(Units="Centimeters"))
-	FVector2D FirstRingRadius = FVector2D(3500.0, 7000.0);
+	FVector2D FirstRingRadius = FVector2D(2000.0, 7000.0);
+
+	/** Écart libre entre deux cercles (bord à bord des impacts) : le bateau s'y place dans le sens du couloir (galion des joueurs x0.7 =
+	 *  14 m de large, 41 m de long : il lui faut ~16 m avec la courbure ; choix de Claude : 18 m pour que 5 cercles tiennent dans l'arène).
+	 *  Si les cercles ne tiennent pas entre Ring Min Radius et Ring Max Radius, l'écart est réduit (log « écart réduit ») */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(ClampMin="0", Units="Centimeters"))
+	float RingBoatGap = 1800.0f;
+
+	/** Les cercles peuvent aller du bord de la tête jusqu'au bord de l'arène (0 = rayon de l'arène) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(ClampMin="0", Units="Centimeters"))
+	float RingMinRadius = 2000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(ClampMin="0", Units="Centimeters"))
+	float RingMaxRadius = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(ClampMin="0", Units="s"))
 	float RingInterval = 0.4f;
@@ -322,6 +334,11 @@ protected:
 	/** Spirale : rayon de départ au hasard, durée pour tirer toute la spirale (du centre vers le bord), sens et angle de départ au hasard */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Spiral", meta=(Units="Centimeters"))
 	FVector2D SpiralStartRadius = FVector2D(3000.0, 5000.0);
+
+	/** Écart libre entre deux tours de spirale (bord à bord des impacts ; 45 m avant le 2026-11-10, resserré : le bateau s'y place
+	 *  dans le sens du couloir, comme pour les cercles) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Spiral", meta=(ClampMin="0", Units="Centimeters"))
+	float SpiralBoatGap = 1800.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Spiral", meta=(ClampMin="0", Units="s"))
 	float SpiralDuration = 4.0f;
@@ -530,7 +547,7 @@ protected:
 
 	/** Rayon de l'impact (signe au sol) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="1", Units="Centimeters"))
-	float InkRadius = 600.0f;
+	float InkRadius = 900.0f;
 
 	/** Vol de la boule après l'amorce */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0.1", Units="s"))

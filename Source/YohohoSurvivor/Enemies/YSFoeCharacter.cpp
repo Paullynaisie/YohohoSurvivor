@@ -1358,7 +1358,7 @@ void AYSFoeCharacter::RecomputeStats()
 	// statistiques du niveau (MaxHealth est répliqué pour les barres de vie) ; PV selon le nombre de joueurs de la partie
 	const AYSGameMode* YSGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
 	const FYSPlayerCountScaling PlayerScaling = YSGameMode ? YSGameMode->GetPlayerCountScaling() : FYSPlayerCountScaling();
-	const float PlayerHealthMultiplier = bIsElite ? PlayerScaling.EliteHealthMultiplier : PlayerScaling.HealthMultiplier;
+	const float PlayerHealthMultiplier = UsesEliteHealthScaling() ? PlayerScaling.EliteHealthMultiplier : PlayerScaling.HealthMultiplier;
 	PlayerCountHealthMultiplier = PlayerHealthMultiplier;
 	ScaledMaxRage = FMath::RoundToFloat(MaxRage * (bScaleRageWithPlayerCount ? PlayerCountHealthMultiplier : 1.0f));
 	MaxHealth = FMath::RoundToFloat((BaseHealth + HealthPerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * HealthMultiplier * PlayerHealthMultiplier);

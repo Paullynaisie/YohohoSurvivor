@@ -50,7 +50,7 @@ PORT_ACCESSES = ("BoardingAccess", "BoardingAccess2", "BoardingAccess3", "Boardi
 STARBOARD_ACCESSES = ("BoardingAccessStarboard", "BoardingAccessStarboard2", "BoardingAccessStarboard3", "BoardingAccessStarboard4")
 # X des échelles (entre les postes de combat des flancs et loin de la chalouperie)
 LADDERS = {SLOOP_BP: (-250.0, 650.0), BRIGANTIN_BP: (-943.0, 55.0, 982.0), GALION_BP: (-1330.0, -840.0, 140.0, 1120.0)}  # brigantin x0.55, galion x0.7
-HELM = {SLOOP_BP: 4320.0 * 1.2, BRIGANTIN_BP: 5832.0, GALION_BP: 6480.0, PIRATE_BP: 6480.0 * 1.2, LONGBOAT_BP: 4320.0 * 1.2}
+HELM = {SLOOP_BP: 4320.0 * 1.2, BRIGANTIN_BP: 7290.0, GALION_BP: 8748.0, PIRATE_BP: 6480.0 * 1.2, LONGBOAT_BP: 4320.0 * 1.2}
 # zone du core x0.75 (brigantin : moyenne sloop / galion, déjà ramené à sa nouvelle taille)
 CORE_RANGE = {SLOOP_BP: 450.0 * 0.75, BRIGANTIN_BP: 421.875, GALION_BP: 506.25, PIRATE_BP: 900.0 * 0.75}
 BEACH_ZONE = 1500.0 * 0.5

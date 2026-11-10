@@ -776,6 +776,9 @@ public:
 	/** Ni pushback, ni hit reaction, ni bump (morceaux du Kraken : posés à leur place, déplacés par leur propre logique) */
 	virtual bool IsImmovable() const { return false; }
 
+	/** PV multipliés par le multiplicateur des élites du nombre de joueurs (Elite Health Multiplier) au lieu de celui des NME : élites et morceaux du Kraken */
+	virtual bool UsesEliteHealthScaling() const { return bIsElite; }
+
 	/** Élite / boss dont la barre de vie est dans le HUD (pas l'équipage d'un Galion, ni ceux qui l'ont sous eux) */
 	bool ShowsHudHealthBar() const { return bHudHealthBar; }
 
