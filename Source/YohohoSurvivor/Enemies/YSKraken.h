@@ -256,7 +256,7 @@ protected:
 
 	/** Attente entre deux motifs (et avant le premier), comptée depuis le dernier impact du motif précédent */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="s"))
-	float PatternInterval = 3.0f;
+	float PatternInterval = 1.0f;
 
 	/** Motifs tirés au hasard (pas deux fois le même de suite s'il y en a plusieurs ; choix de Claude) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink")
@@ -264,11 +264,11 @@ protected:
 
 	/** Dégâts au core du bateau par tir qui tombe sur lui */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0"))
-	float ShotDamage = 300.0f;
+	float ShotDamage = 500.0f;
 
 	/** Rayon de l'impact (signe au sol) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="1", Units="Centimeters"))
-	float ShotRadius = 1200.0f;
+	float ShotRadius = 1080.0f;
 
 	/** Taille de la boule (diamètre) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="1", Units="Centimeters"))
@@ -290,7 +290,7 @@ protected:
 
 	/** Distance entre deux impacts voisins d'une ligne / d'un cercle / de la spirale (moins de 2 x Shot Radius = sans trou) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="50", Units="Centimeters"))
-	float ShotSpacing = 2200.0f;
+	float ShotSpacing = 1980.0f;
 
 	/** Pas d'impact plus près du centre (la tête) : lignes et spirale */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
@@ -326,7 +326,7 @@ protected:
 
 	/** Lignes : nombre (réparties autour, orientation au hasard), départ de chaque impact après le précédent de sa ligne (du centre vers le bord) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Lines", meta=(ClampMin="1"))
-	int32 LineCount = 5;
+	int32 LineCount = 7;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Lines", meta=(ClampMin="0", Units="s"))
 	float LineStepDelay = 0.08f;
@@ -551,7 +551,7 @@ protected:
 
 	/** Vol de la boule après l'amorce */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0.1", Units="s"))
-	float InkFlightDuration = 4.5f;
+	float InkFlightDuration = 3.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0", Units="Centimeters"))
 	float InkApexHeight = 1500.0f;

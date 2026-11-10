@@ -910,6 +910,8 @@ AYSKrakenTentacleMelee::AYSKrakenTentacleMelee()
 	FoeName = NSLOCTEXT("YS", "KrakenTentacleMeleeName", "Tentacule");
 	EmergeDistance = 500.0f;
 	TentacleWindupDuration = 2.0f;
+	// attaque 2x plus tôt après la sortie que la tentacule à distance (demande de Paul, 2026-11-10)
+	AttackDelay = 2.5f;
 
 	SlamWarning = CreateDefaultSubobject<UYSGroundZoneComponent>(TEXT("SlamWarning"));
 	SlamWarning->SetupAttachment(GetRootComponent());

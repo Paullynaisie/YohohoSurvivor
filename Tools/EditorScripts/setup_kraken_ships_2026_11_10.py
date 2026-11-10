@@ -84,9 +84,9 @@ def setup_kraken():
     values = {
         HEAD: {"BaseHealth": 25000.0, "SuctionSpeedMultiplier": 0.6, "SmashDamage": 2000.0},
         RANGE: {"BaseHealth": 4000.0, "InkDamage": 500.0, "InkBallsPerAttack": 3, "InkBallInterval": 0.25, "InkScatterRadius": 3500.0,
-                "InkFlightDuration": 4.5, "InkRadius": 900.0},
-        MELEE: {"BaseHealth": 4000.0},
-        FINAL: {"BaseHealth": 40000.0, "SmashDamage": 2000.0, "PatternInterval": 3.0, "ShotRadius": 1200.0, "ShotSpacing": 2200.0,
+                "InkFlightDuration": 3.5, "InkRadius": 900.0},
+        MELEE: {"BaseHealth": 4000.0, "AttackDelay": 2.5},
+        FINAL: {"BaseHealth": 40000.0, "SmashDamage": 2000.0, "PatternInterval": 1.0, "ShotRadius": 1080.0, "ShotSpacing": 1980.0, "ShotDamage": 500.0, "LineCount": 7,
                 "RingCount": 5, "FirstRingRadius": unreal.Vector2D(2000.0, 7000.0), "RingBoatGap": 1800.0, "RingMinRadius": 2000.0,
                 "RingMaxRadius": 0.0, "SpiralBoatGap": 1800.0,
                 "Patterns": [unreal.YSKrakenInkPattern.RINGS, unreal.YSKrakenInkPattern.LINES, unreal.YSKrakenInkPattern.SPIRAL]},
