@@ -196,7 +196,7 @@ float AYSKrakenPart::GetSeaLevel() const
 AYSKrakenHead::AYSKrakenHead()
 {
 	FoeName = NSLOCTEXT("YS", "KrakenHeadName", "Kraken");
-	BaseHealth = 50000.0f;
+	BaseHealth = 25000.0f;
 	bShowOverheadHealthBar = false;
 
 	// hurtbox : gros cylindre de la mer au sommet du manteau
@@ -475,7 +475,7 @@ void AYSKrakenHead::UpdateSuctionVfx()
 AYSKrakenHeadFinal::AYSKrakenHeadFinal()
 {
 	FoeName = NSLOCTEXT("YS", "KrakenFinalName", "Kraken");
-	BaseHealth = 65000.0f;
+	BaseHealth = 40000.0f;
 }
 
 void AYSKrakenHeadFinal::TickHeadServer(float DeltaSeconds)
@@ -505,96 +505,110 @@ void AYSKrakenHeadFinal::TickHeadServer(float DeltaSeconds)
 		Pick = (Pick + FMath::RandRange(1, Patterns.Num() - 1)) % Patterns.Num();
 	}
 	LastPattern = Pick;
-	const EYSKrakenInkPattern Pattern = Patterns[Pick];
-	FirePattern(Pattern);
-	const float PatternLength = Pattern == EYSKrakenInkPattern::Rings ? RingInterval * (RingCount - 1)
-		: Pattern == EYSKrakenInkPattern::Spiral ? SpiralDuration
-		: FanInterval * (FanCount - 1);
+	const float PatternLength = FirePattern(Patterns[Pick]);
 	NextPatternServerTime = Now + PatternLength + PatternInterval;
 }
 
-void AYSKrakenHeadFinal::FirePattern(EYSKrakenInkPattern Pattern)
+float AYSKrakenHeadFinal::FirePattern(EYSKrakenInkPattern Pattern)
 {
-	const AYSPirateShip* Boat = GetGameBoat();
 	const FVector Center = GetActorLocation();
-	float AimYaw = CurrentYaw;
-	if (Boat)
-	{
-		FVector AimPoint = Boat->GetHullCenter();
-		if (bLeadTarget)
-		{
-			const float Time = FMath::Max(FVector::Dist2D(AimPoint, Center) - BulletSpawnRadius, 0.0f) / FMath::Max(BulletSpeed, 1.0f);
-			AimPoint += Boat->GetVelocity() * FVector(1.0f, 1.0f, 0.0f) * Time;
-		}
-		AimYaw = (AimPoint - Center).GetSafeNormal2D().Rotation().Yaw;
-	}
+	const float Sea = GetSeaLevel();
+	const AYSKrakenArena* KrakenArena = Arena.Get();
+	const float Outer = MaxPatternRadius > 0.0f ? MaxPatternRadius : (KrakenArena ? KrakenArena->GetRadius() : 20000.0f) - ShotRadius;
+	const float Inner = FMath::Min(MinPatternRadius, Outer);
+	const float Spacing = FMath::Max(ShotSpacing, 50.0f);
+	// d'un cercle (ou d'un tour) au suivant : deux impacts de rayon Shot Radius et l'écart libre où tient le bateau
+	const float Pitch = 2.0f * ShotRadius + BoatGap;
 
-	// répartit Bullets Per Pattern balles en Groups groupes (le reste sur les premiers)
-	const auto GroupSize = [this](int32 Group, int32 Groups)
+	TArray<FYSKrakenInkShot> Shots;
+	const auto AddShot = [&](float Radius, float AngleDeg, float Delay)
 	{
-		return BulletsPerPattern / Groups + (Group < BulletsPerPattern % Groups ? 1 : 0);
+		const FVector Dir = FRotator(0.0f, AngleDeg, 0.0f).Vector();
+		FYSKrakenInkShot Shot;
+		Shot.Target = FVector(Center.X + Dir.X * Radius, Center.Y + Dir.Y * Radius, Sea);
+		Shot.Delay = Delay;
+		Shots.Add(Shot);
 	};
 
-	TArray<FYSKrakenInkBullet> Bullets;
 	const TCHAR* PatternName = TEXT("?");
 	switch (Pattern)
 	{
 	case EYSKrakenInkPattern::Rings:
 	{
-		// anneaux tout autour, chacun décalé d'un demi-écart : on passe entre les balles en tournant
-		PatternName = TEXT("anneaux");
-		const int32 Groups = FMath::Max(RingCount, 1);
-		for (int32 Ring = 0; Ring < Groups; ++Ring)
+		// cercles concentriques : le premier à un rayon au hasard (placement jamais le même), puis tous les Pitch ; décalage angulaire au hasard
+		PatternName = TEXT("cercles");
+		float Radius = FMath::Clamp(FMath::FRandRange(FirstRingRadius.X, FMath::Max(FirstRingRadius.X, FirstRingRadius.Y)), Inner, Outer);
+		const float Offset = FMath::FRandRange(0.0f, 360.0f);
+		for (int32 Ring = 0; Ring < FMath::Max(RingCount, 1) && Radius <= Outer + 1.0f; ++Ring, Radius += Pitch)
 		{
-			const int32 Count = FMath::Max(GroupSize(Ring, Groups), 1);
-			const float Step = 360.0f / Count;
+			const int32 Count = FMath::Max(FMath::CeilToInt(2.0f * PI * Radius / Spacing), 3);
 			for (int32 K = 0; K < Count; ++K)
 			{
-				Bullets.Add({ AimYaw + Step * K + (Ring % 2) * Step * 0.5f, RingInterval * Ring });
+				AddShot(Radius, Offset + 360.0f * K / Count, RingInterval * Ring);
+			}
+		}
+		break;
+	}
+	case EYSKrakenInkPattern::Lines:
+	{
+		// lignes du centre jusqu'au bord, réparties autour (orientation au hasard), qui avancent vers l'extérieur
+		PatternName = TEXT("lignes");
+		const int32 Lines = FMath::Max(LineCount, 1);
+		const float Offset = FMath::FRandRange(0.0f, 360.0f);
+		for (int32 Line = 0; Line < Lines; ++Line)
+		{
+			int32 Step = 0;
+			for (float Radius = Inner; Radius <= Outer + 1.0f; Radius += Spacing, ++Step)
+			{
+				AddShot(Radius, Offset + 360.0f * Line / Lines, LineStepDelay * Step);
 			}
 		}
 		break;
 	}
 	case EYSKrakenInkPattern::Spiral:
 	{
-		// une balle à la fois, la direction tourne : spirale qui balaie toute l'arène
+		// spirale d'Archimède : le rayon grandit de Pitch à chaque tour (écart du bateau entre deux tours), un impact tous les Spacing le long de la courbe
 		PatternName = TEXT("spirale");
 		const float Sign = FMath::RandBool() ? 1.0f : -1.0f;
-		for (int32 K = 0; K < BulletsPerPattern; ++K)
+		const float StartAngle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const float B = Pitch / (2.0f * PI);
+		float Radius = FMath::Clamp(FMath::FRandRange(SpiralStartRadius.X, FMath::Max(SpiralStartRadius.X, SpiralStartRadius.Y)), Inner, Outer);
+		float Angle = 0.0f;
+		TArray<FVector2D> Points;
+		while (Radius <= Outer + 1.0f && Points.Num() < 2000)
 		{
-			const float T = BulletsPerPattern > 1 ? static_cast<float>(K) / (BulletsPerPattern - 1) : 0.0f;
-			Bullets.Add({ AimYaw + Sign * 360.0f * SpiralTurns * T, SpiralDuration * T });
+			Points.Add(FVector2D(Radius, Angle));
+			// longueur d'arc ~ sqrt(r^2 + b^2) dθ
+			const float DAngle = Spacing / FMath::Sqrt(Radius * Radius + B * B);
+			Angle += DAngle;
+			Radius += B * DAngle;
 		}
-		break;
-	}
-	case EYSKrakenInkPattern::AimedFans:
-	{
-		// éventails visés sur le bateau, un sur deux décalé d'un demi-écart
-		PatternName = TEXT("éventails visés");
-		const int32 Groups = FMath::Max(FanCount, 1);
-		for (int32 Fan = 0; Fan < Groups; ++Fan)
+		for (int32 K = 0; K < Points.Num(); ++K)
 		{
-			const int32 Count = FMath::Max(GroupSize(Fan, Groups), 1);
-			const float Step = Count > 1 ? 2.0f * FanHalfAngle / (Count - 1) : 0.0f;
-			for (int32 K = 0; K < Count; ++K)
-			{
-				const float Offset = Count > 1 ? -FanHalfAngle + Step * K + (Fan % 2 ? Step * 0.5f : 0.0f) : 0.0f;
-				Bullets.Add({ AimYaw + Offset, FanInterval * Fan });
-			}
+			const float T = Points.Num() > 1 ? static_cast<float>(K) / (Points.Num() - 1) : 0.0f;
+			AddShot(Points[K].X, FMath::RadiansToDegrees(StartAngle + Sign * Points[K].Y), SpiralDuration * T);
 		}
 		break;
 	}
 	}
 
-	const FVector Origin(Center.X, Center.Y, GetSeaLevel() + BulletHeight);
-	const FTransform Transform(FRotator::ZeroRotator, Origin);
-	AYSKrakenInkVolley* Volley = GetWorld()->SpawnActorDeferred<AYSKrakenInkVolley>(AYSKrakenInkVolley::StaticClass(), Transform, this, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-	if (Volley)
+	float MaxDelay = 0.0f;
+	for (const FYSKrakenInkShot& Shot : Shots)
 	{
-		Volley->Init(Origin, BulletSpawnRadius, BulletSpeed, BulletRadius, BulletRange, BulletDamage, Bullets);
-		Volley->FinishSpawning(Transform);
+		MaxDelay = FMath::Max(MaxDelay, Shot.Delay);
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s : motif %s, %d balles d'encre (%.0f dégâts chacune)"), *GetName(), PatternName, Bullets.Num(), BulletDamage);
+	// toutes les boules partent du dessus de la tête ; affichées et touchées comme celles des tentacules
+	const FVector Start(Center.X, Center.Y, Sea + ShotLaunchHeight);
+	const FTransform Transform(FRotator::ZeroRotator, FVector(Center.X, Center.Y, Sea));
+	AYSKrakenInkBarrage* Barrage = GetWorld()->SpawnActorDeferred<AYSKrakenInkBarrage>(AYSKrakenInkBarrage::StaticClass(), Transform, this, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (Barrage)
+	{
+		Barrage->Init(Start, ShotFlightDuration, ShotApexHeight, ShotRadius, ShotBallSize, MarkerLeadTime, ShotDamage, Shots);
+		Barrage->FinishSpawning(Transform);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s : motif %s, %d tirs d'encre en cloche (%.0f dégâts chacun, écart %.0f, de %.0f à %.0f du centre, %.1f s)"),
+		*GetName(), PatternName, Shots.Num(), ShotDamage, BoatGap, Inner, Outer, MaxDelay + ShotFlightDuration);
+	return MarkerLeadTime + MaxDelay + ShotFlightDuration;
 }
 
 // ==================================================================== AYSKrakenTentacle
@@ -602,7 +616,7 @@ void AYSKrakenHeadFinal::FirePattern(EYSKrakenInkPattern Pattern)
 AYSKrakenTentacle::AYSKrakenTentacle()
 {
 	FoeName = NSLOCTEXT("YS", "KrakenTentacleName", "Tentacule");
-	BaseHealth = 8000.0f;
+	BaseHealth = 4000.0f;
 	bShowOverheadHealthBar = true;
 
 	// hurtbox : long cylindre penché vers l'avant, du pied au sommet de la courbe
@@ -838,29 +852,36 @@ AYSKrakenTentacleRange::AYSKrakenTentacleRange()
 
 void AYSKrakenTentacleRange::OnWindupStarted()
 {
-	// signe au sol là où est le bateau, la boule part à la fin de l'amorce
+	// Ink Balls Per Attack boules, chacune vers un point au hasard autour du bateau (signe au sol tout de suite), la première part à la fin de l'amorce
 	const AYSPirateShip* Boat = GetGameBoat();
 	if (!Boat)
 	{
 		return;
 	}
-	FYSKrakenInkBallFlight Flight;
-	Flight.Start = GetTipLocation();
 	const FVector Center = Boat->GetHullCenter();
-	Flight.Target = FVector(Center.X, Center.Y, GetSeaLevel());
-	Flight.LaunchServerTime = GetServerTime() + TentacleWindupDuration;
-	Flight.FlightDuration = InkFlightDuration;
-	Flight.ApexHeight = InkApexHeight;
-	Flight.Radius = InkRadius;
-	Flight.BallSize = InkBallSize;
-	const FTransform Transform(FRotator::ZeroRotator, Flight.Target);
-	AYSKrakenInkBall* Ball = GetWorld()->SpawnActorDeferred<AYSKrakenInkBall>(AYSKrakenInkBall::StaticClass(), Transform, this, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-	if (Ball)
+	for (int32 Index = 0; Index < FMath::Max(InkBallsPerAttack, 1); ++Index)
 	{
-		Ball->Init(Flight, InkDamage);
-		Ball->FinishSpawning(Transform);
+		// uniforme dans le disque d'imprécision
+		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const float Distance = InkScatterRadius * FMath::Sqrt(FMath::FRand());
+		FYSKrakenInkBallFlight Flight;
+		Flight.Start = GetTipLocation();
+		Flight.Target = FVector(Center.X + FMath::Cos(Angle) * Distance, Center.Y + FMath::Sin(Angle) * Distance, GetSeaLevel());
+		Flight.LaunchServerTime = GetServerTime() + TentacleWindupDuration + InkBallInterval * Index;
+		Flight.FlightDuration = InkFlightDuration;
+		Flight.ApexHeight = InkApexHeight;
+		Flight.Radius = InkRadius;
+		Flight.BallSize = InkBallSize;
+		const FTransform Transform(FRotator::ZeroRotator, Flight.Target);
+		AYSKrakenInkBall* Ball = GetWorld()->SpawnActorDeferred<AYSKrakenInkBall>(AYSKrakenInkBall::StaticClass(), Transform, this, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (Ball)
+		{
+			Ball->Init(Flight, InkDamage);
+			Ball->FinishSpawning(Transform);
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s vise %s à %.0f cm du bateau (boule d'encre %d / %d dans %.2f s, vol %.1f s, %.0f dégâts)"), *GetName(),
+			*Flight.Target.ToCompactString(), Distance, Index + 1, InkBallsPerAttack, TentacleWindupDuration + InkBallInterval * Index, InkFlightDuration, InkDamage);
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s vise %s (boule d'encre dans %.1f s, %.0f dégâts)"), *GetName(), *Flight.Target.ToCompactString(), TentacleWindupDuration, InkDamage);
 }
 
 void AYSKrakenTentacleRange::OnWindupFinished()
@@ -880,6 +901,7 @@ AYSKrakenTentacleMelee::AYSKrakenTentacleMelee()
 	SlamWarning->SetupAttachment(GetRootComponent());
 	SlamWarning->SetUsingAbsoluteRotation(true);
 	SlamWarning->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	SlamWarning->SetTranslucentSortPriority(YSKraken::MarkerSortPriority);
 	SlamWarning->SetVisibility(false);
 
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> ZoneMaterial(YSKraken::ZoneMaterialPath);
@@ -1113,6 +1135,7 @@ AYSKrakenInkBall::AYSKrakenInkBall()
 	Marker = CreateDefaultSubobject<UYSGroundZoneComponent>(TEXT("Marker"));
 	Marker->SetupAttachment(Root);
 	Marker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Marker->SetTranslucentSortPriority(YSKraken::MarkerSortPriority);
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> ZoneMaterial(YSKraken::ZoneMaterialPath);
 	if (ZoneMaterial.Succeeded())
 	{
@@ -1150,7 +1173,7 @@ void AYSKrakenInkBall::BuildMarker()
 	{
 		UMaterialInstanceDynamic* Material = Marker->CreateDynamicMaterialInstance(0, MarkerMaterial);
 		Material->SetVectorParameterValue(TEXT("Color"), MarkerColor);
-		Material->SetScalarParameterValue(TEXT("Glow"), 0.2f);
+		Material->SetScalarParameterValue(TEXT("Glow"), MarkerGlow);
 		Material->SetScalarParameterValue(TEXT("FillOpacity"), 0.55f);
 		Material->SetScalarParameterValue(TEXT("EdgeOpacity"), 0.9f);
 		Material->SetScalarParameterValue(TEXT("Radius"), Flight.Radius);
@@ -1198,92 +1221,148 @@ void AYSKrakenInkBall::Tick(float DeltaSeconds)
 	}
 }
 
-// ==================================================================== AYSKrakenInkVolley
+// ==================================================================== AYSKrakenInkBarrage
 
-AYSKrakenInkVolley::AYSKrakenInkVolley()
+AYSKrakenInkBarrage::AYSKrakenInkBarrage()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
 	SetReplicateMovement(false);
 	bAlwaysRelevant = true;
 
-	BulletMeshes = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("BulletMeshes"));
-	SetRootComponent(BulletMeshes);
-	BulletMeshes->SetUsingAbsoluteLocation(true);
-	BulletMeshes->SetUsingAbsoluteRotation(true);
-	BulletMeshes->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	BulletMeshes->SetCastShadow(false);
+	USceneComponent* Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	SetRootComponent(Root);
+
+	// boules : mêmes sphère et matériau que celles des tentacules
+	BallMeshes = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("BallMeshes"));
+	BallMeshes->SetupAttachment(Root);
+	BallMeshes->SetUsingAbsoluteLocation(true);
+	BallMeshes->SetUsingAbsoluteRotation(true);
+	BallMeshes->SetUsingAbsoluteScale(true);
+	BallMeshes->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	BallMeshes->SetCastShadow(false);
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
 	if (Sphere.Succeeded())
 	{
-		BulletMeshes->SetStaticMesh(Sphere.Object);
+		BallMeshes->SetStaticMesh(Sphere.Object);
 	}
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> InkMaterial(YSKraken::InkMaterialPath);
 	if (InkMaterial.Succeeded())
 	{
-		BulletMeshes->SetMaterial(0, InkMaterial.Object);
+		BallMeshes->SetMaterial(0, InkMaterial.Object);
+	}
+
+	// signes au sol : disques sur la mer (couleur des sommets, M_ShipPreview)
+	Markers = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("Markers"));
+	Markers->SetupAttachment(Root);
+	Markers->SetUsingAbsoluteLocation(true);
+	Markers->SetUsingAbsoluteRotation(true);
+	Markers->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Markers->SetCastShadow(false);
+	Markers->SetTranslucentSortPriority(YSKraken::MarkerSortPriority);
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> PreviewMaterial(YSKraken::PreviewMaterialPath);
+	if (PreviewMaterial.Succeeded())
+	{
+		MarkerMaterial = PreviewMaterial.Object;
 	}
 }
 
-void AYSKrakenInkVolley::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+void AYSKrakenInkBarrage::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME_CONDITION(AYSKrakenInkVolley, Origin, COND_InitialOnly);
-	DOREPLIFETIME_CONDITION(AYSKrakenInkVolley, SpawnRadius, COND_InitialOnly);
-	DOREPLIFETIME_CONDITION(AYSKrakenInkVolley, Speed, COND_InitialOnly);
-	DOREPLIFETIME_CONDITION(AYSKrakenInkVolley, Radius, COND_InitialOnly);
-	DOREPLIFETIME_CONDITION(AYSKrakenInkVolley, Range, COND_InitialOnly);
-	DOREPLIFETIME_CONDITION(AYSKrakenInkVolley, LaunchServerTime, COND_InitialOnly);
-	DOREPLIFETIME_CONDITION(AYSKrakenInkVolley, Bullets, COND_InitialOnly);
-	DOREPLIFETIME(AYSKrakenInkVolley, HitBullets);
+	DOREPLIFETIME_CONDITION(AYSKrakenInkBarrage, Start, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSKrakenInkBarrage, FlightDuration, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSKrakenInkBarrage, ApexHeight, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSKrakenInkBarrage, Radius, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSKrakenInkBarrage, BallSize, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSKrakenInkBarrage, MarkerLead, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSKrakenInkBarrage, LaunchServerTime, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSKrakenInkBarrage, Shots, COND_InitialOnly);
 }
 
-void AYSKrakenInkVolley::Init(const FVector& InOrigin, float InSpawnRadius, float InSpeed, float InRadius, float InRange, float InDamage, const TArray<FYSKrakenInkBullet>& InBullets)
+void AYSKrakenInkBarrage::Init(const FVector& InStart, float InFlightDuration, float InApexHeight, float InRadius, float InBallSize, float InMarkerLead, float InDamage,
+	const TArray<FYSKrakenInkShot>& InShots)
 {
-	Origin = InOrigin;
-	SpawnRadius = InSpawnRadius;
-	Speed = InSpeed;
+	Start = InStart;
+	FlightDuration = FMath::Max(InFlightDuration, 0.1f);
+	ApexHeight = InApexHeight;
 	Radius = InRadius;
-	Range = InRange;
+	BallSize = InBallSize;
+	MarkerLead = FMath::Max(InMarkerLead, 0.0f);
 	Damage = InDamage;
-	Bullets = InBullets;
-	HitBullets.Init(0, Bullets.Num());
+	Shots = InShots;
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	LaunchServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
 }
 
-void AYSKrakenInkVolley::BeginPlay()
+void AYSKrakenInkBarrage::BeginPlay()
 {
 	Super::BeginPlay();
 	if (HasAuthority())
 	{
 		float MaxDelay = 0.0f;
-		for (const FYSKrakenInkBullet& Bullet : Bullets)
+		for (const FYSKrakenInkShot& Shot : Shots)
 		{
-			MaxDelay = FMath::Max(MaxDelay, Bullet.Delay);
+			MaxDelay = FMath::Max(MaxDelay, Shot.Delay);
 		}
-		SetLifeSpan(MaxDelay + Range / FMath::Max(Speed, 1.0f) + 1.0f);
+		SetLifeSpan(MarkerLead + MaxDelay + FlightDuration + 1.0f);
 	}
 }
 
-bool AYSKrakenInkVolley::GetBulletLocation(int32 Index, float Elapsed, FVector& OutLocation) const
+void AYSKrakenInkBarrage::RebuildMarkers()
 {
-	const FYSKrakenInkBullet& Bullet = Bullets[Index];
-	const float Travel = (Elapsed - Bullet.Delay) * Speed;
-	if (Travel < 0.0f || Travel > Range)
+	// un disque par signe affiché : remplissage + bord plus opaque (comme le signe des boules des tentacules)
+	constexpr int32 Segments = 24;
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FLinearColor> Colors;
+	const float EdgeWidth = FMath::Min(60.0f, Radius * 0.3f);
+	for (int32 Index = 0; Index < Shots.Num(); ++Index)
 	{
-		return false;
+		if (!MarkerShown[Index])
+		{
+			continue;
+		}
+		const FVector Center = FVector(Shots[Index].Target) + FVector(0.0f, 0.0f, YSKraken::ZoneHeight);
+		const int32 Base = Vertices.Num();
+		Vertices.Add(Center);
+		Colors.Add(MarkerColor);
+		for (int32 K = 0; K <= Segments; ++K)
+		{
+			const float Angle = 2.0f * PI * K / Segments;
+			Vertices.Add(Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * (Radius - EdgeWidth));
+			Colors.Add(MarkerColor);
+		}
+		for (int32 K = 0; K < Segments; ++K)
+		{
+			Triangles.Append({ Base, Base + 2 + K, Base + 1 + K });
+		}
+		YSKraken::AddRing(Vertices, Triangles, Colors, Center, Radius - EdgeWidth, Radius, MarkerEdgeColor, MarkerEdgeColor, Segments);
 	}
-	OutLocation = Origin + FRotator(0.0f, Bullet.Yaw, 0.0f).Vector() * (SpawnRadius + Travel);
-	return true;
+	if (Vertices.Num() == 0)
+	{
+		Markers->ClearAllMeshSections();
+		return;
+	}
+	Markers->CreateMeshSection_LinearColor(0, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
+	Markers->SetMaterial(0, MarkerMaterial);
 }
 
-void AYSKrakenInkVolley::Tick(float DeltaSeconds)
+void AYSKrakenInkBarrage::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (Bullets.Num() == 0 || LaunchServerTime <= 0.0)
+	if (Shots.Num() == 0 || LaunchServerTime <= 0.0)
 	{
 		return;
+	}
+	if (Landed.Num() != Shots.Num())
+	{
+		Landed.Init(false, Shots.Num());
+		MarkerShown.Init(false, Shots.Num());
+		BallMeshes->ClearInstances();
+		TArray<FTransform> Initial;
+		Initial.Init(FTransform(FQuat::Identity, Start, FVector::ZeroVector), Shots.Num());
+		BallMeshes->AddInstances(Initial, false, true);
 	}
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
@@ -1300,35 +1379,42 @@ void AYSKrakenInkVolley::Tick(float DeltaSeconds)
 		}
 	}
 
-	// visuel (toutes machines) : une instance par balle, cachée (échelle 0) avant son départ, après sa portée ou si elle a touché
-	if (BulletMeshes->GetInstanceCount() != Bullets.Num())
+	// tir Index : signe au sol à Delay, départ de la boule Marker Lead plus tard, impact Flight Duration après le départ
+	const FVector Scale(BallSize / 100.0f);
+	bool bMarkersChanged = false;
+	int32 Hits = 0;
+	for (int32 Index = 0; Index < Shots.Num(); ++Index)
 	{
-		BulletMeshes->ClearInstances();
-		TArray<FTransform> Initial;
-		Initial.Init(FTransform(FQuat::Identity, Origin, FVector::ZeroVector), Bullets.Num());
-		BulletMeshes->AddInstances(Initial, false, true);
-	}
-	const FVector Scale(Radius * 2.0f / 100.0f);
-	bool bHitChanged = false;
-	for (int32 Index = 0; Index < Bullets.Num(); ++Index)
-	{
-		FVector Location;
-		const bool bHit = HitBullets.IsValidIndex(Index) && HitBullets[Index] != 0;
-		const bool bFlying = !bHit && GetBulletLocation(Index, Elapsed, Location);
-		// touche le bateau des joueurs (serveur) : dégâts au core, balle retirée partout
-		if (bFlying && Boat && Boat->IsInsideHull(Location, Radius))
+		const FYSKrakenInkShot& Shot = Shots[Index];
+		const float Time = Elapsed - Shot.Delay - MarkerLead;
+		const bool bMarker = Elapsed >= Shot.Delay && Time <= FlightDuration;
+		if (bMarker != MarkerShown[Index])
 		{
-			HitBullets[Index] = 1;
-			bHitChanged = true;
-			Boat->TakeCoreDamage(Damage, nullptr, Location);
-			UE_LOG(LogTemp, Verbose, TEXT("[YSKraken] Balle d'encre %d touche %s (%.0f)"), Index, *Boat->GetName(), Damage);
+			MarkerShown[Index] = bMarker;
+			bMarkersChanged = true;
 		}
-		const bool bVisible = bFlying && !(HitBullets.IsValidIndex(Index) && HitBullets[Index] != 0);
-		BulletMeshes->UpdateInstanceTransform(Index, FTransform(FQuat::Identity, bVisible ? Location : Origin, bVisible ? Scale : FVector::ZeroVector), true, false, true);
+		const bool bFlying = Time >= 0.0f && Time <= FlightDuration;
+		const FVector Location = bFlying ? YSCombat::GetBellLocation(Start, FVector(Shot.Target), FlightDuration, ApexHeight, Time) : Start;
+		BallMeshes->UpdateInstanceTransform(Index, FTransform(FQuat::Identity, Location, bFlying ? Scale : FVector::ZeroVector), true, false, true);
+
+		// impact : dégâts au bateau des joueurs s'il est dans le rayon (serveur)
+		if (Time > FlightDuration && !Landed[Index])
+		{
+			Landed[Index] = true;
+			if (Boat && Boat->IsInsideHull(FVector(Shot.Target), Radius))
+			{
+				Boat->TakeCoreDamage(Damage, nullptr, FVector(Shot.Target));
+				++Hits;
+			}
+		}
 	}
-	BulletMeshes->MarkRenderStateDirty();
-	if (bHitChanged)
+	BallMeshes->MarkRenderStateDirty();
+	if (bMarkersChanged)
 	{
-		ForceNetUpdate();
+		RebuildMarkers();
+	}
+	if (Hits > 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSKraken] %d tir(s) d'encre en cloche touchent %s (%.0f chacun)"), Hits, *GetNameSafe(Boat), Damage);
 	}
 }

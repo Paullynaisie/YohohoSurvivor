@@ -83,5 +83,17 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static FString CopyChangedProperties(UObject* Source, UObject* Reference, UObject* Target, const TArray<FString>& ExcludedNames);
+
+	/** Noms des composants hérités des Blueprints parents de Blueprint (SCS des parents, pas les composants C++) */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static TArray<FName> GetInheritedComponentNames(UBlueprint* Blueprint);
+
+	/**
+	 *  Gabarit modifiable d'un composant hérité d'un Blueprint parent POUR CE Blueprint seulement (surcharge dans son
+	 *  Inheritable Component Handler, créée si besoin avec les valeurs actuelles du parent) : le parent n'est pas touché.
+	 *  Nul si aucun parent n'a ce composant.
+	 */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static UActorComponent* GetInheritedComponentOverride(UBlueprint* Blueprint, FName ComponentName);
 #endif
 };

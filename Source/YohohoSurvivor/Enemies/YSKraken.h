@@ -11,6 +11,14 @@ class UInstancedStaticMeshComponent;
 class UProceduralMeshComponent;
 class UYSGroundZoneComponent;
 
+namespace YSKraken
+{
+	/** Ordre de rendu des translucides du combat : l'eau sombre de l'arène toujours sous les signes au sol (sinon, triés par la
+	 *  distance de leur centre, les signes passaient parfois sous le disque de 200 m) */
+	constexpr int32 WaterSortPriority = -10;
+	constexpr int32 MarkerSortPriority = 10;
+}
+
 /**
  *  Morceau du boss Kraken (partie 3 du flow) : NME immobile posé en mer par l'arène (AYSKrakenArena), sans comportement de NME
  *  (ni déplacement, ni poursuite, ni pushback / bump, ni XP, ni ragdoll). Visuel = acteur enfant Visual Class (prop en primitives,
@@ -122,11 +130,11 @@ protected:
 
 	/** Vitesse d'aspiration = vitesse max avant de base du bateau x ceci */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Suction", meta=(ClampMin="0"))
-	float SuctionSpeedMultiplier = 0.75f;
+	float SuctionSpeedMultiplier = 0.6f;
 
 	/** Coup quand le bateau touche la tête pendant l'aspiration : dégâts à chaque poste et au core */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Suction", meta=(ClampMin="0"))
-	float SmashDamage = 2500.0f;
+	float SmashDamage = 2000.0f;
 
 	/** Poussée du coup (cm/s au départ, amortie par le bateau) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Suction", meta=(ClampMin="0", Units="CentimetersPerSecond"))
@@ -219,19 +227,19 @@ private:
 	void StopSuction(const TCHAR* Reason);
 };
 
-/** Un motif de tir d'encre de la tête finale */
+/** Un motif de tirs d'encre en cloche de la tête finale (points d'impact au sol, comme les boules des tentacules) */
 UENUM(BlueprintType)
 enum class EYSKrakenInkPattern : uint8
 {
-	/** Anneaux de balles tout autour, décalés */
+	/** Cercles concentriques d'impacts autour de la tête, séparés d'un écart où tient le bateau (rayon du premier au hasard) */
 	Rings,
-	/** Spirale : une balle à la fois, la direction tourne */
+	/** Spirale d'impacts depuis la tête jusqu'au bord, tours séparés d'un écart où tient le bateau */
 	Spiral,
-	/** Éventails visés sur le bateau */
-	AimedFans
+	/** Lignes d'impacts du centre jusqu'au bord de l'arène */
+	Lines
 };
 
-/** Tête finale du Kraken (étape 3) : au centre, tournée vers le bateau ; alterne attente et motif de tir d'encre au hasard */
+/** Tête finale du Kraken (étape 3) : au centre, tournée vers le bateau ; alterne attente et motif de tirs d'encre en cloche au hasard */
 UCLASS(meta=(PrioritizeCategories="Kraken Foe"))
 class AYSKrakenHeadFinal : public AYSKrakenHead
 {
@@ -243,65 +251,80 @@ public:
 
 protected:
 
-	/** Attente entre deux motifs (et avant le premier) */
+	/** Attente entre deux motifs (et avant le premier), comptée depuis le dernier impact du motif précédent */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="s"))
-	float PatternInterval = 20.0f;
+	float PatternInterval = 3.0f;
 
 	/** Motifs tirés au hasard (pas deux fois le même de suite s'il y en a plusieurs ; choix de Claude) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink")
-	TArray<EYSKrakenInkPattern> Patterns = { EYSKrakenInkPattern::Rings, EYSKrakenInkPattern::Spiral, EYSKrakenInkPattern::AimedFans };
+	TArray<EYSKrakenInkPattern> Patterns = { EYSKrakenInkPattern::Rings, EYSKrakenInkPattern::Lines, EYSKrakenInkPattern::Spiral };
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="1"))
-	int32 BulletsPerPattern = 30;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="1", Units="CentimetersPerSecond"))
-	float BulletSpeed = 1800.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="1", Units="Centimeters"))
-	float BulletRadius = 160.0f;
-
-	/** Dégâts au core du bateau par balle */
+	/** Dégâts au core du bateau par tir qui tombe sur lui */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0"))
-	float BulletDamage = 300.0f;
+	float ShotDamage = 300.0f;
 
-	/** Portée (au-delà les balles disparaissent) */
+	/** Rayon de l'impact (signe au sol) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="1", Units="Centimeters"))
+	float ShotRadius = 600.0f;
+
+	/** Taille de la boule (diamètre) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="1", Units="Centimeters"))
+	float ShotBallSize = 450.0f;
+
+	/** Vol en cloche de chaque boule (le signe au sol est affiché pendant tout le vol, plus Marker Lead Time avant) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0.1", Units="s"))
+	float ShotFlightDuration = 3.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="s"))
+	float MarkerLeadTime = 1.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
-	float BulletRange = 23000.0f;
+	float ShotApexHeight = 2500.0f;
 
-	/** Départ des balles : rayon autour du centre (bord de la tête) et hauteur au-dessus de la mer */
+	/** Départ des boules : au-dessus de la tête, à cette hauteur au-dessus de la mer */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
-	float BulletSpawnRadius = 1800.0f;
+	float ShotLaunchHeight = 3000.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(Units="Centimeters"))
-	float BulletHeight = 150.0f;
+	/** Distance entre deux impacts voisins d'une ligne / d'un cercle / de la spirale (moins de 2 x Shot Radius = sans trou) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="50", Units="Centimeters"))
+	float ShotSpacing = 1100.0f;
 
-	/** Anneaux : nombre d'anneaux (les balles partagées entre eux), écart entre deux */
+	/** Écart libre entre deux cercles / deux tours de spirale (bord à bord des impacts) : de quoi placer le bateau
+	 *  (galion des joueurs x0.7 = 41 m de long, 14 m de large) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
+	float BoatGap = 4500.0f;
+
+	/** Pas d'impact plus près du centre (la tête) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
+	float MinPatternRadius = 3000.0f;
+
+	/** Bord des motifs (0 = rayon de l'arène - Shot Radius) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0", Units="Centimeters"))
+	float MaxPatternRadius = 0.0f;
+
+	/** Cercles : nombre, rayon du premier tiré au hasard dans cet intervalle, écart de départ entre deux cercles (du centre vers le bord) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(ClampMin="1"))
 	int32 RingCount = 3;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(Units="Centimeters"))
+	FVector2D FirstRingRadius = FVector2D(3500.0, 7000.0);
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(ClampMin="0", Units="s"))
-	float RingInterval = 0.8f;
+	float RingInterval = 0.4f;
 
-	/** Spirale : durée totale, tours faits pendant ce temps */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Spiral", meta=(ClampMin="0.1", Units="s"))
-	float SpiralDuration = 3.0f;
+	/** Lignes : nombre (réparties autour, orientation au hasard), départ de chaque impact après le précédent de sa ligne (du centre vers le bord) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Lines", meta=(ClampMin="1"))
+	int32 LineCount = 5;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Spiral", meta=(ClampMin="0.1"))
-	float SpiralTurns = 2.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Lines", meta=(ClampMin="0", Units="s"))
+	float LineStepDelay = 0.08f;
 
-	/** Éventails : nombre, ouverture (de part et d'autre de la visée), écart entre deux */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Aimed Fans", meta=(ClampMin="1"))
-	int32 FanCount = 5;
+	/** Spirale : rayon de départ au hasard, durée pour tirer toute la spirale (du centre vers le bord), sens et angle de départ au hasard */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Spiral", meta=(Units="Centimeters"))
+	FVector2D SpiralStartRadius = FVector2D(3000.0, 5000.0);
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Aimed Fans", meta=(ClampMin="0", ClampMax="90", Units="Degrees"))
-	float FanHalfAngle = 30.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Aimed Fans", meta=(ClampMin="0", Units="s"))
-	float FanInterval = 0.6f;
-
-	/** Les éventails visent là où sera le bateau quand les balles arrivent (à sa vitesse du moment ; choix de Claude) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Aimed Fans")
-	bool bLeadTarget = false;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Spiral", meta=(ClampMin="0", Units="s"))
+	float SpiralDuration = 4.0f;
 
 	virtual void TickHeadServer(float DeltaSeconds) override;
 
@@ -310,7 +333,8 @@ private:
 	double NextPatternServerTime = -1.0;
 	int32 LastPattern = INDEX_NONE;
 
-	void FirePattern(EYSKrakenInkPattern Pattern);
+	/** Lance le motif ; renvoie sa durée (dernier impact) */
+	float FirePattern(EYSKrakenInkPattern Pattern);
 };
 
 /** Phase du cycle d'une tentacule */
@@ -488,9 +512,21 @@ public:
 
 protected:
 
-	/** Dégâts au core du bateau si la boule le touche */
+	/** Dégâts au core du bateau par boule qui le touche */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0"))
-	float InkDamage = 1000.0f;
+	float InkDamage = 500.0f;
+
+	/** Boules tirées par attaque (chacune visant un point au hasard autour du bateau) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="1"))
+	int32 InkBallsPerAttack = 3;
+
+	/** Départ de chaque boule après la précédente (choix de Claude) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0", Units="s"))
+	float InkBallInterval = 0.25f;
+
+	/** Imprécision : point visé au hasard dans ce rayon autour du centre de la coque (répartition uniforme dans le disque) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0", Units="Centimeters"))
+	float InkScatterRadius = 3500.0f;
 
 	/** Rayon de l'impact (signe au sol) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="1", Units="Centimeters"))
@@ -498,7 +534,7 @@ protected:
 
 	/** Vol de la boule après l'amorce */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0.1", Units="s"))
-	float InkFlightDuration = 1.5f;
+	float InkFlightDuration = 4.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0", Units="Centimeters"))
 	float InkApexHeight = 1500.0f;
@@ -658,8 +694,12 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Ink Ball")
 	TObjectPtr<UMaterialInterface> MarkerMaterial;
 
+	/** Violet lumineux : visible sur la mer ET sur l eau sombre de l arène (le violet très sombre d avant y disparaissait) */
 	UPROPERTY(EditAnywhere, Category="Ink Ball")
-	FLinearColor MarkerColor = FLinearColor(0.05f, 0.0f, 0.15f);
+	FLinearColor MarkerColor = FLinearColor(0.55f, 0.1f, 1.0f);
+
+	UPROPERTY(EditAnywhere, Category="Ink Ball", meta=(ClampMin="0"))
+	float MarkerGlow = 0.8f;
 
 	UPROPERTY(ReplicatedUsing=OnRep_Flight)
 	FYSKrakenInkBallFlight Flight;
@@ -676,73 +716,92 @@ private:
 	void BuildMarker();
 };
 
-/** Balles d'un motif de la tête finale (une seule entité pour tout le motif) : chaque machine les fait avancer, le serveur les fait toucher */
+/** Un tir en cloche d'un motif de la tête finale : point d'impact (niveau de la mer) et départ après le lancement du motif */
 USTRUCT()
-struct FYSKrakenInkBullet
+struct FYSKrakenInkShot
 {
 	GENERATED_BODY()
 
-	/** Direction (degrés) */
 	UPROPERTY()
-	float Yaw = 0.0f;
+	FVector_NetQuantize Target = FVector::ZeroVector;
 
-	/** Départ après le lancement du motif */
 	UPROPERTY()
 	float Delay = 0.0f;
 };
 
+/** Tous les tirs en cloche d'un motif de la tête finale (une seule entité, copie du rendu des boules d'encre des tentacules) :
+ *  chaque machine affiche les signes au sol (Marker Lead Time avant le départ, jusqu'à l'impact) et les boules en vol,
+ *  le serveur applique les dégâts au bateau des joueurs à l'impact */
 UCLASS()
-class AYSKrakenInkVolley : public AActor
+class AYSKrakenInkBarrage : public AActor
 {
 	GENERATED_BODY()
 
 public:
 
-	AYSKrakenInkVolley();
+	AYSKrakenInkBarrage();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	virtual void Tick(float DeltaSeconds) override;
 
 	/** Serveur, avant FinishSpawning */
-	void Init(const FVector& InOrigin, float InSpawnRadius, float InSpeed, float InRadius, float InRange, float InDamage, const TArray<FYSKrakenInkBullet>& InBullets);
+	void Init(const FVector& InStart, float InFlightDuration, float InApexHeight, float InRadius, float InBallSize, float InMarkerLead, float InDamage,
+		const TArray<FYSKrakenInkShot>& InShots);
 
 protected:
 
 	virtual void BeginPlay() override;
 
 	UPROPERTY(VisibleAnywhere, Category="Components")
-	TObjectPtr<UInstancedStaticMeshComponent> BulletMeshes;
+	TObjectPtr<UInstancedStaticMeshComponent> BallMeshes;
+
+	UPROPERTY(VisibleAnywhere, Category="Components")
+	TObjectPtr<UProceduralMeshComponent> Markers;
+
+	/** Signes au sol : même violet lumineux que ceux des boules d encre des tentacules */
+	UPROPERTY(EditAnywhere, Category="Ink Barrage")
+	FLinearColor MarkerColor = FLinearColor(0.55f, 0.1f, 1.0f, 0.45f);
+
+	UPROPERTY(EditAnywhere, Category="Ink Barrage")
+	FLinearColor MarkerEdgeColor = FLinearColor(0.85f, 0.5f, 1.0f, 0.95f);
+
+	UPROPERTY(EditAnywhere, Category="Ink Barrage")
+	TObjectPtr<UMaterialInterface> MarkerMaterial;
 
 	UPROPERTY(Replicated)
-	FVector Origin = FVector::ZeroVector;
+	FVector Start = FVector::ZeroVector;
 
 	UPROPERTY(Replicated)
-	float SpawnRadius = 0.0f;
+	float FlightDuration = 3.0f;
 
 	UPROPERTY(Replicated)
-	float Speed = 1800.0f;
+	float ApexHeight = 2500.0f;
 
 	UPROPERTY(Replicated)
-	float Radius = 160.0f;
+	float Radius = 600.0f;
 
 	UPROPERTY(Replicated)
-	float Range = 13000.0f;
+	float BallSize = 450.0f;
+
+	UPROPERTY(Replicated)
+	float MarkerLead = 1.0f;
 
 	UPROPERTY(Replicated)
 	double LaunchServerTime = 0.0;
 
 	UPROPERTY(Replicated)
-	TArray<FYSKrakenInkBullet> Bullets;
-
-	/** Balles qui ont touché (cachées partout) */
-	UPROPERTY(Replicated)
-	TArray<uint8> HitBullets;
+	TArray<FYSKrakenInkShot> Shots;
 
 private:
 
 	float Damage = 0.0f;
 
-	/** Position de la balle Index à ce temps depuis le lancement ; faux si pas encore partie ou finie */
-	bool GetBulletLocation(int32 Index, float Elapsed, FVector& OutLocation) const;
+	/** Tirs déjà tombés (local) */
+	TBitArray<> Landed;
+
+	/** Signes au sol affichés (local) : maillage reconstruit quand ça change */
+	TBitArray<> MarkerShown;
+
+	void RebuildMarkers();
 };

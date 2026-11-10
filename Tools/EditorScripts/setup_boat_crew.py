@@ -40,8 +40,8 @@ CUBE = "/Engine/BasicShapes/Cube"
 CYLINDER = "/Engine/BasicShapes/Cylinder"
 SPHERE = "/Engine/BasicShapes/Sphere"
 
-BRIGANTIN_FROM = 0.8
-BRIGANTIN_TO = 0.7
+BRIGANTIN_FROM = 0.7  # 0.8 -> 0.7 le 2026-11-10, puis 0.55 par setup_kraken_ships_2026_11_10.py
+BRIGANTIN_TO = 0.55
 KEEP_SIZE = ("MainMast", "ForeMast", "MizzenMast", "CrowsNest", "Helm", "HelmWheel", "Lantern", "FlagSkull", "Bowsprit")
 NATIVE_PLACED = ("HelmStation", "CoreStation", "CrowsNestStation", "LongboatStation", "CannonFront", "CannonFront2", "CannonLeft", "CannonRight",
                  "CannonLeft2", "CannonRight2", "BoardingAccess", "BoardingAccessStarboard", "BoardingAccess2", "BoardingAccess3", "BoardingAccess4",
@@ -49,10 +49,10 @@ NATIVE_PLACED = ("HelmStation", "CoreStation", "CrowsNestStation", "LongboatStat
 PORT_ACCESSES = ("BoardingAccess", "BoardingAccess2", "BoardingAccess3", "BoardingAccess4")
 STARBOARD_ACCESSES = ("BoardingAccessStarboard", "BoardingAccessStarboard2", "BoardingAccessStarboard3", "BoardingAccessStarboard4")
 # X des échelles (entre les postes de combat des flancs et loin de la chalouperie)
-LADDERS = {SLOOP_BP: (-250.0, 650.0), BRIGANTIN_BP: (-1200.0, 70.0, 1250.0), GALION_BP: (-1900.0, -1200.0, 200.0, 1600.0)}
-HELM = {SLOOP_BP: 4320.0 * 1.2, BRIGANTIN_BP: 5400.0 * 1.2, GALION_BP: 6480.0 * 1.2, PIRATE_BP: 6480.0 * 1.2, LONGBOAT_BP: 4320.0 * 1.2}
+LADDERS = {SLOOP_BP: (-250.0, 650.0), BRIGANTIN_BP: (-943.0, 55.0, 982.0), GALION_BP: (-1330.0, -840.0, 140.0, 1120.0)}  # brigantin x0.55, galion x0.7
+HELM = {SLOOP_BP: 4320.0 * 1.2, BRIGANTIN_BP: 5832.0, GALION_BP: 6480.0, PIRATE_BP: 6480.0 * 1.2, LONGBOAT_BP: 4320.0 * 1.2}
 # zone du core x0.75 (brigantin : moyenne sloop / galion, déjà ramené à sa nouvelle taille)
-CORE_RANGE = {SLOOP_BP: 450.0 * 0.75, BRIGANTIN_BP: 675.0 * 0.75, GALION_BP: 900.0 * 0.75, PIRATE_BP: 900.0 * 0.75}
+CORE_RANGE = {SLOOP_BP: 450.0 * 0.75, BRIGANTIN_BP: 421.875, GALION_BP: 506.25, PIRATE_BP: 900.0 * 0.75}
 BEACH_ZONE = 1500.0 * 0.5
 
 assets = unreal.EditorAssetLibrary

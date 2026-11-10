@@ -252,16 +252,16 @@ try:
     save(SLOOP)
     log("BP_GameBoat_Brigantin :")
     brigantin = cdo(BRIGANTIN)
-    place_receptacle(brigantin, "CannonFront", v(2636.8, 0, 210), 0.0, receptacle_class)
-    place_receptacle(brigantin, "CannonLeft", v(720, -746.4, 210), -90.0, receptacle_class)
-    place_receptacle(brigantin, "CannonRight", v(720, 746.4, 210), 90.0, receptacle_class)
-    place_receptacle(brigantin, "CannonLeft2", v(-560, -746.4, 210), -90.0, receptacle_class)
-    place_receptacle(brigantin, "CannonRight2", v(-560, 746.4, 210), 90.0, receptacle_class)
+    place_receptacle(brigantin, "CannonFront", v(1730, 0, 210), 0.0, receptacle_class)  # brigantin x0.55 depuis le 2026-11-10
+    place_receptacle(brigantin, "CannonLeft", v(495, -410, 210), -90.0, receptacle_class)
+    place_receptacle(brigantin, "CannonRight", v(495, 410, 210), 90.0, receptacle_class)
+    place_receptacle(brigantin, "CannonLeft2", v(-385, -410, 210), -90.0, receptacle_class)
+    place_receptacle(brigantin, "CannonRight2", v(-385, 410, 210), 90.0, receptacle_class)
     save(BRIGANTIN)
     log("BP_GameBoat_Galion :")
     galion = cdo(GALION)
-    place_receptacle(galion, "CannonFront", v(2846, -300, 210), -15.0, receptacle_class)
-    place_receptacle(galion, "CannonFront2", v(2846, 300, 210), 15.0, receptacle_class)
+    place_receptacle(galion, "CannonFront", v(2124, -245, 210), -15.0, receptacle_class)  # galion x0.7 depuis le 2026-11-10
+    place_receptacle(galion, "CannonFront2", v(2124, 245, 210), 15.0, receptacle_class)
     for name in ["CannonLeft", "CannonRight", "CannonLeft2", "CannonRight2"]:
         place_receptacle(galion, name, None, 0, receptacle_class)
     save(GALION)

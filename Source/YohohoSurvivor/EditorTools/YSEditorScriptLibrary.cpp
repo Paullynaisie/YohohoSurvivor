@@ -5,6 +5,11 @@
 #include "Engine/SkeletalMeshSocket.h"
 
 #if WITH_EDITOR
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/InheritableComponentHandler.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "Engine/Engine.h"
 #include "Engine/DataTable.h"
 #include "Engine/Texture2D.h"
@@ -315,6 +320,72 @@ FString UYSEditorScriptLibrary::CopyChangedProperties(UObject* Source, UObject* 
 	}
 	Target->MarkPackageDirty();
 	return Report;
+}
+
+namespace YSEditorScript
+{
+	/** Nœud SCS d'un Blueprint parent qui porte ce nom (nul sinon) */
+	USCS_Node* FindParentNode(UBlueprint* Blueprint, FName ComponentName)
+	{
+		for (UClass* Class = Blueprint && Blueprint->ParentClass ? Blueprint->ParentClass.Get() : nullptr; Class; Class = Class->GetSuperClass())
+		{
+			const UBlueprintGeneratedClass* Generated = Cast<UBlueprintGeneratedClass>(Class);
+			if (!Generated || !Generated->SimpleConstructionScript)
+			{
+				continue;
+			}
+			if (USCS_Node* Node = Generated->SimpleConstructionScript->FindSCSNode(ComponentName))
+			{
+				return Node;
+			}
+		}
+		return nullptr;
+	}
+}
+
+TArray<FName> UYSEditorScriptLibrary::GetInheritedComponentNames(UBlueprint* Blueprint)
+{
+	TArray<FName> Names;
+	for (UClass* Class = Blueprint && Blueprint->ParentClass ? Blueprint->ParentClass.Get() : nullptr; Class; Class = Class->GetSuperClass())
+	{
+		if (const UBlueprintGeneratedClass* Generated = Cast<UBlueprintGeneratedClass>(Class); Generated && Generated->SimpleConstructionScript)
+		{
+			for (const USCS_Node* Node : Generated->SimpleConstructionScript->GetAllNodes())
+			{
+				if (Node && Node->ComponentTemplate)
+				{
+					Names.AddUnique(Node->GetVariableName());
+				}
+			}
+		}
+	}
+	return Names;
+}
+
+UActorComponent* UYSEditorScriptLibrary::GetInheritedComponentOverride(UBlueprint* Blueprint, FName ComponentName)
+{
+	USCS_Node* Node = YSEditorScript::FindParentNode(Blueprint, ComponentName);
+	if (!Node)
+	{
+		return nullptr;
+	}
+	UInheritableComponentHandler* Handler = Blueprint->GetInheritableComponentHandler(true);
+	if (!Handler)
+	{
+		return nullptr;
+	}
+	const FComponentKey Key(Node);
+	UActorComponent* Override = Handler->GetOverridenComponentTemplate(Key);
+	if (!Override)
+	{
+		Override = Handler->CreateOverridenComponentTemplate(Key);
+	}
+	if (Override)
+	{
+		Override->Modify();
+		Blueprint->Modify();
+	}
+	return Override;
 }
 
 #endif

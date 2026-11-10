@@ -29,7 +29,7 @@ BOAT_CORE = "/Game/Placeable/InteractiveObjects/BP_InteractiveObject_BoatCore"
 
 SLOOP_XY = 0.4
 SLOOPLUS_XY = 0.6
-BRIGANTIN_XY = 0.7  # 0.8 jusqu au 2026-11-10 (ramené par setup_boat_crew.py : moyenne du sloop et du galion)
+BRIGANTIN_XY = 0.55  # 0.8, puis 0.7 (setup_boat_crew.py), puis 0.55 le 2026-11-10 (setup_kraken_ships_2026_11_10.py ; le galion est à x0.7)
 # canons avant écartés : part de la demi-largeur du bateau
 FRONT_PAIR_SPREAD = 0.3
 SLOOP_FRONT_YAW = 15.0

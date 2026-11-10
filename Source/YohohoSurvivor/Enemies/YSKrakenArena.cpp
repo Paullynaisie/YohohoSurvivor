@@ -64,6 +64,8 @@ void AYSKrakenArena::BeginPlay()
 	WaterDisc->SetupAttachment(GetRootComponent());
 	WaterDisc->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	WaterDisc->SetCastShadow(false);
+	// translucide trié en dernier recours par la distance du centre (disque de 200 m) : toujours dessous les signes au sol du combat
+	WaterDisc->SetTranslucentSortPriority(YSKraken::WaterSortPriority);
 	WaterDisc->RegisterComponent();
 	BuildWaterDisc();
 
