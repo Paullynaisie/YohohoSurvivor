@@ -3458,8 +3458,8 @@ void AYSPlayerCharacter::EnterStation(AYSShipStation* Station)
 	ApplyCarryVisuals();
 	UpdateStation();
 	ForceNetUpdate();
-	UE_LOG(LogTemp, Log, TEXT("[YSStation] %s s'installe à %s (%s) de %s"), *GetName(), *Station->GetDisplayName().ToString(), *Station->GetName(),
-		Station->GetShip() ? *Station->GetShip()->GetName() : TEXT("?"));
+	UE_LOG(LogTemp, Log, TEXT("[YSStation] %s s'installe à %s (%s) de %s (caméra %.0f)"), *GetName(), *Station->GetDisplayName().ToString(), *Station->GetName(),
+		Station->GetShip() ? *Station->GetShip()->GetName() : TEXT("?"), Station->GetCameraArmLength());
 }
 
 void AYSPlayerCharacter::LeaveStation(const TCHAR* Reason, bool bForce)

@@ -157,9 +157,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(ClampMin="0", EditCondition="bZonesOfInterest"))
 	int32 CompassCount = 3;
 
-	/** Membres d'équipage (Medic, Charpentier) : un par ZI sans boussole */
+	/** Membres d'équipage possibles (BoatCrew : Charpentier, Medic, Navigateur, Cuisinier, Flibustier) ; Crew Count tirés au hasard, un par ZI sans boussole */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(EditCondition="bZonesOfInterest"))
 	TArray<TSubclassOf<AYSInteractiveObject>> CrewItemClasses;
+
+	/** Membres d'équipage générés à chaque partie, tirés au hasard dans Crew Item Classes (-1 = tous) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(ClampMin="-1", EditCondition="bZonesOfInterest"))
+	int32 CrewCount = 2;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(EditCondition="bZonesOfInterest"))
 	TSubclassOf<AYSInteractiveObject> SuperTreasureMapClass;
@@ -306,6 +310,9 @@ public:
 
 	/** Objet d'une zone d'intérêt posé sur un Galion (boussole, équipage...) : le core du bateau des joueurs le prend */
 	bool IsZoneItem(const AYSInteractiveObject* Object) const;
+
+	/** Debug : objet compté comme un objet de zone d'intérêt (le core du bateau des joueurs le prend) */
+	void DebugAddZoneItem(AYSInteractiveObject* Object) { ZoneItems.Add(Object); }
 
 	/** CoreBoat posé dans la zone du core du bateau des joueurs (serveur) : détruit, +1 au stock ; l'étape suivante se fait à l'image suivante */
 	void StoreCoreBoat(AYSInteractiveObject* Object);

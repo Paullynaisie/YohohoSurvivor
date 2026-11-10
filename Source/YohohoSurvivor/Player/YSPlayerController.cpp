@@ -3,6 +3,7 @@
 #include "Island/YSIslandData.h"
 #include "Island/YSIslandNPC.h"
 #include "Core/YSFlowMode.h"
+#include "Ship/YSBoatCrew.h"
 #include "Ship/YSShipCannon.h"
 #include "Ship/YSLongboatLauncher.h"
 #include "Core/YSGamepad.h"
@@ -1202,6 +1203,60 @@ void AYSPlayerController::YSSpawnCombatPost(int32 Index)
 	if (AYSInteractiveObject* Item = AYSInteractiveObject::SpawnOnGround(GetWorld(), GameMode->GetCombatPostItemClasses()[Index], PlayerCharacter->GetActorLocation(), 0.0f))
 	{
 		PlayerCharacter->StartCarrying(Item);
+	}
+}
+
+void AYSPlayerController::YSSpawnBoatCrew(int32 Index)
+{
+	AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const TSubclassOf<AYSInteractiveObject> Class = !FlowMode ? nullptr : Index < 0 ? FlowMode->CompassItemClass
+		: FlowMode->CrewItemClasses.IsValidIndex(Index) ? FlowMode->CrewItemClasses[Index] : nullptr;
+	if (!PlayerCharacter || PlayerCharacter->IsCarrying() || !Class)
+	{
+		return;
+	}
+	if (AYSInteractiveObject* Crew = AYSInteractiveObject::SpawnOnGround(GetWorld(), Class, PlayerCharacter->GetActorLocation(), 0.0f))
+	{
+		// comme un objet de zone d'intérêt : le core du bateau des joueurs le prend
+		FlowMode->DebugAddZoneItem(Crew);
+		PlayerCharacter->StartCarrying(Crew);
+		UE_LOG(LogTemp, Log, TEXT("[YSBoatCrew] Debug : %s dans les mains de %s"), *Crew->GetName(), *PlayerCharacter->GetName());
+	}
+}
+
+void AYSPlayerController::YSBoatCrewStatus()
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPirateShip* GameBoat = YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	for (TActorIterator<AYSBoatCrew> It(GetWorld()); It; ++It)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSBoatCrew] Statut %s : %s, bonus %s%s, en %s"), *It->GetName(), It->HasJoined() ? TEXT("à bord") : TEXT("pas encore dans l'équipage"),
+			*StaticEnum<EYSBoatCrewBonus>()->GetNameStringByValue(static_cast<int64>(It->GetBonus())), It->IsFreeReviveReady() ? TEXT(" (réanimation gratuite prête)") : TEXT(""),
+			*It->GetActorLocation().ToCompactString());
+	}
+	for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSBoatCrew] Statut %s : PV %.1f / %.0f%s"), *It->GetName(), It->GetHealth(), It->GetMaxHealth(), GameBoat && It->GetShipUnderFeet() == GameBoat ? TEXT(" (à bord)") : TEXT(""));
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSBoatCrew] Statut bateau %s : vitesse x%.2f, recharge des canons x%.2f, plumes %d"), *GetNameSafe(GameBoat), AYSBoatCrew::GetShipSpeedMultiplier(GameBoat),
+		AYSBoatCrew::GetCannonCooldownMultiplier(GameBoat), YSGameState ? YSGameState->GetPhoenixFeathers() : 0);
+}
+
+void AYSPlayerController::YSJoinBoatCrew(int32 Index)
+{
+	const AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	AYSPirateShip* GameBoat = YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	if (!FlowMode || !GameBoat || !GameBoat->GetCore() || !FlowMode->CrewItemClasses.IsValidIndex(Index) || !FlowMode->CrewItemClasses[Index])
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSBoatCrew] Debug : pas de bateau des joueurs avec un core, ou pas de membre d'équipage n° %d"), Index);
+		return;
+	}
+	const FVector Deck = GameBoat->GetCore()->GetActorLocation() + GameBoat->GetActorRightVector() * (120.0f * (Index - 2)) + FVector(0.0f, 0.0f, 300.0f);
+	if (AYSInteractiveObject* Crew = AYSInteractiveObject::SpawnOnGround(GetWorld(), FlowMode->CrewItemClasses[Index], Deck, GameBoat->GetActorRotation().Yaw))
+	{
+		Crew->OnDelivered();
 	}
 }
 
@@ -2419,7 +2474,8 @@ void AYSPlayerController::UpdateSpectating()
 		}
 		DeathScreen->SetSpectating(true, TargetName);
 		const AYSGameState* FeatherState = GetWorld()->GetGameState<AYSGameState>();
-		DeathScreen->SetReviveAvailable(FeatherState && FeatherState->GetPhoenixFeathers() > 0 && !IsPaused());
+		// (plume de phoenix, ou réanimation gratuite du Medic de l'équipage)
+		DeathScreen->SetReviveAvailable(FeatherState && (FeatherState->GetPhoenixFeathers() > 0 || AYSBoatCrew::FindFreeRevive(GetWorld())) && !IsPaused());
 	}
 }
 

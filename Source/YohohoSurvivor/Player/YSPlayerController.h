@@ -581,6 +581,18 @@ public:
 	UFUNCTION(Exec)
 	void YSSpawnCombatPost(int32 Index);
 
+	/** Debug (hôte, FlowMod) : bonus de l'équipage, PV des joueurs, vitesse et recharge des canons du bateau des joueurs (log [YSBoatCrew]) */
+	UFUNCTION(Exec)
+	void YSBoatCrewStatus();
+
+	/** Debug (hôte, FlowMod) : le membre d'équipage n° Index de Crew Item Classes dans les mains du joueur (-1 = une boussole) */
+	UFUNCTION(Exec)
+	void YSSpawnBoatCrew(int32 Index);
+
+	/** Debug (hôte, FlowMod) : le membre d'équipage n° Index rejoint tout de suite l'équipage (posé au core du bateau des joueurs) */
+	UFUNCTION(Exec)
+	void YSJoinBoatCrew(int32 Index);
+
 	/** Debug (hôte) : téléporté à côté du bateau de départ de l'île la plus proche, sinon au core du bateau des joueurs le plus proche */
 	UFUNCTION(Exec)
 	void YSIslandGoToBoat();

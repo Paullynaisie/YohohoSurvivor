@@ -5,6 +5,7 @@
 #include "YSShipBoarding.generated.h"
 
 class AYSPirateShip;
+class UMaterialInterface;
 
 /**
  *  Accès du bateau (acteur enfant BoardingAccess du bateau, à l'ouverture du bastingage / planche d'embarquement) : un joueur
@@ -24,7 +25,53 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USceneComponent> BoardPoint;
 
+	/** Échelle de corde (Show Ladder) : les deux cordes et les barreaux, contre le flanc */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<class UInstancedStaticMeshComponent> LadderRopes;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<class UInstancedStaticMeshComponent> LadderRungs;
+
 protected:
+
+	/** Échelle de corde affichée contre le flanc, de la mer au-dessus du bastingage (bateaux des joueurs ; visuel seulement) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder")
+	bool bShowLadder = false;
+
+	/** Écart de l'échelle devant le flanc (+X, vers le large) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder", meta=(Units="Centimeters", EditCondition="bShowLadder"))
+	float LadderOffset = 8.0f;
+
+	/** Demi-largeur (entre les deux cordes) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder", meta=(ClampMin="1", Units="Centimeters", EditCondition="bShowLadder"))
+	float LadderHalfWidth = 35.0f;
+
+	/** Bas et haut de l'échelle (hauteur depuis la mer ; pont à +210, bastingage à +240) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder", meta=(Units="Centimeters", EditCondition="bShowLadder"))
+	float LadderBottom = -60.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder", meta=(Units="Centimeters", EditCondition="bShowLadder"))
+	float LadderTop = 250.0f;
+
+	/** Écart entre deux barreaux */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder", meta=(ClampMin="5", Units="Centimeters", EditCondition="bShowLadder"))
+	float RungSpacing = 32.0f;
+
+	/** Diamètre des cordes, épaisseur des barreaux */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder", meta=(ClampMin="0.5", Units="Centimeters", EditCondition="bShowLadder"))
+	float RopeDiameter = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder", meta=(ClampMin="0.5", Units="Centimeters", EditCondition="bShowLadder"))
+	float RungThickness = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder", meta=(EditCondition="bShowLadder"))
+	TObjectPtr<UMaterialInterface> RopeMaterial;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding|Ladder", meta=(EditCondition="bShowLadder"))
+	TObjectPtr<UMaterialInterface> RungMaterial;
+
+	/** Cordes et barreaux reconstruits (éditeur et jeu, local) */
+	void BuildLadder();
 
 	/** Longueur de la zone d'accès depuis le flanc vers le large (+X de l'acteur) : couvre la planche d'embarquement */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding", meta=(ClampMin="0", Units="Centimeters"))
@@ -45,6 +92,10 @@ protected:
 public:
 
 	AYSShipBoarding();
+
+	virtual void OnConstruction(const FTransform& Transform) override;
+
+	virtual void BeginPlay() override;
 
 	/** Bateau présent, joueur vivant, mains libres, à aucun poste, pas déjà sur ce bateau */
 	virtual bool CanInteract(const AYSPlayerCharacter* Character) const override;

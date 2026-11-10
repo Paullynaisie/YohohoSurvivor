@@ -318,7 +318,8 @@ public:
 	virtual void ServerHandleAction(AYSPlayerCharacter* Character, EYSStationAction Action, const FVector& AimLocation) {}
 
 	/** Caméra (machine qui contrôle) */
-	float GetCameraArmLength() const { return CameraArmLength; }
+	/** Camera Arm Length (barre : Helm Camera Arm Length du bateau s'il est réglé) */
+	float GetCameraArmLength() const;
 	bool IsCameraOnShip() const { return bCameraOnShip; }
 	EYSStationCameraOffset GetCameraOffsetMode() const { return CameraOffsetMode; }
 	float GetCameraOffsetDistance() const { return CameraOffsetDistance; }
@@ -335,6 +336,9 @@ public:
 	 *  Icon au clic droit, réparer à Espace si le module a des PV, démonter au clic droit d'un poste de combat posé
 	 */
 	virtual void GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSStationActionIcon& OutRight, FYSStationActionIcon& OutSpace) const;
+
+	/** PV rendus sans occupant (serveur ; Charpentier de l'équipage) : poste qui a des PV, abîmé, bateau pas hors d'usage */
+	void AddRepairHealth(float Amount);
 
 	float GetHealth() const { return Health; }
 	float GetMaxHealth() const { return MaxHealth; }

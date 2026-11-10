@@ -121,6 +121,28 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UChildActorComponent> BoardingAccessStarboard;
 
+	/**
+	 *  Accès supplémentaires (échelles de corde ; vides par défaut, placés par Tools/EditorScripts/setup_boat_crew.py : sloop 2 + 2,
+	 *  brigantin 3 + 3, galion 4 + 4) : BoardingAccess2..4 à bâbord, BoardingAccessStarboard2..4 à tribord
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> BoardingAccess2;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> BoardingAccess3;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> BoardingAccess4;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> BoardingAccessStarboard2;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> BoardingAccessStarboard3;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> BoardingAccessStarboard4;
+
 	/** En sommeil (bataille navale pas encore activée) : immobile (serveur) */
 	bool bDormant = false;
 
@@ -306,6 +328,25 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Sails", meta=(EditCondition="bToggleSails"))
 	FString FurledSailTag = TEXT("_Sail");
 
+	/**
+	 *  Formes du Blueprint cachées et sans collision (en jeu et dans l'éditeur), sans les supprimer ; ex. les planches d'embarquement
+	 *  (Gangplank, Gangplank Starboard) des bateaux des joueurs, remplacées par les échelles de corde des accès (2026-11-10)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Visual")
+	TArray<FName> HiddenComponentNames;
+
+	/** Accès à bord en échelles de corde (Show Ladder de chaque accès, quel que soit son gabarit) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Visual")
+	bool bBoardingLadders = false;
+
+	/** Bras de la caméra du pilote à la barre ; 0 = Camera Arm Length du poste de la barre (Helm Station) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm", meta=(ClampMin="0", Units="Centimeters"))
+	float HelmCameraArmLength = 0.0f;
+
+	/** « À l'abordage » : le bateau percuté est abordé (Galion de NME) si l'impact est à moins de cette distance d'un de ses postes de combat cassés */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="0", Units="Centimeters"))
+	float RamBrokenPostRadius = 500.0f;
+
 	/** « À l'abordage » (clic gauche maintenu à la barre) : vitesse max x ce multiplicateur, plein gaz, la barre ne tourne plus */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="1"))
 	float RamSpeedMultiplier = 1.2f;
@@ -397,6 +438,23 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	virtual void BeginPlay() override;
+
+	virtual void OnConstruction(const FTransform& Transform) override;
+
+	/** Hidden Component Names : formes cachées, sans collision (toutes machines, éditeur compris) */
+	void ApplyHiddenComponents();
+
+	/** Un poste de combat (canon, Gatling) cassé à moins de Radius (à plat) de Point */
+	bool HasBrokenCombatPostNear(const FVector& Point, float Radius) const;
+
+	float GetRamBrokenPostRadius() const { return RamBrokenPostRadius; }
+
+	float GetHelmCameraArmLength() const { return HelmCameraArmLength; }
+
+	bool ShowsBoardingLadders() const { return bBoardingLadders; }
+
+	/** Point de contact de l'éperonnage : le point de la coque de Target le plus proche de la coque de ce bateau */
+	FVector GetRamImpactPoint(const AYSPirateShip* Target) const;
 
 	FText GetShipName() const { return ShipName; }
 
@@ -493,6 +551,9 @@ public:
 
 	/** Un joueur répare le core pendant DeltaSeconds (serveur) : bateau de nouveau utilisable une fois à Core Repair Max Health */
 	void RepairCore(float DeltaSeconds);
+
+	/** PV rendus au core (serveur ; réparation du joueur, Charpentier de l'équipage) */
+	void RepairCoreBy(float Amount);
 
 	/** En train de couler (hors d'usage, plus de déplacement) */
 	bool IsSinking() const { return SinkStartServerTime > 0.0; }

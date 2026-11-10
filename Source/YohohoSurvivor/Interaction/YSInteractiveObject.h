@@ -211,7 +211,8 @@ public:
 	int32 GetPhoenixFeatherValue() const { return PhoenixFeatherValue; }
 	bool UpgradesGameBoat() const { return bUpgradesGameBoat; }
 
-	bool ShowsIndicator() const { return bShowIndicator && (!bRevealIndicatorNearby || bIndicatorRevealed); }
+	/** (livré : plus de bulle, ex. membre d'équipage à bord) */
+	bool ShowsIndicator() const { return bShowIndicator && !bDelivered && (!bRevealIndicatorNearby || bIndicatorRevealed); }
 	bool ShowsIndicatorOnScreen() const { return bIndicatorOnScreen; }
 	FLinearColor GetIndicatorColor() const { return IndicatorColor; }
 	UTexture2D* GetIndicatorIcon() const { return IndicatorIcon; }

@@ -3,6 +3,7 @@
 #include "EngineUtils.h"
 #include "Core/YSGameState.h"
 #include "Core/YSPlayerState.h"
+#include "Ship/YSBoatCrew.h"
 #include "Enemies/YSEnemySpawnRule.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Enemies/YSFoeGalion.h"
@@ -1073,7 +1074,9 @@ bool AYSGameMode::PhoenixRevivePlayer(AController* Controller, int32 Index)
 {
 	AYSGameState* YSGameState = GetGameState<AYSGameState>();
 	AYSPlayerState* PlayerState = Controller ? Controller->GetPlayerState<AYSPlayerState>() : nullptr;
-	if (!YSGameState || !PlayerState || !PlayerState->IsDead() || YSGameState->GetPhoenixFeathers() <= 0 || Cast<AYSPlayerCharacter>(Controller->GetPawn()))
+	// Medic dans l'équipage : réanimation gratuite (sans plume) quand elle est prête, utilisée avant les plumes
+	AYSBoatCrew* FreeReviver = AYSBoatCrew::FindFreeRevive(GetWorld());
+	if (!YSGameState || !PlayerState || !PlayerState->IsDead() || (YSGameState->GetPhoenixFeathers() <= 0 && !FreeReviver) || Cast<AYSPlayerCharacter>(Controller->GetPawn()))
 	{
 		return false;
 	}
@@ -1113,6 +1116,12 @@ bool AYSGameMode::PhoenixRevivePlayer(AController* Controller, int32 Index)
 	{
 		Corpse->Destroy();
 	}
+	if (FreeReviver)
+	{
+		FreeReviver->ConsumeFreeRevive();
+		UE_LOG(LogTemp, Log, TEXT("[YSPhoenix] %s ressuscité gratuitement par %s : %d plume(s) gardée(s)"), *PlayerState->GetPlayerName(), *FreeReviver->GetName(), YSGameState->GetPhoenixFeathers());
+		return true;
+	}
 	YSGameState->SetPhoenixFeathers(YSGameState->GetPhoenixFeathers() - 1);
 	UE_LOG(LogTemp, Log, TEXT("[YSPhoenix] %s ressuscité : reste %d plume(s)"), *PlayerState->GetPlayerName(), YSGameState->GetPhoenixFeathers());
 	return true;
@@ -1121,7 +1130,7 @@ bool AYSGameMode::PhoenixRevivePlayer(AController* Controller, int32 Index)
 void AYSGameMode::TickPhoenixAutoRevive()
 {
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
-	if (!YSGameState || YSGameState->GetPhoenixFeathers() <= 0 || GetWorld()->IsPaused())
+	if (!YSGameState || (YSGameState->GetPhoenixFeathers() <= 0 && !AYSBoatCrew::FindFreeRevive(GetWorld())) || GetWorld()->IsPaused())
 	{
 		return;
 	}

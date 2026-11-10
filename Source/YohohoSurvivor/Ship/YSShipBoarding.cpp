@@ -1,5 +1,9 @@
 #include "Ship/YSShipBoarding.h"
+#include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
+#include "UObject/ConstructorHelpers.h"
 #include "Components/SceneComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -20,6 +24,76 @@ AYSShipBoarding::AYSShipBoarding()
 	if (UWidgetComponent* Prompt = FindComponentByClass<UWidgetComponent>())
 	{
 		Prompt->SetRelativeLocation(FVector(250.0f, 0.0f, 200.0f));
+	}
+
+	// échelle de corde (visuel, sans collision), reconstruite d'après les réglages Boarding|Ladder
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> RopeFinder(TEXT("/Game/Art/Materials/PH_materials/m_PH_monochrome_Sand.m_PH_monochrome_Sand"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> RungFinder(TEXT("/Game/Art/Materials/PH_materials/m_PH_monochrome_Brown.m_PH_monochrome_Brown"));
+	RopeMaterial = RopeFinder.Succeeded() ? RopeFinder.Object : nullptr;
+	RungMaterial = RungFinder.Succeeded() ? RungFinder.Object : nullptr;
+	for (TObjectPtr<UInstancedStaticMeshComponent>* Ladder : { &LadderRopes, &LadderRungs })
+	{
+		const bool bRopes = Ladder == &LadderRopes;
+		*Ladder = CreateDefaultSubobject<UInstancedStaticMeshComponent>(bRopes ? TEXT("LadderRopes") : TEXT("LadderRungs"));
+		(*Ladder)->SetupAttachment(GetRootComponent());
+		(*Ladder)->SetMobility(EComponentMobility::Movable);
+		(*Ladder)->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		(*Ladder)->SetGenerateOverlapEvents(false);
+		(*Ladder)->SetCanEverAffectNavigation(false);
+		if (bRopes ? CylinderFinder.Succeeded() : CubeFinder.Succeeded())
+		{
+			(*Ladder)->SetStaticMesh(bRopes ? CylinderFinder.Object : CubeFinder.Object);
+		}
+	}
+}
+
+void AYSShipBoarding::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	BuildLadder();
+}
+
+void AYSShipBoarding::BeginPlay()
+{
+	Super::BeginPlay();
+	BuildLadder();
+}
+
+void AYSShipBoarding::BuildLadder()
+{
+	LadderRopes->ClearInstances();
+	LadderRungs->ClearInstances();
+	// (ou le bateau le demande pour tous ses accès)
+	const AYSPirateShip* Ship = GetShip();
+	const bool bLadder = bShowLadder || (Ship && Ship->ShowsBoardingLadders());
+	LadderRopes->SetVisibility(bLadder);
+	LadderRungs->SetVisibility(bLadder);
+	const float Height = LadderTop - LadderBottom;
+	if (!bLadder || Height <= 0.0f)
+	{
+		return;
+	}
+	LadderRopes->SetMaterial(0, RopeMaterial);
+	LadderRungs->SetMaterial(0, RungMaterial);
+
+	// formes de base de 100 cm : cordes verticales (cylindres) de chaque côté, barreaux (cubes) le long du flanc (Y de l'acteur)
+	for (const float Side : { -1.0f, 1.0f })
+	{
+		LadderRopes->AddInstance(FTransform(FRotator::ZeroRotator, FVector(LadderOffset, Side * LadderHalfWidth, LadderBottom + Height * 0.5f),
+			FVector(RopeDiameter / 100.0f, RopeDiameter / 100.0f, Height / 100.0f)));
+	}
+	const int32 RungCount = FMath::Max(1, FMath::FloorToInt(Height / RungSpacing));
+	for (int32 Index = 1; Index <= RungCount; ++Index)
+	{
+		const float Z = LadderTop - Index * RungSpacing + RungSpacing * 0.5f;
+		if (Z < LadderBottom)
+		{
+			break;
+		}
+		LadderRungs->AddInstance(FTransform(FRotator::ZeroRotator, FVector(LadderOffset, 0.0f, Z),
+			FVector(RungThickness / 100.0f, LadderHalfWidth * 2.0f / 100.0f, RungThickness / 100.0f)));
 	}
 }
 

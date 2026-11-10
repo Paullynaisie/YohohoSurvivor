@@ -348,9 +348,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Customization")
 	FName CustomizationColorComponentName = TEXT("Head Feature");
 
-	/** Nage (eau profonde, sur le sol de nage de l'océan) : vitesse x ce multiplicateur (passif Larbin : le sien) */
+	/** Nage (eau profonde, sur le sol de nage de l'océan) avec la stamina vide : vitesse x ce multiplicateur (0.75 depuis le 2026-11-10, demande de Paul) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Swim", meta=(ClampMin="0", ClampMax="1"))
-	float SwimSpeedMultiplier = 0.3f;
+	float SwimSpeedMultiplier = 0.75f;
 
 	/** Part de la hauteur du corps sous la surface pendant la nage (2/3) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Swim", meta=(ClampMin="0", ClampMax="1"))
@@ -1004,6 +1004,15 @@ public:
 
 	/** Hps regen (serveur) */
 	void SetHealthRegen(float Amount) { HealthRegen = Amount; }
+
+	/** Soin (serveur ; Cuisinier de l'équipage), indépendant de la regen : vivant seulement, jusqu'aux PV max */
+	void AddHealth(float Amount)
+	{
+		if (HasAuthority() && Amount > 0.0f && IsAlive() && !IsDying())
+		{
+			Health = FMath::Min(Health + Amount, GetMaxHealth());
+		}
+	}
 
 	float GetBaseHealthRegen() const { return BaseHealthRegen; }
 

@@ -169,6 +169,9 @@ public:
 	/** Secondes avant que le canon soit rechargé */
 	float GetCooldownRemaining() const;
 
+	/** Recharge après un tir : Cooldown x bonus du Flibustier (bateau des joueurs) */
+	float GetEffectiveCooldown() const;
+
 	/**
 	 *  Tir automatique, le plus proche à portée et dans l'angle du canon, ou nullptr : modules des bateaux du camp adverse, NME (minion du
 	 *  Captain) ou joueurs (NME au canon). Ceux qui sont sur un bateau ne sont visés que si ce bateau est hors d'usage.

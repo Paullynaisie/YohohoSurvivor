@@ -15,6 +15,7 @@
 #include "Player/YSPlayerCharacter.h"
 #include "Ship/YSPirateShip.h"
 #include "Ship/YSShipCore.h"
+#include "Ship/YSShipHelm.h"
 #include "Ship/YSCombatPost.h"
 #include "Enemies/YSFoeGalion.h"
 #include "Summons/YSCaptainMinion.h"
@@ -174,6 +175,21 @@ bool AYSShipStation::IsUsable() const
 {
 	const AYSPirateShip* Ship = GetShip();
 	return !IsBroken() && Ship && !Ship->IsDisabled();
+}
+
+void AYSShipStation::AddRepairHealth(float Amount)
+{
+	if (!HasAuthority() || !bTakesDamage || MaxHealth <= 0.0f || Health >= MaxHealth || Amount <= 0.0f || !IsUsableForRepair())
+	{
+		return;
+	}
+	const bool bWasBroken = Health <= 0.0f;
+	Health = FMath::Min(MaxHealth, Health + Amount);
+	ForceNetUpdate();
+	if (bWasBroken)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("%s %s : réparé par l'équipage, de nouveau utilisable"), GetLogTag(), *GetName());
+	}
 }
 
 bool AYSShipStation::IsUsableForRepair() const
@@ -485,4 +501,11 @@ FVector AYSShipStation::GetOccupantForward() const
 FVector AYSShipStation::GetExitFeetLocation() const
 {
 	return ExitPoint->GetComponentLocation();
+}
+
+float AYSShipStation::GetCameraArmLength() const
+{
+	// barre : réglage du bateau s'il en a un (le gabarit de la barre d'un Blueprint enfant, ex. BP_GameBoat_Galion, ne garde pas ses retouches)
+	const AYSPirateShip* Ship = IsA<AYSShipHelm>() ? GetShip() : nullptr;
+	return Ship && Ship->GetHelmCameraArmLength() > 0.0f ? Ship->GetHelmCameraArmLength() : CameraArmLength;
 }

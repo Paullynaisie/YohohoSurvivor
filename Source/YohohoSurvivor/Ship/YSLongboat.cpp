@@ -25,7 +25,13 @@ AYSLongboat::AYSLongboat(const FObjectInitializer& ObjectInitializer)
 		.DoNotCreateDefaultSubobject(TEXT("CannonRight2"))
 		.DoNotCreateDefaultSubobject(TEXT("ShipHealthBar"))
 		.DoNotCreateDefaultSubobject(TEXT("BoardingAccess"))
-		.DoNotCreateDefaultSubobject(TEXT("BoardingAccessStarboard")))
+		.DoNotCreateDefaultSubobject(TEXT("BoardingAccessStarboard"))
+		.DoNotCreateDefaultSubobject(TEXT("BoardingAccess2"))
+		.DoNotCreateDefaultSubobject(TEXT("BoardingAccess3"))
+		.DoNotCreateDefaultSubobject(TEXT("BoardingAccess4"))
+		.DoNotCreateDefaultSubobject(TEXT("BoardingAccessStarboard2"))
+		.DoNotCreateDefaultSubobject(TEXT("BoardingAccessStarboard3"))
+		.DoNotCreateDefaultSubobject(TEXT("BoardingAccessStarboard4")))
 {
 	ShipName = NSLOCTEXT("YS", "LongboatName", "Chaloupe");
 	bObjectiveShip = false;

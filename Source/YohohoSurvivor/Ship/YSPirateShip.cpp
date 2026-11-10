@@ -15,6 +15,7 @@
 #include "Map/YSOcean.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Ship/YSBoatCrew.h"
 #include "Ship/YSCrowsNest.h"
 #include "Ship/YSLongboatLauncher.h"
 #include "Ship/YSShipBoarding.h"
@@ -95,6 +96,13 @@ AYSPirateShip::AYSPirateShip(const FObjectInitializer& ObjectInitializer)
 	BoardingAccess = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccess"), AYSShipBoarding::StaticClass(), FVector(0.0f, -1000.0f, 0.0f), -90.0f);
 	// second accès, côté tribord : on peut monter des deux côtés
 	BoardingAccessStarboard = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccessStarboard"), AYSShipBoarding::StaticClass(), FVector(0.0f, 1000.0f, 0.0f), 90.0f);
+	// accès supplémentaires (échelles de corde des bateaux des joueurs), vides par défaut
+	BoardingAccess2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccess2"), nullptr, FVector(600.0f, -1000.0f, 0.0f), -90.0f);
+	BoardingAccess3 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccess3"), nullptr, FVector(-600.0f, -1000.0f, 0.0f), -90.0f);
+	BoardingAccess4 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccess4"), nullptr, FVector(1200.0f, -1000.0f, 0.0f), -90.0f);
+	BoardingAccessStarboard2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccessStarboard2"), nullptr, FVector(600.0f, 1000.0f, 0.0f), 90.0f);
+	BoardingAccessStarboard3 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccessStarboard3"), nullptr, FVector(-600.0f, 1000.0f, 0.0f), 90.0f);
+	BoardingAccessStarboard4 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccessStarboard4"), nullptr, FVector(1200.0f, 1000.0f, 0.0f), 90.0f);
 
 	// barre de vie du bateau : à l'écran, au-dessus du pont ; rien tant qu'il n'est pas abîmé
 	ShipHealthBar = ObjectInitializer.CreateOptionalDefaultSubobject<UWidgetComponent>(this, TEXT("ShipHealthBar"));
@@ -133,9 +141,71 @@ void AYSPirateShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AYSPirateShip, bSailsDeployed);
 }
 
+void AYSPirateShip::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	ApplyHiddenComponents();
+}
+
+void AYSPirateShip::ApplyHiddenComponents()
+{
+	if (HiddenComponentNames.Num() == 0)
+	{
+		return;
+	}
+	TInlineComponentArray<UPrimitiveComponent*> Components(this);
+	for (UPrimitiveComponent* Component : Components)
+	{
+		// noms des variables du Blueprint (sans le suffixe des gabarits)
+		const FName Name(*Component->GetName().Replace(TEXT("_GEN_VARIABLE"), TEXT("")));
+		if (HiddenComponentNames.Contains(Name))
+		{
+			Component->SetVisibility(false, true);
+			Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+	}
+}
+
+bool AYSPirateShip::HasBrokenCombatPostNear(const FVector& Point, float Radius) const
+{
+	for (const AYSShipStation* Station : GetStations())
+	{
+		if (Station->IsA<AYSShipCannon>() && Station->IsBroken() && FVector::DistSquared2D(Station->GetActorLocation(), Point) <= FMath::Square(Radius))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+FVector AYSPirateShip::GetRamImpactPoint(const AYSPirateShip* Target) const
+{
+	if (!Target)
+	{
+		return GetActorLocation();
+	}
+	// le point de la coque de ce bateau le plus proche de l'autre (la proue en fonçant), puis le point de la coque de l'autre en face
+	TArray<FVector> Points;
+	GetWorldHullPoints(Points);
+	FVector Best = GetActorLocation();
+	double BestDistSq = TNumericLimits<double>::Max();
+	for (const FVector& Point : Points)
+	{
+		const FVector OnTarget = Target->GetClosestHullPoint(Point);
+		const double DistSq = FVector::DistSquared2D(OnTarget, Point);
+		if (DistSq < BestDistSq)
+		{
+			BestDistSq = DistSq;
+			Best = OnTarget;
+		}
+	}
+	return Best;
+}
+
 void AYSPirateShip::BeginPlay()
 {
 	Super::BeginPlay();
+	ApplyHiddenComponents();
 
 	// mode playtest : il se déplace comme un bateau pilotable
 	bDrivable |= bPlaytestMode;
@@ -191,13 +261,25 @@ AYSShipBoarding* AYSPirateShip::GetBoardingAccess() const
 
 AYSShipBoarding* AYSPirateShip::GetBoardingAccess(const FVector& From) const
 {
-	AYSShipBoarding* Port = GetBoardingAccess();
-	AYSShipBoarding* Starboard = BoardingAccessStarboard ? Cast<AYSShipBoarding>(BoardingAccessStarboard->GetChildActor()) : nullptr;
-	if (!Port || !Starboard)
+	// tous les accès du bateau (bâbord, tribord, échelles de corde supplémentaires) : le plus proche
+	AYSShipBoarding* Nearest = nullptr;
+	double NearestDistSq = TNumericLimits<double>::Max();
+	TInlineComponentArray<UChildActorComponent*> Components(this);
+	for (const UChildActorComponent* Component : Components)
 	{
-		return Port ? Port : Starboard;
+		AYSShipBoarding* Access = Cast<AYSShipBoarding>(Component->GetChildActor());
+		if (!Access)
+		{
+			continue;
+		}
+		const double DistSq = FVector::DistSquared2D(Access->GetInteractLocation(From), From);
+		if (DistSq < NearestDistSq)
+		{
+			NearestDistSq = DistSq;
+			Nearest = Access;
+		}
 	}
-	return FVector::DistSquared2D(Port->GetInteractLocation(From), From) <= FVector::DistSquared2D(Starboard->GetInteractLocation(From), From) ? Port : Starboard;
+	return Nearest;
 }
 
 void AYSPirateShip::SetDormant(bool bInDormant)
@@ -245,7 +327,8 @@ void AYSPirateShip::HandleRamImpact(AYSPirateShip* Target)
 	{
 		return;
 	}
-	const FVector Impact = Target->GetClosestHullPoint(GetActorLocation());
+	// point touché : là où la coque (la proue) rencontre celle de l'autre bateau
+	const FVector Impact = GetRamImpactPoint(Target);
 	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s éperonne %s (« À l'abordage ») : %.0f dégâts"), *GetName(), *Target->GetName(), RamDamage);
 	Target->ReceiveRamDamage(RamDamage, RamInstigator.Get(), Impact);
 	if (IsValid(Target) && !Target->IsSinking() && Target->TryStartBoardingBy(this, Impact))
@@ -863,7 +946,8 @@ void AYSPirateShip::StepMotion(FYSShipMotion& State, float DeltaSeconds) const
 {
 	// stats du core (multiplicateurs, mêmes valeurs sur toutes les machines : acteur local créé depuis le Blueprint)
 	const AYSShipCore* Core = GetCore();
-	const float SpeedMultiplier = Core ? Core->GetSpeedMultiplier() : 1.0f;
+	// (Navigateur dans l'équipage : vitesses max du bateau des joueurs augmentées)
+	const float SpeedMultiplier = (Core ? Core->GetSpeedMultiplier() : 1.0f) * AYSBoatCrew::GetShipSpeedMultiplier(this);
 	const float AccelerationMultiplier = Core ? Core->GetAccelerationMultiplier() : 1.0f;
 	const float TurnMultiplier = Core ? Core->GetTurnRateMultiplier() : 1.0f;
 	// « À l'abordage » : plein gaz, vitesse max (et accélération) x Ram Speed Multiplier, plus de rotation
@@ -1495,11 +1579,16 @@ void AYSPirateShip::GetWorldHullPoints(TArray<FVector>& OutPoints) const
 
 void AYSPirateShip::RepairCore(float DeltaSeconds)
 {
-	if (!HasAuthority() || !CanRepairCore())
+	RepairCoreBy(CoreRepairPerSecond * DeltaSeconds);
+}
+
+void AYSPirateShip::RepairCoreBy(float Amount)
+{
+	if (!HasAuthority() || !CanRepairCore() || Amount <= 0.0f)
 	{
 		return;
 	}
-	Health = FMath::Min(Health + CoreRepairPerSecond * DeltaSeconds, GetMaxHealth());
+	Health = FMath::Min(Health + Amount, GetMaxHealth());
 	if (bDisabled && Health >= CoreRepairMaxHealth)
 	{
 		// de retour dans le positif : le bateau est de nouveau utilisable (ses postes à 0 PV se réparent comme avant)

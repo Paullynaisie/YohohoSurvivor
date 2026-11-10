@@ -166,10 +166,14 @@ void AYSShipCore::ReceiveObject(AYSInteractiveObject* Object)
 	// (l'île a déjà été prévenue par TryBuy)
 	if (Object && Object->GetDoubloonValue() <= 0)
 	{
-		// boussole : une de moins à trouver dans l'objectif en mer
+		// boussole : une de moins à trouver dans l'objectif en mer, et elle est consommée (disparaît ; demande de Paul du 2026-11-10)
 		if (FlowMode && FlowMode->IsCompass(Object) && !Object->IsDelivered())
 		{
 			FlowMode->NotifyCompassDelivered(Object);
+			UE_LOG(LogTemp, Log, TEXT("[YSShipCore] %s : boussole %s consommée"), *GetName(), *Object->GetName());
+			Object->OnDelivered();
+			Object->Destroy();
+			return;
 		}
 		UE_LOG(LogTemp, Log, TEXT("[YSShipCore] %s : %s posé dans la zone du bateau (objectif)"), *GetName(), *Object->GetName());
 		Object->OnDelivered();

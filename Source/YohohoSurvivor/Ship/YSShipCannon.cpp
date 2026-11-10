@@ -16,6 +16,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Ship/YSBoatCrew.h"
 #include "Ship/YSPirateShip.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Weapons/YSProjectile.h"
@@ -168,9 +169,9 @@ void AYSShipCannon::OnWorkStopped(EYSStationWork StoppedWork)
 {
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
-	ReadyServerTime = FMath::Max(ReadyServerTime, Now + Cooldown);
+	ReadyServerTime = FMath::Max(ReadyServerTime, Now + GetEffectiveCooldown());
 	ForceNetUpdate();
-	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : fin %s, recharge %.1f s"), *GetName(), StoppedWork == EYSStationWork::Repair ? TEXT("de la réparation") : TEXT("du démontage"), Cooldown);
+	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : fin %s, recharge %.1f s"), *GetName(), StoppedWork == EYSStationWork::Repair ? TEXT("de la réparation") : TEXT("du démontage"), GetEffectiveCooldown());
 }
 
 void AYSShipCannon::OnBrokenChanged(bool bBroken)
@@ -206,7 +207,7 @@ void AYSShipCannon::Fire(APawn* Shooter, const FVector& AimLocation, bool bFoeSh
 	}
 
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
-	const float ShotCooldown = Cooldown * (Shooter->IsPlayerControlled() ? 1.0f : NonPlayerCooldownMultiplier);
+	const float ShotCooldown = GetEffectiveCooldown() * (Shooter->IsPlayerControlled() ? 1.0f : NonPlayerCooldownMultiplier);
 	ReadyServerTime = (GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds()) + ShotCooldown;
 	ForceNetUpdate();
 	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : tir de %s, %d x %d AMMO x %.0f dégâts (+/- %.0f°), angle %.0f°, recharge %.1f s"), *GetName(), *Shooter->GetName(),
@@ -385,7 +386,7 @@ bool AYSShipCannon::GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, f
 	OutIcon = Icon;
 	OutTint = IconTint;
 	OutRemaining = GetCooldownRemaining();
-	OutDuration = Cooldown;
+	OutDuration = GetEffectiveCooldown();
 	return true;
 }
 
@@ -402,7 +403,7 @@ void AYSShipCannon::GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSStat
 	OutLeft.Tint = IconTint;
 	OutLeft.Name = FireActionName;
 	OutLeft.Remaining = GetCooldownRemaining();
-	OutLeft.Duration = Cooldown;
+	OutLeft.Duration = GetEffectiveCooldown();
 	OutLeft.bBlocked = !IsUsable() || IsWorking();
 }
 
@@ -529,4 +530,10 @@ void AYSShipCannon::UpdatePreview()
 		PreviewMesh->CreateMeshSection_LinearColor(1, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
 		PreviewMesh->SetMaterial(1, Data->Material);
 	}
+}
+
+float AYSShipCannon::GetEffectiveCooldown() const
+{
+	// Flibustier dans l'équipage : recharge des postes de canon du bateau des joueurs divisée
+	return Cooldown * AYSBoatCrew::GetCannonCooldownMultiplier(GetShip());
 }

@@ -864,6 +864,21 @@ void AYSFlowMode::SpawnZonesOfInterest()
 	}
 	TArray<TSubclassOf<AYSInteractiveObject>> Crew = CrewItemClasses;
 	Crew.RemoveAll([](const TSubclassOf<AYSInteractiveObject>& Class) { return !Class; });
+	// Crew Count membres d'équipage tirés au hasard parmi Crew Item Classes (demande de Paul du 2026-11-10)
+	for (int32 K = Crew.Num() - 1; K > 0; --K)
+	{
+		Crew.Swap(K, FMath::RandRange(0, K));
+	}
+	if (CrewCount >= 0 && Crew.Num() > CrewCount)
+	{
+		Crew.SetNum(CrewCount);
+	}
+	FString CrewNames;
+	for (const TSubclassOf<AYSInteractiveObject>& Class : Crew)
+	{
+		CrewNames += (CrewNames.IsEmpty() ? TEXT("") : TEXT(", ")) + Class->GetName();
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Zones d'intérêt : équipage tiré au hasard (%d sur %d) : %s"), Crew.Num(), CrewItemClasses.Num(), CrewNames.IsEmpty() ? TEXT("-") : *CrewNames);
 	for (int32 K = 0; K < Crew.Num(); ++K)
 	{
 		// ZI sans boussole d'abord ; s'il y a plus de membres d'équipage que de ZI sans boussole, les suivants vont n'importe où (choix de Claude)

@@ -282,11 +282,19 @@ void AYSFoeGalion::OnShipCollision(AYSPirateShip* Other)
 
 bool AYSFoeGalion::TryStartBoardingBy(AYSPirateShip* Rammer, const FVector& ImpactLocation)
 {
-	if (!HasAuthority() || !IsValid(Rammer) || Rammer->IsFoeShip() || RamState == ERamState::Boarded || !CanBoardAt(ImpactLocation, false))
+	if (!HasAuthority() || !IsValid(Rammer) || Rammer->IsFoeShip() || RamState == ERamState::Boarded)
 	{
 		return false;
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s éperonné par %s sur un point abordable : abordage"), *GetName(), *Rammer->GetName());
+	// le coup doit toucher un de ses postes de combat cassés (demande de Paul du 2026-11-10) ; core en négatif : partout
+	const bool bBrokenPost = HasBrokenCombatPostNear(ImpactLocation, Rammer->GetRamBrokenPostRadius());
+	if (!bBrokenPost && GetHealth() >= 0.0f)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s éperonné par %s en %s : aucun poste de combat cassé à moins de %.0f cm, pas d'abordage"), *GetName(), *Rammer->GetName(),
+			*ImpactLocation.ToCompactString(), Rammer->GetRamBrokenPostRadius());
+		return false;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s éperonné par %s %s : abordage"), *GetName(), *Rammer->GetName(), bBrokenPost ? TEXT("sur un poste de combat cassé") : TEXT("(core en négatif)"));
 	StartBoarding(Rammer);
 	return true;
 }

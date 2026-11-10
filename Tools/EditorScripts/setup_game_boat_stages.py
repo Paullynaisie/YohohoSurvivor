@@ -29,7 +29,7 @@ BOAT_CORE = "/Game/Placeable/InteractiveObjects/BP_InteractiveObject_BoatCore"
 
 SLOOP_XY = 0.4
 SLOOPLUS_XY = 0.6
-BRIGANTIN_XY = 0.8
+BRIGANTIN_XY = 0.7  # 0.8 jusqu au 2026-11-10 (ramené par setup_boat_crew.py : moyenne du sloop et du galion)
 # canons avant écartés : part de la demi-largeur du bateau
 FRONT_PAIR_SPREAD = 0.3
 SLOOP_FRONT_YAW = 15.0

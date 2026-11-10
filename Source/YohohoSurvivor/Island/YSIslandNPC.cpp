@@ -100,7 +100,12 @@ void AYSStartBoat::ReceiveObject(AYSInteractiveObject* Object)
 	}
 	if (FlowMode && FlowMode->IsCompass(Object) && !Object->IsDelivered())
 	{
+		// boussole consommée : elle disparaît (demande de Paul du 2026-11-10)
 		FlowMode->NotifyCompassDelivered(Object);
+		UE_LOG(LogTemp, Log, TEXT("[YSStartBoat] boussole %s consommée"), *Object->GetName());
+		Object->OnDelivered();
+		Object->Destroy();
+		return;
 	}
 	// île qui va couler (pas l'île de départ) : l'objet livré part sur le pont du bateau des joueurs (sinon il coulerait avec l'île)
 	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
