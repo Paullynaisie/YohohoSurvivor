@@ -51,8 +51,12 @@ AYSShipCannon::AYSShipCannon()
 	CannonPivot->SetupAttachment(GetRootComponent());
 	CannonPivot->SetRelativeLocation(FVector(0.0f, 0.0f, 115.0f));
 
+	// racine du fût (recule au tir) : porte le fût et les formes du Blueprint
+	BarrelRoot = CreateDefaultSubobject<USceneComponent>(TEXT("BarrelRoot"));
+	BarrelRoot->SetupAttachment(CannonPivot);
+
 	CannonBarrel = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CannonBarrel"));
-	CannonBarrel->SetupAttachment(CannonPivot);
+	CannonBarrel->SetupAttachment(BarrelRoot);
 	CannonBarrel->SetRelativeLocation(FVector(40.0f, 0.0f, 0.0f));
 	CannonBarrel->SetRelativeRotation(FRotator(90.0f, 0.0f, 0.0f));
 	CannonBarrel->SetRelativeScale3D(FVector(0.45f, 0.45f, 1.7f));
@@ -149,13 +153,14 @@ void AYSShipCannon::Tick(float DeltaSeconds)
 	CannonPivot->SetRelativeRotation(FRotator(IsBroken() ? BrokenBarrelPitch : 0.0f, CurrentAimYaw, 0.0f));
 
 	// recul du fût : en arrière d'un coup, puis retour
-	if (BarrelRestLocation.IsZero())
+	if (!bBarrelRestCaptured)
 	{
-		BarrelRestLocation = CannonBarrel->GetRelativeLocation();
+		BarrelRestLocation = BarrelRoot->GetRelativeLocation();
+		bBarrelRestCaptured = true;
 	}
 	const float Elapsed = static_cast<float>(GetWorld()->GetTimeSeconds() - LastFireTime);
 	const float Kick = Elapsed < RecoilDuration ? FMath::InterpEaseOut(1.0f, 0.0f, Elapsed / RecoilDuration, 2.0f) : 0.0f;
-	CannonBarrel->SetRelativeLocation(BarrelRestLocation - FVector(RecoilDistance * Kick, 0.0f, 0.0f));
+	BarrelRoot->SetRelativeLocation(BarrelRestLocation - FVector(RecoilDistance * Kick, 0.0f, 0.0f));
 
 	// prévisus du joueur au poste (local)
 	UpdatePreview();
@@ -556,6 +561,37 @@ void AYSShipCannon::UpdatePreview()
 		BuildAimPreview(Vertices, Triangles, Colors, Origin, Z + 1.0f, Data, AimYaw);
 		PreviewMesh->CreateMeshSection_LinearColor(1, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
 		PreviewMesh->SetMaterial(1, Data->Material);
+	}
+}
+
+void AYSShipCannon::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	if (HiddenComponentNames.Num() == 0)
+	{
+		return;
+	}
+	TInlineComponentArray<USceneComponent*> Components(this);
+	for (USceneComponent* Component : Components)
+	{
+		// noms des variables du Blueprint (sans le suffixe des gabarits)
+		const FName Name(*Component->GetName().Replace(TEXT("_GEN_VARIABLE"), TEXT("")));
+		if (!HiddenComponentNames.Contains(Name))
+		{
+			continue;
+		}
+		Component->SetVisibility(false, true);
+		TArray<USceneComponent*> HiddenTree;
+		Component->GetChildrenComponents(true, HiddenTree);
+		HiddenTree.Add(Component);
+		for (USceneComponent* Child : HiddenTree)
+		{
+			if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Child))
+			{
+				Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			}
+		}
 	}
 }
 

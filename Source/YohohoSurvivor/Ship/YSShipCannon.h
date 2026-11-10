@@ -34,6 +34,10 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USceneComponent> CannonPivot;
 
+	/** Racine du fût (sous le pivot, recule au tir) : porte CannonBarrel et les formes ajoutées dans le Blueprint */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> BarrelRoot;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UStaticMeshComponent> CannonBarrel;
 
@@ -50,6 +54,11 @@ protected:
 	/** Prévisus du poste (joueur au poste seulement) ; vide = /Game/Core/Ship/DA_CombatPostPreview */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Preview")
 	TObjectPtr<class UYSCombatPostPreviewData> PreviewData;
+
+	/** Composants du Blueprint cachés (et sans collision, enfants compris) : formes héritées d'un poste parent
+	 *  (ex. formes du canon dans la Gatling / le Grappeshot, enfants de BP_ShipCannon) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Visual")
+	TArray<FName> HiddenComponentNames;
 
 	/** Angle max du canon de chaque côté de son alignement d'origine */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon", meta=(ClampMin="0", ClampMax="180", Units="Degrees"))
@@ -199,6 +208,8 @@ public:
 
 	virtual bool IsCombatPost() const override { return true; }
 
+	virtual void OnConstruction(const FTransform& Transform) override;
+
 	/** Dégâts de ses tirs x ce multiplicateur pour ce tireur (niveau de l'équipe pour un joueur / minion, jours écoulés pour un NME) */
 	float GetShotDamageMultiplier(const APawn* Shooter, bool bFoeShooter) const;
 
@@ -282,6 +293,7 @@ private:
 	const class UYSCombatPostPreviewData* GetPreviewData() const;
 
 	FVector BarrelRestLocation = FVector::ZeroVector;
+	bool bBarrelRestCaptured = false;
 };
 
 /**

@@ -50,13 +50,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Scaling", meta=(ClampMin="0"))
 	float PostDamagePerDay = 0.1f;
 
+	/** Multiplicateur de base des dégâts de ses postes de combat (0.5 = 2x moins que les mêmes postes chez les joueurs) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Scaling", meta=(ClampMin="0"))
+	float PostDamageMultiplier = 0.5f;
+
 public:
 
 	/** Jours écoulés depuis le jour 1 */
 	int32 GetElapsedDays() const;
 
-	/** Multiplicateur des dégâts de ses postes de combat (selon les jours écoulés) */
-	float GetPostDamageMultiplier() const { return 1.0f + PostDamagePerDay * GetElapsedDays(); }
+	/** Multiplicateur des dégâts de ses postes de combat (selon les jours écoulés, x Post Damage Multiplier) */
+	float GetPostDamageMultiplier() const { return PostDamageMultiplier * (1.0f + PostDamagePerDay * GetElapsedDays()); }
 
 	/** PV max recalculés selon les jours écoulés (serveur) */
 	void ApplyDayScaling(const TCHAR* Reason);
