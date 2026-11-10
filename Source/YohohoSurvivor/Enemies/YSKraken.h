@@ -122,7 +122,7 @@ protected:
 
 	/** Vitesse d'aspiration = vitesse max avant de base du bateau x ceci */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Suction", meta=(ClampMin="0"))
-	float SuctionSpeedMultiplier = 1.0f;
+	float SuctionSpeedMultiplier = 0.75f;
 
 	/** Coup quand le bateau touche la tête pendant l'aspiration : dégâts à chaque poste et au core */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Suction", meta=(ClampMin="0"))
@@ -552,9 +552,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam", meta=(ClampMin="0.01"))
 	float GrabSpawnsPerSecond = 2.0f;
 
-	/** Les NME sortent entre le point touché (0) et le milieu du pont (1) : au bord, ils tombaient à l'eau */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam", meta=(ClampMin="0", ClampMax="1"))
-	float GrabSpawnTowardCenter = 0.6f;
+	/** Les NME sortent du corps de la tentacule posé sur le pont (points au-dessus du pont, à cette hauteur), et tombent d'elle */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam", meta=(ClampMin="0", Units="Centimeters"))
+	float GrabSpawnHeight = 250.0f;
+
+	/** Taille du visuel (prop) par rapport à la zone frappée, qui ne change pas (1.25 : la tentacule dépasse sa hitbox d'attaque) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam", meta=(ClampMin="0.1"))
+	float VisualScale = 1.25f;
 
 	/** Signe au sol de l'amorce (zone frappée) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam|Warning")
@@ -583,6 +587,7 @@ private:
 
 	/** Point du pont où sortent les NME (prise) */
 	FVector GrabPoint = FVector::ZeroVector;
+	TArray<FVector> GrabSpawnPoints;
 	float GrabStartHealth = 0.0f;
 	float GrabSpawnAccumulator = 0.0f;
 	bool bHoldingBoat = false;

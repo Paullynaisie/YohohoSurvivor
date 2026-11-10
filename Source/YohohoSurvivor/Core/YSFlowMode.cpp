@@ -1072,6 +1072,32 @@ void AYSFlowMode::DebugGalionWithCompasses()
 			break;
 		}
 	}
+	// étapes enchaînées dans la même image : ceux qui étaient à bord ne sont pas toujours repérés au 2e passage (base de mouvement pas
+	// encore mise à jour) -> joueurs et minions vivants reposés sur le pont du galion, en file le long du bateau
+	if (const AYSGameState* BoatState = GetGameState<AYSGameState>(); BoatState && BoatState->GetGameBoat())
+	{
+		AYSPirateShip* Boat = BoatState->GetGameBoat();
+		TArray<FVector> HullPoints;
+		Boat->GetWorldHullPoints(HullPoints);
+		const FBox HullBox(HullPoints);
+		const FVector HullCenter = (HullBox.IsValid ? HullBox.GetCenter() : Boat->GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
+		const FVector Forward = Boat->GetActorForwardVector().GetSafeNormal2D();
+		TArray<AYSPlayerCharacter*> Aboard;
+		for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
+		{
+			if (It->IsAlive() && !It->IsDying() && It->GetShipUnderFeet() != Boat && !It->IsAtStation())
+			{
+				Aboard.Add(*It);
+			}
+		}
+		for (int32 Index = 0; Index < Aboard.Num(); ++Index)
+		{
+			const float Offset = (Index - (Aboard.Num() - 1) * 0.5f) * 180.0f;
+			Aboard[Index]->TeleportTo(HullCenter + Forward * Offset + FVector(0.0f, 0.0f, Boat->GetActorLocation().Z + 330.0f), Forward.Rotation());
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSCheat] Partie 2 : %d personnage(s) reposé(s) sur le pont de %s"), Aboard.Num(), *Boat->GetName());
+	}
+
 	// toutes les boussoles comptées à bord (celles encore dans le monde ne changent plus rien)
 	StartSeaObjectives(TEXT("triche : flèche bas"));
 	DebugFindAllCompasses();

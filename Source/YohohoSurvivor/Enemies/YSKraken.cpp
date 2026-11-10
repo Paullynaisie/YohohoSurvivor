@@ -893,6 +893,12 @@ void AYSKrakenTentacleMelee::TickKraken(float DeltaSeconds)
 {
 	Super::TickKraken(DeltaSeconds);
 
+	// visuel plus grand que la zone frappée (la hurtbox suit le pivot, pas le visuel)
+	if (!Visual->GetRelativeScale3D().Equals(FVector(VisualScale), 0.001f))
+	{
+		Visual->SetRelativeScale3D(FVector(VisualScale));
+	}
+
 	// signe au sol pendant l'amorce : la bande qui va être frappée
 	const bool bShow = State.Phase == EYSKrakenTentaclePhase::Windup;
 	if (bShow && !bWarningShown)
@@ -935,14 +941,25 @@ void AYSKrakenTentacleMelee::TickTentacleServer(float DeltaSeconds)
 		AYSPirateShip* Boat = GetGameBoat();
 		if (Boat && FindSlamHit(HitPoint))
 		{
-			// touché : le bateau est immobilisé, la tentacule reste posée dessus, des NME en sortent
-			// (vers le milieu du pont : au bord, les NME tombaient à l'eau)
-			const FVector HullCenter = Boat->GetHullCenter();
-			const FVector DeckPoint = FMath::Lerp(FVector(HitPoint.X, HitPoint.Y, 0.0f), FVector(HullCenter.X, HullCenter.Y, 0.0f), GrabSpawnTowardCenter);
-			FHitResult Hit;
+			// touché : le bateau est immobilisé, la tentacule reste posée dessus, des NME sortent d'elle : points de son corps au-dessus du pont
+			const FVector Forward = FRotator(0.0f, State.Yaw, 0.0f).Vector();
 			FCollisionQueryParams Params(SCENE_QUERY_STAT(KrakenGrab), false, this);
-			GrabPoint = GetWorld()->LineTraceSingleByChannel(Hit, DeckPoint + FVector(0.0f, 0.0f, GetSeaLevel() + 1500.0f), DeckPoint + FVector(0.0f, 0.0f, GetSeaLevel() - 500.0f), ECC_WorldStatic, Params)
-				? Hit.ImpactPoint : DeckPoint + FVector(0.0f, 0.0f, GetSeaLevel() + 250.0f);
+			GrabSpawnPoints.Reset();
+			for (float Distance = 0.0f; Distance <= SlamLength * VisualScale; Distance += 100.0f)
+			{
+				const FVector Point = State.Location + Forward * Distance;
+				FHitResult Hit;
+				if (Boat->IsInsideHull(Point) && GetWorld()->LineTraceSingleByChannel(Hit, FVector(Point.X, Point.Y, GetSeaLevel() + 1500.0f),
+					FVector(Point.X, Point.Y, GetSeaLevel() - 200.0f), ECC_WorldStatic, Params) && AYSPirateShip::GetShipOf(Hit.GetActor()) == Boat)
+				{
+					GrabSpawnPoints.Add(Hit.ImpactPoint + FVector(0.0f, 0.0f, GrabSpawnHeight));
+				}
+			}
+			if (GrabSpawnPoints.Num() == 0)
+			{
+				GrabSpawnPoints.Add(FVector(HitPoint.X, HitPoint.Y, GetSeaLevel() + 210.0f + GrabSpawnHeight));
+			}
+			GrabPoint = GrabSpawnPoints[0];
 			GrabStartHealth = Health;
 			GrabSpawnAccumulator = 0.0f;
 			bHoldingBoat = true;
@@ -1008,12 +1025,16 @@ void AYSKrakenTentacleMelee::SpawnGrabFoe()
 	{
 		return;
 	}
-	const FVector2D Offset = FVector2D(FMath::FRandRange(-80.0f, 80.0f), FMath::FRandRange(-80.0f, 80.0f));
-	const FVector Location = GrabPoint + FVector(Offset.X, Offset.Y, 150.0f);
-	FActorSpawnParameters Params;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-	const AYSFoeCharacter* Foe = GetWorld()->SpawnActor<AYSFoeCharacter>(GrabSpawnClass, Location, FRotator(0.0f, FMath::FRandRange(0.0f, 360.0f), 0.0f), Params);
-	UE_LOG(LogTemp, Verbose, TEXT("[YSKraken] %s : %s sort de la tentacule"), *GetName(), *GetNameSafe(Foe));
+	// d'un point du corps de la tentacule posé sur le pont, au hasard ; ils tombent d'elle (pas de sortie du sol)
+	const FVector Location = GrabSpawnPoints.Num() > 0 ? GrabSpawnPoints[FMath::RandRange(0, GrabSpawnPoints.Num() - 1)] : GrabPoint;
+	const FTransform Transform(FRotator(0.0f, FMath::FRandRange(0.0f, 360.0f), 0.0f), Location);
+	AYSFoeCharacter* Foe = GetWorld()->SpawnActorDeferred<AYSFoeCharacter>(GrabSpawnClass, Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
+	if (Foe)
+	{
+		Foe->SetSpawnRise(false);
+		Foe->FinishSpawning(Transform);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSKraken] %s : %s sort de la tentacule en %s"), *GetName(), *GetNameSafe(Foe), *Location.ToCompactString());
 }
 
 void AYSKrakenTentacleMelee::ReleaseBoat(const TCHAR* Reason)

@@ -714,6 +714,20 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerCheatPart2();
 
+	/** Triche (flèche droite, builds non Shipping) : les doublons qui manquent pour le niveau de bateau suivant (récompense : classe, puis upgrade d'arme, etc.) */
+	UFUNCTION(Exec)
+	void YSCheatDoubloonLevel();
+
+	UFUNCTION(Server, Reliable)
+	void ServerCheatDoubloonLevel();
+
+	/** Triche (flèche gauche, builds non Shipping) : immortel (bascule), PV du joueur au max, core et postes du bateau des joueurs au max */
+	UFUNCTION(Exec)
+	void YSCheatGodHeal();
+
+	UFUNCTION(Server, Reliable)
+	void ServerCheatGodHeal();
+
 	/** Debug (hôte, FlowMod) : Galion de l'overtime de la partie 2 tout de suite */
 	UFUNCTION(Exec)
 	void YSPart2Galion();

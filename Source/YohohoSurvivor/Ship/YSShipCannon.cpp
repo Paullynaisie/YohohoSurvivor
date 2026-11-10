@@ -316,10 +316,11 @@ AActor* AYSShipCannon::FindAutoFireTarget(bool bFoeShooter) const
 
 	AActor* Best = nullptr;
 	float BestDistSq = FMath::Square(Range);
-	const auto Consider = [&](AActor* Candidate)
+	const auto Consider = [&](AActor* Candidate, float Reach = 0.0f)
 	{
+		// (Reach : taille de la cible à plat, distance mesurée à son bord : énorme tête du Kraken)
 		const FVector ToCandidate = (Candidate->GetActorLocation() - Origin) * FVector(1.0f, 1.0f, 0.0f);
-		const float DistSq = ToCandidate.SizeSquared();
+		const float DistSq = FMath::Square(FMath::Max(ToCandidate.Size() - Reach, 0.0f));
 		if (DistSq < BestDistSq && FMath::Abs(FRotator::NormalizeAxis(ToCandidate.Rotation().Yaw - BaseYaw)) <= MaxAimAngle)
 		{
 			BestDistSq = DistSq;
@@ -369,11 +370,19 @@ AActor* AYSShipCannon::FindAutoFireTarget(bool bFoeShooter) const
 		{
 			continue;
 		}
+		// pas ciblable pour l'instant (tentacule du Kraken sous l'eau : sans tag d'équipe)
+		FGameplayTagContainer FoeTags;
+		Foe->GetOwnedGameplayTags(FoeTags);
+		if (!FoeTags.HasTag(YSTags::Team_Foe))
+		{
+			continue;
+		}
 		// équipage d'un Galion : sur le pont, hors d'atteinte tant que son bateau tient
 		const AYSFoeGalion* CrewShip = Foe->GetCrewShip();
 		if (!CrewShip || CrewShip->IsDisabled())
 		{
-			Consider(Foe);
+			const UPrimitiveComponent* Hurtbox = Foe->GetHurtbox();
+			Consider(Foe, Hurtbox ? FMath::Max(Hurtbox->Bounds.BoxExtent.X, Hurtbox->Bounds.BoxExtent.Y) : 0.0f);
 		}
 	}
 	return Best;

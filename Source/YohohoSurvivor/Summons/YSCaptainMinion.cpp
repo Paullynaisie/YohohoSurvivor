@@ -404,7 +404,8 @@ void AYSCaptainMinion::UpdateCannonFire(AYSShipCannon* Cannon, AAIController* AI
 	}
 	if (Cannon->GetCooldownRemaining() <= 0.0f && Cannon->IsAimedAt(CannonTarget))
 	{
-		Cannon->ServerHandleAction(this, EYSStationAction::Fire, CannonTarget->GetActorLocation());
+		// (tir des postes de combat au clic gauche = Primary depuis le 2026-11-09 ; « Fire » ne faisait plus rien)
+		Cannon->ServerHandleAction(this, EYSStationAction::Primary, CannonTarget->GetActorLocation());
 	}
 }
 

@@ -770,6 +770,9 @@ public:
 	/** Mort, corps en ragdoll avant sa disparition (plus de gameplay) */
 	bool IsDying() const { return Death.bDead; }
 
+	/** Avant FinishSpawning : sort du sol à l'apparition ou non (NME qui tombent d'une tentacule du Kraken : non) */
+	void SetSpawnRise(bool bRise) { bSpawnRise = bRise; }
+
 	/** Ni pushback, ni hit reaction, ni bump (morceaux du Kraken : posés à leur place, déplacés par leur propre logique) */
 	virtual bool IsImmovable() const { return false; }
 

@@ -293,7 +293,8 @@ void AYSPlayerController::SetupInputComponent()
 
 #if !UE_BUILD_SHIPPING
 	// codes de triche pour les tests (absents des builds Shipping)
-	InputComponent->BindKey(EKeys::Right, IE_Pressed, this, &AYSPlayerController::YSCheatAtkSpeed);
+	InputComponent->BindKey(EKeys::Right, IE_Pressed, this, &AYSPlayerController::YSCheatDoubloonLevel);
+	InputComponent->BindKey(EKeys::Left, IE_Pressed, this, &AYSPlayerController::YSCheatGodHeal);
 	InputComponent->BindKey(EKeys::Up, IE_Pressed, this, &AYSPlayerController::YSCheatLevelUp);
 	InputComponent->BindKey(EKeys::Down, IE_Pressed, this, &AYSPlayerController::YSCheatPart2);
 #endif
@@ -395,6 +396,58 @@ void AYSPlayerController::ServerCheatLevelUp_Implementation()
 	const float Missing = FMath::Max(State->GetExperienceToNextLevel() - State->GetTeamExperience(), 0.01f);
 	UE_LOG(LogTemp, Log, TEXT("[YSCheat] %s : +1 niveau (%.1f XP)"), *GetName(), Missing);
 	GameMode->AddTeamExperience(Missing);
+}
+
+void AYSPlayerController::YSCheatDoubloonLevel()
+{
+	ServerCheatDoubloonLevel();
+}
+
+void AYSPlayerController::ServerCheatDoubloonLevel_Implementation()
+{
+	// juste les doublons qui manquent : une vraie récompense de jauge (classe, Déblocage d'arme, Golden, mythique...)
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	const AYSGameState* State = GetWorld()->GetGameState<AYSGameState>();
+	if (!GameMode || !State || !State->IsMatchStarted())
+	{
+		return;
+	}
+	const int32 Missing = FMath::Max(State->GetDoubloonGoal() - State->GetDoubloons(), 1);
+	UE_LOG(LogTemp, Log, TEXT("[YSCheat] %s : +1 niveau de bateau (%d doublons)"), *GetName(), Missing);
+	GameMode->AddDoubloons(Missing);
+}
+
+void AYSPlayerController::YSCheatGodHeal()
+{
+	ServerCheatGodHeal();
+}
+
+void AYSPlayerController::ServerCheatGodHeal_Implementation()
+{
+	AYSPlayerCharacter* Cheater = Cast<AYSPlayerCharacter>(GetPawn());
+	if (!Cheater)
+	{
+		return;
+	}
+	// immortel (même effet que la commande « god »), PV au max
+	Cheater->SetCanBeDamaged(!Cheater->CanBeDamaged());
+	Cheater->AddHealth(Cheater->GetMaxHealth());
+	// bateau des joueurs : core et postes au max
+	const AYSGameState* State = GetWorld()->GetGameState<AYSGameState>();
+	AYSPirateShip* Boat = State ? State->GetGameBoat() : nullptr;
+	if (IsValid(Boat))
+	{
+		Boat->RepairCoreBy(Boat->GetMaxHealth() * 2.0f + FMath::Abs(Boat->GetHealth()));
+		for (AYSShipStation* Station : Boat->GetStations())
+		{
+			if (Station)
+			{
+				Station->RestoreFullHealth();
+			}
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSCheat] %s : immortel %s, PV %.0f / %.0f, bateau %s %.0f / %.0f"), *GetName(), Cheater->CanBeDamaged() ? TEXT("désactivé") : TEXT("ACTIVÉ"),
+		Cheater->GetHealth(), Cheater->GetMaxHealth(), *GetNameSafe(Boat), Boat ? Boat->GetHealth() : 0.0f, Boat ? Boat->GetMaxHealth() : 0.0f);
 }
 
 void AYSPlayerController::YSCheatPart2()
