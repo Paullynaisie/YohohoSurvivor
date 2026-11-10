@@ -78,6 +78,29 @@ struct FYSFlowStatus
 	TObjectPtr<AActor> Island;
 };
 
+/** Barre de vie du boss Kraken (HUD, à la place de la première barre d'élite), écrite par l'arène (serveur) */
+USTRUCT(BlueprintType)
+struct FYSKrakenBossBar
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	bool bActive = false;
+
+	UPROPERTY()
+	FText Name;
+
+	UPROPERTY()
+	float Health = 0.0f;
+
+	UPROPERTY()
+	float MaxHealth = 0.0f;
+
+	/** Étape du combat (1 à 3) */
+	UPROPERTY()
+	int32 Stage = 0;
+};
+
 /**
  *  État de partie partagé. Sert de canal pour les événements visuels globaux
  *  (chiffres de dégâts) : il existe toujours, même quand la victime vient d'être détruite.
@@ -155,6 +178,10 @@ protected:
 
 	UPROPERTY(Replicated)
 	int32 CompassesFound = 0;
+
+	/** Partie 3 : barre de vie du boss Kraken */
+	UPROPERTY(Replicated)
+	FYSKrakenBossBar KrakenBossBar;
 
 	/** Temps serveur (GetServerWorldTimeSeconds) du démarrage de la partie */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Match")
@@ -314,6 +341,25 @@ public:
 
 	/** Serveur uniquement (AYSFlowMode) : partie 2 commencée maintenant (temps de partie), Duration avant l'overtime */
 	void StartFlowPart2(float StartMatchTime, float Duration) { FlowPart = 2; Part2StartMatchTime = StartMatchTime; Part2Duration = Duration; ForceNetUpdate(); }
+
+	/** Serveur uniquement (AYSFlowMode) : partie 3 (combat contre le Kraken, sans timer) */
+	void StartFlowPart3() { FlowPart = 3; ForceNetUpdate(); }
+
+	const FYSKrakenBossBar& GetKrakenBossBar() const { return KrakenBossBar; }
+
+	/** Serveur uniquement (AYSKrakenArena) ; envoyé seulement s'il change */
+	void SetKrakenBossBar(const FYSKrakenBossBar& Bar)
+	{
+		if (Bar.bActive != KrakenBossBar.bActive || Bar.Stage != KrakenBossBar.Stage || !FMath::IsNearlyEqual(Bar.Health, KrakenBossBar.Health)
+			|| !FMath::IsNearlyEqual(Bar.MaxHealth, KrakenBossBar.MaxHealth) || !Bar.Name.EqualTo(KrakenBossBar.Name))
+		{
+			KrakenBossBar = Bar;
+			ForceNetUpdate();
+		}
+	}
+
+	/** Toutes les boussoles ramenées au bateau (objectif « Trouvez la créature ») */
+	bool AreAllCompassesFound() const { return bSeaObjectives && CompassTotal > 0 && CompassesFound >= CompassTotal; }
 
 	/** Partie 2 : temps écoulé depuis son début (-1 = pas commencée) */
 	float GetPart2Elapsed() const { return Part2StartMatchTime >= 0.0f ? FMath::Max(GetMatchElapsedTime() - Part2StartMatchTime, 0.0f) : -1.0f; }

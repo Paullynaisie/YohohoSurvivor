@@ -1586,15 +1586,16 @@ void AYSGameMode::GameOver(const TCHAR* Reason)
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] GAME OVER (%s) : retour au menu dans %.0f s"), Reason, GameOverReturnDelay);
 }
 
-void AYSGameMode::TriggerVictory(const TCHAR* Reason)
+void AYSGameMode::TriggerVictory(const TCHAR* Reason, float ReturnDelay)
 {
 	AYSGameState* YSGameState = GetGameState<AYSGameState>();
 	if (!YSGameState || YSGameState->IsGameOver() || YSGameState->IsVictory())
 	{
 		return;
 	}
-	YSGameState->SetVictory(VictoryReturnDelay);
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] BRAVO (%s) : retour au menu dans %.0f s"), Reason, VictoryReturnDelay);
+	const float Delay = ReturnDelay >= 0.0f ? ReturnDelay : VictoryReturnDelay;
+	YSGameState->SetVictory(Delay);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] BRAVO (%s) : retour au menu dans %.0f s"), Reason, Delay);
 }
 
 TSubclassOf<AYSInteractiveObject> AYSGameMode::PickRandomCombatPostItem() const

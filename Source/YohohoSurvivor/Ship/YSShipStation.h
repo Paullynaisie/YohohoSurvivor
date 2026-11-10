@@ -340,6 +340,9 @@ public:
 	/** PV rendus sans occupant (serveur ; Charpentier de l'équipage) : poste qui a des PV, abîmé, bateau pas hors d'usage */
 	void AddRepairHealth(float Amount);
 
+	/** PV remis au max, même à 0 PV (serveur ; changement d'étape du boss Kraken) */
+	void RestoreFullHealth();
+
 	/** Poste de combat (canon, Gatling, mortier, grappeshot) : PV max donnés par le bateau */
 	virtual bool IsCombatPost() const { return false; }
 

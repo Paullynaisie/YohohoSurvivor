@@ -545,7 +545,7 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 void AYSFoeCharacter::StartBump(const FVector& Direction, float Distance, float ApexHeight, float Duration, float SpinTurns)
 {
 	const FVector FlatDirection = Direction.GetSafeNormal2D();
-	if (!HasAuthority() || FlatDirection.IsNearlyZero())
+	if (!HasAuthority() || FlatDirection.IsNearlyZero() || IsImmovable())
 	{
 		return;
 	}
@@ -805,6 +805,10 @@ void AYSFoeCharacter::EndBumpLocal()
 
 void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEvent, const AController* EventInstigator)
 {
+	if (IsImmovable())
+	{
+		return;
+	}
 	StartHitReaction(Damage, DamageEvent);
 
 	// direction du coup portée par l'événement (hitbox de l'arme, vol du projectile) ; force réglée sur le personnage qui frappe

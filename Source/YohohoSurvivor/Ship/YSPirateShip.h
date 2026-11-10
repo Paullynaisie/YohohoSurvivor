@@ -43,6 +43,14 @@ struct FYSShipMotion
 	UPROPERTY()
 	bool bRamming = false;
 
+	/** Dérive imposée de l'extérieur (cm/s, monde ; aspiration du Kraken), ajoutée au déplacement tant qu'elle est posée */
+	UPROPERTY()
+	FVector Drift = FVector::ZeroVector;
+
+	/** Poussée reçue (cm/s, monde ; coup du Kraken), ajoutée au déplacement et amortie (Knockback Damping) */
+	UPROPERTY()
+	FVector Knockback = FVector::ZeroVector;
+
 	/** Heure serveur de cet état */
 	UPROPERTY()
 	double ServerTime = 0.0;
@@ -410,6 +418,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Collision", meta=(ClampMin="0.1"))
 	float Weight = 1.0f;
 
+	/** Poussée reçue (coup du Kraken) : vitesse amortie de ce facteur par seconde (exponentiel) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Collision", meta=(ClampMin="0"))
+	float KnockbackDamping = 1.2f;
+
 	/** Serveur : ce bateau en éperonne un autre (« À l'abordage ») : dégâts, puis abordage si le point percuté est abordable, sinon recul */
 	void HandleRamImpact(AYSPirateShip* Target);
 
@@ -455,6 +467,18 @@ public:
 
 	/** Hidden Component Names : formes cachées, sans collision (toutes machines, éditeur compris) */
 	void ApplyHiddenComponents();
+
+	/** Serveur : dérive imposée (cm/s, monde ; zéro = aucune) ; aspiration du Kraken */
+	void SetExternalDrift(const FVector& Velocity);
+
+	/** Serveur : poussée (cm/s, monde) ajoutée à celle en cours, amortie ensuite ; coup du Kraken */
+	void ApplyKnockback(const FVector& Velocity);
+
+	/** Vitesse max avant du Blueprint (sans multiplicateurs) */
+	float GetBaseMaxForwardSpeed() const { return MaxForwardSpeed; }
+
+	/** Rectangle de la coque dans le repère du bateau (points de Hull Probe Points) */
+	FBox2D GetHullLocalBounds() const { return GetHullBounds(); }
 
 	/** Un poste de combat (canon, Gatling) cassé à moins de Radius (à plat) de Point */
 	bool HasBrokenCombatPostNear(const FVector& Point, float Radius) const;

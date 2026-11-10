@@ -206,9 +206,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 2", meta=(ClampMin="0", Units="Centimeters"))
 	float Part2OvertimeGalionMaxDistance = 15000.0f;
 
-	/** Partie 3 (à venir) : « BRAVO » (fin de jeu temporaire) puis retour au menu, ces secondes de jeu après son début (0 = jamais) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 3", meta=(ClampMin="0", Units="s"))
-	float BravoDelayAfterPart3 = 60.0f;
+	/**
+	 *  Partie 3 : zone du « Boss fight final » (combat contre le Kraken, réglages dans son Blueprint) posée au lancement en mer, à Kraken Arena
+	 *  Distance du centre de l'île de départ, direction au hasard (avec les zones d'intérêt seulement). Vide = pas de partie 3
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 3")
+	TSubclassOf<class AYSKrakenArena> KrakenArenaClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 3", meta=(ClampMin="0", Units="Centimeters"))
+	float KrakenArenaDistance = 75000.0f;
 
 	AYSFlowMode();
 
@@ -283,8 +289,15 @@ public:
 	/** La partie 2 commence (serveur, une fois) : grand timer, objectif de l'île de départ effacé */
 	void StartPart2(const TCHAR* Reason);
 
-	/** Partie 3 (pas encore appelée) : « BRAVO » puis retour au menu après Bravo Delay After Part 3 */
+	/** Partie 3 (serveur, une fois ; le bateau des joueurs entre dans la zone du Kraken) : toutes les îles coulent, objectif « Affrontez le Kraken », plus de timer */
 	void StartPart3(const TCHAR* Reason);
+
+	bool IsPart3Started() const { return bPart3Started; }
+
+	class AYSKrakenArena* GetKrakenArena() const { return KrakenArena; }
+
+	/** Debug : toutes les boussoles comptées comme ramenées */
+	void DebugFindAllCompasses();
 
 	bool IsPart2Started() const { return bPart2Started; }
 
@@ -392,6 +405,12 @@ private:
 
 	bool bPart2Started = false;
 	bool bPart3Started = false;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class AYSKrakenArena> KrakenArena;
+
+	/** Zone du Kraken (serveur, au lancement) */
+	void SpawnKrakenArena();
 
 	/** Nuits commencées sur les îles du flow (séquence de nuits) */
 	int32 FlowNightsStarted = 0;

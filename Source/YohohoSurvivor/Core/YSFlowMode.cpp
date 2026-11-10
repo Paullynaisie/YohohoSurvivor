@@ -7,6 +7,8 @@
 #include "Enemies/YSFoeCharacter.h"
 #include "Enemies/YSNavalBattle.h"
 #include "Enemies/YSFoeGalion.h"
+#include "Enemies/YSKrakenArena.h"
+#include "Map/YSOcean.h"
 #include "TimerManager.h"
 #include "Island/YSIsland.h"
 #include "Island/YSIslandData.h"
@@ -71,6 +73,7 @@ void AYSFlowMode::BeginPlay()
 		if (bNextIslandsEnabled && bZonesOfInterest)
 		{
 			SpawnZonesOfInterest();
+			SpawnKrakenArena();
 		}
 		// îles suivantes générées dès maintenant, sous l'eau
 		else if (bNextIslandsEnabled && bPregenerateNextIslands && NextIslandsSubmergedDepth > 0.0f)
@@ -104,7 +107,7 @@ void AYSFlowMode::Tick(float DeltaSeconds)
 
 	// partie 2 écoulée : overtime, un Galion Nemesis tout de suite puis toutes les Part 2 Overtime Interval
 	const AYSGameState* Part2State = GetGameState<AYSGameState>();
-	if (bPart2Started && Part2State && Part2OvertimeGalionClass && NextPart2GalionElapsed >= 0.0f)
+	if (bPart2Started && !bPart3Started && Part2State && Part2OvertimeGalionClass && NextPart2GalionElapsed >= 0.0f)
 	{
 		const float Elapsed = Part2State->GetPart2Elapsed();
 		if (Elapsed >= NextPart2GalionElapsed)
@@ -1013,16 +1016,56 @@ void AYSFlowMode::StartPart3(const TCHAR* Reason)
 		return;
 	}
 	bPart3Started = true;
-	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] PARTIE 3 (%s)%s"), Reason, BravoDelayAfterPart3 > 0.0f ? *FString::Printf(TEXT(" : BRAVO dans %.0f s"), BravoDelayAfterPart3) : TEXT(""));
-	// tests : « BRAVO » (fin de jeu temporaire) un peu après le passage en partie 3 ; temps de jeu (figé en pause)
-	if (BravoDelayAfterPart3 > 0.0f)
+	// la partie 2 peut avoir été sautée (debug) : elle est marquée commencée
+	bPart2Started = true;
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (YSGameState)
 	{
-		FTimerHandle BravoTimer;
-		GetWorldTimerManager().SetTimer(BravoTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
-		{
-			TriggerVictory(TEXT("partie 3 du flow atteinte"));
-		}), BravoDelayAfterPart3, false);
+		YSGameState->StartFlowPart3();
+		// plus d'objectif d'île (ni barre verrouillée) : « Affrontez le Kraken », sans timer
+		YSGameState->SetFlowStatus(FYSFlowStatus());
 	}
+	// toutes les îles coulent
+	int32 Sunk = 0;
+	TArray<AYSIsland*> AllIslands;
+	for (TActorIterator<AYSIsland> It(GetWorld()); It; ++It)
+	{
+		AllIslands.Add(*It);
+	}
+	for (AYSIsland* Other : AllIslands)
+	{
+		if (IsValid(Other) && !Other->HasSunk() && !Other->IsSinking())
+		{
+			Other->ForceSinkNow(TEXT("partie 3"));
+			++Sunk;
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] PARTIE 3 (%s) : %d île(s) coulent (les autres coulaient déjà), « Affrontez le Kraken »"), Reason, Sunk);
+}
+
+void AYSFlowMode::SpawnKrakenArena()
+{
+	if (!KrakenArenaClass || KrakenArena || !Island)
+	{
+		return;
+	}
+	// en mer, à Kraken Arena Distance du centre de l'île de départ, direction au hasard
+	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	FVector Location = Island->GetActorLocation() + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * KrakenArenaDistance;
+	Location.Z = Ocean ? Ocean->GetSeaLevel() : 0.0f;
+	KrakenArena = GetWorld()->SpawnActor<AYSKrakenArena>(KrakenArenaClass, Location, FRotator::ZeroRotator);
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Zone du Kraken en %s (%.0f m du centre, %.0f°)"), *Location.ToCompactString(), KrakenArenaDistance / 100.0f, FMath::RadiansToDegrees(Angle));
+}
+
+void AYSFlowMode::DebugFindAllCompasses()
+{
+	CompassesFound = FMath::Max(CompassesFound, CompassTotal);
+	if (AYSGameState* YSGameState = GetGameState<AYSGameState>())
+	{
+		YSGameState->SetSeaObjectives(true, CompassTotal, CompassesFound);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Debug : boussoles %d / %d"), CompassesFound, CompassTotal);
 }
 
 bool AYSFlowMode::TakeNightSetup(const AYSIsland* NightIsland, FRandomStream& Rng, TArray<UClass*>& OutClasses)

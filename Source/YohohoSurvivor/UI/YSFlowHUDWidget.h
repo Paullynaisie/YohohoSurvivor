@@ -19,6 +19,8 @@ struct FYSFlowSeaObjective
 	bool bNavalBattle = false;
 	int32 CompassesRemaining = 0;
 	int32 CompassTotal = 0;
+	/** Partie 3 : combat contre le Kraken */
+	bool bPart3 = false;
 };
 
 /**
@@ -144,13 +146,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Sea")
 	FText CompassLastObjectiveText = NSLOCTEXT("YS", "FlowSeaLastCompass", "Trouve la dernière boussole");
 
-	/** En mer, toutes les boussoles trouvées */
+	/** En mer, toutes les boussoles trouvées (pointillés vers la zone du Kraken) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Sea")
-	FText CompassDoneText = NSLOCTEXT("YS", "FlowSeaCompassesDone", "Toutes les boussoles sont trouvées");
+	FText CompassDoneText = NSLOCTEXT("YS", "FlowSeaFindCreature", "Trouvez la créature");
 
 	/** Bataille navale en cours, jusqu'à ce que son Galion soit coulé */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Sea")
 	FText NavalBattleObjectiveText = NSLOCTEXT("YS", "FlowSeaNavalBattle", "Coule le Galion");
+
+	/** Partie 3 : combat contre le Kraken (pas de timer) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Sea")
+	FText KrakenObjectiveText = NSLOCTEXT("YS", "FlowKraken", "Affrontez le Kraken");
 
 	virtual bool Initialize() override;
 

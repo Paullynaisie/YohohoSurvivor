@@ -1009,6 +1009,38 @@ void AYSPirateShip::StepMotion(FYSShipMotion& State, float DeltaSeconds) const
 
 	State.Yaw = FRotator::NormalizeAxis(State.Yaw + State.YawRate * DeltaSeconds);
 	State.Location += FRotator(0.0f, State.Yaw, 0.0f).Vector() * State.Speed * DeltaSeconds;
+
+	// forces extérieures (Kraken) : dérive tant qu'elle est posée, poussée amortie
+	State.Location += (State.Drift + State.Knockback) * FVector(1.0f, 1.0f, 0.0f) * DeltaSeconds;
+	if (!State.Knockback.IsNearlyZero(1.0f))
+	{
+		State.Knockback *= FMath::Exp(-KnockbackDamping * DeltaSeconds);
+	}
+	else
+	{
+		State.Knockback = FVector::ZeroVector;
+	}
+}
+
+void AYSPirateShip::SetExternalDrift(const FVector& Velocity)
+{
+	if (!HasAuthority() || Motion.Drift.Equals(Velocity, 1.0f))
+	{
+		return;
+	}
+	Motion.Drift = Velocity * FVector(1.0f, 1.0f, 0.0f);
+	ForceNetUpdate();
+}
+
+void AYSPirateShip::ApplyKnockback(const FVector& Velocity)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	Motion.Knockback += Velocity * FVector(1.0f, 1.0f, 0.0f);
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : poussé à %.0f cm/s (%s)"), *GetName(), Motion.Knockback.Size2D(), *Velocity.GetSafeNormal2D().ToCompactString());
 }
 
 bool AYSPirateShip::FindWaterPlacement(const FVector& From, const FVector& Direction, float Yaw, float MaxDistance, float Step, FVector& OutLocation) const

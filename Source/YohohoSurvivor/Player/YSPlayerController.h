@@ -613,6 +613,22 @@ public:
 	UFUNCTION(Exec)
 	void YSShipToNavalBattle(int32 Index, float Distance);
 
+	/** Debug (hôte, FlowMod) : bateau des joueurs posé à Distance (cm, 0 = 120 m) du centre de la zone du Kraken, tourné vers elle, le joueur sur son pont */
+	UFUNCTION(Exec)
+	void YSShipToKraken(float Distance);
+
+	/** Debug (hôte, FlowMod) : toutes les boussoles comptées comme ramenées (« Trouvez la créature », pointillés) */
+	UFUNCTION(Exec)
+	void YSFindAllCompasses();
+
+	/** Debug (hôte, FlowMod) : combat contre le Kraken lancé tout de suite à l'étape Stage (1 à 3 ; partie 3) */
+	UFUNCTION(Exec)
+	void YSKrakenStage(int32 Stage);
+
+	/** Debug (hôte, FlowMod) : morceaux principaux de l'étape en cours du Kraken tués */
+	UFUNCTION(Exec)
+	void YSKrakenKillStage();
+
 	/** Debug (hôte, FlowMod) : bateau des joueurs posé face à la plage de l'île Index (1.. = îles suivantes), à Distance (cm) du bord de l'eau, le joueur sur son pont */
 	UFUNCTION(Exec)
 	void YSShipToBeach(int32 Index, float Distance);

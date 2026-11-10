@@ -62,6 +62,7 @@
 #include "Enemies/YSFoeGalion.h"
 #include "Enemies/YSFoeJollyShip.h"
 #include "Enemies/YSNavalBattle.h"
+#include "Enemies/YSKrakenArena.h"
 #include "Ship/YSPirateShip.h"
 #include "Ship/YSCombatPost.h"
 #include "Ship/YSShipCore.h"
@@ -1339,6 +1340,54 @@ void AYSPlayerController::YSShipToNavalBattle(int32 Index, float Distance)
 	UE_LOG(LogTemp, Log, TEXT("[YSNavalBattle] Debug : %s posé à %.0f m de la bataille %d, en %s"), *Ship->GetName(), FVector::Dist2D(Point, Center) / 100.0f, Index, *Point.ToCompactString());
 }
 
+void AYSPlayerController::YSShipToKraken(float Distance)
+{
+	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	AYSPirateShip* Ship = YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	const AYSKrakenArena* Arena = FlowMode ? FlowMode->GetKrakenArena() : nullptr;
+	if (!Ship || !Arena || !GetPawn())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSKrakenArena] Debug : pas de bateau des joueurs ou pas de zone du Kraken"));
+		return;
+	}
+	const FVector Center = Arena->GetActorLocation();
+	const float Range = Distance > 0.0f ? Distance : 12000.0f;
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const FVector Point = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Range;
+	Ship->SetActorLocationAndRotation(FVector(Point.X, Point.Y, Ship->GetActorLocation().Z), ((Center - Point) * FVector(1.0f, 1.0f, 0.0f)).Rotation());
+	Ship->SyncMotionToActor();
+	GetPawn()->TeleportTo(Ship->GetActorLocation() + FVector(0.0f, 0.0f, 350.0f), GetPawn()->GetActorRotation());
+	UE_LOG(LogTemp, Log, TEXT("[YSKrakenArena] Debug : %s posé à %.0f m du centre de la zone du Kraken, en %s"), *Ship->GetName(), Range / 100.0f, *Point.ToCompactString());
+}
+
+void AYSPlayerController::YSFindAllCompasses()
+{
+	if (AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr)
+	{
+		FlowMode->StartSeaObjectives(TEXT("debug"));
+		FlowMode->DebugFindAllCompasses();
+	}
+}
+
+void AYSPlayerController::YSKrakenStage(int32 Stage)
+{
+	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
+	if (AYSKrakenArena* Arena = FlowMode ? FlowMode->GetKrakenArena() : nullptr)
+	{
+		Arena->DebugStartStage(Stage);
+	}
+}
+
+void AYSPlayerController::YSKrakenKillStage()
+{
+	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
+	if (AYSKrakenArena* Arena = FlowMode ? FlowMode->GetKrakenArena() : nullptr)
+	{
+		Arena->DebugKillStage();
+	}
+}
+
 void AYSPlayerController::YSShipToBeach(int32 Index, float Distance)
 {
 	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
@@ -1571,15 +1620,32 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 	}
 	UGameViewportSubsystem* ViewportSubsystem = UGameViewportSubsystem::Get(GetWorld());
 	float StackOffset = 0.0f;
-	for (int32 Index = 0; Index < FMath::Max(HudElites.Num(), 1 + ExtraEliteHealths.Num()); ++Index)
+	// boss Kraken (partie 3) : sa barre en premier (en bas), les élites au-dessus
+	const FYSKrakenBossBar& KrakenBar = YSGameState->GetKrakenBossBar();
+	const int32 KrakenBars = KrakenBar.bActive ? 1 : 0;
+	const int32 BarCount = HudElites.Num() + KrakenBars;
+	for (int32 Index = 0; Index < FMath::Max(BarCount, 1 + ExtraEliteHealths.Num()); ++Index)
 	{
-		UYSEliteHealthWidget* Bar = Index < HudElites.Num() || Index == 0 ? GetEliteHealthBar(Index) : ExtraEliteHealths[Index - 1].Get();
+		UYSEliteHealthWidget* Bar = Index < BarCount || Index == 0 ? GetEliteHealthBar(Index) : ExtraEliteHealths[Index - 1].Get();
 		if (!Bar)
 		{
 			continue;
 		}
-		const AYSFoeCharacter* Elite = HudElites.IsValidIndex(Index) ? HudElites[Index].Get() : nullptr;
-		if (Elite)
+		const bool bKraken = KrakenBars > 0 && Index == 0;
+		const AYSFoeCharacter* Elite = !bKraken && HudElites.IsValidIndex(Index - KrakenBars) ? HudElites[Index - KrakenBars].Get() : nullptr;
+		if (bKraken)
+		{
+			Bar->SetElite(KrakenBar.Name, KrakenBar.Health, KrakenBar.MaxHealth);
+			Bar->SetBossState(0.0f, 0.0f, 0.0f, 0.0f);
+			if (ViewportSubsystem)
+			{
+				FGameViewportWidgetSlot BarSlot = ViewportSubsystem->GetWidgetSlot(Bar);
+				BarSlot.Offsets = FMargin(0.0f, -(Bar->BottomMargin + StackOffset), 0.0f, 0.0f);
+				ViewportSubsystem->SetWidgetSlot(Bar, BarSlot);
+			}
+			StackOffset += Bar->GetDesiredSize().Y + Bar->StackSpacing;
+		}
+		else if (Elite)
 		{
 			Bar->SetElite(Elite->IsShipCaptainBoss() ? NSLOCTEXT("YS", "ShipCaptainBarName", "Capitaine") : Elite->GetFoeName(), Elite->GetHealth(), Elite->GetMaxHealth());
 			Bar->SetBossState(Elite->GetBossShield(), Elite->GetMaxBossShield(), Elite->GetRage(), Elite->UsesBossShield() ? Elite->GetMaxRage() : 0.0f);
@@ -1591,7 +1657,7 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 			}
 			StackOffset += Bar->GetDesiredSize().Y + Bar->StackSpacing;
 		}
-		Bar->SetVisibility(Elite ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		Bar->SetVisibility(Elite || bKraken ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 
 	// objectif commun : doublons de l'équipe
@@ -1628,8 +1694,15 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 			Sea.CompassTotal = YSGameState->GetCompassTotal();
 			Sea.CompassesRemaining = YSGameState->GetCompassTotal() - YSGameState->GetCompassesFound();
 		}
+		// partie 3 : « Affrontez le Kraken » partout, plus de timer de la partie 2
+		const bool bPart3 = YSGameState->GetFlowPart() >= 3;
+		if (bPart3)
+		{
+			Sea.bShow = true;
+			Sea.bPart3 = true;
+		}
 		FlowHUD->Refresh(YSGameState->GetFlowStatus(), YSGameState->GetFlowPhaseRemaining(), YSGameState->GetMatchElapsedTime(), YSGameState->IsMatchStarted(),
-			YSGameState->GetPart2Elapsed(), YSGameState->GetPart2Duration(), Sea);
+			bPart3 ? -1.0f : YSGameState->GetPart2Elapsed(), YSGameState->GetPart2Duration(), Sea);
 	}
 }
 

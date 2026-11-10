@@ -770,6 +770,9 @@ public:
 	/** Mort, corps en ragdoll avant sa disparition (plus de gameplay) */
 	bool IsDying() const { return Death.bDead; }
 
+	/** Ni pushback, ni hit reaction, ni bump (morceaux du Kraken : posés à leur place, déplacés par leur propre logique) */
+	virtual bool IsImmovable() const { return false; }
+
 	/** Élite / boss dont la barre de vie est dans le HUD (pas l'équipage d'un Galion, ni ceux qui l'ont sous eux) */
 	bool ShowsHudHealthBar() const { return bHudHealthBar; }
 

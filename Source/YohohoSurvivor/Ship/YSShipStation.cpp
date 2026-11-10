@@ -178,6 +178,17 @@ bool AYSShipStation::IsUsable() const
 	return !IsBroken() && Ship && !Ship->IsDisabled();
 }
 
+void AYSShipStation::RestoreFullHealth()
+{
+	if (!HasAuthority() || !bTakesDamage || MaxHealth <= 0.0f || Health >= MaxHealth)
+	{
+		return;
+	}
+	Health = MaxHealth;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("%s %s : PV remis au max (%.0f)"), GetLogTag(), *GetName(), MaxHealth);
+}
+
 void AYSShipStation::AddRepairHealth(float Amount)
 {
 	if (!HasAuthority() || !bTakesDamage || MaxHealth <= 0.0f || Health >= MaxHealth || Amount <= 0.0f || !IsUsableForRepair())

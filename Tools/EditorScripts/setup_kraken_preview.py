@@ -58,7 +58,7 @@ def r(roll=0.0, pitch=0.0, yaw=0.0):
 
 
 REBUILD = False  # True = reconstruit les formes des Blueprints (efface les retouches)
-PLACE = True    # False = ne touche pas la FlowMap
+PLACE = False   # True = repose le kraken de prévisualisation dans la FlowMap (plus utile : BP_KrakenArena le pose en jeu)
 
 
 def make_bp(path):

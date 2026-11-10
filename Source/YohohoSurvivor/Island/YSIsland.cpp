@@ -711,6 +711,12 @@ void AYSIsland::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// coulée de force (partie 3 du flow) : plus aucun cycle ni apparition
+	if (bForceSunk)
+	{
+		return;
+	}
+
 	// îles de la partie 2 : le bateau des joueurs qui accoste devant la plage y reste bloqué (et active l'île)
 	if (UsesObjectiveFlow() && Data->bLockHelmWhenDocked && !bBoatDocked && !bFlowVictory && IsEmerged()
 		&& (Phase == EYSIslandPhase::Inactive || Phase == EYSIslandPhase::Day || Phase == EYSIslandPhase::Night))
@@ -1831,6 +1837,17 @@ void AYSIsland::DebugSinkNow()
 	{
 		StartSinking();
 	}
+}
+
+void AYSIsland::ForceSinkNow(const TCHAR* Reason)
+{
+	if (!HasAuthority() || bSinkStarted)
+	{
+		return;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s coule tout de suite (%s)"), *GetName(), Reason);
+	bForceSunk = true;
+	StartSinking();
 }
 
 bool AYSIsland::GetPierSegmentLocation(int32 Index, FVector& OutLocation) const

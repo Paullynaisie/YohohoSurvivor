@@ -175,6 +175,9 @@ public:
 	AYSStartBoat* GetStartBoat() const { return StartBoat; }
 	void DebugSinkNow();
 
+	/** Coule tout de suite, sans routine de coulaison (serveur ; partie 3 du flow : toutes les îles coulent) */
+	void ForceSinkNow(const TCHAR* Reason);
+
 	/** Milieu du morceau de ponton Index, dans le monde (faux s'il n'existe pas) */
 	bool GetPierSegmentLocation(int32 Index, FVector& OutLocation) const;
 
@@ -371,6 +374,9 @@ private:
 	TArray<int32> EventsFired;
 
 	bool bSinkStarted = false;
+
+	/** Coulée par ForceSinkNow : plus de cycle */
+	bool bForceSunk = false;
 
 	/** Coulaison finie, flow prévenu (serveur) */
 	bool bSinkFinished = false;
