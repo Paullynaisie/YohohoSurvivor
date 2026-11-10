@@ -480,6 +480,12 @@ struct FYSIslandFoeEntry
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe")
 	TArray<TSubclassOf<AYSFoeCharacter>> RandomFoeClasses;
 
+	/**
+	 *  Classe de ce NME ; Avoid non nul (élites / boss au centre, séquence de nuits) : de préférence une classe pas encore tirée dans ce lot
+	 *  (duo d'élites ou de boss = un Skull et un Gun, demande de Paul)
+	 */
+	UClass* PickClass(FRandomStream& Rng, const TArray<UClass*>* Avoid) const;
+
 	/** Nombre pour 1 joueur (x Spawn Multiplier du nombre de joueurs si Scale With Players) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe", meta=(ClampMin="0"))
 	int32 Count = 1;

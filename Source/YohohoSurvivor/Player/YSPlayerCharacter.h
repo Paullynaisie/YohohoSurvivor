@@ -455,6 +455,11 @@ protected:
 	bool bCameraFrameOnShip = false;
 	float CameraFrameYaw = 0.0f;
 
+	/** Au pilotage : nord en haut ; référentiel d'avant gardé pour le retour */
+	bool bCameraPiloting = false;
+	bool bSavedCameraFrameOnShip = false;
+	float SavedCameraFrameYaw = 0.0f;
+
 public:
 
 	/** TAB (joueur local) : référentiel par défaut de la caméra : sur un bateau proue à gauche (sauf en pilotant), sinon nord en haut */

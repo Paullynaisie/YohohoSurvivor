@@ -1,6 +1,9 @@
 #include "Island/YSIslandNPC.h"
 #include "Engine/World.h"
+#include "Core/YSFlowMode.h"
+#include "Core/YSGameState.h"
 #include "Island/YSIsland.h"
+#include "Ship/YSShipCore.h"
 #include "Net/UnrealNetwork.h"
 #include "Ship/YSPirateShip.h"
 
@@ -70,11 +73,45 @@ void AYSStartBoat::OnRep_ZoneRadius()
 
 bool AYSStartBoat::AcceptsObject(const AYSInteractiveObject* Object) const
 {
-	return Island && Island->IsObjectExpected(Object);
+	// objectifs de l'île, et comme au core du bateau (demande de Paul du 2026-11-10 : déposer sans monter à bord) : coffres (doublons),
+	// CoreBoats du stock, objets des zones d'intérêt
+	if (!Object)
+	{
+		return false;
+	}
+	const AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	return (Island && Island->IsObjectExpected(Object)) || AYSBrookerNPC::AcceptsObject(Object)
+		|| (FlowMode && (FlowMode->IsStockedCoreBoat(Object) || FlowMode->IsZoneItem(Object)));
 }
 
 void AYSStartBoat::ReceiveObject(AYSInteractiveObject* Object)
 {
+	AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	if (FlowMode && FlowMode->IsStockedCoreBoat(Object))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSStartBoat] %s posé dans la zone -> stock"), *Object->GetName());
+		FlowMode->StoreCoreBoat(Object);
+		return;
+	}
+	if (Object->GetDoubloonValue() > 0)
+	{
+		AYSBrookerNPC::ReceiveObject(Object);
+		return;
+	}
+	if (FlowMode && FlowMode->IsCompass(Object) && !Object->IsDelivered())
+	{
+		FlowMode->NotifyCompassDelivered(Object);
+	}
+	// île qui va couler (pas l'île de départ) : l'objet livré part sur le pont du bateau des joueurs (sinon il coulerait avec l'île)
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	AYSPirateShip* GameBoat = YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	if (GameBoat && Island && !Island->IsStartIsland() && GameBoat->GetCore())
+	{
+		const FVector Deck = GameBoat->GetCore()->GetActorLocation() + FVector(FMath::FRandRange(-150.0f, 150.0f), FMath::FRandRange(-150.0f, 150.0f), 0.0f);
+		Object->TeleportTo(AYSInteractiveObject::FindGround(GetWorld(), Deck + FVector(0.0f, 0.0f, 500.0f), Object), Object->GetActorRotation());
+		Object->AttachToShipBelow();
+		UE_LOG(LogTemp, Log, TEXT("[YSStartBoat] %s posé dans la zone : envoyé sur le pont de %s"), *Object->GetName(), *GameBoat->GetName());
+	}
 	UE_LOG(LogTemp, Log, TEXT("[YSStartBoat] %s posé dans la zone du bateau"), *Object->GetName());
 	Object->OnDelivered();
 }

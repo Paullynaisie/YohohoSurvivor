@@ -763,6 +763,12 @@ void AYSIsland::Tick(float DeltaSeconds)
 void AYSIsland::StartSinking()
 {
 	bSinkStarted = true;
+	// la zone de dépôt disparaît quand l'île commence à couler
+	if (IsValid(StartBoat))
+	{
+		StartBoat->Destroy();
+		StartBoat = nullptr;
+	}
 	// ce qui est posé coule avec l'île
 	for (TActorIterator<AYSInteractiveObject> It(GetWorld()); It; ++It)
 	{
@@ -1122,6 +1128,15 @@ void AYSIsland::TickDocking()
 			Pilot->LeaveStation(TEXT("bateau bloqué à quai"), true);
 		}
 	}
+	// zone de dépôt sur la plage au point d'accostage (déposer coffres et objets sans monter à bord)
+	if (!StartBoat)
+	{
+		const FVector2f Shore = FindShorePointToward(Local);
+		const float Inset = Data->BoatZoneRadius * 0.5f;
+		const FVector2f Inland = Shore - Shore.GetSafeNormal() * Inset;
+		SpawnStartBoat(LocalToWorld(Inland, Terrain.Height(Inland.X, Inland.Y)), GameBoat->GetActorRotation().Yaw);
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : zone de dépôt posée au point d'accostage (%s)"), *Data->GetName(), StartBoat ? *StartBoat->GetActorLocation().ToCompactString() : TEXT("échec"));
+	}
 	if (Phase == EYSIslandPhase::Inactive)
 	{
 		Activate();
@@ -1130,6 +1145,22 @@ void AYSIsland::TickDocking()
 	{
 		UpdateFlowStatus();
 	}
+}
+
+FVector2f AYSIsland::FindShorePointToward(const FVector2f& FromLocal) const
+{
+	// du bateau vers le centre de l'île, premier point hors de l'eau (bord de la plage)
+	const float Total = FromLocal.Size();
+	const FVector2f Direction = Total > KINDA_SMALL_NUMBER ? -FromLocal / Total : FVector2f(1.0f, 0.0f);
+	for (float Distance = 0.0f; Distance < Total; Distance += 50.0f)
+	{
+		const FVector2f Point = FromLocal + Direction * Distance;
+		if (Terrain.Inland(Point.X, Point.Y) >= 0.0f)
+		{
+			return Point;
+		}
+	}
+	return FVector2f::ZeroVector;
 }
 
 void AYSIsland::TickConstantSpawn(float DeltaSeconds)
@@ -1354,8 +1385,8 @@ void AYSIsland::FireEvent(const FYSIslandSpawnEvent& Event, int32 Repeat)
 		const int32 Count = Event.bScaleWithPlayers ? GameMode->ScaleEnemyCount(Entry.Count) : Entry.Count;
 		for (int32 K = 0; K < Count; ++K)
 		{
-			// au hasard dans la liste (ex. élite Skull ou Gun)
-			UClass* Class = Entry.RandomFoeClasses.Num() > 0 ? Entry.RandomFoeClasses[ServerRng.RandRange(0, Entry.RandomFoeClasses.Num() - 1)].Get() : Entry.FoeClass.Get();
+			// au hasard dans la liste (ex. élite Skull ou Gun) ; au centre (élites, boss) : tous différents tant que possible
+			UClass* Class = Entry.PickClass(ServerRng, Event.Shape == EYSIslandSpawnShape::Center ? &Classes : nullptr);
 			if (Class)
 			{
 				Classes.Add(Class);
@@ -1680,18 +1711,15 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 				// flow : « Survivez et défendez le navire », la phase ne change pas
 				if (UsesObjectiveFlow())
 				{
-					// demande de Paul : la zone de dépôt (bleue) et le CoreBoat disparaissent ; à l'image suivante (on est dans l'appel de la zone)
-					// (île sans zone de dépôt : objets posés au core du bateau, ils y restent)
-					TWeakObjectPtr<AActor> Zone = StartBoat.Get();
-					TWeakObjectPtr<AActor> Delivered = Zone.IsValid() ? Object : nullptr;
-					StartBoat = nullptr;
-					GetWorldTimerManager().SetTimerForNextTick([Zone, Delivered]()
+					// île de départ : le CoreBoat livré disparaît (à l'image suivante : on est dans l'appel de la zone) ; la zone de dépôt reste
+					// jusqu'à la coulaison (demande de Paul du 2026-11-10 ; StartSinking)
+					TWeakObjectPtr<AActor> Delivered = bStartIsland && StartBoat ? Object : nullptr;
+					GetWorldTimerManager().SetTimerForNextTick([Delivered]()
 					{
-						if (Zone.IsValid()) { Zone->Destroy(); }
 						if (Delivered.IsValid()) { Delivered->Destroy(); }
 					});
-					UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : « %s » (phase %d gardée), zone de dépôt et %s retirés"), *Data->GetName(), *Data->DefendText.ToString(),
-						static_cast<int32>(Phase), Object ? *Object->GetName() : TEXT("-"));
+					UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : « %s » (phase %d gardée)%s"), *Data->GetName(), *Data->DefendText.ToString(),
+						static_cast<int32>(Phase), Delivered.IsValid() ? *FString::Printf(TEXT(", %s retiré"), *Object->GetName()) : TEXT(""));
 					UpdateFlowStatus();
 					return;
 				}
@@ -1820,4 +1848,25 @@ bool AYSIsland::GetPierSegmentLocation(int32 Index, FVector& OutLocation) const
 AYSInteractiveObject* AYSIsland::GetObjectiveItem(int32 Index) const
 {
 	return Objectives.IsValidIndex(Index) ? Objectives[Index].Item.Get() : nullptr;
+}
+
+UClass* FYSIslandFoeEntry::PickClass(FRandomStream& Rng, const TArray<UClass*>* Avoid) const
+{
+	if (RandomFoeClasses.Num() == 0)
+	{
+		return FoeClass.Get();
+	}
+	TArray<UClass*> Candidates;
+	for (const TSubclassOf<AYSFoeCharacter>& Class : RandomFoeClasses)
+	{
+		if (Class && (!Avoid || !Avoid->Contains(Class.Get())))
+		{
+			Candidates.Add(Class.Get());
+		}
+	}
+	if (Candidates.Num() == 0)
+	{
+		return RandomFoeClasses[Rng.RandRange(0, RandomFoeClasses.Num() - 1)].Get();
+	}
+	return Candidates[Rng.RandRange(0, Candidates.Num() - 1)];
 }

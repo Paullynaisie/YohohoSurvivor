@@ -314,8 +314,26 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="0"))
 	float RamDamage = 500.0f;
 
-	/** Serveur : ce bateau en éperonne un autre (« À l'abordage ») : dégâts, puis abordage si le point percuté est abordable */
+	/** « À l'abordage » sans abordage (pas de planche) : le bateau est repoussé en arrière à cette vitesse... */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="0", Units="CentimetersPerSecond"))
+	float RamRecoilSpeed = 400.0f;
+
+	/** ... et « À l'abordage » est indisponible pendant cette durée */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="0", Units="s"))
+	float RamRecoilDuration = 1.0f;
+
+	/**
+	 *  Poids du bateau (Galion > Brigantin > Sloop > Jolly Ship) : en avançant contre un bateau plus léger, il le pousse et garde
+	 *  Poids / (Poids + celui de l'autre) de son avancée ; contre un bateau aussi lourd ou plus lourd, il s'arrête
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Collision", meta=(ClampMin="0.1"))
+	float Weight = 1.0f;
+
+	/** Serveur : ce bateau en éperonne un autre (« À l'abordage ») : dégâts, puis abordage si le point percuté est abordable, sinon recul */
 	void HandleRamImpact(AYSPirateShip* Target);
+
+	/** Serveur : déplacement From -> To bloqué par Other plus léger : Other est poussé, OutMotion = déplacement réduit ; faux = pas de poussée */
+	bool TryPushShip(AYSPirateShip* Other, const FYSShipMotion& From, const FYSShipMotion& To, FYSShipMotion& OutMotion);
 
 	/** Abordage : la chaloupe qui percute la coque près d'un poste à 0 PV (mesuré sur la coque, en face du poste) peut aborder */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding", meta=(ClampMin="0", Units="Centimeters"))
@@ -551,6 +569,13 @@ private:
 
 	/** Pilote qui éperonne (dégâts attribués) */
 	TWeakObjectPtr<AController> RamInstigator;
+
+	/** Bateau déjà éperonné pendant ce contact ; fin du recul (temps du monde, serveur) */
+	TWeakObjectPtr<AYSPirateShip> LastRamTarget;
+	double RamRecoilEndTime = -1.0e6;
+
+	/** Première poussée loguée */
+	bool bPushLogged = false;
 
 	/** Voiles : calculé par le serveur (CanSailNow), appliqué sur chaque machine (visibilité des formes) */
 	UPROPERTY(Replicated)

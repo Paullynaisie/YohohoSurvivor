@@ -410,9 +410,9 @@ public:
 	UFUNCTION(Exec)
 	void YSSpawnGalion();
 
-	/** Debug (hôte) : le Galion le plus proche, placé à Distance devant la proue du bateau du joueur, en travers (test des collisions) */
+	/** Debug (hôte) : le Galion (Jolly = 1 : un Jolly Ship) le plus proche, placé à Distance devant la proue du bateau du joueur, en travers (test des collisions, de la poussée) */
 	UFUNCTION(Exec)
-	void YSPlaceGalionAhead(float Distance = 500.0f);
+	void YSPlaceGalionAhead(float Distance = 500.0f, int32 Jolly = 0);
 
 	/** Debug (hôte) : téléporte le joueur sur le pont du Galion le plus proche (0) ou sur l'accès de son flanc (1) */
 	UFUNCTION(Exec)

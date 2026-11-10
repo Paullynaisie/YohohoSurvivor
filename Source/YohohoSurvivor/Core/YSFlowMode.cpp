@@ -1022,7 +1022,8 @@ bool AYSFlowMode::TakeNightSetup(const AYSIsland* NightIsland, FRandomStream& Rn
 	{
 		for (int32 K = 0; K < Entry.Count; ++K)
 		{
-			UClass* Class = Entry.RandomFoeClasses.Num() > 0 ? Entry.RandomFoeClasses[Rng.RandRange(0, Entry.RandomFoeClasses.Num() - 1)].Get() : Entry.FoeClass.Get();
+			// duo d'élites ou de boss : un de chaque (Skull et Gun) tant que possible
+			UClass* Class = Entry.PickClass(Rng, &OutClasses);
 			if (Class)
 			{
 				OutClasses.Add(Class);
@@ -1163,7 +1164,8 @@ void AYSFlowMode::UpdateCoreBoatStock()
 
 bool AYSFlowMode::IsStockedCoreBoat(const AYSInteractiveObject* Object) const
 {
-	return StocksCoreBoats() && Object && Object->IsA(BoatCoreItemClass) && !Object->IsDelivered();
+	// (pas le CoreBoat de l'île de départ : il fait passer au sloop directement)
+	return StocksCoreBoats() && Object && Object->IsA(BoatCoreItemClass) && !Object->IsDelivered() && !(Island && Island->IsObjectiveItem(Object));
 }
 
 bool AYSFlowMode::IsZoneItem(const AYSInteractiveObject* Object) const

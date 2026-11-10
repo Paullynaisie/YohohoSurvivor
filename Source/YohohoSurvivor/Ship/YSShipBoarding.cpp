@@ -59,6 +59,12 @@ FVector AYSShipBoarding::GetInteractLocation(const FVector& From) const
 	return GetActorTransform().TransformPosition(Clamped);
 }
 
+FVector AYSShipBoarding::GetInteractPriorityLocation(const FVector& From) const
+{
+	const FVector Local = GetActorTransform().InverseTransformPosition(From);
+	return GetActorTransform().TransformPosition(FVector(0.0f, FMath::Clamp(Local.Y, -AccessHalfWidth, AccessHalfWidth), 0.0f));
+}
+
 void AYSShipBoarding::Interact(AYSPlayerCharacter* Character)
 {
 	if (!HasAuthority() || !CanInteract(Character))

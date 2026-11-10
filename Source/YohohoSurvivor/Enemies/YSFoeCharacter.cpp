@@ -1333,6 +1333,53 @@ UPrimitiveComponent* AYSFoeCharacter::GetHurtbox() const
 	return BodyMesh;
 }
 
+void AYSFoeCharacter::RecomputeStats()
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (ForcedLevel != INDEX_NONE)
+	{
+		Level = FMath::Max(0, ForcedLevel);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau imposé %d (%.0f PV)"), *GetName(), Level, (BaseHealth + HealthPerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * HealthMultiplier);
+	}
+	else if (bLevelFromDay && YSGameState)
+	{
+		Level = FMath::Max(0, YSGameState->GetDayNumber() + LevelFromDayOffset);
+	}
+	if (LevelBonus != 0)
+	{
+		Level = FMath::Max(0, Level + LevelBonus);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau +%d -> %d"), *GetName(), LevelBonus, Level);
+	}
+
+	// statistiques du niveau (MaxHealth est répliqué pour les barres de vie) ; PV selon le nombre de joueurs de la partie
+	const AYSGameMode* YSGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	const FYSPlayerCountScaling PlayerScaling = YSGameMode ? YSGameMode->GetPlayerCountScaling() : FYSPlayerCountScaling();
+	const float PlayerHealthMultiplier = bIsElite ? PlayerScaling.EliteHealthMultiplier : PlayerScaling.HealthMultiplier;
+	PlayerCountHealthMultiplier = PlayerHealthMultiplier;
+	ScaledMaxRage = FMath::RoundToFloat(MaxRage * (bScaleRageWithPlayerCount ? PlayerCountHealthMultiplier : 1.0f));
+	MaxHealth = FMath::RoundToFloat((BaseHealth + HealthPerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * HealthMultiplier * PlayerHealthMultiplier);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau %d, %.0f PV (x%.2f pour %d joueur(s)), %.1f XP"), *GetName(), Level, MaxHealth, PlayerHealthMultiplier,
+		YSGameMode ? YSGameMode->GetPlayersInMatchCount() : 0, GetExperienceReward());
+	ContactDamage = (BaseContactDamage + ContactDamagePerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * DamageMultiplier;
+}
+
+void AYSFoeCharacter::RescaleStats(const TCHAR* Reason)
+{
+	if (!HasAuthority() || IsDying() || Health <= 0.0f)
+	{
+		return;
+	}
+	// même proportion de PV avec les nouvelles statistiques (jour en cours, nombre de joueurs)
+	const float Ratio = MaxHealth > 0.0f ? Health / MaxHealth : 1.0f;
+	const int32 OldLevel = Level;
+	const float OldMax = MaxHealth;
+	RecomputeStats();
+	Health = FMath::Max(1.0f, FMath::RoundToFloat(MaxHealth * Ratio));
+	OnRep_Health();
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSFoe] %s : stats recalculées (%s) : niveau %d -> %d, PV max %.0f -> %.0f"), *GetName(), Reason, OldLevel, Level, OldMax, MaxHealth);
+}
+
 void AYSFoeCharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -1396,31 +1443,7 @@ void AYSFoeCharacter::BeginPlay()
 		ApplyWeaponClasses();
 
 		AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
-		if (ForcedLevel != INDEX_NONE)
-		{
-			Level = FMath::Max(0, ForcedLevel);
-			UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau imposé %d (%.0f PV)"), *GetName(), Level, (BaseHealth + HealthPerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * HealthMultiplier);
-		}
-		else if (bLevelFromDay && YSGameState)
-		{
-			Level = FMath::Max(0, YSGameState->GetDayNumber() + LevelFromDayOffset);
-		}
-		if (LevelBonus != 0)
-		{
-			Level = FMath::Max(0, Level + LevelBonus);
-			UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau +%d -> %d"), *GetName(), LevelBonus, Level);
-		}
-
-		// statistiques du niveau (MaxHealth est répliqué pour les barres de vie) ; PV selon le nombre de joueurs de la partie
-		const AYSGameMode* YSGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
-		const FYSPlayerCountScaling PlayerScaling = YSGameMode ? YSGameMode->GetPlayerCountScaling() : FYSPlayerCountScaling();
-		const float PlayerHealthMultiplier = bIsElite ? PlayerScaling.EliteHealthMultiplier : PlayerScaling.HealthMultiplier;
-		PlayerCountHealthMultiplier = PlayerHealthMultiplier;
-		ScaledMaxRage = FMath::RoundToFloat(MaxRage * (bScaleRageWithPlayerCount ? PlayerCountHealthMultiplier : 1.0f));
-		MaxHealth = FMath::RoundToFloat((BaseHealth + HealthPerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * HealthMultiplier * PlayerHealthMultiplier);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau %d, %.0f PV (x%.2f pour %d joueur(s)), %.1f XP"), *GetName(), Level, MaxHealth, PlayerHealthMultiplier,
-			YSGameMode ? YSGameMode->GetPlayersInMatchCount() : 0, GetExperienceReward());
-		ContactDamage = (BaseContactDamage + ContactDamagePerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * DamageMultiplier;
+		RecomputeStats();
 		Health = MaxHealth;
 
 		if (bIsElite && YSGameState && !CrewShip)

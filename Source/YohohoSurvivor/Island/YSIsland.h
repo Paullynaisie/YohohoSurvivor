@@ -316,6 +316,19 @@ private:
 	/** Îles de la partie 2 : bateau des joueurs échoué devant la plage -> bloqué à quai jusqu'à la fin de l'évacuation (serveur) */
 	void TickDocking();
 
+public:
+
+	/** L'objet a été posé par un des objectifs de l'île (serveur) */
+	bool IsObjectiveItem(const AYSInteractiveObject* Object) const
+	{
+		return Object && Objectives.ContainsByPredicate([Object](const FYSIslandObjectiveState& State) { return State.Item == Object; });
+	}
+
+private:
+
+	/** Bord de l'eau (coordonnées de l'île) en allant de FromLocal vers le centre de l'île */
+	FVector2f FindShorePointToward(const FVector2f& FromLocal) const;
+
 	/** Texte de l'objectif « ramène » : objets des objectifs principaux restants (Find Objective Format), sinon Find Text */
 	FText BuildFindText() const;
 

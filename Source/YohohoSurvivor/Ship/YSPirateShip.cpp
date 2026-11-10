@@ -221,7 +221,7 @@ FVector AYSPirateShip::GetHullCenter() const
 void AYSPirateShip::SetRamming(bool bInRamming, AController* InInstigator)
 {
 	// pas d'abordage d'un bateau immobilisé (sommeil, abordé, hors d'usage, qui coule)
-	const bool bRamming = bInRamming && !bDormant && !bGrappled && !bDisabled && !IsSinking();
+	const bool bRamming = bInRamming && !bDormant && !bGrappled && !bDisabled && !IsSinking() && GetWorld()->GetTimeSeconds() >= RamRecoilEndTime;
 	if (!HasAuthority() || Motion.bRamming == bRamming)
 	{
 		return;
@@ -250,7 +250,48 @@ void AYSPirateShip::HandleRamImpact(AYSPirateShip* Target)
 	{
 		SetRamming(false);
 		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : point abordable, phase d'abordage de %s"), *GetName(), *Target->GetName());
+		return;
 	}
+	// pas de planche : le bateau est repoussé en arrière, « À l'abordage » indisponible un moment (demande de Paul du 2026-11-10)
+	Motion.bRamming = false;
+	Motion.Speed = -RamRecoilSpeed;
+	Motion.YawRate = 0.0f;
+	RamRecoilEndTime = GetWorld()->GetTimeSeconds() + RamRecoilDuration;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : pas d'abordage, repoussé (%.0f cm/s en arrière, abordage bloqué %.1f s)"), *GetName(), RamRecoilSpeed, RamRecoilDuration);
+}
+
+bool AYSPirateShip::TryPushShip(AYSPirateShip* Other, const FYSShipMotion& From, const FYSShipMotion& To, FYSShipMotion& OutMotion)
+{
+	if (!HasAuthority() || !IsValid(Other) || Other->IsSinking() || Other->bGrappled || Weight <= Other->Weight)
+	{
+		return false;
+	}
+	// le plus lourd garde Weight / (Weight + l'autre) de son avancée et pousse l'autre d'autant
+	const float Fraction = Weight / FMath::Max(Weight + Other->Weight, KINDA_SMALL_NUMBER);
+	const FVector Delta = (To.Location - From.Location) * FVector(1.0f, 1.0f, 0.0f) * Fraction;
+	if (Delta.IsNearlyZero(0.01f))
+	{
+		return false;
+	}
+	FYSShipMotion OtherNext = Other->Motion;
+	OtherNext.Location += Delta;
+	if (Other->FindBlockingShip(Other->Motion, OtherNext) || (!Other->IsOnPlaytestAutoPilot() && !Other->CanMoveHull(Other->Motion, OtherNext)))
+	{
+		return false;
+	}
+	Other->Motion.Location = OtherNext.Location;
+	Other->SetActorLocation(FVector(OtherNext.Location.X, OtherNext.Location.Y, Other->GetActorLocation().Z));
+	Other->ForceNetUpdate();
+	OutMotion = To;
+	OutMotion.Location = From.Location + Delta;
+	UE_LOG(LogTemp, VeryVerbose, TEXT("[YSShip] %s (poids %.1f) pousse %s (poids %.1f) de %.1f cm"), *GetName(), Weight, *Other->GetName(), Other->Weight, Delta.Size());
+	if (!bPushLogged)
+	{
+		bPushLogged = true;
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s (poids %.1f) pousse %s (poids %.1f), avance x%.2f"), *GetName(), Weight, *Other->GetName(), Other->Weight, Fraction);
+	}
+	return true;
 }
 
 bool AYSPirateShip::IsHullGrounded() const
@@ -996,6 +1037,34 @@ void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 		StepMotion(Next, Step);
 		// fond trop haut (plage, ponton) ou autre bateau : le bateau s'arrête net ; il peut toujours repartir vers l'eau profonde / se dégager
 		AYSPirateShip* BlockingShip = FindBlockingShip(Motion, Next);
+
+		// « À l'abordage » : premier contact avec un bateau (même un plus léger qu'il pousse) = éperonnage (dégâts, abordage ou recul)
+		if (!BlockingShip)
+		{
+			LastRamTarget.Reset();
+		}
+		else if (Motion.bRamming && LastRamTarget.Get() != BlockingShip)
+		{
+			LastRamTarget = BlockingShip;
+			HandleRamImpact(BlockingShip);
+			if (!IsValid(this) || IsActorBeingDestroyed() || bGrappled)
+			{
+				break;
+			}
+			// recul : l'état a changé, ce pas est refait avec la nouvelle vitesse
+			Remaining += Step;
+			continue;
+		}
+
+		// poids : un bateau plus lourd pousse le plus léger (Galion > Brigantin > Sloop > Jolly Ship), en ralentissant
+		FYSShipMotion Pushed;
+		if (BlockingShip && TryPushShip(BlockingShip, Motion, Next, Pushed) && (!bCheckHull || CanMoveHull(Motion, Pushed)))
+		{
+			Motion = Pushed;
+			bGrounded = false;
+			continue;
+		}
+
 		const bool bBlocked = BlockingShip || (bCheckHull && !CanMoveHull(Motion, Next));
 		if (bBlocked)
 		{
@@ -1024,11 +1093,6 @@ void AYSPirateShip::TickServerMotion(float DeltaSeconds)
 				ForceNetUpdate();
 				if (BlockingShip)
 				{
-					// « À l'abordage » : éperonnage (dégâts, abordage si possible)
-					if (Motion.bRamming)
-					{
-						HandleRamImpact(BlockingShip);
-					}
 					OnShipCollision(BlockingShip);
 				}
 				else

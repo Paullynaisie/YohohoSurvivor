@@ -2324,8 +2324,8 @@ void AYSPlayerCharacter::UpdateCursorCamera(float DeltaSeconds)
 			Target = AimDirection.GetSafeNormal2D() * Station->GetCameraOffsetDistance();
 		}
 		const AYSPirateShip* Ship = Station->IsCameraOnShip() ? Station->GetShip() : nullptr;
-		// centre de la coque (pas l'origine du Blueprint, ni le poste)
-		HelmCameraOffset = Ship ? Ship->GetHullCenter() - GetActorLocation() : FVector::ZeroVector;
+		// centrée sur le bateau (son origine ; demande de Paul du 2026-11-10 : comme avant le centre de coque)
+		HelmCameraOffset = Ship ? Ship->GetActorLocation() - GetActorLocation() : FVector::ZeroVector;
 		HelmCameraOffset.Z = 0.0f;
 		HelmCameraArmLength = Station->GetCameraArmLength();
 		HelmCameraInterpSpeed = Station->GetCameraInterpSpeed();
@@ -2364,12 +2364,40 @@ void AYSPlayerCharacter::UpdateShipCamera(float DeltaSeconds)
 		bCameraFrameOnShip = Ship != nullptr;
 		CameraFrameYaw = FRotator::NormalizeAxis(BoomRotation.Yaw - (Ship ? Ship->GetActorRotation().Yaw : 0.0f));
 		CameraYawError = 0.0f;
+		// (pilote transféré sur un nouveau bateau : il garde le nord en haut)
+		if (bCameraPiloting)
+		{
+			bCameraFrameOnShip = false;
+			CameraFrameYaw = DefaultCameraYaw;
+		}
 		UE_LOG(LogTemp, Log, TEXT("[YSCamera] %s : caméra gardée (yaw %.0f), relative %s %s"), *GetName(), BoomRotation.Yaw, Ship ? TEXT("à") : TEXT("au monde"), Ship ? *Ship->GetName() : TEXT(""));
 	}
 	if (bNorthSeat && (bCameraFrameOnShip || !FMath::IsNearlyEqual(CameraFrameYaw, DefaultCameraYaw)))
 	{
 		bCameraFrameOnShip = false;
 		CameraFrameYaw = DefaultCameraYaw;
+	}
+	// pilote (barre, chaloupe) : nord en haut de l'écran comme avant (demande de Paul du 2026-11-10), en douceur ; en quittant la barre, le
+	// référentiel d'avant revient
+	const bool bPilotingNow = IsValid(CurrentStation) && CurrentStation->UsesPilotInput();
+	if (bPilotingNow != bCameraPiloting)
+	{
+		const float DisplayedYaw = BoomRotation.Yaw;
+		bCameraPiloting = bPilotingNow;
+		if (bPilotingNow)
+		{
+			bSavedCameraFrameOnShip = bCameraFrameOnShip;
+			SavedCameraFrameYaw = CameraFrameYaw;
+			bCameraFrameOnShip = false;
+			CameraFrameYaw = DefaultCameraYaw;
+		}
+		else
+		{
+			bCameraFrameOnShip = bSavedCameraFrameOnShip && CameraShip.IsValid();
+			CameraFrameYaw = bCameraFrameOnShip ? SavedCameraFrameYaw : FRotator::NormalizeAxis(DisplayedYaw);
+		}
+		const float NewTarget = FRotator::NormalizeAxis(CameraFrameYaw + (bCameraFrameOnShip && CameraShip.IsValid() ? CameraShip->GetActorRotation().Yaw : 0.0f));
+		CameraYawError = FRotator::NormalizeAxis(DisplayedYaw - NewTarget);
 	}
 	const AYSPirateShip* FrameShip = bCameraFrameOnShip ? CameraShip.Get() : nullptr;
 	const float TargetYaw = FRotator::NormalizeAxis(CameraFrameYaw + (FrameShip ? FrameShip->GetActorRotation().Yaw : 0.0f));
@@ -3185,8 +3213,11 @@ AYSInteractiveObject* AYSPlayerCharacter::FindInteractTarget() const
 	// le plus proche devant le personnage (regard = direction du curseur), à portée
 	const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
 	const float MinCos = FMath::Cos(FMath::DegreesToRadians(InteractionAngle));
+	// à portée (Get Interact Location), puis le plus proche l'emporte (Get Interact Priority Location ; demande de Paul : un coffre plus
+	// proche passe avant l'accès du bateau)
 	AYSInteractiveObject* Best = nullptr;
-	float BestDistSq = FMath::Square(InteractionDistance);
+	float BestPriorityDistSq = TNumericLimits<float>::Max();
+	const float RangeSq = FMath::Square(InteractionDistance);
 	for (TActorIterator<AYSInteractiveObject> It(World); It; ++It)
 	{
 		AYSInteractiveObject* Object = *It;
@@ -3197,7 +3228,7 @@ AYSInteractiveObject* AYSPlayerCharacter::FindInteractTarget() const
 
 		const FVector ToObject = (Object->GetInteractLocation(GetActorLocation()) - GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
 		const float DistSq = ToObject.SizeSquared();
-		if (DistSq > BestDistSq)
+		if (DistSq > RangeSq)
 		{
 			continue;
 		}
@@ -3208,8 +3239,12 @@ AYSInteractiveObject* AYSPlayerCharacter::FindInteractTarget() const
 			continue;
 		}
 
-		Best = Object;
-		BestDistSq = DistSq;
+		const float PriorityDistSq = FVector::DistSquared2D(Object->GetInteractPriorityLocation(GetActorLocation()), GetActorLocation());
+		if (PriorityDistSq < BestPriorityDistSq)
+		{
+			Best = Object;
+			BestPriorityDistSq = PriorityDistSq;
+		}
 	}
 	return Best;
 }

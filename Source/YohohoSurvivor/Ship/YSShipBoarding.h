@@ -55,6 +55,9 @@ public:
 	/** Point le plus proche de la zone d'accès */
 	virtual FVector GetInteractLocation(const FVector& From) const override;
 
+	/** Priorité entre objets à portée : point le plus proche du flanc (bord de la zone côté bateau) */
+	virtual FVector GetInteractPriorityLocation(const FVector& From) const override;
+
 	/** Zone large le long du flanc : pas besoin de la regarder */
 	virtual bool RequiresFacing() const override { return false; }
 

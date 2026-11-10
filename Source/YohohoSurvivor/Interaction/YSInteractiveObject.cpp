@@ -3,7 +3,9 @@
 #include "Components/WidgetComponent.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/WorldSettings.h"
+#include "Island/YSIsland.h"
 #include "Map/YSOcean.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
@@ -54,6 +56,19 @@ void AYSInteractiveObject::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 
 	DOREPLIFETIME(AYSInteractiveObject, Carrier);
 	DOREPLIFETIME(AYSInteractiveObject, bDelivered);
+	DOREPLIFETIME(AYSInteractiveObject, bIndicatorRevealed);
+}
+
+void AYSInteractiveObject::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	// coffres, postes de combat x1.5, cartes au trésor, boussoles x2 (demande de Paul du 2026-11-10) ; en jeu seulement
+	const UWorld* World = GetWorld();
+	// (un client reçoit l'échelle du serveur à l'apparition de l'acteur répliqué : seulement le serveur, et les objets posés dans la map)
+	if (World && World->IsGameWorld() && !FMath::IsNearlyEqual(ItemScale, 1.0f) && (HasAuthority() || IsNetStartupActor()))
+	{
+		SetActorScale3D(GetActorScale3D() * ItemScale);
+	}
 }
 
 void AYSInteractiveObject::BeginPlay()
@@ -75,6 +90,40 @@ void AYSInteractiveObject::BeginPlay()
 		GetWorldTimerManager().SetTimer(UnderwaterTimer, this, &AYSInteractiveObject::CheckUnderwater, YSInteractiveObject::UnderwaterCheckInterval, true,
 			FMath::FRandRange(0.0f, YSInteractiveObject::UnderwaterCheckInterval));
 	}
+	// bulle révélée à l'approche d'un joueur (serveur)
+	if (HasAuthority() && bShowIndicator && bRevealIndicatorNearby)
+	{
+		GetWorldTimerManager().SetTimer(IndicatorTimer, this, &AYSInteractiveObject::UpdateIndicatorReveal, YSInteractiveObject::UnderwaterCheckInterval, true,
+			FMath::FRandRange(0.0f, YSInteractiveObject::UnderwaterCheckInterval));
+	}
+}
+
+void AYSInteractiveObject::UpdateIndicatorReveal()
+{
+	if (IsActorBeingDestroyed())
+	{
+		return;
+	}
+	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+	const bool bUnderwater = !Carrier && Ocean && GetActorLocation().Z < Ocean->GetSeaLevel() - YSInteractiveObject::UnderwaterTolerance;
+	float NearestSq = TNumericLimits<float>::Max();
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AYSPlayerCharacter* Character = It->Get() ? Cast<AYSPlayerCharacter>(It->Get()->GetPawn()) : nullptr;
+		if (Character && Character->IsAlive())
+		{
+			NearestSq = FMath::Min(NearestSq, static_cast<float>(FVector::DistSquared(Character->GetActorLocation(), GetActorLocation())));
+		}
+	}
+	const bool bRevealed = bUnderwater ? false
+		: bIndicatorRevealed ? NearestSq <= FMath::Square(IndicatorHideDistance)
+		: NearestSq <= FMath::Square(IndicatorRevealDistance);
+	if (bRevealed != bIndicatorRevealed)
+	{
+		bIndicatorRevealed = bRevealed;
+		ForceNetUpdate();
+		UE_LOG(LogTemp, Verbose, TEXT("[YSCarry] %s : bulle %s"), *GetName(), bRevealed ? TEXT("révélée") : bUnderwater ? TEXT("cachée (sous l'eau)") : TEXT("cachée (joueurs trop loin)"));
+	}
 }
 
 void AYSInteractiveObject::CheckUnderwater()
@@ -91,6 +140,14 @@ void AYSInteractiveObject::CheckUnderwater()
 		return;
 	}
 	const AActor* Parent = GetAttachParentActor();
+	// accroché à une île qui coule : il coule avec elle (demande de Paul du 2026-11-10)
+	for (const AActor* Ancestor = Parent; Ancestor; Ancestor = Ancestor->GetAttachParentActor())
+	{
+		if (Ancestor->IsA<AYSIsland>())
+		{
+			return;
+		}
+	}
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 	SetActorLocationAndRotation(FVector(Location.X, Location.Y, Sea), FRotator(0.0f, GetActorRotation().Yaw, 0.0f), false, nullptr, ETeleportType::TeleportPhysics);
 	ForceNetUpdate();

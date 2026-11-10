@@ -160,6 +160,26 @@ void AYSNavalBattle::Activate(const TCHAR* Reason)
 			Jolly->SetDormant(false);
 		}
 	}
+	// capitaines, équipages et coques des chaloupes : statistiques du moment (jour, nombre de joueurs ; demande de Paul du 2026-11-10)
+	TSet<const AYSPirateShip*> Ships;
+	for (const AYSFoeGalion* Galion : Galions)
+	{
+		Ships.Add(Galion);
+	}
+	for (const AYSFoeJollyShip* Jolly : JollyShips)
+	{
+		Ships.Add(Jolly);
+	}
+	int32 Rescaled = 0;
+	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
+	{
+		if (Ships.Contains(It->GetCrewShip()) || Ships.Contains(It->GetRideShip()))
+		{
+			It->RescaleStats(TEXT("bataille navale réveillée"));
+			++Rescaled;
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSNavalBattle] %s : %d NME remis à l'échelle"), *GetName(), Rescaled);
 	UE_LOG(LogTemp, Log, TEXT("[YSNavalBattle] %s activée (%s) : renforts de %d Jolly Ship(s) toutes les %.0f s"), *GetName(), Reason, Settings.ReinforcementJollyShips, Settings.ReinforcementInterval);
 }
 

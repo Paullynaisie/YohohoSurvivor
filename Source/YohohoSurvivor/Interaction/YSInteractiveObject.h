@@ -77,6 +77,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Carry", meta=(ClampMin="0.01"))
 	float FoeAttractionMultiplier = 2.0f;
 
+	/** Échelle de l'objet (appliquée à l'apparition sur chaque machine, en plus de celle du Blueprint ; gardée portée et posée) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Carry", meta=(ClampMin="0.1"))
+	float ItemScale = 1.0f;
+
+	virtual void PostInitializeComponents() override;
+
 	/** Distance devant le porteur où l'objet est reposé */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Carry", meta=(ClampMin="0", Units="Centimeters"))
 	float DropDistance = 100.0f;
@@ -123,6 +129,28 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator", meta=(Units="Centimeters", EditCondition="bShowIndicator"))
 	float IndicatorHeight = 120.0f;
 
+	/**
+	 *  Bulle cachée au départ, révélée (pour tous) quand un joueur vivant passe à moins d Indicator Reveal Distance de l'objet ; de nouveau
+	 *  cachée quand l'objet coule (sous la mer) ou quand tous les joueurs vivants sont à plus d Indicator Hide Distance (demande de Paul)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator", meta=(EditCondition="bShowIndicator"))
+	bool bRevealIndicatorNearby = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator", meta=(ClampMin="0", Units="Centimeters", EditCondition="bShowIndicator && bRevealIndicatorNearby"))
+	float IndicatorRevealDistance = 1000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Interaction|Indicator", meta=(ClampMin="0", Units="Centimeters", EditCondition="bShowIndicator && bRevealIndicatorNearby"))
+	float IndicatorHideDistance = 10000.0f;
+
+	/** Bulle révélée (serveur -> clients) */
+	UPROPERTY(Replicated, Transient)
+	bool bIndicatorRevealed = false;
+
+	FTimerHandle IndicatorTimer;
+
+	/** Serveur, régulièrement : révèle / cache la bulle selon la distance des joueurs et la mer */
+	void UpdateIndicatorReveal();
+
 	/** Joueur qui porte l'objet (nullptr = au sol) */
 	UPROPERTY(ReplicatedUsing=OnRep_Carrier, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Interaction")
 	TObjectPtr<AYSPlayerCharacter> Carrier;
@@ -149,6 +177,12 @@ public:
 
 	/** Point de l'objet le plus proche de From pour la portée d'interaction (défaut : son origine ; accès du bateau : sa zone) */
 	virtual FVector GetInteractLocation(const FVector& From) const { return GetActorLocation(); }
+
+	/**
+	 *  Point qui départage plusieurs objets à portée (le plus proche l'emporte) ; défaut = Get Interact Location ; accès du bateau : le flanc
+	 *  du bateau (sa zone ne compte que pour la portée, sinon il passait toujours avant un coffre voisin)
+	 */
+	virtual FVector GetInteractPriorityLocation(const FVector& From) const { return GetInteractLocation(From); }
 
 	/** Le joueur doit être tourné vers l'objet (cône Interaction Angle) pour interagir */
 	virtual bool RequiresFacing() const { return true; }
@@ -177,7 +211,7 @@ public:
 	int32 GetPhoenixFeatherValue() const { return PhoenixFeatherValue; }
 	bool UpgradesGameBoat() const { return bUpgradesGameBoat; }
 
-	bool ShowsIndicator() const { return bShowIndicator; }
+	bool ShowsIndicator() const { return bShowIndicator && (!bRevealIndicatorNearby || bIndicatorRevealed); }
 	bool ShowsIndicatorOnScreen() const { return bIndicatorOnScreen; }
 	FLinearColor GetIndicatorColor() const { return IndicatorColor; }
 	UTexture2D* GetIndicatorIcon() const { return IndicatorIcon; }

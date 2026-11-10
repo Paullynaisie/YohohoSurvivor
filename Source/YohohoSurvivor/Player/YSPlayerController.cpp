@@ -2770,7 +2770,7 @@ void AYSPlayerController::YSSpawnGalion()
 	}
 }
 
-void AYSPlayerController::YSPlaceGalionAhead(float Distance)
+void AYSPlayerController::YSPlaceGalionAhead(float Distance, int32 Jolly)
 {
 	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
 	const AYSPirateShip* Ship = PlayerCharacter ? PlayerCharacter->GetShipUnderFeet() : nullptr;
@@ -2778,10 +2778,13 @@ void AYSPlayerController::YSPlaceGalionAhead(float Distance)
 	{
 		return;
 	}
-	AYSFoeGalion* Galion = nullptr;
-	for (TActorIterator<AYSFoeGalion> It(GetWorld()); It && !Galion; ++It)
+	AYSPirateShip* Galion = nullptr;
+	for (TActorIterator<AYSPirateShip> It(GetWorld()); It && !Galion; ++It)
 	{
-		Galion = *It;
+		if (Jolly ? It->IsA<AYSFoeJollyShip>() : It->IsA<AYSFoeGalion>())
+		{
+			Galion = *It;
+		}
 	}
 	if (Galion)
 	{

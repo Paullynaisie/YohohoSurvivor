@@ -269,6 +269,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Level", meta=(EditCondition="bLevelFromDay"))
 	int32 LevelFromDayOffset = -1;
 
+	/** Serveur : niveau, PV max, rage max et dégâts de contact d'après le jour et le nombre de joueurs */
+	void RecomputeStats();
+
 	/** Niveau imposé par l'apparition (SetForcedLevel ; INDEX_NONE = niveau normal) */
 	int32 ForcedLevel = INDEX_NONE;
 
@@ -791,6 +794,12 @@ public:
 
 	/** Niveaux en plus du niveau normal (serveur, avant FinishSpawning ; circle spawns répétés de la nuit) */
 	void SetLevelBonus(int32 Bonus) { LevelBonus = Bonus; }
+
+	/** Serveur : niveau, PV max et dégâts recalculés maintenant (jour en cours, nombre de joueurs), même proportion de PV (bataille navale réveillée) */
+	void RescaleStats(const TCHAR* Reason);
+
+	/** Bateau sur lequel il est gardé à un poste (Jolly Ship, canon de Galion), ou nullptr */
+	AYSPirateShip* GetRideShip() const { return ShipRide.bActive ? ShipRide.Ship.Get() : nullptr; }
 
 	bool IsElite() const { return bIsElite; }
 
