@@ -46,6 +46,10 @@ private:
 
 protected:
 
+	/** Prévisus du poste (joueur au poste seulement) ; vide = /Game/Core/Ship/DA_CombatPostPreview */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Preview")
+	TObjectPtr<class UYSCombatPostPreviewData> PreviewData;
+
 	/** Angle max du canon de chaque côté de son alignement d'origine */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon", meta=(ClampMin="0", ClampMax="180", Units="Degrees"))
 	float MaxAimAngle = 45.0f;
@@ -95,6 +99,17 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot")
 	FLinearColor IconTint = FLinearColor::White;
+
+	/**
+	 *  Hauteur de vol des AMMO au-dessus de la mer / du sol (assez bas pour toucher les chaloupes de NME ; au moins le rayon de l'AMMO) ;
+	 *  ex-constante 100
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0", Units="Centimeters"))
+	float ShotHeightAboveWater = 40.0f;
+
+	/** Nom de l'action sous l'icône (clic gauche) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot")
+	FText FireActionName = NSLOCTEXT("YS", "CannonFire", "Tirer");
 
 	/** Recul visuel du fût au tir */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0", Units="Centimeters"))
@@ -148,6 +163,9 @@ public:
 
 	virtual bool GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const override;
 
+	/** Tirer (clic gauche), Démonter (clic droit, poste de combat posé), Réparer (Espace) */
+	virtual void GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSStationActionIcon& OutRight, FYSStationActionIcon& OutSpace) const override;
+
 	/** Secondes avant que le canon soit rechargé */
 	float GetCooldownRemaining() const;
 
@@ -199,6 +217,20 @@ private:
 
 	/** Temps local du dernier tir (recul) */
 	double LastFireTime = -1.0e6;
+
+	/** Prévisus (traits des limites d'angle, remplissage à la couleur du joueur, trait de visée) : seulement chez le joueur au poste */
+	UPROPERTY(Transient)
+	TObjectPtr<class UProceduralMeshComponent> PreviewMesh;
+
+	/** Couleur et angle de visée déjà construits (ne reconstruit qu'aux changements) */
+	FLinearColor BuiltPreviewColor = FLinearColor::Transparent;
+	float BuiltPreviewAimYaw = 1.0e6f;
+
+	/** Joueur local au poste : prévisus construits / mis à jour ; sinon cachés */
+	void UpdatePreview();
+
+	/** Data Asset des prévisus (Preview Data, sinon /Game/Core/Ship/DA_CombatPostPreview) */
+	const class UYSCombatPostPreviewData* GetPreviewData() const;
 
 	FVector BarrelRestLocation = FVector::ZeroVector;
 };

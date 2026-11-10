@@ -99,7 +99,8 @@ void AYSPlayerController::BeginPlay()
 			FGameViewportWidgetSlot ViewportSlot;
 			ViewportSlot.Anchors = FAnchors(0.5f, 1.0f);
 			ViewportSlot.Alignment = FVector2D(0.5f, 1.0f);
-			ViewportSlot.Offsets = FMargin(0.0f, -AbilityIconBottomMargin, AbilityIcon->IconSize, AbilityIcon->IconSize);
+			// la touche au-dessus du carré, le nom en dessous (le bas du nom à Ability Icon Bottom Margin du bas de l'écran)
+			ViewportSlot.Offsets = FMargin(0.0f, -AbilityIconBottomMargin, AbilityIcon->IconSize, AbilityIcon->GetTotalHeight());
 			ViewportSubsystem->AddWidgetForPlayer(AbilityIcon, GetLocalPlayer(), ViewportSlot);
 
 			// attaque auto : à gauche de l'icône d'Ability (bord droit à Auto Attack Icon Spacing de son bord gauche)
@@ -109,7 +110,7 @@ void AYSPlayerController::BeginPlay()
 				FGameViewportWidgetSlot AutoSlot;
 				AutoSlot.Anchors = FAnchors(0.5f, 1.0f);
 				AutoSlot.Alignment = FVector2D(1.0f, 1.0f);
-				AutoSlot.Offsets = FMargin(-(AbilityIcon->IconSize * 0.5f + AutoAttackIconSpacing), -AbilityIconBottomMargin, AutoAttackIcon->IconSize, AutoAttackIcon->IconSize);
+				AutoSlot.Offsets = FMargin(-(AbilityIcon->IconSize * 0.5f + AutoAttackIconSpacing), -AbilityIconBottomMargin, AutoAttackIcon->IconSize, AutoAttackIcon->GetTotalHeight());
 				ViewportSubsystem->AddWidgetForPlayer(AutoAttackIcon, GetLocalPlayer(), AutoSlot);
 			}
 
@@ -120,7 +121,7 @@ void AYSPlayerController::BeginPlay()
 				FGameViewportWidgetSlot MoveSlot;
 				MoveSlot.Anchors = FAnchors(0.5f, 1.0f);
 				MoveSlot.Alignment = FVector2D(0.0f, 1.0f);
-				MoveSlot.Offsets = FMargin(AbilityIcon->IconSize * 0.5f + MoveActionIconSpacing, -AbilityIconBottomMargin, MoveActionIcon->IconSize, MoveActionIcon->IconSize);
+				MoveSlot.Offsets = FMargin(AbilityIcon->IconSize * 0.5f + MoveActionIconSpacing, -AbilityIconBottomMargin, MoveActionIcon->IconSize, MoveActionIcon->GetTotalHeight());
 				ViewportSubsystem->AddWidgetForPlayer(MoveActionIcon, GetLocalPlayer(), MoveSlot);
 			}
 		}
@@ -1545,6 +1546,8 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 		Objective->SetShipLevel(YSGameState->GetShipLevel());
 		Objective->SetPhoenixFeathers(YSGameState->GetPhoenixFeathers());
 		Objective->SetCoreBoats(YSGameState->UsesCoreBoatStock(), YSGameState->GetCoreBoatStock(), YSGameState->GetNextStageCoreBoatCost());
+		const AYSPirateShip* HudGameBoat = YSGameState->GetGameBoat();
+		Objective->SetShipHealth(IsValid(HudGameBoat) && HudGameBoat->GetMaxHealth() > 0.0f, HudGameBoat ? HudGameBoat->GetHealth() : 0.0f, HudGameBoat ? HudGameBoat->GetMaxHealth() : 0.0f);
 		Objective->SetVisibility(YSGameState->IsMatchStarted() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 
@@ -2173,58 +2176,76 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 		}
 	}
 
-	// poste de bateau avec action (canonnerie : tir de canon) : une seule icône, à la place de celles des armes
+	// icônes d'action (touche au-dessus, nom en dessous) : à un poste, celles du poste (clic gauche / clic droit / Espace) ; sinon attaque
+	// auto, Ability, MoveAction, cachées quand ces actions sont désactivées (objet porté, nage ; demande de Paul du 2026-11-10)
 	const AYSPlayerCharacter* StationCharacter = Cast<AYSPlayerCharacter>(GetPawn());
 	const AYSShipStation* Station = StationCharacter ? StationCharacter->GetCurrentStation() : nullptr;
+	const bool bAliveCharacter = StationCharacter && StationCharacter->IsAlive();
 
-	// MoveAction et stamina : cachées sans personnage vivant
-	const UYSRollAbility* MoveAbility = StationCharacter && StationCharacter->IsAlive() ? StationCharacter->GetMoveActionAbility() : nullptr;
-	if (MoveActionIcon)
-	{
-		MoveActionIcon->Refresh(MoveAbility, MoveAbility && MoveAbility->IsActivationBlocked());
-	}
+	// stamina : cachée sans personnage vivant
+	const UYSRollAbility* MoveAbility = bAliveCharacter ? StationCharacter->GetMoveActionAbility() : nullptr;
 	if (StaminaBar)
 	{
 		StaminaBar->Refresh(MoveAbility ? StationCharacter->GetStamina() : 0.0f, MoveAbility ? StationCharacter->GetMaxStamina() : 0.0f, MoveAbility ? MoveAbility->StaminaCost : 0.0f);
 	}
 
-	UTexture2D* StationIcon = nullptr;
-	FLinearColor StationIconTint = FLinearColor::White;
-	float StationRemaining = 0.0f;
-	float StationDuration = 0.0f;
-	if (AbilityIcon && IsValid(Station) && Station->GetActionIcon(StationIcon, StationIconTint, StationRemaining, StationDuration))
+	const auto ApplyAction = [](UYSAbilityIconWidget* Widget, const UYSAbilityComponent* Action, const FText& Key)
 	{
-		AbilityIcon->RefreshCooldown(StationIcon, StationIconTint, StationRemaining, StationDuration);
-		if (AutoAttackIcon)
+		if (Widget)
 		{
-			AutoAttackIcon->Refresh(nullptr);
+			Widget->Refresh(Action, Action && Action->IsActivationBlocked());
+			Widget->SetLabels(Action ? Action->DisplayName : FText::GetEmpty(), Key);
 		}
-	}
-	else if (AbilityIcon)
+	};
+	if (IsValid(Station) && bAliveCharacter)
 	{
-		// icône de l'action de la main principale (droite), sinon de la main gauche
-		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
-		const AYSWeapon* MainWeapon = PlayerCharacter ? PlayerCharacter->GetMainHandWeapon() : nullptr;
-		const AYSWeapon* OffWeapon = PlayerCharacter ? PlayerCharacter->GetOffHandWeapon() : nullptr;
+		FYSStationActionIcon Left, Right, Space;
+		Station->GetStationActionIcons(Left, Right, Space);
+		const auto ApplyStation = [](UYSAbilityIconWidget* Widget, const FYSStationActionIcon& Icon, const FText& Key)
+		{
+			if (!Widget)
+			{
+				return;
+			}
+			if (!Icon.bShow)
+			{
+				Widget->Refresh(nullptr);
+				return;
+			}
+			Widget->RefreshCooldown(Icon.Icon, Icon.Tint, Icon.Remaining, Icon.Duration, Icon.bBlocked);
+			Widget->SetLabels(Icon.Name, Key);
+		};
+		ApplyStation(AutoAttackIcon, Left, LeftClickKeyText);
+		ApplyStation(AbilityIcon, Right, RightClickKeyText);
+		ApplyStation(MoveActionIcon, Space, SpaceKeyText);
+	}
+	else
+	{
+		// MoveAction : pas en portant un objet ni en nageant
+		const bool bMoveActionAvailable = MoveAbility && !StationCharacter->IsCarrying() && !StationCharacter->IsSwimming();
+		ApplyAction(MoveActionIcon, bMoveActionAvailable ? MoveAbility : nullptr, SpaceKeyText);
+
+		// armes rangées (objet porté, nage, réparation du core) : pas d'icônes ; sinon action de la main principale (droite), sinon de la gauche
+		const bool bWeaponsAvailable = bAliveCharacter && !StationCharacter->AreWeaponsStowed();
+		const AYSWeapon* MainWeapon = bWeaponsAvailable ? StationCharacter->GetMainHandWeapon() : nullptr;
+		const AYSWeapon* OffWeapon = bWeaponsAvailable ? StationCharacter->GetOffHandWeapon() : nullptr;
 		UYSAbilityComponent* Action = MainWeapon ? MainWeapon->GetActiveAction() : nullptr;
 		if (!Action && OffWeapon)
 		{
 			Action = OffWeapon->GetActiveAction();
 		}
-		// rechargée mais impossible à lancer (minions au maximum, objet porté, action plus prioritaire) : grisée
-		AbilityIcon->Refresh(Action, Action && Action->IsActivationBlocked());
+		// rechargée mais impossible à lancer (minions au maximum, action plus prioritaire) : grisée
+		ApplyAction(AbilityIcon, Action, RightClickKeyText);
 
 		// attaque auto : même choix de main
-		if (AutoAttackIcon)
+		UYSAbilityComponent* AutoAction = MainWeapon ? MainWeapon->GetAutoAction() : nullptr;
+		if (!AutoAction && OffWeapon)
 		{
-			UYSAbilityComponent* AutoAction = MainWeapon ? MainWeapon->GetAutoAction() : nullptr;
-			if (!AutoAction && OffWeapon)
-			{
-				AutoAction = OffWeapon->GetAutoAction();
-			}
-			AutoAttackIcon->Refresh(AutoAction, AutoAction && AutoAction->IsActivationBlocked());
+			AutoAction = OffWeapon->GetAutoAction();
 		}
+		ApplyAction(AutoAttackIcon, AutoAction, LeftClickKeyText);
 	}
+
 
 	if (BloodlustStacks)
 	{

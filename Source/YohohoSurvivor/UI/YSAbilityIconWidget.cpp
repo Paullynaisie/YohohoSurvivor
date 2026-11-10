@@ -7,6 +7,8 @@
 #include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
+#include "Components/VerticalBox.h"
+#include "Components/VerticalBoxSlot.h"
 #include "Engine/Texture2D.h"
 
 bool UYSAbilityIconWidget::Initialize()
@@ -24,10 +26,34 @@ bool UYSAbilityIconWidget::Initialize()
 
 void UYSAbilityIconWidget::BuildWidgetTree()
 {
+	// colonne : touche, carré de l'icône, nom (textes centrés, ils peuvent déborder du carré)
+	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
+	WidgetTree->RootWidget = Column;
+	auto MakeLabel = [this, Column](const TCHAR* Name, int32 Size, const FLinearColor& Color)
+	{
+		USizeBox* LabelBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		LabelBox->SetHeightOverride(LabelHeight);
+		UVerticalBoxSlot* LabelSlot = Column->AddChildToVerticalBox(LabelBox);
+		LabelSlot->SetHorizontalAlignment(HAlign_Center);
+		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), Name);
+		FSlateFontInfo LabelFont = Label->GetFont();
+		LabelFont.Size = Size;
+		LabelFont.OutlineSettings.OutlineSize = 1;
+		LabelFont.OutlineSettings.OutlineColor = FLinearColor::Black;
+		Label->SetFont(LabelFont);
+		Label->SetColorAndOpacity(FSlateColor(Color));
+		Label->SetJustification(ETextJustify::Center);
+		LabelBox->AddChild(Label);
+		return Label;
+	};
+	KeyLabel = MakeLabel(TEXT("Key"), KeyFontSize, KeyColor);
+
 	USizeBox* Root = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("Root"));
 	Root->SetWidthOverride(IconSize);
 	Root->SetHeightOverride(IconSize);
-	WidgetTree->RootWidget = Root;
+	Column->AddChildToVerticalBox(Root)->SetHorizontalAlignment(HAlign_Center);
+
+	NameLabel = MakeLabel(TEXT("Name"), NameFontSize, NameColor);
 
 	UOverlay* Overlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("Overlay"));
 	Root->AddChild(Overlay);
@@ -100,4 +126,16 @@ void UYSAbilityIconWidget::RefreshCooldown(UTexture2D* Icon, const FLinearColor&
 	CooldownBar->SetFillColorAndOpacity(bShowBlocked ? BlockedColor : CooldownColor);
 	CooldownBar->SetPercent(bShowBlocked ? 1.0f : Duration > 0.0f ? Remaining / Duration : 0.0f);
 	CooldownText->SetText(Remaining > 0.0f ? FText::AsNumber(FMath::CeilToInt(Remaining)) : FText::GetEmpty());
+}
+
+void UYSAbilityIconWidget::SetLabels(const FText& Name, const FText& Key)
+{
+	if (NameLabel && !NameLabel->GetText().EqualTo(Name))
+	{
+		NameLabel->SetText(Name);
+	}
+	if (KeyLabel && !KeyLabel->GetText().EqualTo(Key))
+	{
+		KeyLabel->SetText(Key);
+	}
 }

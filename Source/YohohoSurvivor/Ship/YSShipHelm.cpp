@@ -73,16 +73,14 @@ void AYSShipHelm::Tick(float DeltaSeconds)
 	Ship->SetRamming(bRam, Pilot ? Pilot->GetController() : nullptr);
 }
 
-bool AYSShipHelm::GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const
+void AYSShipHelm::GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSStationActionIcon& OutRight, FYSStationActionIcon& OutSpace) const
 {
-	if (!RamIcon)
-	{
-		return Super::GetActionIcon(OutIcon, OutTint, OutRemaining, OutDuration);
-	}
+	Super::GetStationActionIcons(OutLeft, OutRight, OutSpace);
 	const AYSPirateShip* Ship = GetShip();
-	OutIcon = RamIcon;
-	OutTint = Ship && Ship->IsRamming() ? FLinearColor(1.0f, 0.6f, 0.2f) : FLinearColor::White;
-	OutRemaining = 0.0f;
-	OutDuration = 1.0f;
-	return true;
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	OutLeft.bShow = Ship && Ship->IsDrivable();
+	OutLeft.Icon = RamIcon;
+	OutLeft.Name = RamActionName;
+	OutLeft.Tint = Ship && Ship->IsRamming() ? FLinearColor(1.0f, 0.6f, 0.2f) : FLinearColor::White;
+	OutLeft.bBlocked = !Ship || !Ship->AreSailsDeployed() || (YSGameState && YSGameState->IsHelmLockedFor(Ship));
 }

@@ -1,5 +1,7 @@
 #include "Ship/YSPirateShip.h"
 #include "Components/ChildActorComponent.h"
+#include "Materials/MaterialInterface.h"
+#include "ProceduralMeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/WidgetComponent.h"
@@ -352,6 +354,99 @@ void AYSPirateShip::UpdateSails()
 			Component->SetVisibility(Wanted == 0);
 		}
 	}
+}
+
+void AYSPirateShip::UpdateBoardableOverlay()
+{
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (Now < NextBoardableCheckTime)
+	{
+		return;
+	}
+	NextBoardableCheckTime = Now + 0.2;
+
+	// état : core négatif, postes à 0 PV (positions dans le repère du bateau) ; rien = bande cachée
+	const FBox2D Bounds = GetHullBounds();
+	const bool bAll = Health < 0.0f;
+	TArray<FVector2D> BrokenStations;
+	FString Key;
+	if (bShowBoardableZones && Bounds.bIsValid && GetMaxHealth() > 0.0f && !IsSinking() && IsPresent())
+	{
+		Key = bAll ? TEXT("all") : TEXT("");
+		for (const AYSShipStation* Station : GetStations())
+		{
+			if (!bAll && Station && Station->IsBroken())
+			{
+				const FVector Local = GetActorTransform().InverseTransformPositionNoScale(Station->GetActorLocation());
+				BrokenStations.Add(FVector2D(Local.X, Local.Y));
+				Key += FString::Printf(TEXT("%s;"), *Station->GetName());
+			}
+		}
+	}
+	if (Key == BuiltBoardableKey)
+	{
+		return;
+	}
+	BuiltBoardableKey = Key;
+	if (Key.IsEmpty())
+	{
+		if (BoardableOverlay)
+		{
+			BoardableOverlay->ClearAllMeshSections();
+		}
+		return;
+	}
+	if (!BoardableOverlay)
+	{
+		BoardableOverlay = NewObject<UProceduralMeshComponent>(this, TEXT("BoardableOverlay"));
+		BoardableOverlay->SetupAttachment(GetRootComponent());
+		BoardableOverlay->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		BoardableOverlay->SetCastShadow(false);
+		BoardableOverlay->bUseAsyncCooking = false;
+		BoardableOverlay->RegisterComponent();
+	}
+
+	// tour du rectangle de la coque (comme CanBoardAt), par pas de 50 cm : points abordables, bande verticale entre deux points voisins
+	const FVector2D Corners[4] = { Bounds.Min, FVector2D(Bounds.Max.X, Bounds.Min.Y), Bounds.Max, FVector2D(Bounds.Min.X, Bounds.Max.Y) };
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FLinearColor> Colors;
+	const FLinearColor Color(BoardableColor.R * BoardableEmissive, BoardableColor.G * BoardableEmissive, BoardableColor.B * BoardableEmissive, BoardableColor.A);
+	const FVector2D Center = Bounds.GetCenter();
+	for (int32 Edge = 0; Edge < 4; ++Edge)
+	{
+		const FVector2D A = Corners[Edge];
+		const FVector2D B = Corners[(Edge + 1) % 4];
+		const int32 Steps = FMath::Max(1, FMath::CeilToInt32(FVector2D::Distance(A, B) / 50.0f));
+		bool bPreviousIn = false;
+		FVector2D Previous = A;
+		for (int32 Step = 0; Step <= Steps; ++Step)
+		{
+			const FVector2D Point = FMath::Lerp(A, B, static_cast<float>(Step) / Steps);
+			const bool bIn = bAll || BrokenStations.ContainsByPredicate([this, &Point](const FVector2D& Station)
+			{
+				return FVector2D::DistSquared(Station, Point) <= FMath::Square(BoardingStationRadius);
+			});
+			if (bIn && bPreviousIn)
+			{
+				// un peu hors de la coque, vers l'extérieur du rectangle
+				const FVector2D Out = (FMath::Lerp(Previous, Point, 0.5f) - Center).GetSafeNormal();
+				const FVector2D Normal = FMath::Abs(Out.X) * Bounds.GetExtent().Y > FMath::Abs(Out.Y) * Bounds.GetExtent().X ? FVector2D(FMath::Sign(Out.X), 0.0f) : FVector2D(0.0f, FMath::Sign(Out.Y));
+				const FVector2D P0 = Previous + Normal * BoardableOutset;
+				const FVector2D P1 = Point + Normal * BoardableOutset;
+				const int32 Base = Vertices.Num();
+				Vertices.Append({ FVector(P0.X, P0.Y, BoardableBottom), FVector(P1.X, P1.Y, BoardableBottom), FVector(P1.X, P1.Y, BoardableTop), FVector(P0.X, P0.Y, BoardableTop) });
+				Colors.Append({ Color, Color, Color, Color });
+				Triangles.Append({ Base, Base + 1, Base + 2, Base, Base + 2, Base + 3 });
+			}
+			bPreviousIn = bIn;
+			Previous = Point;
+		}
+	}
+	BoardableOverlay->CreateMeshSection_LinearColor(0, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
+	UMaterialInterface* Material = BoardableMaterial ? BoardableMaterial.Get() : LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Core/Ship/M_ShipPreview.M_ShipPreview"));
+	BoardableOverlay->SetMaterial(0, Material);
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : zones abordables affichées (%s, %d morceau(x))"), *GetName(), bAll ? TEXT("toute la coque, core négatif") : *FString::Printf(TEXT("%d poste(s) à 0 PV"), BrokenStations.Num()), Triangles.Num() / 6);
 }
 
 void AYSPirateShip::SetGrappled(bool bInGrappled)
@@ -725,6 +820,7 @@ void AYSPirateShip::Tick(float DeltaSeconds)
 		}
 	}
 	UpdateSails();
+	UpdateBoardableOverlay();
 
 	// coulé : il descend, plus de pilotage
 	if (IsSinking())
@@ -1403,8 +1499,8 @@ void AYSPirateShip::RepairCore(float DeltaSeconds)
 	{
 		return;
 	}
-	Health = FMath::Min(Health + CoreRepairPerSecond * DeltaSeconds, CoreRepairMaxHealth);
-	if (Health >= CoreRepairMaxHealth)
+	Health = FMath::Min(Health + CoreRepairPerSecond * DeltaSeconds, GetMaxHealth());
+	if (bDisabled && Health >= CoreRepairMaxHealth)
 	{
 		// de retour dans le positif : le bateau est de nouveau utilisable (ses postes à 0 PV se réparent comme avant)
 		bDisabled = false;

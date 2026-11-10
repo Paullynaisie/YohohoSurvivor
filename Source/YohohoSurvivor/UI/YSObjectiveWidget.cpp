@@ -41,6 +41,32 @@ void UYSObjectiveWidget::BuildWidgetTree()
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
 	WidgetTree->RootWidget = Column;
 
+	// PV du bateau des joueurs (entre le chronomètre, au-dessus, et les doublons)
+	ShipHealthBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ShipHealthBox"));
+	ShipHealthBox->SetWidthOverride(ShipHealthBarSize.X);
+	ShipHealthBox->SetHeightOverride(ShipHealthBarSize.Y);
+	ShipHealthBox->SetVisibility(ESlateVisibility::Collapsed);
+	UVerticalBoxSlot* ShipSlot = Column->AddChildToVerticalBox(ShipHealthBox);
+	ShipSlot->SetHorizontalAlignment(HAlign_Right);
+	ShipSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ShipHealthSpacing));
+	UOverlay* ShipOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+	ShipHealthBox->AddChild(ShipOverlay);
+	ShipHealthBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("ShipHealthBar"));
+	FProgressBarStyle ShipStyle = ShipHealthBar->GetWidgetStyle();
+	ShipStyle.BackgroundImage.TintColor = FSlateColor(BarBackgroundColor);
+	ShipStyle.FillImage.TintColor = FSlateColor(FLinearColor::White);
+	ShipHealthBar->SetWidgetStyle(ShipStyle);
+	ShipHealthBar->SetFillColorAndOpacity(ShipHealthColor);
+	ShipHealthBar->SetBarFillType(EProgressBarFillType::RightToLeft);
+	UOverlaySlot* ShipBarSlot = ShipOverlay->AddChildToOverlay(ShipHealthBar);
+	ShipBarSlot->SetHorizontalAlignment(HAlign_Fill);
+	ShipBarSlot->SetVerticalAlignment(VAlign_Fill);
+	ShipHealthLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShipHealth"));
+	YSObjective::StyleText(ShipHealthLabel, ShipHealthFontSize);
+	UOverlaySlot* ShipLabelSlot = ShipOverlay->AddChildToOverlay(ShipHealthLabel);
+	ShipLabelSlot->SetHorizontalAlignment(HAlign_Center);
+	ShipLabelSlot->SetVerticalAlignment(VAlign_Center);
+
 	TitleLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
 	YSObjective::StyleText(TitleLabel, TitleFontSize);
 	TitleLabel->SetText(Title);
@@ -90,6 +116,27 @@ void UYSObjectiveWidget::BuildWidgetTree()
 	CoreBoatSlot->SetPadding(FMargin(0.0f, CoreBoatSpacing, 0.0f, 0.0f));
 
 	SetProgress(0, 0);
+}
+
+void UYSObjectiveWidget::SetShipHealth(bool bVisible, float Health, float MaxHealth)
+{
+	if (!ShipHealthBox)
+	{
+		return;
+	}
+	ShipHealthBox->SetVisibility(bVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	const int32 Rounded = FMath::RoundToInt32(Health);
+	const int32 RoundedMax = FMath::RoundToInt32(MaxHealth);
+	if (!bVisible || (Rounded == DisplayedShipHealth && RoundedMax == DisplayedShipMaxHealth))
+	{
+		return;
+	}
+	DisplayedShipHealth = Rounded;
+	DisplayedShipMaxHealth = RoundedMax;
+	const bool bNegative = Health < 0.0f;
+	ShipHealthBar->SetFillColorAndOpacity(bNegative ? ShipNegativeHealthColor : ShipHealthColor);
+	ShipHealthBar->SetPercent(MaxHealth > 0.0f ? FMath::Clamp(FMath::Abs(Health) / MaxHealth, 0.0f, 1.0f) : 0.0f);
+	ShipHealthLabel->SetText(FText::Format(ShipHealthFormat, FText::AsNumber(Rounded), FText::AsNumber(RoundedMax)));
 }
 
 void UYSObjectiveWidget::SetCoreBoats(bool bVisible, int32 Stock, int32 NextCost)

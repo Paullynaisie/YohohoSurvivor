@@ -197,17 +197,46 @@ float AYSShipStation::GetRepairRemaining() const
 	return MaxHealth > 0.0f ? FMath::Max(0.0f, (MaxHealth - Health) / MaxHealth * RepairDuration) : 0.0f;
 }
 
+void AYSShipStation::GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSStationActionIcon& OutRight, FYSStationActionIcon& OutSpace) const
+{
+	// clic droit : démontage d'un poste de combat posé (barre de progression pendant le démontage), sinon l'icône du poste
+	if (HostReceptacle && CombatPostItemClass)
+	{
+		OutRight.bShow = true;
+		OutRight.Icon = DismountIcon;
+		OutRight.Name = DismountActionName;
+		OutRight.bBlocked = IsBroken() || IsRepairing();
+		if (IsBeingDismounted())
+		{
+			const AGameStateBase* GameState = GetWorld()->GetGameState();
+			const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+			OutRight.Duration = HostReceptacle->GetDismountHoldDuration();
+			OutRight.Remaining = FMath::Max(0.0f, static_cast<float>(DismountEndServerTime - Now));
+		}
+	}
+	else
+	{
+		OutRight.bShow = GetActionIcon(OutRight.Icon, OutRight.Tint, OutRight.Remaining, OutRight.Duration);
+	}
+	// Espace : réparation (secondes pour finir pendant qu'on répare ; grisée aux PV max ou pendant un démontage)
+	if (bTakesDamage)
+	{
+		OutSpace.bShow = true;
+		OutSpace.Icon = RepairIcon;
+		OutSpace.Name = RepairActionName;
+		OutSpace.bBlocked = Health >= MaxHealth || IsBeingDismounted();
+		if (IsRepairing())
+		{
+			OutSpace.Remaining = GetRepairRemaining();
+			OutSpace.Duration = RepairDuration;
+		}
+	}
+}
+
 bool AYSShipStation::GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const
 {
-	if (!IsRepairing())
-	{
-		return false;
-	}
-	OutIcon = RepairIcon;
-	OutTint = FLinearColor::White;
-	OutRemaining = GetRepairRemaining();
-	OutDuration = RepairDuration;
-	return true;
+	// (la réparation a son icône à Espace : GetStationActionIcons)
+	return false;
 }
 
 void AYSShipStation::UpdateWork(float DeltaSeconds)

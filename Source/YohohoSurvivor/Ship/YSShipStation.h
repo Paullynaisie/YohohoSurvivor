@@ -43,6 +43,18 @@ enum class EYSStationWork : uint8
 	Dismount
 };
 
+/** Icône d'une action du poste en bas de l'écran (une par touche : clic gauche, clic droit, Espace) */
+struct FYSStationActionIcon
+{
+	bool bShow = false;
+	UTexture2D* Icon = nullptr;
+	FLinearColor Tint = FLinearColor::White;
+	FText Name;
+	float Remaining = 0.0f;
+	float Duration = 0.0f;
+	bool bBlocked = false;
+};
+
 /** Action envoyée par le joueur à son poste */
 UENUM()
 enum class EYSStationAction : uint8
@@ -151,9 +163,19 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", Units="s", EditCondition="bTakesDamage"))
 	float RepairDuration = 10.0f;
 
-	/** Icône pendant la réparation (en bas de l'écran) */
+	/** Icône de l'action « Réparer » (Espace, en bas de l'écran) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(EditCondition="bTakesDamage"))
 	TObjectPtr<UTexture2D> RepairIcon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Action Icons")
+	FText RepairActionName = NSLOCTEXT("YS", "StationRepair", "Réparer");
+
+	/** Poste de combat posé : icône et nom de l'action « Démonter » (clic droit maintenu) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Action Icons")
+	TObjectPtr<UTexture2D> DismountIcon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Action Icons")
+	FText DismountActionName = NSLOCTEXT("YS", "StationDismount", "Démonter");
 
 	UPROPERTY(ReplicatedUsing=OnRep_Health, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Station|Health")
 	float Health = 0.0f;
@@ -307,6 +329,12 @@ public:
 
 	/** Icône d'action du poste (en bas de l'écran, à la place de celles des armes) : faux = pas d'icône */
 	virtual bool GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const;
+
+	/**
+	 *  Icônes des actions du poste à la place de celles des armes, une par touche (clic gauche / clic droit / Espace) ; défaut : Get Action
+	 *  Icon au clic droit, réparer à Espace si le module a des PV, démonter au clic droit d'un poste de combat posé
+	 */
+	virtual void GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSStationActionIcon& OutRight, FYSStationActionIcon& OutSpace) const;
 
 	float GetHealth() const { return Health; }
 	float GetMaxHealth() const { return MaxHealth; }

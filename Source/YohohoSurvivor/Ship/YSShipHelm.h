@@ -32,14 +32,17 @@ public:
 	/** Serveur : « À l'abordage » tant que le pilote maintient le clic gauche (barre pas verrouillée) */
 	virtual void Tick(float DeltaSeconds) override;
 
-	/** Icône « À l'abordage » en bas de l'écran (vide = pas d'icône) */
-	virtual bool GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const override;
+	/** Icône « À l'abordage » (clic gauche) en bas de l'écran */
+	virtual void GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSStationActionIcon& OutRight, FYSStationActionIcon& OutSpace) const override;
 
 protected:
 
-	/** Icône de l'action « À l'abordage » (clic gauche maintenu) */
+	/** Icône et nom de l'action « À l'abordage » (clic gauche maintenu) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Helm")
 	TObjectPtr<UTexture2D> RamIcon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Helm")
+	FText RamActionName = NSLOCTEXT("YS", "HelmRam", "À l'abordage");
 
 
 	/** Personne à la barre : le bateau garde son élan et ralentit seul */

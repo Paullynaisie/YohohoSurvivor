@@ -86,7 +86,31 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|CoreBoat")
 	float CoreBoatSpacing = 2.0f;
 
+	/** PV du bateau des joueurs, au-dessus des doublons ({0} = PV, {1} = PV max) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ship Health")
+	FText ShipHealthFormat = NSLOCTEXT("YS", "ObjectiveShipHealth", "Bateau : {0} / {1}");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ship Health", meta=(ClampMin="1"))
+	int32 ShipHealthFontSize = 14;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ship Health")
+	FVector2D ShipHealthBarSize = FVector2D(320.0f, 22.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ship Health")
+	FLinearColor ShipHealthColor = FLinearColor(0.85f, 0.15f, 0.12f);
+
+	/** PV négatifs (bateau hors d'usage) : barre de cette couleur, remplie d'autant */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ship Health")
+	FLinearColor ShipNegativeHealthColor = FLinearColor(0.35f, 0.05f, 0.4f);
+
+	/** Espace entre la jauge des PV et le titre des doublons */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Ship Health")
+	float ShipHealthSpacing = 8.0f;
+
 	virtual bool Initialize() override;
+
+	/** PV du bateau des joueurs (bVisible faux = cachée : pas de bateau) */
+	void SetShipHealth(bool bVisible, float Health, float MaxHealth);
 
 	void SetProgress(int32 Doubloons, int32 Goal);
 
@@ -115,6 +139,18 @@ private:
 	TObjectPtr<UTextBlock> FeatherLabel;
 
 	int32 DisplayedFeathers = INDEX_NONE;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class USizeBox> ShipHealthBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UProgressBar> ShipHealthBar;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ShipHealthLabel;
+
+	int32 DisplayedShipHealth = MIN_int32;
+	int32 DisplayedShipMaxHealth = MIN_int32;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> CoreBoatLabel;

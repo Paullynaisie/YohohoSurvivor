@@ -91,6 +91,16 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	float MoveActionIconSpacing = 16.0f;
 
+	/** Touches affichées au-dessus des icônes d'action (attaque auto / poste : clic gauche ; Ability : clic droit ; MoveAction / réparer : Espace) */
+	UPROPERTY(EditAnywhere, Category="UI|Action Keys")
+	FText LeftClickKeyText = NSLOCTEXT("YS", "KeyLeftClick", "Clic G");
+
+	UPROPERTY(EditAnywhere, Category="UI|Action Keys")
+	FText RightClickKeyText = NSLOCTEXT("YS", "KeyRightClick", "Clic D");
+
+	UPROPERTY(EditAnywhere, Category="UI|Action Keys")
+	FText SpaceKeyText = NSLOCTEXT("YS", "KeySpace", "Espace");
+
 	/** Barre de stamina (sous les icônes) : Widget Blueprint enfant de YSStaminaBarWidget (WBP_StaminaBar, réglages Layout) ; vide = classe C++ */
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSStaminaBarWidget> StaminaBarClass;

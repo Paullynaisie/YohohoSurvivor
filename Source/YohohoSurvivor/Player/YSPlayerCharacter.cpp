@@ -2364,11 +2364,11 @@ void AYSPlayerCharacter::UpdateShipCamera(float DeltaSeconds)
 		bCameraFrameOnShip = Ship != nullptr;
 		CameraFrameYaw = FRotator::NormalizeAxis(BoomRotation.Yaw - (Ship ? Ship->GetActorRotation().Yaw : 0.0f));
 		CameraYawError = 0.0f;
-		// (pilote transféré sur un nouveau bateau : il garde le nord en haut)
+		// (pilote transféré sur un nouveau bateau : sa caméra reste figée)
 		if (bCameraPiloting)
 		{
 			bCameraFrameOnShip = false;
-			CameraFrameYaw = DefaultCameraYaw;
+			CameraFrameYaw = FRotator::NormalizeAxis(BoomRotation.Yaw);
 		}
 		UE_LOG(LogTemp, Log, TEXT("[YSCamera] %s : caméra gardée (yaw %.0f), relative %s %s"), *GetName(), BoomRotation.Yaw, Ship ? TEXT("à") : TEXT("au monde"), Ship ? *Ship->GetName() : TEXT(""));
 	}
@@ -2377,8 +2377,8 @@ void AYSPlayerCharacter::UpdateShipCamera(float DeltaSeconds)
 		bCameraFrameOnShip = false;
 		CameraFrameYaw = DefaultCameraYaw;
 	}
-	// pilote (barre, chaloupe) : nord en haut de l'écran comme avant (demande de Paul du 2026-11-10), en douceur ; en quittant la barre, le
-	// référentiel d'avant revient
+	// pilote (barre, chaloupe) : la caméra se fige à son angle du moment, relative au monde (le bateau tourne dessous, comme si le joueur
+	// n'était pas à bord ; demande de Paul du 2026-11-10) ; en quittant la barre, le référentiel d'avant revient
 	const bool bPilotingNow = IsValid(CurrentStation) && CurrentStation->UsesPilotInput();
 	if (bPilotingNow != bCameraPiloting)
 	{
@@ -2389,7 +2389,7 @@ void AYSPlayerCharacter::UpdateShipCamera(float DeltaSeconds)
 			bSavedCameraFrameOnShip = bCameraFrameOnShip;
 			SavedCameraFrameYaw = CameraFrameYaw;
 			bCameraFrameOnShip = false;
-			CameraFrameYaw = DefaultCameraYaw;
+			CameraFrameYaw = FRotator::NormalizeAxis(DisplayedYaw);
 		}
 		else
 		{
@@ -3568,6 +3568,20 @@ void AYSPlayerCharacter::DebugStationAction(uint8 Action, const FVector& AimLoca
 	if (FMath::IsNearlyZero(Aim.X) && FMath::IsNearlyZero(Aim.Y) && IsValid(CurrentStation))
 	{
 		Aim = CurrentStation->GetActorLocation() + CurrentStation->GetActorForwardVector().GetSafeNormal2D() * 2000.0f;
+	}
+	// (1, 1) : bateau de NME le plus proche
+	else if (FMath::IsNearlyEqual(Aim.X, 1.0f) && FMath::IsNearlyEqual(Aim.Y, 1.0f))
+	{
+		float BestDistSq = TNumericLimits<float>::Max();
+		for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
+		{
+			const float DistSq = FVector::DistSquared2D(It->GetActorLocation(), GetActorLocation());
+			if (It->IsFoeShip() && DistSq < BestDistSq)
+			{
+				BestDistSq = DistSq;
+				Aim = It->GetActorLocation();
+			}
+		}
 	}
 	if (HasAuthority())
 	{

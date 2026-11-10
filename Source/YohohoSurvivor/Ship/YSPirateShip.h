@@ -249,11 +249,11 @@ protected:
 	float SinkCollisionOffDepth = 700.0f;
 
 	/**
-	 *  Réparation du core en négatif (bateau des joueurs hors d'usage) : E au core, chaque joueur qui répare rend Core Repair Per Second PV
-	 *  par seconde (cumulés à plusieurs), jusqu'à Core Repair Max Health (juste positif : le bateau redevient utilisable) ; partir garde les PV rendus
+	 *  Réparation du core (bateau des joueurs abîmé, hors d'usage compris) : E au core, chaque joueur qui répare rend Core Repair Per Second PV
+	 *  par seconde (cumulés à plusieurs), jusqu'aux PV max ; repassé au-dessus de Core Repair Max Health, un bateau hors d'usage redevient utilisable ; partir garde les PV rendus
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Repair", meta=(ClampMin="0"))
-	float CoreRepairPerSecond = 10.0f;
+	float CoreRepairPerSecond = 50.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Repair", meta=(ClampMin="1"))
 	float CoreRepairMaxHealth = 1.0f;
@@ -313,6 +313,34 @@ protected:
 	/** « À l'abordage » : dégâts au bateau percuté (core ; coque d'un Jolly Ship) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="0"))
 	float RamDamage = 500.0f;
+
+	/**
+	 *  Zones abordables (demande de Paul du 2026-11-10) : bande rouge mi-émissive sur la coque là où l'autre camp peut aborder (toute la
+	 *  coque si le core est négatif, sinon en face des postes à 0 PV, à Boarding Station Radius près ; même règle que CanBoardAt), sur
+	 *  toutes les machines ; matériau = couleur des sommets (vide : /Game/Core/Ship/M_ShipPreview)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding Preview")
+	bool bShowBoardableZones = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding Preview", meta=(EditCondition="bShowBoardableZones"))
+	TObjectPtr<UMaterialInterface> BoardableMaterial;
+
+	/** Couleur (alpha = opacité) ; Boardable Emissive = intensité (mi-émissif) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding Preview", meta=(EditCondition="bShowBoardableZones"))
+	FLinearColor BoardableColor = FLinearColor(1.0f, 0.06f, 0.04f, 0.55f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding Preview", meta=(ClampMin="0", EditCondition="bShowBoardableZones"))
+	float BoardableEmissive = 0.6f;
+
+	/** Bande : du bas (sous la ligne de flottaison) au haut (au-dessus du pont), décalée de Boardable Outset hors de la coque */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding Preview", meta=(Units="Centimeters", EditCondition="bShowBoardableZones"))
+	float BoardableBottom = -40.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding Preview", meta=(Units="Centimeters", EditCondition="bShowBoardableZones"))
+	float BoardableTop = 260.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Boarding Preview", meta=(Units="Centimeters", EditCondition="bShowBoardableZones"))
+	float BoardableOutset = 25.0f;
 
 	/** « À l'abordage » sans abordage (pas de planche) : le bateau est repoussé en arrière à cette vitesse... */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="0", Units="CentimetersPerSecond"))
@@ -461,7 +489,7 @@ public:
 	void SinkAtSea(const TCHAR* Reason);
 
 	/** Core réparable (E au core) : bateau des joueurs hors d'usage, sous Core Repair Max Health, pas en train de couler */
-	bool CanRepairCore() const { return !IsFoeShip() && bDisabled && !IsSinking() && Health < CoreRepairMaxHealth; }
+	bool CanRepairCore() const { return !IsFoeShip() && !IsSinking() && Health < GetMaxHealth(); }
 
 	/** Un joueur répare le core pendant DeltaSeconds (serveur) : bateau de nouveau utilisable une fois à Core Repair Max Health */
 	void RepairCore(float DeltaSeconds);
@@ -576,6 +604,16 @@ private:
 
 	/** Première poussée loguée */
 	bool bPushLogged = false;
+
+	/** Zones abordables affichées (local) : maillage, état construit (core négatif, postes à 0 PV), prochaine vérification */
+	UPROPERTY(Transient)
+	TObjectPtr<class UProceduralMeshComponent> BoardableOverlay;
+
+	FString BuiltBoardableKey;
+	double NextBoardableCheckTime = 0.0;
+
+	/** Chaque machine : reconstruit la bande des zones abordables quand elles changent */
+	void UpdateBoardableOverlay();
 
 	/** Voiles : calculé par le serveur (CanSailNow), appliqué sur chaque machine (visibilité des formes) */
 	UPROPERTY(Replicated)

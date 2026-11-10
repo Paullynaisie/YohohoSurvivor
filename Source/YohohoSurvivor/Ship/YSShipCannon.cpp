@@ -1,4 +1,8 @@
 #include "Ship/YSShipCannon.h"
+#include "Core/YSGameState.h"
+#include "Core/YSPlayerState.h"
+#include "ProceduralMeshComponent.h"
+#include "Ship/YSCombatPostPreviewData.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSGameplayTags.h"
 #include "Engine/StaticMesh.h"
@@ -16,11 +20,6 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Weapons/YSProjectile.h"
 
-namespace YSShipCannon
-{
-	/** Hauteur de vol des CanonAMMO au-dessus du sol / de la mer (comme une balle tirée à hauteur de main) */
-	constexpr float ShotHeightAboveGround = 100.0f;
-}
 
 AYSShipCannon::AYSShipCannon()
 {
@@ -151,6 +150,9 @@ void AYSShipCannon::Tick(float DeltaSeconds)
 	const float Elapsed = static_cast<float>(GetWorld()->GetTimeSeconds() - LastFireTime);
 	const float Kick = Elapsed < RecoilDuration ? FMath::InterpEaseOut(1.0f, 0.0f, Elapsed / RecoilDuration, 2.0f) : 0.0f;
 	CannonBarrel->SetRelativeLocation(BarrelRestLocation - FVector(RecoilDistance * Kick, 0.0f, 0.0f));
+
+	// prévisus du joueur au poste (local)
+	UpdatePreview();
 }
 
 void AYSShipCannon::ServerHandleAction(AYSPlayerCharacter* Character, EYSStationAction Action, const FVector& AimLocation)
@@ -247,7 +249,7 @@ void AYSShipCannon::SpawnVolley(APawn* Shooter, float BaseYaw, bool bFoeShooter)
 			continue;
 		}
 		Projectile->SetDamage(Damage);
-		Projectile->SetFlightOverrides(Ship ? static_cast<AActor*>(Ship) : this, YSShipCannon::ShotHeightAboveGround);
+		Projectile->SetFlightOverrides(Ship ? static_cast<AActor*>(Ship) : this, ShotHeightAboveWater);
 		Projectile->SetShipShot(FGameplayTagContainer(bFoeShooter ? YSTags::Team_Player : YSTags::Team_Foe));
 		Projectile->FinishSpawning(SpawnTransform);
 	}
@@ -380,14 +382,151 @@ bool AYSShipCannon::IsAimedAt(const AActor* Target) const
 
 bool AYSShipCannon::GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, float& OutRemaining, float& OutDuration) const
 {
-	// réparation en cours : icône de réparation (temps pour finir)
-	if (IsRepairing())
-	{
-		return Super::GetActionIcon(OutIcon, OutTint, OutRemaining, OutDuration);
-	}
 	OutIcon = Icon;
 	OutTint = IconTint;
 	OutRemaining = GetCooldownRemaining();
 	OutDuration = Cooldown;
 	return true;
+}
+
+void AYSShipCannon::GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSStationActionIcon& OutRight, FYSStationActionIcon& OutSpace) const
+{
+	// clic gauche : tirer ; clic droit : démonter (poste de combat posé) ; Espace : réparer
+	Super::GetStationActionIcons(OutLeft, OutRight, OutSpace);
+	if (OutRight.Name.IsEmpty() && OutRight.Icon == Icon)
+	{
+		OutRight = FYSStationActionIcon();
+	}
+	OutLeft.bShow = true;
+	OutLeft.Icon = Icon;
+	OutLeft.Tint = IconTint;
+	OutLeft.Name = FireActionName;
+	OutLeft.Remaining = GetCooldownRemaining();
+	OutLeft.Duration = Cooldown;
+	OutLeft.bBlocked = !IsUsable() || IsWorking();
+}
+
+const UYSCombatPostPreviewData* AYSShipCannon::GetPreviewData() const
+{
+	if (PreviewData)
+	{
+		return PreviewData;
+	}
+	static TWeakObjectPtr<UYSCombatPostPreviewData> DefaultData;
+	if (!DefaultData.IsValid())
+	{
+		DefaultData = LoadObject<UYSCombatPostPreviewData>(nullptr, TEXT("/Game/Core/Ship/DA_CombatPostPreview.DA_CombatPostPreview"));
+	}
+	return DefaultData.Get();
+}
+
+namespace YSCannonPreview
+{
+	/** Trait plat (deux triangles) de Start à End, de la largeur donnée, à la hauteur Z */
+	void AddLine(TArray<FVector>& Vertices, TArray<int32>& Triangles, TArray<FLinearColor>& Colors, const FVector2D& Start, const FVector2D& End, float Width, float Z, const FLinearColor& Color)
+	{
+		const FVector2D Direction = (End - Start).GetSafeNormal();
+		const FVector2D Side(-Direction.Y * Width * 0.5f, Direction.X * Width * 0.5f);
+		const int32 Base = Vertices.Num();
+		for (const FVector2D& Point : { Start - Side, Start + Side, End + Side, End - Side })
+		{
+			Vertices.Add(FVector(Point.X, Point.Y, Z));
+			Colors.Add(Color);
+		}
+		Triangles.Append({ Base, Base + 1, Base + 2, Base, Base + 2, Base + 3 });
+	}
+}
+
+void AYSShipCannon::UpdatePreview()
+{
+	// seulement chez le joueur installé au poste
+	const AYSPlayerCharacter* User = GetOccupant();
+	const UYSCombatPostPreviewData* Data = GetPreviewData();
+	const bool bShow = Data && User && User->IsLocallyControlled() && User->IsPlayerControlled();
+	if (!bShow)
+	{
+		if (PreviewMesh && PreviewMesh->IsVisible())
+		{
+			PreviewMesh->SetVisibility(false);
+			BuiltPreviewColor = FLinearColor::Transparent;
+			BuiltPreviewAimYaw = 1.0e6f;
+		}
+		return;
+	}
+	if (!PreviewMesh)
+	{
+		PreviewMesh = NewObject<UProceduralMeshComponent>(this, TEXT("CombatPostPreview"));
+		PreviewMesh->SetupAttachment(GetRootComponent());
+		PreviewMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		PreviewMesh->SetCastShadow(false);
+		PreviewMesh->bUseAsyncCooking = false;
+		PreviewMesh->SetTranslucentSortPriority(100);
+		PreviewMesh->RegisterComponent();
+	}
+	PreviewMesh->SetVisibility(true);
+
+	// couleur du joueur (personnalisation)
+	FLinearColor PlayerColor = FLinearColor::White;
+	const AYSPlayerState* State = User->GetPlayerState<AYSPlayerState>();
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (State && YSGameState && YSGameState->GetCustomizationColors().IsValidIndex(State->GetColorIndex()))
+	{
+		PlayerColor = YSGameState->GetCustomizationColors()[State->GetColorIndex()].ButtonColor;
+	}
+
+	// repère du poste (+X = alignement d'origine), depuis le pivot du canon
+	const FVector Pivot = CannonPivot->GetRelativeLocation();
+	const FVector2D Origin(Pivot.X, Pivot.Y);
+	const float Z = Data->HeightOffset;
+	const auto Dir = [](float YawDegrees) { return FVector2D(FMath::Cos(FMath::DegreesToRadians(YawDegrees)), FMath::Sin(FMath::DegreesToRadians(YawDegrees))); };
+
+	// section 0 : remplissage (couleur du joueur, estompé avec la distance) et traits des limites d'angle
+	if (!PlayerColor.Equals(BuiltPreviewColor))
+	{
+		BuiltPreviewColor = PlayerColor;
+		TArray<FVector> Vertices;
+		TArray<int32> Triangles;
+		TArray<FLinearColor> Colors;
+		const int32 Segments = FMath::Max(Data->FillAngleSegments, 2);
+		const int32 Rings = FMath::Max(Data->FillRings, 1);
+		for (int32 Ring = 0; Ring <= Rings; ++Ring)
+		{
+			const float Ratio = static_cast<float>(Ring) / Rings;
+			const float Alpha = Data->FillStartAlpha * FMath::Pow(1.0f - Ratio, Data->FillFadeExponent);
+			for (int32 Segment = 0; Segment <= Segments; ++Segment)
+			{
+				const FVector2D Point = Origin + Dir(FMath::Lerp(-MaxAimAngle, MaxAimAngle, static_cast<float>(Segment) / Segments)) * Data->FillFadeDistance * Ratio;
+				Vertices.Add(FVector(Point.X, Point.Y, Z - 1.0f));
+				Colors.Add(FLinearColor(PlayerColor.R, PlayerColor.G, PlayerColor.B, Alpha));
+			}
+		}
+		for (int32 Ring = 0; Ring < Rings; ++Ring)
+		{
+			for (int32 Segment = 0; Segment < Segments; ++Segment)
+			{
+				const int32 A = Ring * (Segments + 1) + Segment;
+				const int32 B = A + Segments + 1;
+				Triangles.Append({ A, B, B + 1, A, B + 1, A + 1 });
+			}
+		}
+		for (const float Side : { -MaxAimAngle, MaxAimAngle })
+		{
+			YSCannonPreview::AddLine(Vertices, Triangles, Colors, Origin, Origin + Dir(Side) * Data->AngleLineLength, Data->AngleLineWidth, Z, Data->AngleLineColor);
+		}
+		PreviewMesh->CreateMeshSection_LinearColor(0, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
+		PreviewMesh->SetMaterial(0, Data->Material);
+	}
+
+	// section 1 : trait de visée (là où le prochain tir partira)
+	const float AimYaw = GetTargetAimYaw();
+	if (!FMath::IsNearlyEqual(AimYaw, BuiltPreviewAimYaw, 0.05f))
+	{
+		BuiltPreviewAimYaw = AimYaw;
+		TArray<FVector> Vertices;
+		TArray<int32> Triangles;
+		TArray<FLinearColor> Colors;
+		YSCannonPreview::AddLine(Vertices, Triangles, Colors, Origin, Origin + Dir(AimYaw) * Data->AimLineLength, Data->AimLineWidth, Z + 1.0f, Data->AimLineColor);
+		PreviewMesh->CreateMeshSection_LinearColor(1, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
+		PreviewMesh->SetMaterial(1, Data->Material);
+	}
 }

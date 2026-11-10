@@ -147,14 +147,19 @@ void AYSProjectile::BeginPlay()
 			It->GetAttachedActors(Attached, true, true);
 			for (AActor* Actor : Attached)
 			{
-				Collision->IgnoreActorWhenMoving(Actor, true);
+				// (pas les personnages à bord : équipage et coque des chaloupes de NME, à toucher)
+				if (!Actor->IsA<APawn>())
+				{
+					Collision->IgnoreActorWhenMoving(Actor, true);
+				}
 			}
 		}
 	}
 
 	// relief : hauteur au-dessus du sol prise au tir, gardée pendant tout le vol (même calcul sur toutes les machines)
 	float GroundZ = 0.0f;
-	if (bFollowGround && FindGroundZ(FVector2D(GetActorLocation().X, GetActorLocation().Y), GetActorLocation().Z, 0.0f, YSProjectile::InitialGroundSearch, GroundZ))
+	// (hauteur imposée, AMMO de canon : suivi du relief même sans Follow Ground, sinon elles passaient au-dessus des chaloupes)
+	if ((bFollowGround || ForcedHeightAboveGround >= 0.0f) && FindGroundZ(FVector2D(GetActorLocation().X, GetActorLocation().Y), GetActorLocation().Z, 0.0f, YSProjectile::InitialGroundSearch, GroundZ))
 	{
 		// hauteur mesurée depuis le sol sous les pieds du tireur, pas sous le canon : face à une descente, le sol sous le canon
 		// (devant lui) est plus bas et la balle partait trop haut pour tout le vol
@@ -196,6 +201,13 @@ bool AYSProjectile::FindGroundZ(const FVector2D& Point, float ReferenceZ, float 
 	const FVector End(Point.X, Point.Y, ReferenceZ - MaxStepDown);
 	if (!GetWorld()->LineTraceSingleByObjectType(Hit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params))
 	{
+		// mer profonde (fond hors de portée) : la surface de la mer sert de sol si elle est dans la recherche
+		const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+		if (Ocean && Ocean->GetSeaLevel() <= Start.Z && Ocean->GetSeaLevel() >= End.Z)
+		{
+			OutGroundZ = Ocean->GetSeaLevel();
+			return true;
+		}
 		return false;
 	}
 	// au-dessus de l'eau, la balle reste au-dessus de la surface au lieu de suivre le fond

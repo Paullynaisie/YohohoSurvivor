@@ -122,6 +122,23 @@ public:
 	/** Clic gauche : ping au point visé ; clic droit : ping retiré */
 	virtual void ServerHandleAction(AYSPlayerCharacter* Character, EYSStationAction Action, const FVector& AimLocation) override;
 
+	/** Icônes : Ping (clic gauche), Retirer le ping (clic droit) */
+	virtual void GetStationActionIcons(FYSStationActionIcon& OutLeft, FYSStationActionIcon& OutRight, FYSStationActionIcon& OutSpace) const override
+	{
+		Super::GetStationActionIcons(OutLeft, OutRight, OutSpace);
+		OutLeft.bShow = true;
+		OutLeft.Name = PingActionName;
+		OutRight.bShow = true;
+		OutRight.Name = ClearPingActionName;
+		OutRight.bBlocked = !Ping.bActive;
+	}
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Crow's Nest|Ping")
+	FText PingActionName = NSLOCTEXT("YS", "NestPing", "Ping");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Crow's Nest|Ping")
+	FText ClearPingActionName = NSLOCTEXT("YS", "NestClearPing", "Retirer le ping");
+
 	/** Ping en cours (toutes machines) : point de l'icône et joueur qui l'a placé */
 	bool GetActivePing(FVector& OutLocation, APlayerState*& OutPinger) const;
 
