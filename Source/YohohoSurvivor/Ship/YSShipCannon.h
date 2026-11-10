@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Ship/YSShipStation.h"
+#include "Weapons/YSPlayerBomb.h"
 #include "YSShipCannon.generated.h"
 
 class AYSFoeCharacter;
@@ -89,6 +90,27 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0.01", Units="s", EditCondition="ShotsPerBurst > 1"))
 	float BurstInterval = 0.1f;
 
+	/**
+	 *  Explosion à l'impact (canon : 750 de dégâts sur 7.5 m ; vide = pas d'explosion) : sur tout ce que l'AMMO touche et au bout de sa course ;
+	 *  joueurs et minions touchés quand le tireur est un NME
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Explosion")
+	TSubclassOf<class AYSPlayerBomb> ExplosionClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Explosion", meta=(ClampMin="0", EditCondition="ExplosionClass != nullptr"))
+	float ExplosionDamage = 750.0f;
+
+	/** Rayon de l'explosion (remplace celui de la bombe) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Explosion", meta=(ClampMin="1", Units="Centimeters", EditCondition="ExplosionClass != nullptr"))
+	float ExplosionRadius = 750.0f;
+
+	/**
+	 *  Joueur ou minion au poste : dégâts (AMMO et explosion) x (1 + ceci x niveau de l'équipe) ; un passif peut le remplacer (Maître canonnier :
+	 *  0.1). NME au poste : le Galion donne son multiplicateur (Post Damage Per Day)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Scaling", meta=(ClampMin="0"))
+	float DamagePerPlayerLevel = 0.05f;
+
 	/** Recharge x ce multiplicateur quand le tireur n'est pas un joueur (NME, minion du Captain) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon|Shot", meta=(ClampMin="0"))
 	float NonPlayerCooldownMultiplier = 2.0f;
@@ -145,7 +167,40 @@ protected:
 
 	virtual const TCHAR* GetLogTag() const override { return TEXT("[YSCannon]"); }
 
+	/** Un tir : Ammo Per Shot AMMO en éventail autour de BaseYaw, depuis la bouche (serveur) ; mortier : obus en cloche vers Last Aim Location */
+	virtual void SpawnVolley(APawn* Shooter, float BaseYaw, bool bFoeShooter);
+
+	/** De quoi tirer (AMMO ; mortier : obus) */
+	virtual bool HasShotClass() const;
+
+	/** Portée du tir automatique (minion, NME) */
+	virtual float GetAutoFireRange() const;
+
+	/** Prévisu de la visée (section 1, repère du poste) : un trait par AMMO ; mortier : cercle de l'explosion */
+	virtual void BuildAimPreview(TArray<FVector>& Vertices, TArray<int32>& Triangles, TArray<FLinearColor>& Colors, const FVector2D& Origin, float Z,
+		const class UYSCombatPostPreviewData* Data, float AimYaw) const;
+
+	/** Clé de reconstruction de la prévisu de visée (angle ; mortier : angle et distance) */
+	virtual float GetAimPreviewKey() const;
+
+	/** Point visé du dernier tir (Fire) */
+	FVector LastAimLocation = FVector::ZeroVector;
+
+	/** Angle (relatif, limité) vers un point du monde */
+	float ComputeAimYaw(const FVector& WorldTarget) const;
+
+	/** Angle (relatif, limité) vers le regard de l'occupant */
+	float GetTargetAimYaw() const;
+
+	USceneComponent* GetMuzzle() const { return Muzzle; }
+	USceneComponent* GetCannonPivot() const { return CannonPivot; }
+
 public:
+
+	virtual bool IsCombatPost() const override { return true; }
+
+	/** Dégâts de ses tirs x ce multiplicateur pour ce tireur (niveau de l'équipe pour un joueur / minion, jours écoulés pour un NME) */
+	float GetShotDamageMultiplier(const APawn* Shooter, bool bFoeShooter) const;
 
 	AYSShipCannon();
 
@@ -189,17 +244,8 @@ private:
 	/** Angle du canon par rapport à son alignement d'origine (affiché), et celui visé */
 	float CurrentAimYaw = 0.0f;
 
-	/** Angle (relatif, limité) vers un point du monde */
-	float ComputeAimYaw(const FVector& WorldTarget) const;
-
-	/** Angle (relatif, limité) vers le regard de l'occupant */
-	float GetTargetAimYaw() const;
-
 	/** NME au canon (serveur) : cible, visée, tir */
 	void UpdateFoeFire(float DeltaSeconds);
-
-	/** Un tir : Ammo Per Shot AMMO en éventail autour de BaseYaw, depuis la bouche (serveur) */
-	void SpawnVolley(APawn* Shooter, float BaseYaw, bool bFoeShooter);
 
 	/** Tir suivant de la rafale (serveur, timer) : vers la visée actuelle du canon */
 	void FireNextBurstShot();
@@ -236,4 +282,60 @@ private:
 	const class UYSCombatPostPreviewData* GetPreviewData() const;
 
 	FVector BarrelRestLocation = FVector::ZeroVector;
+};
+
+/**
+ *  Poste de combat « Mortier » : comme le canon (visée au curseur dans l'angle du poste), mais tire un obus (Shell Class, AYSPlayerBomb lancée
+ *  en cloche) qui atterrit au point visé en Flight Duration et explose (rayon de la bombe, ex. 15 m ; Damage x scaling du poste). Portée
+ *  Min Range..Max Range (35 m). Prévisu : cercle de l'explosion sous le curseur.
+ */
+UCLASS(meta=(PrioritizeCategories="Mortar Cannon Station Interaction"))
+class AYSShipMortar : public AYSShipCannon
+{
+	GENERATED_BODY()
+
+protected:
+
+	/** Obus (bombe lancée, explose en touchant le sol / l'eau) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mortar")
+	TSubclassOf<class AYSPlayerBomb> ShellClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mortar", meta=(ClampMin="0.1", Units="s"))
+	float FlightDuration = 4.0f;
+
+	/** Sommet de la cloche au-dessus du plus haut des deux points */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mortar", meta=(ClampMin="0", Units="Centimeters"))
+	float ApexHeight = 2000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mortar", meta=(ClampMin="0", Units="Centimeters"))
+	float MinRange = 500.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Mortar", meta=(ClampMin="0", Units="Centimeters"))
+	float MaxRange = 3500.0f;
+
+	virtual void SpawnVolley(APawn* Shooter, float BaseYaw, bool bFoeShooter) override;
+
+	virtual bool HasShotClass() const override { return ShellClass != nullptr; }
+
+	virtual float GetAutoFireRange() const override { return MaxRange; }
+
+	virtual void BuildAimPreview(TArray<FVector>& Vertices, TArray<int32>& Triangles, TArray<FLinearColor>& Colors, const FVector2D& Origin, float Z,
+		const class UYSCombatPostPreviewData* Data, float AimYaw) const override;
+
+	virtual float GetAimPreviewKey() const override;
+
+	virtual const TCHAR* GetLogTag() const override { return TEXT("[YSMortar]"); }
+
+public:
+
+	/** Point d'impact pour un point visé : angle du poste, distance entre Min Range et Max Range, à la surface (sol ou mer) */
+	FVector ComputeShellTarget(const FVector& Desired) const;
+
+	/** Rayon de l'explosion de l'obus */
+	float GetShellRadius() const;
+
+private:
+
+	/** Point visé par le joueur local au poste (prévisu) */
+	FVector GetLocalAimTarget() const;
 };

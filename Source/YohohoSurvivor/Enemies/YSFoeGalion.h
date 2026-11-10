@@ -39,6 +39,30 @@ class AYSFoeGalion : public AYSPirateShip
 
 protected:
 
+	/** PV max du Galion = Base Ship Health + Ship Health Per Day x jours écoulés (jour 1 : 0), recalculés à son réveil (bataille navale) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Scaling", meta=(ClampMin="0"))
+	float BaseShipHealth = 5000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Scaling", meta=(ClampMin="0"))
+	float ShipHealthPerDay = 5000.0f;
+
+	/** Dégâts de ses postes de combat x (1 + ceci x jours écoulés) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Scaling", meta=(ClampMin="0"))
+	float PostDamagePerDay = 0.1f;
+
+public:
+
+	/** Jours écoulés depuis le jour 1 */
+	int32 GetElapsedDays() const;
+
+	/** Multiplicateur des dégâts de ses postes de combat (selon les jours écoulés) */
+	float GetPostDamageMultiplier() const { return 1.0f + PostDamagePerDay * GetElapsedDays(); }
+
+	/** PV max recalculés selon les jours écoulés (serveur) */
+	void ApplyDayScaling(const TCHAR* Reason);
+
+protected:
+
 	/** Capitaine (élite) : à la barre, seul à piloter */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
 	TSubclassOf<AYSFoeCharacter> CaptainClass;

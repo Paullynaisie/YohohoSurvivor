@@ -24,6 +24,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Passive", meta=(MultiLine="true"))
 	FText Description;
 
+	/**
+	 *  Au poste de combat d'un bateau : dégâts + cette part par niveau d'équipe, à la place du réglage du poste (Damage Per Player Level,
+	 *  0.05) ; négatif = celui du poste. Maître canonnier (Cannoneer) : 0.1
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Passive")
+	float CombatPostDamagePerLevel = -1.0f;
+
 	/** Stamina consommée en portant un objet ou en nageant x ce multiplicateur */
 	virtual float GetPassiveStaminaCostMultiplier() const { return 1.0f; }
 

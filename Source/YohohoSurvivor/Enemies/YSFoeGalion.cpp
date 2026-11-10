@@ -1,4 +1,5 @@
 #include "Enemies/YSFoeGalion.h"
+#include "Core/YSGameState.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/ChildActorComponent.h"
 #include "Enemies/YSEnemySpawnRule.h"
@@ -11,6 +12,7 @@
 #include "Player/YSPlayerCharacter.h"
 #include "Ship/YSBoardingPlank.h"
 #include "Ship/YSLongboat.h"
+#include "Ship/YSCombatPost.h"
 #include "Ship/YSShipCannon.h"
 #include "Ship/YSShipHelm.h"
 
@@ -46,8 +48,29 @@ AYSFoeGalion::AYSFoeGalion(const FObjectInitializer& ObjectInitializer)
 	bDrivable = true;
 }
 
+int32 AYSFoeGalion::GetElapsedDays() const
+{
+	const AYSGameState* YSGameState = GetWorld() ? GetWorld()->GetGameState<AYSGameState>() : nullptr;
+	return YSGameState ? FMath::Max(0, YSGameState->GetDayNumber() - 1) : 0;
+}
+
+void AYSFoeGalion::ApplyDayScaling(const TCHAR* Reason)
+{
+	if (HasAuthority())
+	{
+		const int32 Days = GetElapsedDays();
+		SetScaledMaxHealth(BaseShipHealth + ShipHealthPerDay * Days);
+		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s (%s) : %d jour(s) écoulé(s) -> %.0f PV max, postes de combat x%.2f"), *GetName(), Reason, Days, GetMaxHealth(), GetPostDamageMultiplier());
+	}
+}
+
 void AYSFoeGalion::BeginPlay()
 {
+	// PV selon le jour, avant que le bateau ne prenne ses PV max
+	if (HasAuthority())
+	{
+		ScaledMaxHealth = BaseShipHealth + ShipHealthPerDay * GetElapsedDays();
+	}
 	Super::BeginPlay();
 
 	if (HasAuthority())
@@ -257,6 +280,8 @@ void AYSFoeGalion::ActivateBattle(float InRamDelay)
 		return;
 	}
 	SetDormant(false);
+	// le jour a pu avancer pendant son sommeil
+	ApplyDayScaling(TEXT("réveil"));
 	BattleActivationTime = GetWorld()->GetTimeSeconds();
 	if (InRamDelay >= 0.0f)
 	{
@@ -480,7 +505,16 @@ AYSShipStation* AYSFoeGalion::GetSeatStation(int32 Seat) const
 		const TArray<UChildActorComponent*, TInlineAllocator<8>> Cannons = GetCannonComponents();
 		Component = Cannons.IsValidIndex(Seat - 1) ? Cannons[Seat - 1] : nullptr;
 	}
-	return Component ? Cast<AYSShipStation>(Component->GetChildActor()) : nullptr;
+	if (!Component)
+	{
+		return nullptr;
+	}
+	// réceptacle à poste de combat (postes tirés au hasard) : le poste posé dessus
+	if (const AYSCombatPostReceptacle* Receptacle = Cast<AYSCombatPostReceptacle>(Component->GetChildActor()))
+	{
+		return Receptacle->GetInstalledPost();
+	}
+	return Cast<AYSShipStation>(Component->GetChildActor());
 }
 
 int32 AYSFoeGalion::GetSeatOf(const AYSShipStation* Station) const

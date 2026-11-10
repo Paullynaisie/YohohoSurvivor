@@ -139,6 +139,7 @@ void AYSPirateShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AYSPirateShip, SinkStartLocation);
 	DOREPLIFETIME(AYSPirateShip, SinkStartYaw);
 	DOREPLIFETIME(AYSPirateShip, bSailsDeployed);
+	DOREPLIFETIME(AYSPirateShip, ScaledMaxHealth);
 }
 
 void AYSPirateShip::OnConstruction(const FTransform& Transform)
@@ -775,8 +776,31 @@ void AYSPirateShip::OnShipDisabled()
 
 float AYSPirateShip::GetMaxHealth() const
 {
+	// calculé en jeu (Galion de NME selon le jour), sinon réglé sur le bateau, sinon par le core
+	if (ScaledMaxHealth > 0.0f)
+	{
+		return ScaledMaxHealth;
+	}
+	if (ShipMaxHealth > 0.0f)
+	{
+		return ShipMaxHealth;
+	}
 	const AYSShipCore* Core = GetCore();
 	return Core ? Core->GetShipMaxHealth() : 0.0f;
+}
+
+void AYSPirateShip::SetScaledMaxHealth(float NewMaxHealth)
+{
+	if (!HasAuthority() || NewMaxHealth <= 0.0f)
+	{
+		return;
+	}
+	const float OldMax = GetMaxHealth();
+	ScaledMaxHealth = NewMaxHealth;
+	// même part de PV (au départ : plein)
+	Health = OldMax > 0.0f && HasActorBegunPlay() ? Health / OldMax * NewMaxHealth : NewMaxHealth;
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : PV max %.0f -> %.0f (%.0f PV)"), *GetName(), OldMax, NewMaxHealth, Health);
 }
 
 void AYSPirateShip::SyncMotionToActor()

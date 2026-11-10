@@ -62,6 +62,7 @@ void AYSShipStation::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AYSShipStation, HostReceptacle);
 	DOREPLIFETIME(AYSShipStation, DismountEndServerTime);
 	DOREPLIFETIME(AYSShipStation, Health);
+	DOREPLIFETIME(AYSShipStation, MaxHealth);
 	DOREPLIFETIME(AYSShipStation, FoeOccupant);
 	DOREPLIFETIME(AYSShipStation, Work);
 }
@@ -404,6 +405,16 @@ void AYSShipStation::Tick(float DeltaSeconds)
 	// réparation (Espace) et démontage (clic droit) de l'occupant (serveur)
 	if (HasAuthority())
 	{
+		// poste de combat : PV max = PV max du bateau / diviseur (le bateau change d'étape, le Galion de NME se réveille un autre jour...)
+		const AYSPirateShip* PostShip = IsCombatPost() && bTakesDamage ? GetShip() : nullptr;
+		const float WantedMax = PostShip ? PostShip->GetCombatPostMaxHealth() : 0.0f;
+		if (WantedMax > 0.0f && !FMath::IsNearlyEqual(WantedMax, MaxHealth, 0.5f))
+		{
+			Health = MaxHealth > 0.0f ? Health / MaxHealth * WantedMax : WantedMax;
+			UE_LOG(LogTemp, Log, TEXT("%s %s : PV max %.0f -> %.0f (bateau %s), %.0f PV"), GetLogTag(), *GetName(), MaxHealth, WantedMax, *PostShip->GetName(), Health);
+			MaxHealth = WantedMax;
+			ForceNetUpdate();
+		}
 		UpdateWork(DeltaSeconds);
 		if (!IsValid(this) || IsActorBeingDestroyed())
 		{

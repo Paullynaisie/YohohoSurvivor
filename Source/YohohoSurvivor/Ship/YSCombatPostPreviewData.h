@@ -63,4 +63,17 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Preview|Fill", meta=(ClampMin="1", ClampMax="64"))
 	int32 FillRings = 12;
+
+	/** Mortier : cercle de l'explosion sous le point visé (bord et intérieur) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Preview|Mortar", meta=(ClampMin="8", ClampMax="256"))
+	int32 MortarCircleSegments = 64;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Preview|Mortar", meta=(ClampMin="1", Units="Centimeters"))
+	float MortarCircleWidth = 20.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Preview|Mortar")
+	FLinearColor MortarCircleColor = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Preview|Mortar")
+	FLinearColor MortarFillColor = FLinearColor(1.0f, 0.4f, 0.1f, 0.25f);
 };

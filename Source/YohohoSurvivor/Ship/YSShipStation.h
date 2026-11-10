@@ -155,8 +155,8 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health")
 	bool bTakesDamage = false;
 
-	/** PV du poste */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", EditCondition="bTakesDamage"))
+	/** PV du poste (poste de combat : PV max du bateau / Combat Post Health Divisor du bateau, calculé en jeu ; répliqué) */
+	UPROPERTY(Replicated, EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", EditCondition="bTakesDamage"))
 	float MaxHealth = 0.0f;
 
 	/** Réparation (Espace maintenu au poste) : temps pour rendre tous les PV (de 0 au max) ; relâché, les PV rendus restent */
@@ -339,6 +339,9 @@ public:
 
 	/** PV rendus sans occupant (serveur ; Charpentier de l'équipage) : poste qui a des PV, abîmé, bateau pas hors d'usage */
 	void AddRepairHealth(float Amount);
+
+	/** Poste de combat (canon, Gatling, mortier, grappeshot) : PV max donnés par le bateau */
+	virtual bool IsCombatPost() const { return false; }
 
 	float GetHealth() const { return Health; }
 	float GetMaxHealth() const { return MaxHealth; }

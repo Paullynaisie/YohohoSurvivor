@@ -1,4 +1,5 @@
 #include "Weapons/YSPlayerBomb.h"
+#include "Ship/YSPirateShip.h"
 #include "Ship/YSShipStation.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSCombat.h"
@@ -397,7 +398,39 @@ void AYSPlayerBomb::Explode()
 		}
 		Foe->TakeDamage(FoeDamage, DamageEvent, GetInstigatorController(), nullptr);
 	}
+	// poste de combat d'un bateau de NME : les joueurs (et minions) dont la hurtbox touche la sphère ; sur un bateau, seulement s'il est hors d'usage
+	int32 PlayersHit = 0;
+	if (HitTags.HasTag(YSTags::Team_Player))
+	{
+		TArray<FOverlapResult> Overlaps;
+		const FCollisionQueryParams Params(SCENE_QUERY_STAT(YSPlayerBombPlayers), false, this);
+		GetWorld()->OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, FCollisionObjectQueryParams(ECC_Pawn), FCollisionShape::MakeSphere(GetExplosionRadius()), Params);
+		TSet<AYSPlayerCharacter*> Hit;
+		for (const FOverlapResult& Overlap : Overlaps)
+		{
+			AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Overlap.GetActor());
+			if (!Character || Hit.Contains(Character) || !Character->IsAlive() || Character->IsDying() || Overlap.GetComponent() != Character->GetHurtbox())
+			{
+				continue;
+			}
+			const AYSPirateShip* Deck = bShipBlast ? Character->GetShipUnderFeet() : nullptr;
+			if (Deck && !Deck->IsDisabled())
+			{
+				continue;
+			}
+			Hit.Add(Character);
+			const FVector ShotDirection = (Character->GetActorLocation() - Center).GetSafeNormal2D();
+			FHitResult HitResult(Character, Character->GetHurtbox(), Character->GetActorLocation(), -ShotDirection);
+			Character->TakeDamage(HitDamage, FPointDamageEvent(HitDamage, HitResult, ShotDirection, nullptr), GetInstigatorController(), nullptr);
+			++PlayersHit;
+		}
+	}
 	AYSShipStation::DamageModulesInRadius(GetWorld(), Center, GetExplosionRadius(), HitTags, HitDamage, GetInstigatorController());
+	if (bShipBlast)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSCannon] Explosion de %s en (%.0f, %.0f), rayon %.0f : %.0f dégâts, %d NME, %d joueur(s)"), *GetName(), Center.X, Center.Y, GetExplosionRadius(),
+			HitDamage, Foes.Num(), PlayersHit);
+	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerBomb] %s %s%s en (%.0f, %.0f) : %d NME touché(s), %.0f dégâts, pushback en plus %.0f"), *GetName(), bMine ? TEXT("(mine) explose") : TEXT("explose"),
 		bCriticalExplosion ? TEXT(" (CRITIQUE)") : TEXT(""), Center.X, Center.Y, Foes.Num(), HitDamage, ExtraPushback);
 

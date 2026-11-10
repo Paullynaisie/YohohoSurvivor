@@ -325,6 +325,12 @@ void AYSProjectile::LifeSpanExpired()
 {
 	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s en fin de vie en (%.0f, %.0f, %.0f), sol %.0f"), *GetName(),
 		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, LastGroundZ);
+	// obus de canon tiré dans le vide : explose au bout de sa course
+	if (HasAuthority() && Explosion.bAtEndOfLife && Explosion.ExplosionClass && !bHasHit)
+	{
+		bHasHit = true;
+		SpawnExplosion(nullptr, false);
+	}
 	Super::LifeSpanExpired();
 }
 
@@ -511,6 +517,11 @@ void AYSProjectile::HitTarget(AActor* OtherActor, const FHitResult& SweepResult)
 	{
 		SpawnExplosion(TargetFoe, bCritical);
 	}
+	// obus de canon : explose aussi sur un module, un joueur...
+	else if (!TargetFoe && Explosion.bOnAnyHit && Explosion.ExplosionClass)
+	{
+		SpawnExplosion(nullptr, bCritical);
+	}
 
 	// Captain AMMO : le dernier NME touché (encore en vie) devient le NME marqué du tireur
 	AYSFoeCharacter* HitFoe = bMarksTarget ? Cast<AYSFoeCharacter>(OtherActor) : nullptr;
@@ -691,6 +702,10 @@ void AYSProjectile::SpawnExplosion(AActor* Target, bool bCritical)
 	}
 	Bomb->SetDamage(Explosion.Damage);
 	Bomb->SetRadiusMultiplier(Explosion.RadiusMultiplier);
+	if (Explosion.bOverrideBlastTags)
+	{
+		Bomb->SetBlastHitTags(Explosion.BlastHitTags, bShipShot);
+	}
 	if (bStick)
 	{
 		Bomb->SetStuckTo(Target, Explosion.StickyFuse, Explosion.StickyBonusPerMine);

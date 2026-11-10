@@ -50,7 +50,13 @@ void AYSCombatPostReceptacle::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (HasAuthority() && StartingPostClass)
+	TArray<TSubclassOf<AYSShipStation>> Candidates = RandomPostClasses;
+	Candidates.RemoveAll([](const TSubclassOf<AYSShipStation>& Class) { return !Class; });
+	if (HasAuthority() && Candidates.Num() > 0)
+	{
+		InstallPost(Candidates[FMath::RandRange(0, Candidates.Num() - 1)], TEXT("poste tiré au hasard"));
+	}
+	else if (HasAuthority() && StartingPostClass)
 	{
 		InstallPost(StartingPostClass, TEXT("poste de départ"));
 	}

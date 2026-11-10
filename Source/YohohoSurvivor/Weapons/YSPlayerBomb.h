@@ -192,6 +192,15 @@ public:
 
 	void SetRadiusMultiplier(float NewRadiusMultiplier) { RadiusMultiplier = FMath::Max(NewRadiusMultiplier, 0.01f); }
 
+	/**
+	 *  Cibles de l'explosion à la place de Hit Tags (serveur, avant FinishSpawning) : poste de combat d'un bateau, Team.Player pour un tireur NME
+	 *  (joueurs et minions touchés). bInShipBlast : comme les AMMO de canon, un joueur sur un bateau n'est touché que si ce bateau est hors d'usage
+	 */
+	void SetBlastHitTags(const FGameplayTagContainer& InHitTags, bool bInShipBlast) { HitTags = InHitTags; bShipBlast = bInShipBlast; }
+
+	/** Bombe lancée en cloche : durée du vol (mortier d'un bateau) */
+	float GetFlightDuration() const { return Flight.Duration; }
+
 	/** Explose dès son apparition, sans mèche ni disque (balle explosive, Rocket jump ; serveur, avant FinishSpawning) */
 	void SetInstant(bool bCritical) { bInstant = true; bCriticalExplosion = bCritical; }
 
@@ -289,6 +298,9 @@ protected:
 	bool bMineTriggered = false;
 
 private:
+
+	/** Set Blast Hit Tags : explosion d'un poste de combat de bateau */
+	bool bShipBlast = false;
 
 	/** Pose vue par cette machine (temps local) */
 	double PlacedTime = 0.0;

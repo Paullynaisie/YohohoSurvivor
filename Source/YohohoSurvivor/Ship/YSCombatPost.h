@@ -63,6 +63,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat Post")
 	TSubclassOf<AYSShipStation> StartingPostClass;
 
+	/** Non vide : poste posé au lancement tiré au hasard dans cette liste (postes des Galions de NME) ; Starting Post Class est alors ignoré */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat Post")
+	TArray<TSubclassOf<AYSShipStation>> RandomPostClasses;
+
 public:
 
 	AYSCombatPostReceptacle();

@@ -16,7 +16,12 @@
 #include "Materials/MaterialInterface.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Player/YSPlayerController.h"
+#include "Interaction/YSInteractiveObject.h"
+#include "Map/YSOcean.h"
 #include "Ship/YSBoatCrew.h"
+#include "Upgrades/YSPassive.h"
+#include "Weapons/YSPlayerBomb.h"
 #include "Ship/YSPirateShip.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Weapons/YSProjectile.h"
@@ -181,7 +186,7 @@ void AYSShipCannon::OnBrokenChanged(bool bBroken)
 
 void AYSShipCannon::Fire(APawn* Shooter, const FVector& AimLocation, bool bFoeShooter)
 {
-	if (!HasAuthority() || !Shooter || !ProjectileClass || !IsUsable())
+	if (!HasAuthority() || !Shooter || !HasShotClass() || !IsUsable())
 	{
 		return;
 	}
@@ -192,6 +197,7 @@ void AYSShipCannon::Fire(APawn* Shooter, const FVector& AimLocation, bool bFoeSh
 	}
 
 	// direction : vers le point visé, dans les limites du canon ; le fût est tourné tout de suite pour partir de sa bouche
+	LastAimLocation = AimLocation;
 	const float AimYaw = ComputeAimYaw(AimLocation);
 	CurrentAimYaw = AimYaw;
 	CannonPivot->SetRelativeRotation(FRotator(0.0f, AimYaw, 0.0f));
@@ -210,8 +216,8 @@ void AYSShipCannon::Fire(APawn* Shooter, const FVector& AimLocation, bool bFoeSh
 	const float ShotCooldown = GetEffectiveCooldown() * (Shooter->IsPlayerControlled() ? 1.0f : NonPlayerCooldownMultiplier);
 	ReadyServerTime = (GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds()) + ShotCooldown;
 	ForceNetUpdate();
-	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : tir de %s, %d x %d AMMO x %.0f dégâts (+/- %.0f°), angle %.0f°, recharge %.1f s"), *GetName(), *Shooter->GetName(),
-		ShotsPerBurst, AmmoPerShot, Damage, Spread, AimYaw, ShotCooldown);
+	UE_LOG(LogTemp, Log, TEXT("[YSCannon] %s : tir de %s, %d x %d AMMO x %.0f dégâts (x%.2f%s) (+/- %.0f°), angle %.0f°, recharge %.1f s"), *GetName(), *Shooter->GetName(),
+		ShotsPerBurst, AmmoPerShot, Damage * GetShotDamageMultiplier(Shooter, bFoeShooter), GetShotDamageMultiplier(Shooter, bFoeShooter), ExplosionClass ? *FString::Printf(TEXT(", explosion %.0f sur %.0f cm"), ExplosionDamage * GetShotDamageMultiplier(Shooter, bFoeShooter), ExplosionRadius) : TEXT(""), Spread, AimYaw, ShotCooldown);
 }
 
 void AYSShipCannon::FireNextBurstShot()
@@ -239,6 +245,23 @@ void AYSShipCannon::SpawnVolley(APawn* Shooter, float BaseYaw, bool bFoeShooter)
 	const FVector MuzzleLocation = Muzzle->GetComponentLocation();
 	AYSPirateShip* Ship = GetShip();
 
+	// dégâts selon le niveau de l'équipe (joueur, minion) ou les jours écoulés (NME)
+	const float Multiplier = GetShotDamageMultiplier(Shooter, bFoeShooter);
+	const FGameplayTagContainer TargetTags(bFoeShooter ? YSTags::Team_Player : YSTags::Team_Foe);
+	FYSProjectileExplosion Blast;
+	if (ExplosionClass)
+	{
+		const AYSPlayerBomb* BlastDefaults = ExplosionClass->GetDefaultObject<AYSPlayerBomb>();
+		Blast.ExplosionClass = ExplosionClass;
+		Blast.Damage = ExplosionDamage * Multiplier;
+		Blast.RadiusMultiplier = BlastDefaults && BlastDefaults->GetExplosionRadius() > 0.0f ? ExplosionRadius / BlastDefaults->GetExplosionRadius() : 1.0f;
+		Blast.bOnAnyHit = true;
+		Blast.bAtEndOfLife = true;
+		Blast.bOverrideBlastTags = true;
+		Blast.BlastHitTags = TargetTags;
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSCannon] %s : dégâts x%.2f (%s)"), *GetName(), Multiplier, bFoeShooter ? TEXT("NME") : TEXT("joueur / minion"));
+
 	// comme le Shotgun : toutes les AMMO d'un coup, en éventail régulier de -Spread à +Spread
 	for (int32 Index = 0; Index < AmmoPerShot; ++Index)
 	{
@@ -249,9 +272,13 @@ void AYSShipCannon::SpawnVolley(APawn* Shooter, float BaseYaw, bool bFoeShooter)
 		{
 			continue;
 		}
-		Projectile->SetDamage(Damage);
+		Projectile->SetDamage(Damage * Multiplier);
 		Projectile->SetFlightOverrides(Ship ? static_cast<AActor*>(Ship) : this, ShotHeightAboveWater);
-		Projectile->SetShipShot(FGameplayTagContainer(bFoeShooter ? YSTags::Team_Player : YSTags::Team_Foe));
+		Projectile->SetShipShot(TargetTags);
+		if (Blast.ExplosionClass)
+		{
+			Projectile->SetExplosion(Blast);
+		}
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 	MulticastFired();
@@ -278,8 +305,7 @@ float AYSShipCannon::GetCooldownRemaining() const
 
 AActor* AYSShipCannon::FindAutoFireTarget(bool bFoeShooter) const
 {
-	const AYSProjectile* Ammo = ProjectileClass ? ProjectileClass->GetDefaultObject<AYSProjectile>() : nullptr;
-	const float Range = AutoFireRange > 0.0f ? AutoFireRange : (Ammo ? Ammo->GetMaxRange() : 0.0f);
+	const float Range = GetAutoFireRange();
 	const FVector Origin = CannonPivot->GetComponentLocation();
 	const float BaseYaw = GetActorRotation().Yaw;
 
@@ -520,13 +546,14 @@ void AYSShipCannon::UpdatePreview()
 
 	// section 1 : trait de visée (là où le prochain tir partira)
 	const float AimYaw = GetTargetAimYaw();
-	if (!FMath::IsNearlyEqual(AimYaw, BuiltPreviewAimYaw, 0.05f))
+	const float PreviewKey = GetAimPreviewKey();
+	if (!FMath::IsNearlyEqual(PreviewKey, BuiltPreviewAimYaw, 0.05f))
 	{
-		BuiltPreviewAimYaw = AimYaw;
+		BuiltPreviewAimYaw = PreviewKey;
 		TArray<FVector> Vertices;
 		TArray<int32> Triangles;
 		TArray<FLinearColor> Colors;
-		YSCannonPreview::AddLine(Vertices, Triangles, Colors, Origin, Origin + Dir(AimYaw) * Data->AimLineLength, Data->AimLineWidth, Z + 1.0f, Data->AimLineColor);
+		BuildAimPreview(Vertices, Triangles, Colors, Origin, Z + 1.0f, Data, AimYaw);
 		PreviewMesh->CreateMeshSection_LinearColor(1, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
 		PreviewMesh->SetMaterial(1, Data->Material);
 	}
@@ -536,4 +563,143 @@ float AYSShipCannon::GetEffectiveCooldown() const
 {
 	// Flibustier dans l'équipage : recharge des postes de canon du bateau des joueurs divisée
 	return Cooldown * AYSBoatCrew::GetCannonCooldownMultiplier(GetShip());
+}
+
+float AYSShipCannon::GetShotDamageMultiplier(const APawn* Shooter, bool bFoeShooter) const
+{
+	// NME au poste : selon les jours écoulés (réglage du Galion)
+	if (bFoeShooter)
+	{
+		const AYSFoeGalion* Galion = Cast<AYSFoeGalion>(GetShip());
+		return Galion ? Galion->GetPostDamageMultiplier() : 1.0f;
+	}
+	// joueur ou minion : + Damage Per Player Level par niveau de l'équipe (passif : le sien, ex. Maître canonnier 10 %)
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const int32 Level = YSGameState ? YSGameState->GetTeamLevel() : 0;
+	float PerLevel = DamagePerPlayerLevel;
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Shooter);
+	const UYSPassive* Passive = Character ? Character->GetPassive() : nullptr;
+	if (Passive && Passive->CombatPostDamagePerLevel >= 0.0f)
+	{
+		PerLevel = Passive->CombatPostDamagePerLevel;
+	}
+	return 1.0f + PerLevel * Level;
+}
+
+float AYSShipCannon::GetAutoFireRange() const
+{
+	const AYSProjectile* Ammo = ProjectileClass ? ProjectileClass->GetDefaultObject<AYSProjectile>() : nullptr;
+	return AutoFireRange > 0.0f ? AutoFireRange : (Ammo ? Ammo->GetMaxRange() : 0.0f);
+}
+
+void AYSShipCannon::BuildAimPreview(TArray<FVector>& Vertices, TArray<int32>& Triangles, TArray<FLinearColor>& Colors, const FVector2D& Origin, float Z,
+	const UYSCombatPostPreviewData* Data, float AimYaw) const
+{
+	// un trait par AMMO du tir (grappeshot : l'éventail)
+	for (int32 Index = 0; Index < AmmoPerShot; ++Index)
+	{
+		const float Yaw = AimYaw + (AmmoPerShot > 1 ? FMath::Lerp(-Spread, Spread, static_cast<float>(Index) / (AmmoPerShot - 1)) : 0.0f);
+		const FVector2D Direction(FMath::Cos(FMath::DegreesToRadians(Yaw)), FMath::Sin(FMath::DegreesToRadians(Yaw)));
+		YSCannonPreview::AddLine(Vertices, Triangles, Colors, Origin, Origin + Direction * Data->AimLineLength, Data->AimLineWidth, Z, Data->AimLineColor);
+	}
+}
+
+float AYSShipCannon::GetAimPreviewKey() const
+{
+	return GetTargetAimYaw();
+}
+
+FVector AYSShipMortar::ComputeShellTarget(const FVector& Desired) const
+{
+	// dans l'angle du poste, entre Min Range et Max Range du pivot, posé sur le sol (ou à la surface de la mer)
+	const FVector Pivot = GetCannonPivot()->GetComponentLocation();
+	const float Yaw = GetActorRotation().Yaw + ComputeAimYaw(Desired);
+	const float Distance = FMath::Clamp(static_cast<float>(FVector::Dist2D(Desired, Pivot)), MinRange, FMath::Max(MinRange, MaxRange));
+	FVector Target = Pivot + FRotator(0.0f, Yaw, 0.0f).Vector() * Distance;
+	const FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), Target, GetShip());
+	Target.Z = AYSOcean::ClampAboveSea(GetWorld(), Ground.Equals(Target) ? -1.0e6f : Ground.Z);
+	return Target;
+}
+
+float AYSShipMortar::GetShellRadius() const
+{
+	const AYSPlayerBomb* Shell = ShellClass ? ShellClass->GetDefaultObject<AYSPlayerBomb>() : nullptr;
+	return Shell ? Shell->GetExplosionRadius() : 0.0f;
+}
+
+void AYSShipMortar::SpawnVolley(APawn* Shooter, float BaseYaw, bool bFoeShooter)
+{
+	if (!ShellClass)
+	{
+		return;
+	}
+	const FVector Start = GetMuzzle()->GetComponentLocation();
+	const FVector Target = ComputeShellTarget(LastAimLocation);
+	const float Multiplier = GetShotDamageMultiplier(Shooter, bFoeShooter);
+	const FTransform SpawnTransform(FRotator::ZeroRotator, Start);
+	AYSPlayerBomb* Shell = GetWorld()->SpawnActorDeferred<AYSPlayerBomb>(ShellClass, SpawnTransform, Shooter, Shooter, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!Shell)
+	{
+		return;
+	}
+	Shell->SetThrow(Start, Target, FlightDuration, ApexHeight);
+	Shell->SetDamage(Damage * Multiplier);
+	Shell->SetBlastHitTags(FGameplayTagContainer(bFoeShooter ? YSTags::Team_Player : YSTags::Team_Foe), true);
+	Shell->FinishSpawning(SpawnTransform);
+	MulticastFired();
+	UE_LOG(LogTemp, Log, TEXT("[YSMortar] %s : obus de %s vers %s (%.0f cm), %.0f dégâts (x%.2f), rayon %.0f, impact dans %.1f s"), *GetName(), *GetNameSafe(Shooter),
+		*Target.ToCompactString(), FVector::Dist2D(Start, Target), Damage * Multiplier, Multiplier, GetShellRadius(), FlightDuration);
+}
+
+FVector AYSShipMortar::GetLocalAimTarget() const
+{
+	const AYSPlayerCharacter* User = GetOccupant();
+	const AYSPlayerController* Controller = User ? Cast<AYSPlayerController>(User->GetController()) : nullptr;
+	return ComputeShellTarget(Controller ? Controller->GetAimLocation() : GetActorLocation() + GetActorForwardVector() * MaxRange);
+}
+
+float AYSShipMortar::GetAimPreviewKey() const
+{
+	// le cercle suit le curseur (repère du poste, au cm près)
+	const FVector Local = GetActorTransform().InverseTransformPosition(GetLocalAimTarget());
+	return FMath::RoundToFloat(Local.X) * 1.0f + FMath::RoundToFloat(Local.Y) * 7919.0f;
+}
+
+void AYSShipMortar::BuildAimPreview(TArray<FVector>& Vertices, TArray<int32>& Triangles, TArray<FLinearColor>& Colors, const FVector2D& Origin, float Z,
+	const UYSCombatPostPreviewData* Data, float AimYaw) const
+{
+	// cercle de l'explosion sous le point visé (repère du poste), intérieur translucide, et trait fin jusqu'à lui
+	const FVector Local = GetActorTransform().InverseTransformPosition(GetLocalAimTarget());
+	const FVector2D Center(Local.X, Local.Y);
+	// à la hauteur du point d'impact (sol ou mer), un peu au-dessus
+	const float CircleZ = Local.Z + Data->HeightOffset;
+	const float Radius = GetShellRadius();
+	const int32 Segments = FMath::Max(Data->MortarCircleSegments, 8);
+	const int32 CenterIndex = Vertices.Num();
+	Vertices.Add(FVector(Center.X, Center.Y, CircleZ));
+	Colors.Add(Data->MortarFillColor);
+	for (int32 Segment = 0; Segment <= Segments; ++Segment)
+	{
+		const float Angle = 2.0f * PI * Segment / Segments;
+		const FVector2D Point = Center + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * Radius;
+		Vertices.Add(FVector(Point.X, Point.Y, CircleZ));
+		Colors.Add(FLinearColor(Data->MortarFillColor.R, Data->MortarFillColor.G, Data->MortarFillColor.B, Data->MortarFillColor.A * 0.5f));
+		if (Segment > 0)
+		{
+			Triangles.Append({ CenterIndex, CenterIndex + Segment, CenterIndex + Segment + 1 });
+		}
+	}
+	for (int32 Segment = 0; Segment < Segments; ++Segment)
+	{
+		const float A0 = 2.0f * PI * Segment / Segments;
+		const float A1 = 2.0f * PI * (Segment + 1) / Segments;
+		YSCannonPreview::AddLine(Vertices, Triangles, Colors, Center + FVector2D(FMath::Cos(A0), FMath::Sin(A0)) * Radius,
+			Center + FVector2D(FMath::Cos(A1), FMath::Sin(A1)) * Radius, Data->MortarCircleWidth, CircleZ + 1.0f, Data->MortarCircleColor);
+	}
+	YSCannonPreview::AddLine(Vertices, Triangles, Colors, Origin, Center, Data->AngleLineWidth, Z, Data->AimLineColor);
+}
+
+bool AYSShipCannon::HasShotClass() const
+{
+	return ProjectileClass != nullptr;
 }

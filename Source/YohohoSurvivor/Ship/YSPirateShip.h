@@ -241,9 +241,21 @@ protected:
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Ship")
 	float Health = 0.0f;
 
-	/** Barre de vie du bateau x ce multiplicateur */
+	/** Barre de vie du bateau x ce multiplicateur (1.5 depuis le 2026-11-10 : 2x plus petite) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship", meta=(ClampMin="0.1"))
-	float ShipHealthBarScale = 3.0f;
+	float ShipHealthBarScale = 1.5f;
+
+	/** PV max du bateau ; 0 = Ship Max Health du core (bateaux des joueurs : sloop 5000, brigantin 10000, galion 15000) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Scaling", meta=(ClampMin="0"))
+	float ShipMaxHealth = 0.0f;
+
+	/** PV max de chaque poste de combat (canon, Gatling, mortier, grappeshot) = PV max du bateau / ce diviseur ; 0 = PV du poste */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Scaling", meta=(ClampMin="0"))
+	float CombatPostHealthDivisor = 5.0f;
+
+	/** PV max calculés en jeu (Galion de NME : selon le jour), prioritaires (serveur -> clients) ; 0 = aucun */
+	UPROPERTY(Replicated, Transient)
+	float ScaledMaxHealth = 0.0f;
 
 	/** Core à 0 PV : tous les modules désactivés, le bateau ne peut plus bouger (serveur -> clients) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="Ship")
@@ -450,6 +462,12 @@ public:
 	float GetRamBrokenPostRadius() const { return RamBrokenPostRadius; }
 
 	float GetHelmCameraArmLength() const { return HelmCameraArmLength; }
+
+	/** PV max d'un poste de combat de ce bateau (PV max / Combat Post Health Divisor) ; 0 = PV du poste */
+	float GetCombatPostMaxHealth() const { return CombatPostHealthDivisor > 0.0f ? GetMaxHealth() / CombatPostHealthDivisor : 0.0f; }
+
+	/** PV max calculés en jeu (serveur) : la part de PV restante est gardée */
+	void SetScaledMaxHealth(float NewMaxHealth);
 
 	bool ShowsBoardingLadders() const { return bBoardingLadders; }
 

@@ -37,6 +37,14 @@ struct FYSProjectileExplosion
 	float StickyFuse = 5.0f;
 	/** Dégâts en plus par mine collée sur le NME au moment de l'explosion (MineShooter ++) */
 	float StickyBonusPerMine = 0.0f;
+
+	/** Explose sur tout ce qu'elle touche (module, joueur...), pas seulement sur un NME (obus de canon) */
+	bool bOnAnyHit = false;
+	/** Explose aussi en fin de vie, sans avoir rien touché (obus de canon tiré au loin) */
+	bool bAtEndOfLife = false;
+	/** Cibles de l'explosion à la place de celles de la bombe (canon d'un bateau : Team.Player pour un tireur NME) */
+	bool bOverrideBlastTags = false;
+	FGameplayTagContainer BlastHitTags;
 };
 
 /**
