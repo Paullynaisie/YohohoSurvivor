@@ -947,6 +947,42 @@ void AYSKrakenTentacleMelee::TickKraken(float DeltaSeconds)
 		Visual->SetRelativeScale3D(FVector(VisualScale));
 	}
 
+	// hurtbox à la taille du visuel ; posée sur le bateau : plus épaisse (toutes machines : même forme pour les coups du client)
+	if (!bHurtboxBaseSaved)
+	{
+		bHurtboxBaseSaved = true;
+		BaseHurtboxLocation = GetHurtbox()->GetRelativeLocation();
+		BaseHurtboxScale = GetHurtbox()->GetRelativeScale3D();
+	}
+	const bool bOnBoat = State.Phase == EYSKrakenTentaclePhase::Grabbing || (State.bGrabbed && State.Phase == EYSKrakenTentaclePhase::Sinking);
+	const float RadiusMultiplier = VisualScale * (bOnBoat ? GrabHurtboxRadiusMultiplier : 1.0f);
+	const FVector WantedScale(BaseHurtboxScale.X * RadiusMultiplier, BaseHurtboxScale.Y * RadiusMultiplier, BaseHurtboxScale.Z * VisualScale);
+	if (!GetHurtbox()->GetRelativeScale3D().Equals(WantedScale, 0.001f))
+	{
+		GetHurtbox()->SetRelativeLocation(BaseHurtboxLocation * VisualScale);
+		GetHurtbox()->SetRelativeScale3D(WantedScale);
+	}
+	// contrôle (serveur, une fois par prise) : points du pont sous la tentacule, à 1 m au-dessus du pont, dans la hurtbox ?
+	if (HasAuthority() && bOnBoat && !bGrabHurtboxLogged && GrabSpawnPoints.Num() > 0)
+	{
+		bGrabHurtboxLogged = true;
+		int32 Inside = 0;
+		float Farthest = 0.0f;
+		for (const FVector& Point : GrabSpawnPoints)
+		{
+			FVector Closest;
+			const float Distance = GetHurtbox()->GetClosestPointOnCollision(Point - FVector(0.0f, 0.0f, GrabSpawnHeight - 100.0f), Closest);
+			Inside += Distance <= 0.0f ? 1 : 0;
+			Farthest = FMath::Max(Farthest, Distance);
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s posée sur le bateau : hurtbox x%.2f, %d / %d point(s) du pont (à 1 m) dedans, le plus loin à %.0f cm"), *GetName(),
+			RadiusMultiplier, Inside, GrabSpawnPoints.Num(), Farthest);
+	}
+	else if (!bOnBoat)
+	{
+		bGrabHurtboxLogged = false;
+	}
+
 	// couleur du corps : remplace Body Material From par Body Material To sur les formes du prop (une fois qu'il existe)
 	if (!bRecolored && BodyMaterialFrom && BodyMaterialTo)
 	{

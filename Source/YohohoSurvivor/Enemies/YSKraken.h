@@ -312,7 +312,7 @@ protected:
 	 *  14 m de large, 41 m de long : il lui faut ~16 m avec la courbure ; choix de Claude : 18 m pour que 5 cercles tiennent dans l'arène).
 	 *  Si les cercles ne tiennent pas entre Ring Min Radius et Ring Max Radius, l'écart est réduit (log « écart réduit ») */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(ClampMin="0", Units="Centimeters"))
-	float RingBoatGap = 1800.0f;
+	float RingBoatGap = 2160.0f;
 
 	/** Les cercles peuvent aller du bord de la tête jusqu'au bord de l'arène (0 = rayon de l'arène) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Rings", meta=(ClampMin="0", Units="Centimeters"))
@@ -338,7 +338,7 @@ protected:
 	/** Écart libre entre deux tours de spirale (bord à bord des impacts ; 45 m avant le 2026-11-10, resserré : le bateau s'y place
 	 *  dans le sens du couloir, comme pour les cercles) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Spiral", meta=(ClampMin="0", Units="Centimeters"))
-	float SpiralBoatGap = 1800.0f;
+	float SpiralBoatGap = 2160.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink|Spiral", meta=(ClampMin="0", Units="s"))
 	float SpiralDuration = 4.0f;
@@ -613,6 +613,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam", meta=(ClampMin="0.1"))
 	float VisualScale = 1.25f;
 
+	/** Hurtbox : suit la taille du visuel (Visual Scale), et quand la tentacule est posée sur le bateau son rayon est multiplié par ceci
+	 *  (les coups de mêlée sur le pont la ratent sinon ; choix de Claude : 1.6) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam", meta=(ClampMin="1"))
+	float GrabHurtboxRadiusMultiplier = 1.6f;
+
 	/** Couleur du corps : le matériau From du prop (rouge, commun avec la tentacule à distance) est remplacé par To sur cette tentacule (local,
 	 *  chaque machine) ; vide = inchangé */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam|Look")
@@ -654,6 +659,10 @@ private:
 	bool bHoldingBoat = false;
 	bool bWarningShown = false;
 	bool bRecolored = false;
+	FVector BaseHurtboxLocation = FVector::ZeroVector;
+	FVector BaseHurtboxScale = FVector::OneVector;
+	bool bHurtboxBaseSaved = false;
+	bool bGrabHurtboxLogged = false;
 
 	/** Bande frappée : premier point dans la coque du bateau (faux s'il est raté) */
 	bool FindSlamHit(FVector& OutPoint) const;
