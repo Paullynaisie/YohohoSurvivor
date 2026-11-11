@@ -82,6 +82,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
 	TArray<TSubclassOf<AYSFoeCharacter>> ExtraCaptainClasses;
 
+	/** Capitaines (barre et en plus) : multiplicateurs des dégâts subis posés à l'apparition, à la place de ceux de leur Blueprint
+	 *  (un capitaine en plus peut être un Skull de base) ; dégâts d'un personnage / d'un poste de combat du bateau des joueurs */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew", meta=(ClampMin="0"))
+	float CaptainPlayerDmgMultiplier = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew", meta=(ClampMin="0"))
+	float CaptainBoatDmgMultiplier = 0.5f;
+
 	/** Le capitaine tué : le Galion coule (tout le monde à l'eau, comme un core détruit) ; pendant un abordage les planches sont retirées */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Crew")
 	bool bSinkWhenCaptainKilled = true;

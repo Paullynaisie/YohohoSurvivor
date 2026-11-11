@@ -385,6 +385,8 @@ void AYSPlayerBomb::DetonateCritical()
 void AYSPlayerBomb::Explode()
 {
 	bExploded = true;
+	// obus de mortier / explosion d'une AMMO de canon : dégâts d'un poste de combat du bateau (Boat Dmg Multiplier des NME)
+	YSCombat::FBoatDamageScope BoatScope(bShipBlast);
 
 	// explosion critique : dégâts critiques du personnage qui a posé la bombe
 	const AYSPlayerCharacter* BombOwner = Cast<AYSPlayerCharacter>(GetInstigator());

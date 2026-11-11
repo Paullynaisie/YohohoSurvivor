@@ -5,6 +5,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Core/YSCombat.h"
 #include "Core/YSGameState.h"
 #include "Core/YSGameMode.h"
 #include "Engine/World.h"
@@ -331,7 +332,11 @@ void AYSPirateShip::HandleRamImpact(AYSPirateShip* Target)
 	// point touché : là où la coque (la proue) rencontre celle de l'autre bateau
 	const FVector Impact = GetRamImpactPoint(Target);
 	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s éperonne %s (« À l'abordage ») : %.0f dégâts"), *GetName(), *Target->GetName(), RamDamage);
-	Target->ReceiveRamDamage(RamDamage, RamInstigator.Get(), Impact);
+	{
+		// éperonnage = dégâts d'un bateau (Boat Dmg Multiplier des NME)
+		YSCombat::FBoatDamageScope BoatScope(true);
+		Target->ReceiveRamDamage(RamDamage, RamInstigator.Get(), Impact);
+	}
 	if (IsValid(Target) && !Target->IsSinking() && Target->TryStartBoardingBy(this, Impact))
 	{
 		SetRamming(false);

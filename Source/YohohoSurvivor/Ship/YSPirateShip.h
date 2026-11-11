@@ -295,7 +295,7 @@ protected:
 	 *  par seconde (cumulés à plusieurs), jusqu'aux PV max ; repassé au-dessus de Core Repair Max Health, un bateau hors d'usage redevient utilisable ; partir garde les PV rendus
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Repair", meta=(ClampMin="0"))
-	float CoreRepairPercentPerSecond = 0.5f;
+	float CoreRepairPercentPerSecond = 5.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Repair", meta=(ClampMin="1"))
 	float CoreRepairMaxHealth = 1.0f;

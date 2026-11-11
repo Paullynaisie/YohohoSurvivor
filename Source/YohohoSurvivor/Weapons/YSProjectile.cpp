@@ -1,4 +1,5 @@
 #include "Weapons/YSProjectile.h"
+#include "Core/YSCombat.h"
 #include "Core/YSCustomization.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -529,6 +530,8 @@ void AYSProjectile::HitTarget(AActor* OtherActor, const FHitResult& SweepResult)
 		HitDamage *= DistanceShooter->GetMultiHitDamageMultiplier(PierceHitIndex++);
 	}
 	const TSubclassOf<UDamageType> DamageType = bCritical ? UYSCriticalDamageType::StaticClass() : nullptr;
+	// AMMO de canon : dégâts d'un poste de combat du bateau (Boat Dmg Multiplier des NME)
+	YSCombat::FBoatDamageScope BoatScope(bShipShot);
 	if (bBumpsTargets)
 	{
 		// DragonBreathAMMO : le NME qui survit est bumpé dans le sens de vol

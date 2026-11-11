@@ -159,9 +159,17 @@ protected:
 	UPROPERTY(Replicated, EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", EditCondition="bTakesDamage"))
 	float MaxHealth = 0.0f;
 
-	/** Réparation (Espace maintenu au poste) : % des PV max du module rendus par seconde (0.5 = 200 s de 0 au max) ; relâché, les PV rendus restent */
+	/** Réparation (Espace maintenu au poste) : % des PV max du module rendus par seconde (5 = 50 PV/s sur un canon de 1000, 20 s de 0 au max) ; relâché, les PV rendus restent */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0.01", EditCondition="bTakesDamage"))
-	float RepairPercentPerSecond = 0.5f;
+	float RepairPercentPerSecond = 5.0f;
+
+	/** Poste d'un bateau de NME : dégâts subis x ceci quand ils viennent directement d'un personnage (joueur, minion) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", EditCondition="bTakesDamage"))
+	float PlayerDmgMultiplier = 0.5f;
+
+	/** Poste d'un bateau de NME : dégâts subis x ceci quand ils viennent d'un poste de combat du bateau des joueurs (canon, mortier, éperonnage) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Station|Health", meta=(ClampMin="0", EditCondition="bTakesDamage"))
+	float BoatDmgMultiplier = 1.0f;
 
 	/** Temps pour rendre tous les PV (de 0 au max) */
 	float GetFullRepairDuration() const { return 100.0f / FMath::Max(RepairPercentPerSecond, 0.01f); }

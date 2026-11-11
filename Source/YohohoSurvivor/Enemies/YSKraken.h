@@ -45,6 +45,10 @@ public:
 	/** Boss : PV x multiplicateur des élites du nombre de joueurs (1 / 2 / 3 / 4 par défaut), pas celui des NME */
 	virtual bool UsesEliteHealthScaling() const override { return true; }
 
+	/** Boss armor sans être élite (Kraken Boss Armor), réduction des gros coups seulement : ni rage ni bouclier de boss */
+	virtual bool UsesBossArmor() const override { return bKrakenBossArmor; }
+	virtual bool UsesBossShield() const override { return false; }
+
 	/** Serveur : posé par l'arène qui le gère */
 	void SetArena(AYSKrakenArena* InArena) { Arena = InArena; }
 
@@ -69,6 +73,14 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken", meta=(Units="Centimeters", EditCondition="bShowOverheadHealthBar"))
 	float OverheadHealthBarHeight = 2900.0f;
+
+	/**
+	 *  Boss armor des élites (réglages Rage Cap Health Ratio / Dmg Reduce Factor Health Ratio, catégorie Foe|Boss) sans être élite :
+	 *  un coup au-delà de Rage Cap est réduit ; pas de rage ni de bouclier de boss (morceau immobile). Avant le 2026-11-11 : aucune
+	 *  (Boss Armor coché mais sans effet hors élite)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken")
+	bool bKrakenBossArmor = true;
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<AYSKrakenArena> Arena;
@@ -264,7 +276,7 @@ protected:
 
 	/** Dégâts au core du bateau par tir qui tombe sur lui */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="0"))
-	float ShotDamage = 500.0f;
+	float ShotDamage = 1000.0f;
 
 	/** Rayon de l'impact (signe au sol) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink", meta=(ClampMin="1", Units="Centimeters"))
@@ -452,9 +464,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle", meta=(ClampMin="0", Units="Centimeters"))
 	float SubmergedDepth = 3200.0f;
 
-	/** Sortie : attente avant l'amorce */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle", meta=(ClampMin="0", Units="s"))
-	float AttackDelay = 5.0f;
+	/** Sortie : attente avant l'amorce, au hasard entre min et max à chaque sortie (à distance 1..3 s, mêlée 1 s) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle", meta=(Units="s"))
+	FVector2D AttackDelayRange = FVector2D(1.0, 3.0);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle", meta=(ClampMin="0", Units="s"))
 	float TentacleWindupDuration = 1.0f;
@@ -511,13 +523,28 @@ private:
 	/** Serveur : heure serveur de la prochaine sortie */
 	double NextEmergeServerTime = -1.0;
 
+	/** Serveur : attente avant l'amorce de cette sortie (tirée dans Attack Delay Range) */
+	float CurrentAttackDelay = 1.0f;
+
 	EYSKrakenTentaclePhase AppliedPhase = EYSKrakenTentaclePhase::Submerged;
 
 	/** Position locale d'après l'état (toutes machines) */
 	void ApplyStateLocally();
 };
 
-/** Tentacule à distance : sort à 35 m du bateau, tire une grosse boule d'encre (signe au sol), replonge */
+/** Attaque d'une tentacule à distance : petit motif de tirs en cloche (comme l'étape 3) ou, avant le 2026-11-11, boules dispersées */
+UENUM(BlueprintType)
+enum class EYSKrakenTentacleAttack : uint8
+{
+	/** Croix : Cross Branches branches de Cross Shots Per Branch tirs depuis la tentacule, une branche vers le bateau */
+	Cross,
+	/** Cercle de tirs autour de la tentacule, rayon au hasard dans Circle Radius */
+	Circle,
+	/** Ancienne attaque : Ink Balls Per Attack boules vers des points au hasard autour du bateau */
+	ScatterBalls
+};
+
+/** Tentacule à distance : sort à 35 m du bateau, tire un petit motif de tirs d'encre en cloche (signes au sol), replonge */
 UCLASS(meta=(PrioritizeCategories="Kraken Foe"))
 class AYSKrakenTentacleRange : public AYSKrakenTentacle
 {
@@ -529,11 +556,41 @@ public:
 
 protected:
 
-	/** Dégâts au core du bateau par boule qui le touche */
+	/** Dégâts au core du bateau par tir (ou boule) qui le touche */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0"))
-	float InkDamage = 500.0f;
+	float InkDamage = 1000.0f;
 
-	/** Boules tirées par attaque (chacune visant un point au hasard autour du bateau) */
+	/** Attaques tirées au hasard à chaque sortie (pas deux fois la même de suite s'il y en a plusieurs ; choix de Claude) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Pattern")
+	TArray<EYSKrakenTentacleAttack> Attacks = { EYSKrakenTentacleAttack::Cross, EYSKrakenTentacleAttack::Circle };
+
+	/** Croix : nombre de branches (réparties autour, la première vers le bateau) et de tirs par branche */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Pattern|Cross", meta=(ClampMin="1"))
+	int32 CrossBranches = 3;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Pattern|Cross", meta=(ClampMin="1"))
+	int32 CrossShotsPerBranch = 5;
+
+	/** Distance entre deux impacts d'une branche, et du pied de la tentacule au premier (choix de Claude : 0.9 x 2 x Ink Radius, sans trou) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Pattern|Cross", meta=(ClampMin="50", Units="Centimeters"))
+	float CrossSpacing = 1620.0f;
+
+	/** Départ de chaque impact après le précédent de sa branche (du pied vers le bout ; comme les lignes de l'étape 3) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Pattern|Cross", meta=(ClampMin="0", Units="s"))
+	float CrossStepDelay = 0.08f;
+
+	/** Cercle autour de la tentacule : rayon au hasard entre min et max */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Pattern|Circle", meta=(Units="Centimeters"))
+	FVector2D CircleRadius = FVector2D(500.0, 2500.0);
+
+	/** Distance entre deux impacts du cercle (au moins Circle Min Shots tirs) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Pattern|Circle", meta=(ClampMin="50", Units="Centimeters"))
+	float CircleSpacing = 1620.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Pattern|Circle", meta=(ClampMin="3"))
+	int32 CircleMinShots = 6;
+
+	/** Ancienne attaque (Scatter Balls) : boules tirées par attaque (chacune visant un point au hasard autour du bateau) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="1"))
 	int32 InkBallsPerAttack = 3;
 
@@ -563,6 +620,16 @@ protected:
 	virtual void OnWindupStarted() override;
 
 	virtual void OnWindupFinished() override;
+
+private:
+
+	int32 LastAttack = INDEX_NONE;
+
+	/** Ancienne attaque : boules dispersées autour du bateau */
+	void FireScatterBalls(const AYSPirateShip* Boat);
+
+	/** Croix / cercle : un AYSKrakenInkBarrage depuis le haut de la tentacule */
+	void FirePattern(EYSKrakenTentacleAttack Attack, const AYSPirateShip* Boat);
 };
 
 /** Tentacule de mêlée : sort à 5 m du bateau, s'abat sur lui ; touché = bateau immobilisé et Skull qui en sortent jusqu'à ce qu'elle lâche */

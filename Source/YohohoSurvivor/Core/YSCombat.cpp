@@ -160,4 +160,38 @@ namespace YSCombat
 		Location.Z = Start.Z + VerticalSpeed * Clamped - 0.5f * Gravity * Clamped * Clamped;
 		return Location;
 	}
+
+	/** Profondeur des FBoatDamageScope actifs (serveur, thread du jeu) */
+	static int32 GYSBoatDamageDepth = 0;
+
+	bool IsBoatDamage()
+	{
+		return GYSBoatDamageDepth > 0;
+	}
+
+	FBoatDamageScope::FBoatDamageScope(bool bInActive)
+		: bActive(bInActive)
+	{
+		if (bActive)
+		{
+			++GYSBoatDamageDepth;
+		}
+	}
+
+	FBoatDamageScope::~FBoatDamageScope()
+	{
+		if (bActive)
+		{
+			--GYSBoatDamageDepth;
+		}
+	}
+
+	float GetDamageTakenMultiplier(const AController* EventInstigator, float PlayerMultiplier, float BoatMultiplier)
+	{
+		if (IsBoatDamage())
+		{
+			return FMath::Max(BoatMultiplier, 0.0f);
+		}
+		return EventInstigator ? FMath::Max(PlayerMultiplier, 0.0f) : 1.0f;
+	}
 }

@@ -91,6 +91,7 @@ void AYSFoeGalion::SpawnCrew()
 		if (bHadCaptain)
 		{
 			Captain->SetShipCaptainBoss();
+			Captain->SetDamageTakenMultipliers(CaptainPlayerDmgMultiplier, CaptainBoatDmgMultiplier);
 		}
 		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : capitaine %s"), *GetName(), *Chosen->GetName());
 	}
@@ -108,6 +109,7 @@ void AYSFoeGalion::SpawnCrew()
 		if (AYSFoeCharacter* Extra = SpawnCrewMember(ExtraCaptainClasses[Index], Feet, INDEX_NONE))
 		{
 			Extra->SetShipCaptainBoss();
+			Extra->SetDamageTakenMultipliers(CaptainPlayerDmgMultiplier, CaptainBoatDmgMultiplier);
 			ExtraCaptains.Add(Extra);
 			Crew.Add(Extra);
 			bHadCaptain = true;

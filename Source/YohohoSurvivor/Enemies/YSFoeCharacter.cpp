@@ -476,6 +476,13 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	{
 		return 0.0f;
 	}
+	// dégâts d'un personnage (Player Dmg Multiplier) ou d'un poste de combat du bateau (Boat Dmg Multiplier), avant la Boss armor
+	const float SourceMultiplier = YSCombat::GetDamageTakenMultiplier(EventInstigator, PlayerDmgMultiplier, BoatDmgMultiplier);
+	if (SourceMultiplier != 1.0f)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSDamage] %s : %.1f x%.2f (%s)"), *GetName(), Incoming, SourceMultiplier, YSCombat::IsBoatDamage() ? TEXT("bateau") : TEXT("personnage"));
+		Incoming *= SourceMultiplier;
+	}
 	// élite : le bouclier de boss prend les dégâts bruts ; sans bouclier, Boss armor (réduction et rage)
 	const bool bShieldHit = UsesBossArmor() && HasBossShield();
 	if (UsesBossArmor() && !bShieldHit)

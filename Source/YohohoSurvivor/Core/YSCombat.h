@@ -4,6 +4,7 @@
 
 class ACharacter;
 class AActor;
+class AController;
 class UPrimitiveComponent;
 class UWorld;
 
@@ -52,4 +53,26 @@ namespace YSCombat
 	 *  puis on recule vers le personnage par pas de RetreatStep jusqu'à un sol de l'île hors de l'eau ; aucun = sous ses pieds.
 	 */
 	FVector FindLandingPoint(const ACharacter* Character, const FVector& TargetLocation, float MaxDistance, float RetreatStep);
+
+	/**
+	 *  Dégâts venant d'un poste de combat d'un bateau (AMMO de canon, obus de mortier, leurs explosions, éperonnage) : vrai pendant
+	 *  que ces dégâts sont appliqués (serveur, appels synchrones dans un FBoatDamageScope). Les NME et les postes des bateaux de NME
+	 *  prennent alors leur Boat Dmg Multiplier au lieu du Player Dmg Multiplier.
+	 */
+	bool IsBoatDamage();
+
+	struct FBoatDamageScope
+	{
+		explicit FBoatDamageScope(bool bInActive);
+		~FBoatDamageScope();
+		FBoatDamageScope(const FBoatDamageScope&) = delete;
+		FBoatDamageScope& operator=(const FBoatDamageScope&) = delete;
+
+	private:
+		bool bActive = false;
+	};
+
+	/** Multiplicateur des dégâts subis par un NME (ou un poste d'un bateau de NME) selon la source : poste de combat du bateau
+	 *  (IsBoatDamage) ou personnage ; 1 pour les dégâts sans auteur (triches de l'arène, mise à mort scriptée) */
+	float GetDamageTakenMultiplier(const AController* EventInstigator, float PlayerMultiplier, float BoatMultiplier);
 }

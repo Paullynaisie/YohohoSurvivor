@@ -108,6 +108,20 @@ float AYSShipStation::TakeDamage(float DamageAmount, const FDamageEvent& DamageE
 	{
 		return 0.0f;
 	}
+	// poste d'un bateau de NME : dégâts d'un personnage (Player Dmg Multiplier) ou d'un poste du bateau des joueurs (Boat Dmg Multiplier)
+	if (Ship->IsFoeShip())
+	{
+		const float SourceMultiplier = YSCombat::GetDamageTakenMultiplier(EventInstigator, PlayerDmgMultiplier, BoatDmgMultiplier);
+		if (SourceMultiplier != 1.0f)
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("%s %s : coup de %.1f x%.2f (%s)"), GetLogTag(), *GetName(), DamageAmount, SourceMultiplier, YSCombat::IsBoatDamage() ? TEXT("bateau") : TEXT("personnage"));
+			DamageAmount = FMath::RoundToFloat(DamageAmount * SourceMultiplier);
+			if (DamageAmount <= 0.0f)
+			{
+				return 0.0f;
+			}
+		}
+	}
 	const FVector ImpactLocation = DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation();
 
 	// à 0 PV (ou bateau hors d'usage) : le core prend le coup, et le joueur qui répare aussi

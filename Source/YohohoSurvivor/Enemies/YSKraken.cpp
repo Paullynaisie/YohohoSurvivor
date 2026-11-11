@@ -75,6 +75,9 @@ AYSKrakenPart::AYSKrakenPart()
 	bDeathRagdoll = false;
 	bCanSwim = false;
 	LeftHandedChance = 0.0f;
+	// dégâts subis (réglages de Paul, 2026-11-11) : x0.65 depuis les personnages, x1 depuis les postes de combat du bateau
+	PlayerDmgMultiplier = 0.65f;
+	BoatDmgMultiplier = 1.0f;
 
 	// placé sur chaque machine d'après son état (pas de mouvement répliqué), toujours connu des clients (énorme, loin)
 	SetReplicateMovement(false);
@@ -716,11 +719,13 @@ void AYSKrakenTentacle::TickTentacleServer(float DeltaSeconds)
 	case EYSKrakenTentaclePhase::Rising:
 		if (Elapsed >= RiseDuration)
 		{
+			CurrentAttackDelay = FMath::Max(static_cast<float>(FMath::FRandRange(AttackDelayRange.X, FMath::Max(AttackDelayRange.X, AttackDelayRange.Y))), 0.0f);
 			SetPhase(EYSKrakenTentaclePhase::Waiting);
+			UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s sortie, attaque dans %.1f s"), *GetName(), CurrentAttackDelay);
 		}
 		break;
 	case EYSKrakenTentaclePhase::Waiting:
-		if (Elapsed >= AttackDelay)
+		if (Elapsed >= CurrentAttackDelay)
 		{
 			// amorce : tournée vers le bateau à ce moment
 			if (const AYSPirateShip* Boat = GetGameBoat())
@@ -863,16 +868,94 @@ AYSKrakenTentacleRange::AYSKrakenTentacleRange()
 	FoeName = NSLOCTEXT("YS", "KrakenTentacleRangeName", "Tentacule");
 	EmergeDistance = 3500.0f;
 	TentacleWindupDuration = 1.0f;
+	// attaque 1 à 3 s après la sortie (demande de Paul, 2026-11-11)
+	AttackDelayRange = FVector2D(1.0, 3.0);
 }
 
 void AYSKrakenTentacleRange::OnWindupStarted()
 {
-	// Ink Balls Per Attack boules, chacune vers un point au hasard autour du bateau (signe au sol tout de suite), la première part à la fin de l'amorce
 	const AYSPirateShip* Boat = GetGameBoat();
-	if (!Boat)
+	if (!Boat || Attacks.Num() == 0)
 	{
 		return;
 	}
+	// une attaque au hasard, pas deux fois la même de suite
+	int32 Pick = FMath::RandRange(0, Attacks.Num() - 1);
+	if (Attacks.Num() > 1 && Pick == LastAttack)
+	{
+		Pick = (Pick + FMath::RandRange(1, Attacks.Num() - 1)) % Attacks.Num();
+	}
+	LastAttack = Pick;
+	if (Attacks[Pick] == EYSKrakenTentacleAttack::ScatterBalls)
+	{
+		FireScatterBalls(Boat);
+	}
+	else
+	{
+		FirePattern(Attacks[Pick], Boat);
+	}
+}
+
+void AYSKrakenTentacleRange::FirePattern(EYSKrakenTentacleAttack Attack, const AYSPirateShip* Boat)
+{
+	// signes au sol tout de suite (pendant l'amorce), premiers départs à la fin de l'amorce, depuis le haut de la tentacule
+	const float Sea = GetSeaLevel();
+	const FVector Foot(State.Location.X, State.Location.Y, Sea);
+	TArray<FYSKrakenInkShot> Shots;
+	const auto AddShot = [&](float Radius, float AngleDeg, float Delay)
+	{
+		const FVector Dir = FRotator(0.0f, AngleDeg, 0.0f).Vector();
+		FYSKrakenInkShot Shot;
+		Shot.Target = FVector(Foot.X + Dir.X * Radius, Foot.Y + Dir.Y * Radius, Sea);
+		Shot.Delay = Delay;
+		Shots.Add(Shot);
+	};
+
+	const TCHAR* PatternName = TEXT("?");
+	float PatternRadius = 0.0f;
+	if (Attack == EYSKrakenTentacleAttack::Cross)
+	{
+		// branches réparties autour, la première vers le bateau ; impacts du pied vers le bout
+		PatternName = TEXT("croix");
+		const float Toward = (Boat->GetHullCenter() - Foot).GetSafeNormal2D().Rotation().Yaw;
+		const int32 Branches = FMath::Max(CrossBranches, 1);
+		const float Spacing = FMath::Max(CrossSpacing, 50.0f);
+		for (int32 Branch = 0; Branch < Branches; ++Branch)
+		{
+			for (int32 Step = 0; Step < FMath::Max(CrossShotsPerBranch, 1); ++Step)
+			{
+				AddShot(Spacing * (Step + 1), Toward + 360.0f * Branch / Branches, CrossStepDelay * Step);
+			}
+		}
+		PatternRadius = Spacing * FMath::Max(CrossShotsPerBranch, 1);
+	}
+	else
+	{
+		// cercle autour d'elle, rayon au hasard, tous les tirs en même temps
+		PatternName = TEXT("cercle");
+		PatternRadius = static_cast<float>(FMath::FRandRange(FMath::Max(CircleRadius.X, 0.0), FMath::Max(CircleRadius.X, CircleRadius.Y)));
+		const int32 Count = FMath::Max(FMath::CeilToInt(2.0f * PI * PatternRadius / FMath::Max(CircleSpacing, 50.0f)), CircleMinShots);
+		const float Offset = FMath::FRandRange(0.0f, 360.0f);
+		for (int32 K = 0; K < Count; ++K)
+		{
+			AddShot(PatternRadius, Offset + 360.0f * K / Count, 0.0f);
+		}
+	}
+
+	const FTransform Transform(FRotator::ZeroRotator, Foot);
+	AYSKrakenInkBarrage* Barrage = GetWorld()->SpawnActorDeferred<AYSKrakenInkBarrage>(AYSKrakenInkBarrage::StaticClass(), Transform, this, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (Barrage)
+	{
+		Barrage->Init(GetTipLocation(), InkFlightDuration, InkApexHeight, InkRadius, InkBallSize, TentacleWindupDuration, InkDamage, Shots);
+		Barrage->FinishSpawning(Transform);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s : motif %s, %d tirs d'encre en cloche (rayon %.0f, %.0f dégâts chacun, bateau à %.0f cm)"), *GetName(), PatternName, Shots.Num(),
+		PatternRadius, InkDamage, FVector::Dist2D(Boat->GetHullCenter(), Foot));
+}
+
+void AYSKrakenTentacleRange::FireScatterBalls(const AYSPirateShip* Boat)
+{
+	// Ink Balls Per Attack boules, chacune vers un point au hasard autour du bateau (signe au sol tout de suite), la première part à la fin de l'amorce
 	const FVector Center = Boat->GetHullCenter();
 	for (int32 Index = 0; Index < FMath::Max(InkBallsPerAttack, 1); ++Index)
 	{
@@ -910,9 +993,9 @@ AYSKrakenTentacleMelee::AYSKrakenTentacleMelee()
 {
 	FoeName = NSLOCTEXT("YS", "KrakenTentacleMeleeName", "Tentacule");
 	EmergeDistance = 500.0f;
-	// amorce (bande rouge au sol) 1 s ; attaque 2x plus tôt après la sortie que la tentacule à distance (demandes de Paul, 2026-11-10)
+	// amorce (bande rouge au sol) 1 s (2026-11-10) ; attaque 1 s après la sortie (demande de Paul, 2026-11-11)
 	TentacleWindupDuration = 1.0f;
-	AttackDelay = 2.5f;
+	AttackDelayRange = FVector2D(1.0, 1.0);
 
 	// corps violet (la tentacule à distance reste rouge) ; ventouses roses inchangées
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> RedMaterial(TEXT("/Game/Art/Materials/PH_materials/m_PH_monochrome_Red.m_PH_monochrome_Red"));

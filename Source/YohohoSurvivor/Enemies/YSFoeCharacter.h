@@ -346,6 +346,20 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="0", ClampMax="1", EditCondition="bIsElite && bBossArmor"))
 	float ShieldHealthThreshold = 0.5f;
 
+	/**
+	 *  Dégâts subis x ceci quand ils viennent directement d'un personnage (joueur, minion : armes, Abilities, bombes...).
+	 *  Appliqué avant la Boss armor. Réglages de Paul (2026-11-11) : NME de base 1, élites / boss / capitaines 1, Nemesis 1, Kraken 0.65.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Damage Taken", meta=(ClampMin="0"))
+	float PlayerDmgMultiplier = 1.0f;
+
+	/**
+	 *  Dégâts subis x ceci quand ils viennent d'un poste de combat du bateau (AMMO de canon, obus de mortier, leurs explosions,
+	 *  éperonnage). Réglages de Paul (2026-11-11) : NME de base 0.8, élites / boss / capitaines 0.5, Nemesis 0.35, Kraken 1.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Damage Taken", meta=(ClampMin="0"))
+	float BoatDmgMultiplier = 0.8f;
+
 	/** Objet laissé au sol à sa mort (ex. coffre de l'élite ; vide = rien) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Loot")
 	TSubclassOf<AYSInteractiveObject> DeathLootClass;
@@ -825,11 +839,14 @@ public:
 
 	float GetDamageMultiplier() const { return DamageMultiplier; }
 
-	/** Élite avec Boss armor (rage, bouclier de boss) */
-	bool UsesBossArmor() const { return bIsElite && (bBossArmor || bShipCaptainBoss); }
+	/** Élite avec Boss armor (rage, bouclier de boss) ; morceaux du Kraken : voir AYSKrakenPart */
+	virtual bool UsesBossArmor() const { return bIsElite && (bBossArmor || bShipCaptainBoss); }
 
 	/** Bouclier de boss et rage (boss, capitaines de navire) */
-	bool UsesBossShield() const { return UsesBossArmor() && (bBossShield || bShipCaptainBoss); }
+	virtual bool UsesBossShield() const { return UsesBossArmor() && (bBossShield || bShipCaptainBoss); }
+
+	/** Multiplicateurs des dégâts subis (serveur ; ex. capitaine de Galion, posés par le navire) */
+	void SetDamageTakenMultipliers(float InPlayerDmgMultiplier, float InBoatDmgMultiplier) { PlayerDmgMultiplier = InPlayerDmgMultiplier; BoatDmgMultiplier = InBoatDmgMultiplier; }
 
 	/** Capitaine d'un navire de NME (serveur) : mécaniques de boss (Boss armor, rage, bouclier) et barre de vie dans le HUD */
 	void SetShipCaptainBoss();
