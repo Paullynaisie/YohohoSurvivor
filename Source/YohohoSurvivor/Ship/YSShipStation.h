@@ -330,10 +330,12 @@ public:
 
 	/** Caméra (machine qui contrôle) */
 	/** Camera Arm Length (barre : Helm Camera Arm Length du bateau s'il est réglé) */
-	float GetCameraArmLength() const;
+	/** Postes de combat : Camera Arm Length x Station Camera Scale du bateau (sa taille) ; ShootPost : celui de la barre */
+	virtual float GetCameraArmLength() const;
 	bool IsCameraOnShip() const { return bCameraOnShip; }
 	EYSStationCameraOffset GetCameraOffsetMode() const { return CameraOffsetMode; }
-	float GetCameraOffsetDistance() const { return CameraOffsetDistance; }
+	/** Postes de combat : x Station Camera Scale du bateau (lookahead vers la visée à la taille du bateau) */
+	float GetCameraOffsetDistance() const;
 	float GetCameraInterpSpeed() const { return CameraInterpSpeed; }
 
 	/** Direction visée par le poste (Camera Offset Mode = Vers la visée) ; faux = aucune */

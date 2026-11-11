@@ -149,6 +149,10 @@ struct FYSIslandPlan
 	UPROPERTY()
 	FVector2f BerthLocation = FVector2f::ZeroVector;
 
+	/** Place le long du quai (ponton tourné) : bateau parallèle à la plage, proue vers l'ouest ; sinon tourné vers le large */
+	UPROPERTY()
+	bool bBerthAlongQuay = false;
+
 	/** Point accessible à pied le plus au nord (à North Spot Shore Inset de la falaise) */
 	UPROPERTY()
 	bool bHasNorthSpot = false;

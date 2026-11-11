@@ -6,6 +6,7 @@
 #include "Island/YSIsland.h"
 #include "LandscapeProxy.h"
 #include "Map/YSOcean.h"
+#include "Player/YSPlayerCharacter.h"
 
 namespace YSCombat
 {
@@ -64,6 +65,24 @@ namespace YSCombat
 		const float Distance = FMath::Min(Offset.Size(), MaxDistance);
 		const FVector Direction = Offset.GetSafeNormal();
 		FVector Ground;
+
+		// sur un bateau (pont, poste) : le sol de l'île n'y est pas (le pont est traversé) ; point visé gardé, posé sur ce qui est dessous
+		// (pont d'un bateau, île, ponton) ou sur la mer (2026-11-11 : les bombes du Saboteur partaient sur place)
+		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(Character);
+		if (PlayerCharacter && PlayerCharacter->GetShipUnderFeet())
+		{
+			const FVector Target = Feet + Direction * Distance;
+			const float Sea = AYSOcean::ClampAboveSea(World, -1.0e6f);
+			FHitResult Hit;
+			const FCollisionQueryParams Params(SCENE_QUERY_STAT(YSLandingOnShip), false, Character);
+			// depuis un peu au-dessus des pieds (gaillard compris, pas le haut des mâts)
+			if (World->LineTraceSingleByObjectType(Hit, FVector(Target.X, Target.Y, Feet.Z + 400.0f), FVector(Target.X, Target.Y, Sea - 10.0f),
+				FCollisionObjectQueryParams(ECC_WorldStatic), Params) && !Hit.bStartPenetrating && Hit.ImpactPoint.Z > Sea)
+			{
+				return Hit.ImpactPoint;
+			}
+			return FVector(Target.X, Target.Y, Sea);
+		}
 		for (float Step = Distance; Step > 0.0f; Step -= FMath::Max(RetreatStep, 10.0f))
 		{
 			if (FindIslandGround(World, Feet + Direction * Step, Feet.Z, Character, Ground))

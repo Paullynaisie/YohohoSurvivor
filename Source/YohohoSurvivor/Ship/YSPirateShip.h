@@ -5,6 +5,8 @@
 #include "YSPirateShip.generated.h"
 
 class UChildActorComponent;
+class UMaterialInterface;
+class UProceduralMeshComponent;
 class UWidgetComponent;
 class AYSShipHelm;
 class AYSShipCore;
@@ -116,6 +118,19 @@ private:
 	/** Second emplacement à l'avant (vide par défaut : réceptacle à poste de combat du Galion des joueurs) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UChildActorComponent> CannonFront2;
+
+	/** ShootPost (AYSShootPost) : 4 places autour du mât avant, vides par défaut (posées par setup_ship_experience_2026_11_11.py) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> ShootPost1;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> ShootPost2;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> ShootPost3;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UChildActorComponent> ShootPost4;
 
 	/** Barre de vie du bateau (PV du core), au-dessus du pont, affichée dès qu'il est abîmé (hauteur = position du composant) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
@@ -363,6 +378,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm", meta=(ClampMin="0", Units="Centimeters"))
 	float HelmCameraArmLength = 0.0f;
 
+	/**
+	 *  Dézoom et lookahead des postes de combat à la taille du bateau : x Helm Camera Arm Length / ceci (5184 = barre du sloop : postes du
+	 *  sloop inchangés, brigantin x1.41, galion x1.69) ; 0 = pas de mise à l'échelle
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm", meta=(ClampMin="0", Units="Centimeters"))
+	float StationCameraReferenceArmLength = 5184.0f;
+
 	/** « À l'abordage » : le bateau percuté est abordé (Galion de NME) si l'impact est à moins de cette distance d'un de ses postes de combat cassés */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="0", Units="Centimeters"))
 	float RamBrokenPostRadius = 500.0f;
@@ -417,6 +439,44 @@ protected:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Collision", meta=(ClampMin="0.1"))
 	float Weight = 1.0f;
+
+	/**
+	 *  Traînée d'écume derrière le bateau (local, chaque machine ; demande de Paul, 2026-11-11 : voir si on bouge) : bande blanche qui part
+	 *  de la poupe, large de Wake Width Ratio x la largeur de la coque, qui s'élargit et s'estompe en Wake Duration
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake")
+	bool bWakeTrail = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(ClampMin="0.1", Units="s", EditCondition="bWakeTrail"))
+	float WakeDuration = 3.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(ClampMin="0.05", Units="s", EditCondition="bWakeTrail"))
+	float WakeSampleInterval = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(ClampMin="0", EditCondition="bWakeTrail"))
+	float WakeWidthRatio = 0.7f;
+
+	/** Largeur au bout de la traînée = largeur de départ x (1 + ceci) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(ClampMin="0", EditCondition="bWakeTrail"))
+	float WakeSpread = 1.0f;
+
+	/** Couleur (alpha = opacité à la poupe, à pleine vitesse) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(EditCondition="bWakeTrail"))
+	FLinearColor WakeColor = FLinearColor(1.0f, 1.0f, 1.0f, 0.55f);
+
+	/** Sous cette vitesse rien n'est ajouté ; opacité pleine à Wake Full Speed */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(ClampMin="0", Units="CentimetersPerSecond", EditCondition="bWakeTrail"))
+	float WakeMinSpeed = 60.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(ClampMin="1", Units="CentimetersPerSecond", EditCondition="bWakeTrail"))
+	float WakeFullSpeed = 900.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(Units="Centimeters", EditCondition="bWakeTrail"))
+	float WakeHeightAboveSea = 4.0f;
+
+	/** Vide = M_ShipPreview */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(EditCondition="bWakeTrail"))
+	TObjectPtr<UMaterialInterface> WakeMaterial;
 
 	/** Poussée reçue (coup du Kraken) : vitesse amortie de ce facteur par seconde (exponentiel) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Collision", meta=(ClampMin="0"))
@@ -486,6 +546,9 @@ public:
 	float GetRamBrokenPostRadius() const { return RamBrokenPostRadius; }
 
 	float GetHelmCameraArmLength() const { return HelmCameraArmLength; }
+
+	/** Échelle de caméra des postes de combat (Helm Camera Arm Length / Station Camera Reference Arm Length ; 1 sans réglage) */
+	float GetStationCameraScale() const { return HelmCameraArmLength > 0.0f && StationCameraReferenceArmLength > 0.0f ? HelmCameraArmLength / StationCameraReferenceArmLength : 1.0f; }
 
 	/** PV max d'un poste de combat de ce bateau (PV max / Combat Post Health Divisor) ; 0 = PV du poste */
 	float GetCombatPostMaxHealth() const { return CombatPostHealthDivisor > 0.0f ? GetMaxHealth() / CombatPostHealthDivisor : 0.0f; }
@@ -700,6 +763,24 @@ private:
 
 	/** Pilote qui éperonne (dégâts attribués) */
 	TWeakObjectPtr<AController> RamInstigator;
+
+	/** Traînée d'écume (local) : points posés à la poupe */
+	struct FWakePoint
+	{
+		FVector Location;
+		FVector Side;
+		double Time;
+		float HalfWidth;
+		float Strength;
+	};
+	TArray<FWakePoint> WakePoints;
+	FVector LastWakeLocation = FVector::ZeroVector;
+	double LastWakeSampleTime = -1.0;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UProceduralMeshComponent> WakeMesh;
+
+	void UpdateWake(float DeltaSeconds);
 
 	/** Bateau déjà éperonné pendant ce contact ; fin du recul (temps du monde, serveur) */
 	TWeakObjectPtr<AYSPirateShip> LastRamTarget;

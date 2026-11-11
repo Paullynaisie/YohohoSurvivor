@@ -93,6 +93,11 @@ AYSPirateShip::AYSPirateShip(const FObjectInitializer& ObjectInitializer)
 	CannonLeft2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonLeft2"), AYSShipCannon::StaticClass(), FVector(-700.0f, -933.0f, 210.0f), -90.0f);
 	CannonRight2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonRight2"), AYSShipCannon::StaticClass(), FVector(-700.0f, 933.0f, 210.0f), 90.0f);
 	CannonFront2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("CannonFront2"), nullptr, FVector(3000.0f, 300.0f, 210.0f), 15.0f);
+	// ShootPost : places autour du mât avant (vides par défaut ; +X de chaque place = vers l'extérieur du mât)
+	ShootPost1 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("ShootPost1"), nullptr, FVector(2500.0f, 0.0f, 210.0f), 0.0f);
+	ShootPost2 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("ShootPost2"), nullptr, FVector(2400.0f, 100.0f, 210.0f), 90.0f);
+	ShootPost3 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("ShootPost3"), nullptr, FVector(2300.0f, 0.0f, 210.0f), 180.0f);
+	ShootPost4 = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("ShootPost4"), nullptr, FVector(2400.0f, -100.0f, 210.0f), -90.0f);
 	// accès : flanc bâbord (-Y), à l'ouverture du bastingage et de la planche d'embarquement, au niveau de la mer
 	BoardingAccess = YSPirateShip::CreateStation(this, ObjectInitializer, Root, TEXT("BoardingAccess"), AYSShipBoarding::StaticClass(), FVector(0.0f, -1000.0f, 0.0f), -90.0f);
 	// second accès, côté tribord : on peut monter des deux côtés
@@ -538,6 +543,118 @@ void AYSPirateShip::UpdateBoardableOverlay()
 	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : zones abordables affichées (%s, %d morceau(x))"), *GetName(), bAll ? TEXT("toute la coque, core négatif") : *FString::Printf(TEXT("%d poste(s) à 0 PV"), BrokenStations.Num()), Triangles.Num() / 6);
 }
 
+void AYSPirateShip::UpdateWake(float DeltaSeconds)
+{
+	if (!bWakeTrail || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+	const UWorld* World = GetWorld();
+	const double Now = World->GetTimeSeconds();
+	const float Duration = FMath::Max(WakeDuration, 0.1f);
+
+	// nouveau point à la poupe toutes les Wake Sample Interval, selon la vitesse réelle (même chez un client)
+	if (LastWakeSampleTime < 0.0)
+	{
+		LastWakeSampleTime = Now;
+		LastWakeLocation = GetActorLocation();
+	}
+	const float Elapsed = static_cast<float>(Now - LastWakeSampleTime);
+	if (Elapsed >= WakeSampleInterval)
+	{
+		const float Speed = FVector::Dist2D(GetActorLocation(), LastWakeLocation) / FMath::Max(Elapsed, KINDA_SMALL_NUMBER);
+		LastWakeSampleTime = Now;
+		LastWakeLocation = GetActorLocation();
+		const FBox2D Bounds = GetHullBounds();
+		if (Speed >= WakeMinSpeed && Bounds.bIsValid && IsPresent() && !IsHidden())
+		{
+			const float Sea = AYSOcean::ClampAboveSea(World, -1.0e6f) + WakeHeightAboveSea;
+			const FVector Stern = GetActorTransform().TransformPosition(FVector(Bounds.Min.X, Bounds.GetCenter().Y, 0.0f));
+			FWakePoint Point;
+			Point.Location = FVector(Stern.X, Stern.Y, Sea);
+			Point.Side = GetActorRightVector().GetSafeNormal2D();
+			Point.Time = Now;
+			Point.HalfWidth = Bounds.GetSize().Y * 0.5f * WakeWidthRatio;
+			Point.Strength = FMath::Clamp((Speed - WakeMinSpeed) / FMath::Max(WakeFullSpeed - WakeMinSpeed, 1.0f), 0.15f, 1.0f);
+			WakePoints.Add(Point);
+		}
+	}
+	// les plus vieux disparaissent
+	int32 Expired = 0;
+	while (Expired < WakePoints.Num() && Now - WakePoints[Expired].Time > Duration)
+	{
+		++Expired;
+	}
+	if (Expired > 0)
+	{
+		WakePoints.RemoveAt(0, Expired);
+	}
+
+	if (!WakeMesh)
+	{
+		if (WakePoints.Num() == 0)
+		{
+			return;
+		}
+		WakeMesh = NewObject<UProceduralMeshComponent>(this, TEXT("WakeMesh"));
+		WakeMesh->SetupAttachment(GetRootComponent());
+		WakeMesh->SetUsingAbsoluteLocation(true);
+		WakeMesh->SetUsingAbsoluteRotation(true);
+		WakeMesh->SetUsingAbsoluteScale(true);
+		WakeMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		WakeMesh->SetCastShadow(false);
+		WakeMesh->bUseAsyncCooking = false;
+		WakeMesh->RegisterComponent();
+		WakeMesh->SetWorldLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
+	}
+	if (WakePoints.Num() < 2)
+	{
+		WakeMesh->ClearAllMeshSections();
+		return;
+	}
+
+	// bande du plus vieux au plus récent (+ la poupe actuelle) : s'élargit et s'estompe avec l'âge
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FLinearColor> Colors;
+	const auto AddRow = [&](const FVector& Location, const FVector& Side, float HalfWidth, float Alpha)
+	{
+		FLinearColor Color = WakeColor;
+		Color.A = WakeColor.A * Alpha;
+		FLinearColor Edge = Color;
+		Edge.A = 0.0f;
+		// bords transparents, milieu opaque (3 sommets par rangée)
+		Vertices.Append({ Location - Side * HalfWidth, Location, Location + Side * HalfWidth });
+		Colors.Append({ Edge, Color, Edge });
+		const int32 Row = Vertices.Num() / 3 - 1;
+		if (Row > 0)
+		{
+			const int32 A = (Row - 1) * 3;
+			const int32 B = Row * 3;
+			Triangles.Append({ A, B, A + 1, A + 1, B, B + 1, A + 1, B + 1, A + 2, A + 2, B + 1, B + 2 });
+		}
+	};
+	for (const FWakePoint& Point : WakePoints)
+	{
+		const float Age = FMath::Clamp(static_cast<float>(Now - Point.Time) / Duration, 0.0f, 1.0f);
+		AddRow(Point.Location, Point.Side, Point.HalfWidth * (1.0f + WakeSpread * Age), Point.Strength * (1.0f - Age));
+	}
+	// raccord à la poupe actuelle (la bande suit le bateau entre deux points)
+	const FWakePoint& Last = WakePoints.Last();
+	const FBox2D Bounds = GetHullBounds();
+	if (Bounds.bIsValid && Now - Last.Time < WakeSampleInterval * 2.0)
+	{
+		const FVector Stern = GetActorTransform().TransformPosition(FVector(Bounds.Min.X, Bounds.GetCenter().Y, 0.0f));
+		AddRow(FVector(Stern.X, Stern.Y, Last.Location.Z), GetActorRightVector().GetSafeNormal2D(), Last.HalfWidth, Last.Strength);
+	}
+	WakeMesh->CreateMeshSection_LinearColor(0, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
+	if (!WakeMaterial)
+	{
+		WakeMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Core/Ship/M_ShipPreview.M_ShipPreview"));
+	}
+	WakeMesh->SetMaterial(0, WakeMaterial);
+}
+
 void AYSPirateShip::SetGrappled(bool bInGrappled)
 {
 	if (HasAuthority() && bGrappled != bInGrappled)
@@ -919,6 +1036,7 @@ void AYSPirateShip::Tick(float DeltaSeconds)
 	}
 
 	UpdateShipHealthBar();
+	UpdateWake(DeltaSeconds);
 
 	// voiles déployées = il peut naviguer, carguées = bloqué
 	if (HasAuthority())
@@ -1097,6 +1215,21 @@ float AYSPirateShip::GetHullMinDepth(const FVector& Location, float Yaw) const
 				OtherShip->GetAttachedActors(OtherActors, true, true);
 				ProbeParams.AddIgnoredActor(OtherShip);
 				ProbeParams.AddIgnoredActors(OtherActors);
+				continue;
+			}
+			// tout en bas de la hiérarchie des poids : un personnage (nageur), ce qu'il porte ou tient, un objet qui flotte ne sont jamais le
+			// fond (demande de Paul, 2026-11-11 : un nageur pouvait bloquer le bateau) ; ils sont poussés / traversés
+			const AActor* HitActor = Hit.GetActor();
+			const AActor* AttachRoot = HitActor;
+			while (AttachRoot && AttachRoot->GetAttachParentActor())
+			{
+				AttachRoot = AttachRoot->GetAttachParentActor();
+			}
+			if (HitActor && (HitActor->IsA<APawn>() || HitActor->GetInstigator() || (AttachRoot && AttachRoot->IsA<APawn>()) || HitActor->IsA<AYSInteractiveObject>()
+				|| (HitActor->GetOwner() && HitActor->GetOwner()->IsA<APawn>())))
+			{
+				UE_LOG(LogTemp, Verbose, TEXT("[YSShip] %s : fond ignoré sous la coque (%s, personnage / objet)"), *GetName(), *HitActor->GetName());
+				ProbeParams.AddIgnoredActor(HitActor);
 				continue;
 			}
 			MinDepth = FMath::Min(MinDepth, Sea - Hit.ImpactPoint.Z);

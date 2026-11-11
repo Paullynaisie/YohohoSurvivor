@@ -558,6 +558,34 @@ namespace YSIslandGen
 		const float AxisY = OutPlan.BoatLocation.Y;
 		// vrai bord de l'eau sur l'axe : longueur des pontons et place du bateau comptées depuis là (les planches commencent plus haut sur la plage)
 		const float AxisShore = FindShoreX(Terrain, OutPlan.BoatLocation.X, AxisY, SeaLevel);
+
+		// ponton tourné de 90° : quai parallèle à la plage en travers de l'axe de la chaloupe, deux passerelles à ses bouts, sloop côté large
+		if (Rules.bBeachQuay)
+		{
+			const float QuayInner = AxisShore - Rules.BeachQuayDistance;
+			const float QuayOuter = QuayInner - Rules.BeachQuayWidth;
+			const float QuayX = (QuayInner + QuayOuter) * 0.5f;
+			const float HalfLength = Rules.BeachPierLength * 0.5f;
+			FYSIslandPierSegment& Quay = OutPlan.PierSegments.AddDefaulted_GetRef();
+			Quay.A = FVector3f(QuayX, AxisY - HalfLength, Deck);
+			Quay.B = FVector3f(QuayX, AxisY + HalfLength, Deck);
+			Quay.bPosts = true;
+			Quay.Width = Rules.BeachQuayWidth;
+			for (const float Side : { -1.0f, 1.0f })
+			{
+				const float Y = AxisY + Side * (HalfLength - Rules.BeachPierWidth * 0.5f);
+				const float StartX = FindShoreX(Terrain, OutPlan.BoatLocation.X, Y, Deck) + Rules.BeachPierLandLength;
+				FYSIslandPierSegment& Walkway = OutPlan.PierSegments.AddDefaulted_GetRef();
+				Walkway.A = FVector3f(StartX, Y, Deck);
+				Walkway.B = FVector3f(QuayX, Y, Deck);
+				Walkway.bPosts = true;
+				Walkway.Width = Rules.BeachPierWidth;
+			}
+			OutPlan.bHasBerth = true;
+			OutPlan.bBerthAlongQuay = true;
+			OutPlan.BerthLocation = FVector2f(QuayOuter - Rules.BeachPierGap * 0.5f, AxisY);
+			return;
+		}
 		const float EndX = AxisShore - Rules.BeachPierLength;
 		const float Offset = Rules.BeachPierGap * 0.5f + Rules.BeachPierWidth * 0.5f;
 		for (const float Side : { -1.0f, 1.0f })
@@ -582,7 +610,7 @@ namespace YSIslandGen
 		{
 			return false;
 		}
-		const float HalfSpan = Rules.BeachPierGap * 0.5f + Rules.BeachPierWidth + Margin;
+		const float HalfSpan = FMath::Max(Rules.BeachPierGap * 0.5f + Rules.BeachPierWidth, Rules.bBeachQuay ? Rules.BeachPierLength * 0.5f : 0.0f) + Margin;
 		return FMath::Abs(P.Y - Plan.BerthLocation.Y) <= HalfSpan && P.X <= Plan.BoatLocation.X + Margin;
 	}
 

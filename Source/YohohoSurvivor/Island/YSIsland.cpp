@@ -1340,7 +1340,15 @@ bool AYSIsland::GetBerthTransform(FTransform& OutTransform) const
 	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
 	FVector Location = LocalToWorld(Plan.BerthLocation, 0.0f);
 	Location.Z = Ocean ? Ocean->GetSeaLevel() : 0.0f;
-	OutTransform = FTransform(FRotator(0.0f, GetActorRotation().Yaw + 180.0f, 0.0f), Location);
+	float Yaw = GetActorRotation().Yaw + 180.0f;
+	if (Plan.bBerthAlongQuay)
+	{
+		// le long du quai (Y local) : des deux sens, celui qui pointe le plus vers l'ouest (gauche de l'écran, nord en haut)
+		const float YawA = GetActorRotation().Yaw + 90.0f;
+		const float YawB = GetActorRotation().Yaw - 90.0f;
+		Yaw = FRotator(0.0f, YawA, 0.0f).Vector().Y < FRotator(0.0f, YawB, 0.0f).Vector().Y ? YawA : YawB;
+	}
+	OutTransform = FTransform(FRotator(0.0f, Yaw, 0.0f), Location);
 	return true;
 }
 

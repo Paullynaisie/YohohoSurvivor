@@ -291,6 +291,16 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 	{
 		Projectile->SetRicochets(FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::RicochetCountStat, 0.0f)), 1.0f + GetWeaponStat(UYSRicochetUpgrade::RicochetDamageBonusStat, 0.0f));
 	}
+	// ShootPost du bateau : balles de l'attaque auto qui vivent plus longtemps (portée x3)
+	if (HolderCharacter && IsAutomatic())
+	{
+		const float LifeTimeMultiplier = HolderCharacter->GetAmmoLifeTimeMultiplier();
+		if (LifeTimeMultiplier != 1.0f)
+		{
+			Projectile->MultiplyLifeTime(LifeTimeMultiplier);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSShootPost] %s : balle de l'attaque auto, durée de vie x%.1f (portée %.0f)"), *GetNameSafe(HolderCharacter), LifeTimeMultiplier, Projectile->GetMaxRange());
+		}
+	}
 	ConfigureProjectile(Projectile);
 	Projectile->FinishSpawning(SpawnTransform);
 }

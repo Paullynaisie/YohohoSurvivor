@@ -420,25 +420,57 @@ void AYSFoeGalion::SpawnBoardingPlanks(AYSPirateShip* Other)
 		Direction = (Other->GetActorLocation() - GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
 	}
 	Direction = Direction.GetSafeNormal();
-	const FVector OwnIn = OwnEdge - Direction * BoardingPlankInset;
-	const FVector OtherIn = OtherEdge + Direction * BoardingPlankInset;
+	const FVector Side = FVector::CrossProduct(FVector::UpVector, Direction).GetSafeNormal2D();
 
-	FYSBoardingPlankSpan Span;
-	Span.Start = FVector(OwnIn.X, OwnIn.Y, FindDeckHeight(this, OwnIn, GetActorLocation().Z + DeckHeight) + BoardingPlankHeight);
-	Span.End = FVector(OtherIn.X, OtherIn.Y, FindDeckHeight(Other, OtherIn, Other->GetActorLocation().Z + DeckHeight) + BoardingPlankHeight);
-	Span.Width = BoardingPlankWidth;
-	Span.Thickness = BoardingPlankThickness;
-	Span.Material = BoardingPlankMaterial;
-
-	const FTransform Transform(FRotator::ZeroRotator, Span.Start);
-	if (AYSBoardingPlank* Plank = GetWorld()->SpawnActorDeferred<AYSBoardingPlank>(AYSBoardingPlank::StaticClass(), Transform, this, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn))
+	// planche du milieu, puis Boarding Side Planks de chaque côté (parallèles, chacune posée seulement si ses deux bouts sont sur les ponts)
+	for (int32 Index = 0; Index <= 2 * BoardingSidePlanks; ++Index)
 	{
-		Plank->InitPlank(Span);
-		Plank->FinishSpawning(Transform);
-		BoardingPlanks.Add(Plank);
+		const int32 Rank = (Index + 1) / 2;
+		const float Offset = Index == 0 ? 0.0f : (Index % 2 == 1 ? 1.0f : -1.0f) * Rank * BoardingSidePlankSpacing;
+		// chaque bout est rabattu vers celui de la planche du milieu tant qu'il tombe hors de son pont (proue étroite : planches en éventail) ;
+		// trop rabattu (il toucherait la planche du milieu) : pas posée
+		const auto PlaceEnd = [&](const AYSPirateShip* Ship, const FVector& MiddleEnd, float& OutOffset)
+		{
+			for (int32 Step = 10; Step >= 0; --Step)
+			{
+				OutOffset = Offset * Step / 10.0f;
+				const FVector Point = MiddleEnd + Side * OutOffset;
+				if (Ship->IsInsideHull(Point))
+				{
+					return Point;
+				}
+			}
+			OutOffset = 0.0f;
+			return MiddleEnd;
+		};
+		float OwnOffset = 0.0f;
+		float OtherOffset = 0.0f;
+		const FVector OwnIn = Index == 0 ? OwnEdge - Direction * BoardingPlankInset : PlaceEnd(this, OwnEdge - Direction * BoardingPlankInset, OwnOffset);
+		const FVector OtherIn = Index == 0 ? OtherEdge + Direction * BoardingPlankInset : PlaceEnd(Other, OtherEdge + Direction * BoardingPlankInset, OtherOffset);
+		if (Index > 0 && FMath::Min(FMath::Abs(OwnOffset), FMath::Abs(OtherOffset)) < BoardingPlankWidth)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : planche d'abordage %d (décalée de %.0f) pas posée, pas la place sur un des ponts (%.0f / %.0f)"), *GetName(), Index, Offset,
+				OwnOffset, OtherOffset);
+			continue;
+		}
+
+		FYSBoardingPlankSpan Span;
+		Span.Start = FVector(OwnIn.X, OwnIn.Y, FindDeckHeight(this, OwnIn, GetActorLocation().Z + DeckHeight) + BoardingPlankHeight);
+		Span.End = FVector(OtherIn.X, OtherIn.Y, FindDeckHeight(Other, OtherIn, Other->GetActorLocation().Z + DeckHeight) + BoardingPlankHeight);
+		Span.Width = BoardingPlankWidth;
+		Span.Thickness = BoardingPlankThickness;
+		Span.Material = BoardingPlankMaterial;
+
+		const FTransform Transform(FRotator::ZeroRotator, Span.Start);
+		if (AYSBoardingPlank* Plank = GetWorld()->SpawnActorDeferred<AYSBoardingPlank>(AYSBoardingPlank::StaticClass(), Transform, this, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn))
+		{
+			Plank->InitPlank(Span);
+			Plank->FinishSpawning(Transform);
+			BoardingPlanks.Add(Plank);
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : planche d'abordage %d de %s à %s (%.0f cm de large, %.0f de long, décalée de %.0f)"), *GetName(), Index,
+			*FVector(Span.Start).ToCompactString(), *FVector(Span.End).ToCompactString(), Span.Width, FVector::Dist(Span.Start, Span.End), Offset);
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : planche d'abordage de %s à %s (%.0f cm de large, %.0f de long)"), *GetName(), *FVector(Span.Start).ToCompactString(), *FVector(Span.End).ToCompactString(),
-		Span.Width, FVector::Dist(Span.Start, Span.End));
 }
 
 AYSFoeCharacter* AYSFoeGalion::SpawnCrewMember(TSubclassOf<AYSFoeCharacter> FoeClass, const FVector& FeetLocation, int32 Seat)

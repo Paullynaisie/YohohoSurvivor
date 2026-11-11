@@ -55,6 +55,7 @@
 #include "Ship/YSLongboatLauncher.h"
 #include "Ship/YSLongboat.h"
 #include "Ship/YSCrowsNest.h"
+#include "Ship/YSShootPost.h"
 #include "Ship/YSShipCannon.h"
 #include "Ship/YSCombatPost.h"
 #include "GameFramework/GameStateBase.h"
@@ -2847,6 +2848,27 @@ void AYSPlayerCharacter::RestoreOnLevelUp()
 	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Level up : %s soigné (%.0f PV), recharges de l'Ability et de l'attaque auto rendues"), *GetName(), Health);
 }
 
+bool AYSPlayerCharacter::AreWeaponsStowedFor(const UYSAbilityComponent* Ability) const
+{
+	if (!AreWeaponsStowed())
+	{
+		return false;
+	}
+	// ShootPost : seule raison d'avoir les armes rangées, et l'action est une attaque auto qui tire
+	const AYSShootPost* ShootPost = Cast<AYSShootPost>(CurrentStation.Get());
+	if (!ShootPost || !ShootPost->AllowsAutoShot() || (IsCarrying() && !CanAttackWhileCarrying()) || bSwimming || IsRepairingShip())
+	{
+		return true;
+	}
+	return !(Ability && Ability->IsAutomatic() && Ability->IsA<UYSCoupDPetoirAbility>());
+}
+
+float AYSPlayerCharacter::GetAmmoLifeTimeMultiplier() const
+{
+	const AYSShootPost* ShootPost = Cast<AYSShootPost>(CurrentStation.Get());
+	return ShootPost ? ShootPost->GetAmmoLifeTimeMultiplier() : 1.0f;
+}
+
 void AYSPlayerCharacter::ForceAbility(const FYSForcedActivation& Forced)
 {
 	if (!HasAuthority() || !IsAlive() || AreWeaponsStowed())
@@ -3542,6 +3564,7 @@ void AYSPlayerCharacter::ServerDebugUseStation_Implementation(const FString& Kin
 	// Helm, Nest, Cannon, Longboat (chalouperie), Seat (passager de la chaloupe)
 	UClass* StationClass = AYSShipStation::StaticClass();
 	if (Kind.Equals(TEXT("Helm"), ESearchCase::IgnoreCase))			{ StationClass = AYSShipHelm::StaticClass(); }
+	else if (Kind.Equals(TEXT("Shoot"), ESearchCase::IgnoreCase))	{ StationClass = AYSShootPost::StaticClass(); }
 	else if (Kind.Equals(TEXT("Nest"), ESearchCase::IgnoreCase))	{ StationClass = AYSCrowsNest::StaticClass(); }
 	else if (Kind.Equals(TEXT("Cannon"), ESearchCase::IgnoreCase))	{ StationClass = AYSShipCannon::StaticClass(); }
 	else if (Kind.Equals(TEXT("Longboat"), ESearchCase::IgnoreCase))	{ StationClass = AYSLongboatLauncher::StaticClass(); }

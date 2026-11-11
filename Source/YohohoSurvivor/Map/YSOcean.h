@@ -6,6 +6,8 @@
 
 class UStaticMeshComponent;
 class UBoxComponent;
+class UMaterialInterface;
+class UProceduralMeshComponent;
 
 /** Canal de collision « Water » (DefaultEngine.ini) : le sol de nage de l'océan ; seuls les joueurs (et minions) le bloquent */
 inline constexpr ECollisionChannel ECC_YSWater = ECC_GameTraceChannel1;
@@ -43,6 +45,43 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ocean|Swim", meta=(ClampMin="1", Units="Centimeters"))
 	float SwimFloorDepth = 95.0f;
 
+	/**
+	 *  Écume (local, chaque machine) : taches blanches posées sur l'eau, FIXES dans le monde (grille de cases, mêmes taches à chaque
+	 *  passage) autour de la caméra du joueur local, pour voir qu'on avance (demande de Paul, 2026-11-11)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ocean|Foam")
+	bool bFoam = true;
+
+	/** Taille d'une case de la grille ; taches dans les cases à moins de Foam Grid Radius cases de celle de la caméra */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ocean|Foam", meta=(ClampMin="100", Units="Centimeters", EditCondition="bFoam"))
+	float FoamCellSize = 1500.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ocean|Foam", meta=(ClampMin="1", ClampMax="20", EditCondition="bFoam"))
+	int32 FoamGridRadius = 8;
+
+	/** Taches par case (au hasard entre min et max) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ocean|Foam", meta=(EditCondition="bFoam"))
+	FIntPoint FoamPerCell = FIntPoint(1, 3);
+
+	/** Rayon d'une tache (au hasard), forme irrégulière */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ocean|Foam", meta=(Units="Centimeters", EditCondition="bFoam"))
+	FVector2D FoamRadius = FVector2D(40.0, 180.0);
+
+	/** Allongement des taches (longueur / largeur, au hasard) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ocean|Foam", meta=(EditCondition="bFoam"))
+	FVector2D FoamStretch = FVector2D(1.0, 2.5);
+
+	/** Couleur au centre d'une tache (alpha = opacité), bord transparent */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ocean|Foam", meta=(EditCondition="bFoam"))
+	FLinearColor FoamColor = FLinearColor(1.0f, 1.0f, 1.0f, 0.45f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ocean|Foam", meta=(Units="Centimeters", EditCondition="bFoam"))
+	float FoamHeightAboveSea = 2.0f;
+
+	/** Vide = M_ShipPreview (translucide non éclairé, couleur des sommets) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ocean|Foam", meta=(EditCondition="bFoam"))
+	TObjectPtr<UMaterialInterface> FoamMaterial;
+
 public:
 
 	AYSOcean();
@@ -50,6 +89,8 @@ public:
 	virtual void OnConstruction(const FTransform& Transform) override;
 
 	virtual void BeginPlay() override;
+
+	virtual void Tick(float DeltaSeconds) override;
 
 	float GetSwimFloorDepth() const { return SwimFloorDepth; }
 
@@ -72,4 +113,12 @@ private:
 
 	/** Sol de nage sous toute la surface (taille et hauteur en coordonnées monde) */
 	void ApplySwimFloor();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UProceduralMeshComponent> FoamMesh;
+
+	FIntPoint FoamCenterCell = FIntPoint(TNumericLimits<int32>::Max(), 0);
+
+	/** Taches des cases autour de Center (reconstruit quand la caméra change de case) */
+	void RebuildFoam(const FIntPoint& Center);
 };

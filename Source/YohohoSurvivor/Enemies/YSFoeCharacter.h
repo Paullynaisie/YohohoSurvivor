@@ -560,6 +560,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Climb", meta=(ClampMin="0", Units="s", EditCondition="bClimbWhenBlocked"))
 	float ClimbBlockMemory = 0.15f;
 
+	/** NME qui nage et touche la coque d'un bateau : il grimpe à la vitesse verticale maximale (Move Speed x Climb Speed Multiplier) même
+	 *  s'il garde de la vitesse horizontale (demande de Paul, 2026-11-11 : il glissait le long de la coque sans monter) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Climb", meta=(EditCondition="bClimbWhenBlocked"))
+	bool bSwimmerFullClimbOnShips = true;
+
 	/**
 	 *  Élite : poursuit aussi les joueurs qui nagent et entre dans la mer tant que l'eau devant lui (à Water Stop Distance x sa
 	 *  taille) n'est pas plus profonde que ça (0 = comme les autres NME : jamais dans l'eau, nageurs ignorés en mêlée)
@@ -1014,6 +1019,10 @@ protected:
 
 	/** Dernière fois que le déplacement a buté contre une surface qui fait grimper */
 	double LastClimbBlockTime = -1.0;
+
+	/** Dernier choc d'escalade : contre un bateau, en nageant (escalade à pleine vitesse verticale) */
+	bool bLastClimbBlockOnShipSwimming = false;
+	bool bFullSpeedClimb = false;
 
 	/** Le sol devant le NME (Distance dans Direction) est la mer : il s'arrête au bord au lieu d'y entrer (cible qui nage) */
 	bool IsWaterAhead(const FVector& Direction, float Distance, float MaxDepth = 0.0f) const;

@@ -542,6 +542,17 @@ FVector AYSShipStation::GetExitFeetLocation() const
 float AYSShipStation::GetCameraArmLength() const
 {
 	// barre : réglage du bateau s'il en a un (le gabarit de la barre d'un Blueprint enfant, ex. BP_GameBoat_Galion, ne garde pas ses retouches)
-	const AYSPirateShip* Ship = IsA<AYSShipHelm>() ? GetShip() : nullptr;
-	return Ship && Ship->GetHelmCameraArmLength() > 0.0f ? Ship->GetHelmCameraArmLength() : CameraArmLength;
+	const AYSPirateShip* Ship = GetShip();
+	if (IsA<AYSShipHelm>())
+	{
+		return Ship && Ship->GetHelmCameraArmLength() > 0.0f ? Ship->GetHelmCameraArmLength() : CameraArmLength;
+	}
+	// postes de combat : dézoom à la taille du bateau, comme la barre (demande de Paul, 2026-11-11)
+	return IsCombatPost() && Ship ? CameraArmLength * Ship->GetStationCameraScale() : CameraArmLength;
+}
+
+float AYSShipStation::GetCameraOffsetDistance() const
+{
+	const AYSPirateShip* Ship = IsCombatPost() ? GetShip() : nullptr;
+	return Ship ? CameraOffsetDistance * Ship->GetStationCameraScale() : CameraOffsetDistance;
 }

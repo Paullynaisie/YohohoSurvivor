@@ -1402,6 +1402,12 @@ public:
 	/** Armes rangées (objet porté sauf passif du Quartermaster, nage, poste de bateau) : cachées, ni Ability ni attaque auto */
 	bool AreWeaponsStowed() const { return (IsCarrying() && !CanAttackWhileCarrying()) || bSwimming || IsAtStation() || IsRepairingShip(); }
 
+	/** Armes rangées pour cette action : comme Are Weapons Stowed, sauf l'attaque auto qui tire (Coup d Petoir et dérivés) au ShootPost */
+	bool AreWeaponsStowedFor(const class UYSAbilityComponent* Ability) const;
+
+	/** Durée de vie des balles de l'attaque auto x ceci (ShootPost : x3 ; sinon 1) */
+	float GetAmmoLifeTimeMultiplier() const;
+
 	/** Répare le core en négatif d'un bateau */
 	bool IsRepairingShip() const { return RepairingShip != nullptr; }
 

@@ -562,7 +562,7 @@ protected:
 
 	/** Attaques tirées au hasard à chaque sortie (pas deux fois la même de suite s'il y en a plusieurs ; choix de Claude) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Pattern")
-	TArray<EYSKrakenTentacleAttack> Attacks = { EYSKrakenTentacleAttack::Cross, EYSKrakenTentacleAttack::Circle };
+	TArray<EYSKrakenTentacleAttack> Attacks = { EYSKrakenTentacleAttack::Cross, EYSKrakenTentacleAttack::Circle, EYSKrakenTentacleAttack::ScatterBalls };
 
 	/** Croix : nombre de branches (réparties autour, la première vers le bateau) et de tirs par branche */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Pattern|Cross", meta=(ClampMin="1"))
@@ -592,7 +592,7 @@ protected:
 
 	/** Ancienne attaque (Scatter Balls) : boules tirées par attaque (chacune visant un point au hasard autour du bateau) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="1"))
-	int32 InkBallsPerAttack = 3;
+	int32 InkBallsPerAttack = 8;
 
 	/** Départ de chaque boule après la précédente (choix de Claude) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0", Units="s"))
@@ -600,7 +600,7 @@ protected:
 
 	/** Imprécision : point visé au hasard dans ce rayon autour du centre de la coque (répartition uniforme dans le disque) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="0", Units="Centimeters"))
-	float InkScatterRadius = 3500.0f;
+	float InkScatterRadius = 5000.0f;
 
 	/** Rayon de l'impact (signe au sol) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Ink Ball", meta=(ClampMin="1", Units="Centimeters"))

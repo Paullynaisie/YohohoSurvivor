@@ -259,7 +259,7 @@ void UYSAbilityComponent::GrantForcedActivation(const FYSForcedActivation& Force
 void UYSAbilityComponent::TryForcedActivate(const FVector& TargetLocation)
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	if (!bForcedGranted || !CanActivateNow() || (Character && (Character->AreWeaponsStowed() || Character->IsRising() || Character->IsDying())))
+	if (!bForcedGranted || !CanActivateNow() || (Character && (Character->AreWeaponsStowedFor(this) || Character->IsRising() || Character->IsDying())))
 	{
 		bForcedGranted = false;
 		return;
@@ -471,7 +471,7 @@ bool UYSAbilityComponent::CanStartByPriority() const
 {
 	// objet porté à deux mains (coffre), nage, sortie du sol, mort : aucune action d'arme
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	if (Character && (Character->AreWeaponsStowed() || Character->IsRising() || Character->IsDying()))
+	if (Character && (Character->AreWeaponsStowedFor(this) || Character->IsRising() || Character->IsDying()))
 	{
 		return false;
 	}

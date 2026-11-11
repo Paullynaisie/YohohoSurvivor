@@ -448,6 +448,10 @@ public:
 	UFUNCTION(Exec)
 	void YSShipStatus();
 
+	/** Debug (hôte) : ce que voit la sonde de fond des bateaux (trace WorldStatic de la mer + 100 vers le bas) sous le personnage : log */
+	UFUNCTION(Exec)
+	void YSProbeDepth();
+
 	/** Debug : utilise le poste de bateau libre le plus proche de ce type (Helm, Nest, Cannon, Longboat = chalouperie, Seat = passager de la chaloupe).  Ex : YSUseStation Cannon */
 	UFUNCTION(Exec)
 	void YSUseStation(const FString& Kind, int32 Skip = 0);

@@ -1,4 +1,6 @@
 #include "Player/YSPlayerController.h"
+#include "Map/YSOcean.h"
+#include "Engine/OverlapResult.h"
 #include "Island/YSIsland.h"
 #include "Island/YSIslandData.h"
 #include "Island/YSIslandNPC.h"
@@ -3119,6 +3121,35 @@ void AYSPlayerController::YSShipStatus()
 		const FVector Location = It->GetActorLocation();
 		UE_LOG(LogTemp, Log, TEXT("[YSShip] Statut %s (%.0f, %.0f) yaw %.0f vitesse %.0f : core %.0f / %.0f%s ;%s"), *It->GetName(), Location.X, Location.Y, It->GetActorRotation().Yaw, It->GetSpeed(),
 			It->GetHealth(), It->GetMaxHealth(), It->IsDisabled() ? TEXT(" HORS D'USAGE") : TEXT(""), *Modules);
+	}
+}
+
+void AYSPlayerController::YSProbeDepth()
+{
+	const APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn)
+	{
+		return;
+	}
+	const float Sea = AYSOcean::ClampAboveSea(GetWorld(), -1.0e6f);
+	const FVector Location = ControlledPawn->GetActorLocation();
+	TArray<FHitResult> Hits;
+	GetWorld()->LineTraceMultiByObjectType(Hits, FVector(Location.X, Location.Y, Sea + 100.0f), FVector(Location.X, Location.Y, Sea - 3000.0f), FCollisionObjectQueryParams(ECC_WorldStatic));
+	UE_LOG(LogTemp, Log, TEXT("[YSProbeDepth] sous %s (%.0f, %.0f) : %d touché(s)"), *ControlledPawn->GetName(), Location.X, Location.Y, Hits.Num());
+	for (const FHitResult& Hit : Hits)
+	{
+		const UPrimitiveComponent* Component = Hit.GetComponent();
+		UE_LOG(LogTemp, Log, TEXT("[YSProbeDepth]   %s / %s (type %d) à Z %.0f (mer %.0f)"), *GetNameSafe(Hit.GetActor()), *GetNameSafe(Component),
+			Component ? static_cast<int32>(Component->GetCollisionObjectType()) : -1, Hit.ImpactPoint.Z, Sea);
+	}
+	// autour du personnage (mains, armes, objets portés) : tout ce qui est WorldStatic à 1.5 m
+	TArray<FOverlapResult> Overlaps;
+	GetWorld()->OverlapMultiByObjectType(Overlaps, Location, FQuat::Identity, FCollisionObjectQueryParams(ECC_WorldStatic), FCollisionShape::MakeSphere(150.0f));
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		const UPrimitiveComponent* Component = Overlap.GetComponent();
+		UE_LOG(LogTemp, Log, TEXT("[YSProbeDepth]   autour : %s / %s (type %d, Z %.0f)"), *GetNameSafe(Overlap.GetActor()), *GetNameSafe(Component),
+			Component ? static_cast<int32>(Component->GetCollisionObjectType()) : -1, Component ? Component->GetComponentLocation().Z : 0.0f);
 	}
 }
 

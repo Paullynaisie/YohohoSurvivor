@@ -1,5 +1,6 @@
 #include "Enemies/YSFoeCharacter.h"
 #include "Enemies/YSFoeGalion.h"
+#include "Ship/YSPirateShip.h"
 #include "Ship/YSShipCore.h"
 #include "Ship/YSShipStation.h"
 #include "AIController.h"
@@ -2062,6 +2063,7 @@ void AYSFoeCharacter::MoveBlockedBy(const FHitResult& Impact)
 		return;
 	}
 	LastClimbBlockTime = GetWorld()->GetTimeSeconds();
+	bLastClimbBlockOnShipSwimming = bSwimmerFullClimbOnShips && bFoeSwimming && AYSPirateShip::GetShipOf(Impact.GetActor()) != nullptr;
 }
 
 void AYSFoeCharacter::UpdateClimb()
@@ -2093,18 +2095,21 @@ void AYSFoeCharacter::UpdateClimb()
 	const float LostSpeed = FMath::Max(Speed - KeptSpeed, 0.0f);
 	if (!bClimbing)
 	{
-		if (Movement->MovementMode != MOVE_Walking || LostSpeed < Speed * ClimbMinLostSpeedRatio)
+		// nageur contre la coque d'un bateau : il grimpe même en glissant le long d'elle (sans perte de vitesse), à pleine vitesse verticale
+		bFullSpeedClimb = bLastClimbBlockOnShipSwimming;
+		if ((Movement->MovementMode != MOVE_Walking && !bFullSpeedClimb) || (LostSpeed < Speed * ClimbMinLostSpeedRatio && !bFullSpeedClimb))
 		{
 			return;
 		}
 		bClimbing = true;
 		Movement->SetMovementMode(MOVE_Flying);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSClimb] %s grimpe à (%.0f, %.0f, %.0f) : %.0f gardés, %.0f vers le haut"), *GetName(),
-			GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, KeptSpeed, LostSpeed * ClimbSpeedMultiplier);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSClimb] %s grimpe à (%.0f, %.0f, %.0f) : %.0f gardés, %.0f vers le haut%s"), *GetName(),
+			GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, KeptSpeed, (bFullSpeedClimb ? Speed : LostSpeed) * ClimbSpeedMultiplier,
+			bFullSpeedClimb ? TEXT(" (nage contre un bateau : pleine vitesse)") : TEXT(""));
 	}
 
-	// vol sans gravité : horizontal plafonné à Move Speed, la vitesse perdue part vers le haut
-	const float VerticalSpeed = LostSpeed * ClimbSpeedMultiplier;
+	// vol sans gravité : horizontal plafonné à Move Speed, la vitesse perdue part vers le haut (nageur contre un bateau : toute la vitesse)
+	const float VerticalSpeed = (bFullSpeedClimb ? Speed : LostSpeed) * ClimbSpeedMultiplier;
 	Movement->MaxFlySpeed = Speed + VerticalSpeed + 1.0f;
 	const FVector Horizontal = FVector(Movement->Velocity.X, Movement->Velocity.Y, 0.0f).GetClampedToMaxSize(Speed);
 	Movement->Velocity = FVector(Horizontal.X, Horizontal.Y, VerticalSpeed);

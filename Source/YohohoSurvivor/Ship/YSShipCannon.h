@@ -62,7 +62,7 @@ protected:
 
 	/** Angle max du canon de chaque côté de son alignement d'origine */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon", meta=(ClampMin="0", ClampMax="180", Units="Degrees"))
-	float MaxAimAngle = 45.0f;
+	float MaxAimAngle = 60.0f;
 
 	/** Vitesse à laquelle le canon suit la visée (0 = immédiat) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cannon", meta=(ClampMin="0"))

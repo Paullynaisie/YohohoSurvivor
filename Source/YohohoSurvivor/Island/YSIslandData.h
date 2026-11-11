@@ -384,6 +384,22 @@ struct FYSIslandGenerationRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="0", Units="Centimeters", EditCondition="bBeachPiers"))
 	float BerthDistanceFromShore = 0.0f;
 
+	/**
+	 *  Ponton tourné de 90° (demande de Paul, 2026-11-11) : UN quai parallèle à la plage, au large, en travers de l'axe d'arrivée de la
+	 *  chaloupe (elle le percute et débarque les joueurs dessus), relié à la plage par deux passerelles à ses bouts ; le sloop apparaît
+	 *  le long du quai côté large, proue vers la gauche de l'écran (ouest). Longueur = Beach Pier Length, écart quai / coque du sloop =
+	 *  (Beach Pier Gap - largeur du sloop) / 2 ; faux = les deux pontons perpendiculaires d'avant
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(EditCondition="bBeachPiers"))
+	bool bBeachQuay = true;
+
+	/** Distance du bord de l'eau (sur l'axe) au bord intérieur du quai */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="0", Units="Centimeters", EditCondition="bBeachPiers && bBeachQuay"))
+	float BeachQuayDistance = 600.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="50", Units="Centimeters", EditCondition="bBeachPiers && bBeachQuay"))
+	float BeachQuayWidth = 400.0f;
+
 	/** Objectif « le plus au nord » : distance minimale au bord de la falaise (pas trop dans le vide) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="14 North Spot", meta=(ClampMin="0", Units="Centimeters"))
 	float NorthSpotShoreInset = 350.0f;

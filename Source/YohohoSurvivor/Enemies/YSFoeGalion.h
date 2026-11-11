@@ -212,6 +212,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram")
 	TObjectPtr<UMaterialInterface> BoardingPlankMaterial;
 
+	/** Planches en plus de chaque côté de celle du milieu (plus de place pour se battre ; demande de Paul, 2026-11-11 : 1 à gauche, 1 à droite) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram", meta=(ClampMin="0"))
+	int32 BoardingSidePlanks = 1;
+
+	/** Distance entre les axes de deux planches voisines (Boarding Plank Width 260 : 600 = 3.4 m d'eau entre elles ; choix de Claude) ;
+	 *  une planche dont un bout tombe hors d'une des deux coques n'est pas posée */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram", meta=(ClampMin="50", Units="Centimeters"))
+	float BoardingSidePlankSpacing = 600.0f;
+
 	/** Second équipage qui apparaît à l'abordage (hors capitaine) ; vide = les mêmes groupes que l'équipage */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Ram")
 	TArray<FYSGalionCrewGroup> BoardingCrewGroups;
