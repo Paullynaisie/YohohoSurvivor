@@ -379,6 +379,9 @@ protected:
 
 	virtual void OnAllPlayersReady() override;
 
+	/** Hired crew : une place de la chaloupe de l'intro qu'aucun joueur n'a, tant qu'elle n'a pas accosté */
+	virtual AYSShipStation* FindHiredIntroSeat(FTransform& OutFeet) const override;
+
 private:
 
 	UPROPERTY(Transient)

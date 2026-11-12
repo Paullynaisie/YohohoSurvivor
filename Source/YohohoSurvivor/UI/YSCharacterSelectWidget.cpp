@@ -191,6 +191,21 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	UVerticalBoxSlot* ListSlot = Column->AddChildToVerticalBox(ButtonList);
 	ListSlot->SetHorizontalAlignment(HAlign_Center);
 
+	// « Hired crew » : sous le dernier personnage, hôte seulement (caché tant que SetHiredCrew ne l'affiche pas)
+	UHorizontalBox* HiredRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("HiredCrew"));
+	HiredRow->SetVisibility(ESlateVisibility::Collapsed);
+	HiredCrewRow = HiredRow;
+	UVerticalBoxSlot* HiredRowSlot = Column->AddChildToVerticalBox(HiredRow);
+	HiredRowSlot->SetHorizontalAlignment(HAlign_Center);
+	HiredRowSlot->SetPadding(FMargin(0.0f, HiredCrewSpacing, 0.0f, 0.0f));
+	HiredCrewBox = WidgetTree->ConstructWidget<UCheckBox>(UCheckBox::StaticClass(), TEXT("HiredCrewBox"));
+	HiredCrewBox->SetIsChecked(false);
+	HiredCrewBox->OnCheckStateChanged.AddDynamic(this, &UYSCharacterSelectWidget::HandleHiredCrewChanged);
+	HiredRow->AddChildToHorizontalBox(HiredCrewBox)->SetVerticalAlignment(VAlign_Center);
+	UHorizontalBoxSlot* HiredLabelSlot = HiredRow->AddChildToHorizontalBox(YSCharacterSelect::MakeLabel(WidgetTree, HiredCrewLabel, HiredCrewFontSize));
+	HiredLabelSlot->SetVerticalAlignment(VAlign_Center);
+	HiredLabelSlot->SetPadding(FMargin(HiredCrewLabelSpacing, 0.0f, 0.0f, 0.0f));
+
 	StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Status"));
 	YSCharacterSelect::SetFontSize(StatusText, StatusFontSize);
 	StatusText->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.8f, 0.8f)));
@@ -331,6 +346,28 @@ void UYSCharacterSelectWidget::SetPlayMode(bool bVisible, int32 ModeIndex)
 		PlayModeNameText->SetText(PlayModeNames.IsValidIndex(ModeIndex) ? PlayModeNames[ModeIndex] : FText::AsNumber(ModeIndex));
 		PlayModeNameText->SetColorAndOpacity(FSlateColor(PlayModeColors.IsValidIndex(ModeIndex) ? PlayModeColors[ModeIndex] : FLinearColor::White));
 	}
+}
+
+void UYSCharacterSelectWidget::SetHiredCrew(bool bVisible, bool bChecked)
+{
+	if (!HiredCrewRow || !HiredCrewBox)
+	{
+		return;
+	}
+	const ESlateVisibility Wanted = bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	if (HiredCrewRow->GetVisibility() != Wanted)
+	{
+		HiredCrewRow->SetVisibility(Wanted);
+	}
+	if (HiredCrewBox->IsChecked() != bChecked)
+	{
+		HiredCrewBox->SetIsChecked(bChecked);
+	}
+}
+
+void UYSCharacterSelectWidget::HandleHiredCrewChanged(bool bIsChecked)
+{
+	OnHiredCrewChanged.ExecuteIfBound(bIsChecked);
 }
 
 void UYSCharacterSelectWidget::SetReady(bool bIsReady)

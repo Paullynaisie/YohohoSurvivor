@@ -99,6 +99,9 @@ protected:
 	/** Cordes et barreaux reconstruits (éditeur et jeu, local) */
 	void BuildLadder();
 
+	/** Point d'arrivée (sous-classes : échelle du quai de la plage) */
+	USceneComponent* GetBoardPointComponent() const { return BoardPoint; }
+
 	/** Longueur de la zone d'accès depuis le flanc vers le large (+X de l'acteur) : couvre la planche d'embarquement */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding", meta=(ClampMin="0", Units="Centimeters"))
 	float AccessReach = 600.0f;
@@ -106,6 +109,13 @@ protected:
 	/** Demi-largeur de la zone d'accès (le long du flanc) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding", meta=(ClampMin="0", Units="Centimeters"))
 	float AccessHalfWidth = 350.0f;
+
+	/**
+	 *  Toute la distance d'utilisation x ce multiplicateur : longueur et demi-largeur de la zone, et la portée d'interaction du personnage autour
+	 *  (0.7 = 30 % plus près, demande de Paul du 2026-11-12 : on montait de trop loin)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding", meta=(ClampMin="0.05", ClampMax="2"))
+	float AccessRangeMultiplier = 0.7f;
 
 	/** Un joueur qui nage peut monter à bord */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Boarding")
@@ -137,6 +147,8 @@ public:
 
 	/** Zone large le long du flanc : pas besoin de la regarder */
 	virtual bool RequiresFacing() const override { return false; }
+
+	virtual float GetInteractRangeMultiplier() const override { return AccessRangeMultiplier; }
 
 	AYSPirateShip* GetShip() const;
 };

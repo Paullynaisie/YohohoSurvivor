@@ -398,6 +398,14 @@ protected:
 	/** Personnalisation appliquée (couleur et visage trouvés) */
 	bool bCustomizationApplied = false;
 
+	/** Hired crew : composant ajouté dans le Blueprint du HiredMouss (trouvé dans PostInitializeComponents) */
+	UPROPERTY(Transient)
+	TObjectPtr<class UYSHiredCrewComponent> HiredCrewComponent;
+
+	friend class UYSHiredCrewComponent;
+
+	virtual void PostInitializeComponents() override;
+
 	/** Post-process de la nuit (appliqué à la caméra du joueur local, mélangé selon le jour / la nuit) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|DayNight")
 	FPostProcessSettings NightPostProcess;
@@ -1384,7 +1392,7 @@ public:
 	float GetAutoAttackAimDistance() const { return AutoAttackAimDistance; }
 
 	/** Le personnage n'attaque automatiquement qu'en maintenant le clic gauche, et l'attaque auto le ralentit (joueurs ; pas les minions) */
-	virtual bool UsesHeldAutoAttack() const { return true; }
+	virtual bool UsesHeldAutoAttack() const { return HiredCrewComponent == nullptr; }
 
 	/** Debug (YSHoldAutoAttack) : clic gauche considéré comme maintenu */
 	void SetDebugAutoAttack(bool bHeld);
@@ -1426,6 +1434,27 @@ public:
 
 	/** Joueurs : la stamina compte (pas les minions : pas de consommation, toujours ralentis dans l'eau, jamais noyés) */
 	virtual bool UsesStamina() const { return true; }
+
+	/** Personnage piloté par IA qui sert d'équipage (minion du Captain, HiredMouss) : un joueur peut lui prendre son poste */
+	virtual bool IsAutoCrew() const { return HiredCrewComponent != nullptr; }
+
+	/** Composant Hired crew (HiredMouss : IA, couleur, réanimation au bateau), nullptr pour un joueur */
+	class UYSHiredCrewComponent* GetHiredCrew() const { return HiredCrewComponent; }
+
+	/** Hired crew : PV = cette part des PV max (serveur) */
+	void SetHealthRatio(float Ratio);
+
+	/** Escalade du HiredMouss (transmis à son composant) */
+	virtual void MoveBlockedBy(const FHitResult& Impact) override;
+
+	/** Couleur de personnalisation (index dans les couleurs du GameState) : celle du PlayerState, INDEX_NONE sans joueur */
+	virtual int32 GetCustomizationColorIndex() const;
+
+	/**
+	 *  Plaque au-dessus du personnage (alliés) : vrai = affichée, avec ce nom ; Out Stamina Ratio >= 0 = barre de stamina sous les PV
+	 *  (défaut : personnage d'un autre joueur, sans barre de stamina)
+	 */
+	virtual bool GetNameplateInfo(FText& OutName, float& OutStaminaRatio) const;
 
 	/** Stamina vue par cette machine (coût de la MoveAction prédit déduit) */
 	float GetStamina() const { return FMath::Max(0.0f, Stamina - PredictedStaminaCost); }

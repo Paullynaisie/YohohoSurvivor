@@ -1,4 +1,5 @@
 #include "Core/YSGameMode.h"
+#include "Engine/DamageEvents.h"
 #include "GameFramework/GameSession.h"
 #include "EngineUtils.h"
 #include "Core/YSGameState.h"
@@ -16,6 +17,8 @@
 #include "Map/YSOcean.h"
 #include "NPC/YSBrookerNPC.h"
 #include "Ship/YSPirateShip.h"
+#include "Ship/YSShipStation.h"
+#include "Summons/YSHiredCrewComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
@@ -50,6 +53,9 @@ AYSGameMode::AYSGameMode()
 	FYSOvertimeWave& SecondWave = OvertimeWaves.AddDefaulted_GetRef();
 	SecondWave.Delay = 45.0f;
 	SecondWave.LevelOffset = 5;
+
+	// Hired crew : BP enfant de Mouss (Tools/EditorScripts/setup_hired_mouss.py)
+	HiredMoussClass = TSoftClassPtr<AYSPlayerCharacter>(FSoftObjectPath(TEXT("/Game/Placeable/Character/Player/PlayerCharacter_HiredMouss.PlayerCharacter_HiredMouss_C")));
 }
 
 void AYSGameMode::Tick(float DeltaSeconds)
@@ -82,6 +88,268 @@ void AYSGameMode::Tick(float DeltaSeconds)
 	TickGalions();
 	TickPhoenixAutoRevive();
 	TickAllPlayersDead();
+	TickHiredCrew();
+}
+
+void AYSGameMode::SetHiredCrew(bool bEnabled)
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || YSGameState->IsMatchStarted() || YSGameState->IsHiredCrew() == bEnabled)
+	{
+		return;
+	}
+	YSGameState->SetHiredCrew(bEnabled);
+	UE_LOG(LogTemp, Log, TEXT("[YSHiredCrew] Hired crew : %s"), bEnabled ? TEXT("oui") : TEXT("non"));
+}
+
+AYSPlayerCharacter* AYSGameMode::GetHiredCrewLeader() const
+{
+	// l'hôte (premier contrôleur du serveur) ; mort : un autre joueur vivant
+	const APlayerController* Host = GetWorld()->GetFirstPlayerController();
+	AYSPlayerCharacter* HostCharacter = Host ? Cast<AYSPlayerCharacter>(Host->GetPawn()) : nullptr;
+	if (HostCharacter && HostCharacter->IsAlive() && !HostCharacter->IsDying())
+	{
+		return HostCharacter;
+	}
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		AYSPlayerCharacter* Character = It->Get() ? Cast<AYSPlayerCharacter>(It->Get()->GetPawn()) : nullptr;
+		if (Character && Character->IsAlive() && !Character->IsDying())
+		{
+			return Character;
+		}
+	}
+	return nullptr;
+}
+
+void AYSGameMode::DebugHiredStatus() const
+{
+	const AYSPlayerCharacter* Leader = GetHiredCrewLeader();
+	UE_LOG(LogTemp, Log, TEXT("[YSHiredCrew] %d place(s), chef %s"), HiredCrew.Num(), Leader ? *Leader->GetName() : TEXT("aucun"));
+	for (const FYSHiredCrewSlot& Slot : HiredCrew)
+	{
+		const AYSPlayerCharacter* Mouss = Slot.Mouss;
+		UE_LOG(LogTemp, Log, TEXT("[YSHiredCrew]   Hired Mouss %d : %s, PV %.0f / %.0f, stamina %.0f, %d shard(s), porte %s, poste %s, à %.0f cm du chef"), Slot.Number,
+			IsValid(Mouss) ? *Mouss->GetName() : TEXT("mort"), IsValid(Mouss) ? Mouss->GetHealth() : 0.0f, IsValid(Mouss) ? Mouss->GetMaxHealth() : 0.0f,
+			IsValid(Mouss) ? Mouss->GetStamina() : 0.0f, IsValid(Mouss) ? Mouss->GetShardLevels().Num() : Slot.ShardLevels.Num(),
+			IsValid(Mouss) && Mouss->GetCarriedObject() ? *Mouss->GetCarriedObject()->GetName() : TEXT("rien"),
+			IsValid(Mouss) && Mouss->GetCurrentStation() ? *Mouss->GetCurrentStation()->GetName() : TEXT("aucun"),
+			IsValid(Mouss) && Leader ? FVector::Dist(Mouss->GetActorLocation(), Leader->GetActorLocation()) : -1.0f);
+	}
+}
+
+void AYSGameMode::DebugKillHired(int32 Number)
+{
+	for (FYSHiredCrewSlot& Slot : HiredCrew)
+	{
+		if (IsValid(Slot.Mouss) && (Number <= 0 || Slot.Number == Number))
+		{
+			UE_LOG(LogTemp, Log, TEXT("[YSHiredCrew] Debug : Hired Mouss %d tué"), Slot.Number);
+			Slot.Mouss->TakeDamage(Slot.Mouss->GetHealth() + Slot.Mouss->GetArmor() + 100000.0f, FDamageEvent(), nullptr, nullptr);
+		}
+	}
+}
+
+void AYSGameMode::TickHiredCrew()
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || !YSGameState->IsHiredCrew() || YSGameState->IsMatchEnded() || GetWorld()->IsPaused())
+	{
+		return;
+	}
+
+	// places vides jusqu'à Hired Crew Team Size (un joueur qui arrive reprend une place, un joueur qui part en libère une)
+	const int32 Wanted = FMath::Max(0, HiredCrewTeamSize - YSGameState->PlayerArray.Num());
+	while (HiredCrew.Num() > Wanted)
+	{
+		FYSHiredCrewSlot& Removed = HiredCrew.Last();
+		if (IsValid(Removed.Mouss))
+		{
+			Removed.Mouss->DropCarriedObject(TEXT("place rendue à un joueur"));
+			Removed.Mouss->LeaveStation(TEXT("place rendue à un joueur"), true);
+			Removed.Mouss->Destroy();
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSHiredCrew] Hired Mouss %d part : %d joueur(s)"), Removed.Number, YSGameState->PlayerArray.Num());
+		HiredCrew.Pop();
+	}
+	while (HiredCrew.Num() < Wanted)
+	{
+		FYSHiredCrewSlot& Slot = HiredCrew.AddDefaulted_GetRef();
+		Slot.Number = NextHiredNumber++;
+		// couleur : la première qui n'est ni à un joueur ni à un autre HiredMouss ; visage au hasard
+		const int32 ColorCount = YSGameState->GetCustomizationColors().Num();
+		Slot.ColorIndex = 0;
+		for (int32 Color = 0; Color < ColorCount; ++Color)
+		{
+			const bool bHiredTaken = HiredCrew.ContainsByPredicate([Color, &Slot](const FYSHiredCrewSlot& Other) { return &Other != &Slot && Other.ColorIndex == Color; });
+			if (!IsColorTaken(Color, nullptr) && !bHiredTaken)
+			{
+				Slot.ColorIndex = Color;
+				break;
+			}
+		}
+		const int32 FaceCount = YSGameState->GetCustomizationFaces().Num();
+		Slot.FaceIndex = FaceCount > 0 ? FMath::RandRange(0, FaceCount - 1) : 0;
+		UE_LOG(LogTemp, Log, TEXT("[YSHiredCrew] Place %d : Hired Mouss %d (couleur %d, visage %d)"), HiredCrew.Num(), Slot.Number, Slot.ColorIndex, Slot.FaceIndex);
+	}
+
+	const double Now = GetWorld()->GetTimeSeconds();
+	for (int32 Index = 0; Index < HiredCrew.Num(); ++Index)
+	{
+		FYSHiredCrewSlot& Slot = HiredCrew[Index];
+		if (IsValid(Slot.Mouss))
+		{
+			continue;
+		}
+		Slot.Mouss = nullptr;
+		// mort : corps disparu depuis Hired Revive Delay (le premier passage note l'heure)
+		if (Slot.bSpawned)
+		{
+			if (Slot.DeathTime < 0.0)
+			{
+				Slot.DeathTime = Now;
+			}
+			if (Now - Slot.DeathTime < HiredReviveDelay)
+			{
+				continue;
+			}
+		}
+		SpawnHiredMouss(Slot, Index);
+	}
+}
+
+bool AYSGameMode::SpawnHiredMouss(FYSHiredCrewSlot& Slot, int32 SlotIndex)
+{
+	UClass* MoussClass = HiredMoussClass.LoadSynchronous();
+	if (!MoussClass)
+	{
+		static bool bWarned = false;
+		if (!bWarned)
+		{
+			bWarned = true;
+			UE_LOG(LogTemp, Error, TEXT("[YSHiredCrew] Pas de Hired Mouss Class (%s) : lancer Tools/EditorScripts/setup_hired_mouss.py"), *HiredMoussClass.ToString());
+		}
+		return false;
+	}
+
+	// point d'apparition : réanimation = à côté du core du bateau (sinon du Brooker de l'île) ; début de partie = chaloupe de l'intro, sinon à côté du chef
+	FTransform SpawnTransform = FTransform::Identity;
+	AYSShipStation* IntroSeat = nullptr;
+	AYSPlayerCharacter* Leader = GetHiredCrewLeader();
+	if (Slot.bSpawned)
+	{
+		FVector Ground;
+		if (!FindPhoenixRevivePoint(Leader ? static_cast<const AActor*>(Leader) : this, SlotIndex + 1, Ground))
+		{
+			return false;
+		}
+		SpawnTransform.SetLocation(Ground);
+	}
+	else if ((IntroSeat = FindHiredIntroSeat(SpawnTransform)) == nullptr)
+	{
+		if (!Leader)
+		{
+			return false;
+		}
+		const FVector Side = FVector::ForwardVector.RotateAngleAxis(90.0f + SlotIndex * 120.0f, FVector::UpVector);
+		const FVector Ground = AYSInteractiveObject::FindGround(GetWorld(), Leader->GetActorLocation() + Side * HiredSpawnDistance, Leader);
+		SpawnTransform = FTransform(FRotator(0.0f, Leader->GetActorRotation().Yaw, 0.0f), Ground);
+	}
+	const float HalfHeight = MoussClass->GetDefaultObject<AYSPlayerCharacter>()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	SpawnTransform.AddToTranslation(FVector(0.0f, 0.0f, HalfHeight + 2.0f));
+	SpawnTransform.SetScale3D(FVector::OneVector);
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	Params.bDeferConstruction = true;
+	AYSPlayerCharacter* Mouss = GetWorld()->SpawnActor<AYSPlayerCharacter>(MoussClass, SpawnTransform, Params);
+	if (!Mouss)
+	{
+		return false;
+	}
+	Mouss->FinishSpawning(SpawnTransform);
+	UYSHiredCrewComponent* Crew = Mouss->GetHiredCrew();
+	if (!Crew)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[YSHiredCrew] %s n'a pas de composant YSHiredCrewComponent : détruit"), *MoussClass->GetName());
+		Mouss->Destroy();
+		return false;
+	}
+	Crew->InitHired(Slot.Number, Slot.ColorIndex, Slot.FaceIndex);
+	if (!Mouss->GetController())
+	{
+		Mouss->SpawnDefaultController();
+	}
+
+	const bool bRevive = Slot.bSpawned;
+	if (bRevive)
+	{
+		Mouss->RestoreUpgrades(Slot.UpgradePool, Slot.UpgradeProgress);
+		Mouss->RestoreShards(Slot.ShardLevels);
+		Mouss->SetHealthRatio(HiredReviveHealthRatio);
+	}
+	if (IntroSeat)
+	{
+		Mouss->EnterStation(IntroSeat);
+	}
+	Slot.Mouss = Mouss;
+	Slot.bSpawned = true;
+	Slot.DeathTime = -1.0;
+	UE_LOG(LogTemp, Log, TEXT("[YSHiredCrew] Hired Mouss %d %s en %s (%s)"), Slot.Number, bRevive ? TEXT("réanimé (sans plume)") : TEXT("apparaît"),
+		*SpawnTransform.GetLocation().ToCompactString(), IntroSeat ? TEXT("chaloupe de l'intro") : bRevive ? TEXT("bateau / Brooker") : TEXT("à côté du chef"));
+
+	// level up passés pendant sa mort
+	for (; Slot.MissedLevelUps > 0; --Slot.MissedLevelUps)
+	{
+		ApplyRandomHiredUpgrade(Mouss);
+	}
+	return true;
+}
+
+void AYSGameMode::OnHiredMoussDied(AYSPlayerCharacter* Mouss)
+{
+	for (FYSHiredCrewSlot& Slot : HiredCrew)
+	{
+		if (Slot.Mouss == Mouss)
+		{
+			Slot.UpgradePool = Mouss->GetUpgradePool();
+			Slot.UpgradeProgress = Mouss->GetAllUpgradeProgress();
+			Slot.ShardLevels = Mouss->GetShardLevels();
+			UE_LOG(LogTemp, Log, TEXT("[YSHiredCrew] Hired Mouss %d meurt : %d shard(s), %d upgrade(s) gardées, réanimé au bateau"), Slot.Number, Slot.ShardLevels.Num(), Slot.UpgradeProgress.Num());
+			return;
+		}
+	}
+}
+
+void AYSGameMode::GiveHiredCrewLevelUp()
+{
+	for (FYSHiredCrewSlot& Slot : HiredCrew)
+	{
+		if (IsValid(Slot.Mouss) && Slot.Mouss->IsAlive() && !Slot.Mouss->IsDying())
+		{
+			ApplyRandomHiredUpgrade(Slot.Mouss);
+		}
+		else if (Slot.bSpawned)
+		{
+			++Slot.MissedLevelUps;
+		}
+	}
+}
+
+void AYSGameMode::ApplyRandomHiredUpgrade(AYSPlayerCharacter* Mouss)
+{
+	// même tirage qu'un joueur pour un level up, puis une des propositions au hasard, prise quoi qu'il arrive
+	EYSUpgradeSelectionKind Kind = EYSUpgradeSelectionKind::LevelUp;
+	const TArray<FYSUpgradeOffer> Offers = PickOffersForKind(Mouss, EYSUpgradeSelectionKind::LevelUp, Kind);
+	if (Offers.Num() == 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSHiredCrew] %s : aucune upgrade à prendre"), *Mouss->GetName());
+		return;
+	}
+	const int32 Picked = FMath::RandRange(0, Offers.Num() - 1);
+	Mouss->ApplyUpgrade(Offers[Picked]);
+	UE_LOG(LogTemp, Log, TEXT("[YSHiredCrew] %s prend l'upgrade %d / %d (%s, rareté %d)"), *Mouss->GetName(), Picked + 1, Offers.Num(),
+		Offers[Picked].UpStats ? *Offers[Picked].UpStats->GetName() : *FString::Printf(TEXT("pool %d"), Offers[Picked].PoolIndex), static_cast<int32>(Offers[Picked].Rarity));
 }
 
 void AYSGameMode::TickAllPlayersDead()
@@ -449,6 +717,11 @@ void AYSGameMode::StartUpgradeSelection()
 	}
 	CurrentSelectionKind = Kind;
 	YSGameState->SetUpgradeSelectionLevel(SelectionLevel);
+	// Hired crew : une upgrade au hasard à chaque level up (pas aux récompenses de doublons), prise tout de suite
+	if (!bDoubloonSelection)
+	{
+		GiveHiredCrewLevelUp();
+	}
 	// level up (même un choix de classe de l'ancien fonctionnement : le menu reconnaît les upgrades de classe) ou récompense de doublons
 	YSGameState->SetUpgradeSelectionKind(bDoubloonSelection ? Kind : EYSUpgradeSelectionKind::LevelUp);
 	YSGameState->SetUpgradeSelectionActive(true);

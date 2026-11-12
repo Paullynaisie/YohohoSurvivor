@@ -187,10 +187,15 @@ public:
 	/** Le joueur doit être tourné vers l'objet (cône Interaction Angle) pour interagir */
 	virtual bool RequiresFacing() const { return true; }
 
+	/** Portée d'interaction du personnage (Interaction Distance) x ce multiplicateur pour cet objet (échelles des bateaux : 0.7) */
+	virtual float GetInteractRangeMultiplier() const { return 1.0f; }
+
 	/** Pris par un joueur, ou reposé (nullptr) au sol à DropLocation (serveur, appelé par le personnage) */
 	void SetCarrier(AYSPlayerCharacter* NewCarrier, const FVector& DropLocation = FVector::ZeroVector, float DropYaw = 0.0f);
 
 	AYSPlayerCharacter* GetCarrier() const { return Carrier; }
+
+	bool IsCarriable() const { return bCarriable; }
 
 	/** Invite « E » visible ou non (local) */
 	void SetPromptVisible(bool bVisible);

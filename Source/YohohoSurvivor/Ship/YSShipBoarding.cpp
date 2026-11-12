@@ -130,14 +130,18 @@ FVector AYSShipBoarding::GetInteractLocation(const FVector& From) const
 {
 	// point du rectangle d'accès (repère de l'acteur, à plat) le plus proche
 	const FVector Local = GetActorTransform().InverseTransformPosition(From);
-	const FVector Clamped(FMath::Clamp(Local.X, 0.0f, AccessReach), FMath::Clamp(Local.Y, -AccessHalfWidth, AccessHalfWidth), 0.0f);
+	// (zone réduite par Access Range Multiplier, comme la portée du personnage : GetInteractRangeMultiplier)
+	const float Reach = AccessReach * AccessRangeMultiplier;
+	const float HalfWidth = AccessHalfWidth * AccessRangeMultiplier;
+	const FVector Clamped(FMath::Clamp(Local.X, 0.0f, Reach), FMath::Clamp(Local.Y, -HalfWidth, HalfWidth), 0.0f);
 	return GetActorTransform().TransformPosition(Clamped);
 }
 
 FVector AYSShipBoarding::GetInteractPriorityLocation(const FVector& From) const
 {
 	const FVector Local = GetActorTransform().InverseTransformPosition(From);
-	return GetActorTransform().TransformPosition(FVector(0.0f, FMath::Clamp(Local.Y, -AccessHalfWidth, AccessHalfWidth), 0.0f));
+	const float HalfWidth = AccessHalfWidth * AccessRangeMultiplier;
+	return GetActorTransform().TransformPosition(FVector(0.0f, FMath::Clamp(Local.Y, -HalfWidth, HalfWidth), 0.0f));
 }
 
 void AYSShipBoarding::Interact(AYSPlayerCharacter* Character)

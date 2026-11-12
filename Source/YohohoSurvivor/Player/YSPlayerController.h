@@ -747,6 +747,18 @@ public:
 	UFUNCTION(Exec)
 	void YSPlayMode(int32 Mode);
 
+	/** Hôte, avant le début de la partie : « Hired crew » (1 = places vides jusqu'à 4 prises par des HiredMouss ; aussi la case du menu de sélection) */
+	UFUNCTION(Exec)
+	void YSHiredCrew(int32 bEnabled);
+
+	/** Debug (hôte) : état du Hired crew dans le log */
+	UFUNCTION(Exec)
+	void YSHiredStatus();
+
+	/** Debug (hôte) : tue le Hired Mouss n (0 = tous) */
+	UFUNCTION(Exec)
+	void YSKillHired(int32 Number);
+
 	/** Triche (flèche haut, builds non Shipping) : +1 niveau d'équipe, donc un choix d'upgrade */
 	UFUNCTION(Exec)
 	void YSCheatLevelUp();
@@ -899,6 +911,9 @@ protected:
 
 	/** Flèche du mode de jeu (hôte) : mode précédent / suivant, en boucle */
 	void StepPlayMode(int32 Step);
+
+	/** Case « Hired crew » (hôte) */
+	void SetHiredCrew(bool bEnabled);
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetReady(bool bReady);

@@ -15,6 +15,7 @@
 #include "Island/YSIslandData.h"
 #include "Island/YSIslandNPC.h"
 #include "Island/YSIslandParts.h"
+#include "Island/YSPierLadder.h"
 #include "Map/YSOcean.h"
 #include "Net/UnrealNetwork.h"
 #include "NPC/YSBrookerNPC.h"
@@ -332,6 +333,21 @@ void AYSIsland::BuildLocally()
 		{
 			Pier->Build(Plan.PierSegments, Data->Generation);
 			Pier->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+		}
+	}
+
+	// échelles du quai de la plage : sur chaque machine (pas répliquées, comme le ponton), accrochées à l'île
+	for (const FVector4f& Ladder : Plan.PierLadders)
+	{
+		const float DeckHeight = Data->Generation.PierDeckHeight;
+		const FTransform Transform(FRotator(0.0f, GetActorRotation().Yaw + Ladder.W, 0.0f), LocalToWorld(FVector2f(Ladder.X, Ladder.Y), Ladder.Z - DeckHeight));
+		AYSPierLadder* PierLadder = GetWorld()->SpawnActorDeferred<AYSPierLadder>(AYSPierLadder::StaticClass(), Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (PierLadder)
+		{
+			PierLadder->SetupPier(DeckHeight, Data->Generation.BeachQuayLadderLandingInset);
+			PierLadder->FinishSpawning(Transform);
+			PierLadder->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : échelle du quai %s en %s"), *GetName(), *PierLadder->GetName(), *Transform.GetLocation().ToCompactString());
 		}
 	}
 

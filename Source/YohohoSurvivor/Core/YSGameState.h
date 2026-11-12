@@ -155,6 +155,10 @@ protected:
 	UPROPERTY(Replicated)
 	int32 HardcoreFoeDayMultiplier = 2;
 
+	/** « Hired crew » (case de l'hôte sur l'écran de sélection) : les places vides jusqu'à 4 sont prises par des HiredMouss pilotés par IA */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
+	bool bHiredCrew = false;
+
 	/** FlowMod : sélection des personnages avec le GameBoat en fond */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
 	bool bBoatIntro = false;
@@ -493,6 +497,11 @@ public:
 
 	/** Serveur uniquement (AYSGameMode::SetPlayMode) */
 	void SetPlayMode(EYSPlayMode Mode, int32 FoeDayMultiplier) { PlayMode = Mode; HardcoreFoeDayMultiplier = FoeDayMultiplier; ForceNetUpdate(); }
+
+	bool IsHiredCrew() const { return bHiredCrew; }
+
+	/** Serveur uniquement (AYSGameMode::SetHiredCrew) */
+	void SetHiredCrew(bool bEnabled) { bHiredCrew = bEnabled; ForceNetUpdate(); }
 
 	bool IsNight() const { return bNight; }
 

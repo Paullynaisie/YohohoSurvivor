@@ -29,13 +29,14 @@ const AYSPlayerCharacter* YSPlayerColor::FindPlayer(const AActor* Source)
 
 const FYSCustomizationColor* YSPlayerColor::Find(const AActor* Source)
 {
+	// couleur du joueur (PlayerState) ; HiredMouss : la sienne
 	const AYSPlayerCharacter* Player = FindPlayer(Source);
-	const AYSPlayerState* State = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
+	const int32 ColorIndex = Player ? Player->GetCustomizationColorIndex() : INDEX_NONE;
 	const UWorld* World = Source ? Source->GetWorld() : nullptr;
 	const AYSGameState* YSGameState = World ? World->GetGameState<AYSGameState>() : nullptr;
-	if (!State || !YSGameState || !YSGameState->GetCustomizationColors().IsValidIndex(State->GetColorIndex()))
+	if (!YSGameState || !YSGameState->GetCustomizationColors().IsValidIndex(ColorIndex))
 	{
 		return nullptr;
 	}
-	return &YSGameState->GetCustomizationColors()[State->GetColorIndex()];
+	return &YSGameState->GetCustomizationColors()[ColorIndex];
 }

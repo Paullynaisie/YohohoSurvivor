@@ -400,6 +400,18 @@ struct FYSIslandGenerationRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="50", Units="Centimeters", EditCondition="bBeachPiers && bBeachQuay"))
 	float BeachQuayWidth = 400.0f;
 
+	/** Échelles de corde (AYSPierLadder) côté large du quai, près de ses deux bouts : on remonte sur le quai depuis l'eau avec E (demande de Paul) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(EditCondition="bBeachPiers && bBeachQuay"))
+	bool bBeachQuayLadders = true;
+
+	/** Distance de chaque échelle au bout du quai (le long du quai) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="0", Units="Centimeters", EditCondition="bBeachPiers && bBeachQuay && bBeachQuayLadders"))
+	float BeachQuayLadderInset = 150.0f;
+
+	/** Arrivée sur le quai : à cette distance du bord, vers l'intérieur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="13 Beach Piers", meta=(ClampMin="0", Units="Centimeters", EditCondition="bBeachPiers && bBeachQuay && bBeachQuayLadders"))
+	float BeachQuayLadderLandingInset = 120.0f;
+
 	/** Objectif « le plus au nord » : distance minimale au bord de la falaise (pas trop dans le vide) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="14 North Spot", meta=(ClampMin="0", Units="Centimeters"))
 	float NorthSpotShoreInset = 350.0f;

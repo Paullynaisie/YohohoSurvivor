@@ -123,6 +123,10 @@ struct FYSIslandPlan
 	UPROPERTY()
 	TArray<FYSIslandPierSegment> PierSegments;
 
+	/** Échelles des pontons (quai de la plage) : X, Y = bord du ponton (repère de l'île), Z = dessus du ponton, W = yaw local vers le large */
+	UPROPERTY()
+	TArray<FVector4f> PierLadders;
+
 	/** Angle (radians) de chaque ouverture vers l'eau côté falaise */
 	UPROPERTY()
 	TArray<float> WaterSpots;

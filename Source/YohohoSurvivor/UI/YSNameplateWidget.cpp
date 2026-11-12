@@ -47,9 +47,22 @@ void UYSNameplateWidget::BuildWidgetTree()
 	Bar->SetWidgetStyle(Style);
 	Bar->SetFillColorAndOpacity(BarColor);
 	Box->AddChild(Bar);
+
+	// stamina (HiredMouss) : cachée tant que SetPlayer ne donne pas de valeur
+	StaminaBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("StaminaBox"));
+	StaminaBox->SetWidthOverride(StaminaBarSize.X);
+	StaminaBox->SetHeightOverride(StaminaBarSize.Y);
+	StaminaBox->SetVisibility(ESlateVisibility::Collapsed);
+	UVerticalBoxSlot* StaminaSlot = Column->AddChildToVerticalBox(StaminaBox);
+	StaminaSlot->SetHorizontalAlignment(HAlign_Center);
+	StaminaSlot->SetPadding(FMargin(0.0f, StaminaBarSpacing, 0.0f, 0.0f));
+	StaminaBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
+	StaminaBar->SetWidgetStyle(Style);
+	StaminaBar->SetFillColorAndOpacity(StaminaBarColor);
+	StaminaBox->AddChild(StaminaBar);
 }
 
-void UYSNameplateWidget::SetPlayer(const FText& Name, float Health, float MaxHealth)
+void UYSNameplateWidget::SetPlayer(const FText& Name, float Health, float MaxHealth, float StaminaRatio)
 {
 	if (!NameLabel)
 	{
@@ -61,4 +74,14 @@ void UYSNameplateWidget::SetPlayer(const FText& Name, float Health, float MaxHea
 		NameLabel->SetText(Name);
 	}
 	Bar->SetPercent(MaxHealth > 0.0f ? Health / MaxHealth : 0.0f);
+
+	const ESlateVisibility StaminaVisibility = StaminaRatio >= 0.0f ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed;
+	if (StaminaBox && StaminaBox->GetVisibility() != StaminaVisibility)
+	{
+		StaminaBox->SetVisibility(StaminaVisibility);
+	}
+	if (StaminaBar && StaminaRatio >= 0.0f)
+	{
+		StaminaBar->SetPercent(FMath::Clamp(StaminaRatio, 0.0f, 1.0f));
+	}
 }

@@ -32,6 +32,7 @@
 #include "Player/YSDanglingChainComponent.h"
 #include "Components/WidgetComponent.h"
 #include "UI/YSNameplateWidget.h"
+#include "Summons/YSHiredCrewComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSCombat.h"
 #include "Enemies/YSFoeCharacter.h"
@@ -392,6 +393,11 @@ void AYSPlayerCharacter::Die()
 	if (!HasAuthority() || IsDying() || IsActorBeingDestroyed())
 	{
 		return;
+	}
+	// HiredMouss : le GameMode garde ses upgrades pour sa réanimation au bateau
+	if (HiredCrewComponent)
+	{
+		HiredCrewComponent->OnOwnerDies();
 	}
 	Health = 0.0f;
 
@@ -2104,8 +2110,42 @@ void AYSPlayerCharacter::ServerSetDebugAutoAttack_Implementation(bool bHeld)
 	bDebugAutoAttack = bHeld;
 }
 
+void AYSPlayerCharacter::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	HiredCrewComponent = FindComponentByClass<UYSHiredCrewComponent>();
+	if (HiredCrewComponent)
+	{
+		// HiredMouss : pas de cadavre (le corps disparaît, le GameMode le fait revenir au bateau)
+		bKeepCorpse = false;
+	}
+}
+
+void AYSPlayerCharacter::MoveBlockedBy(const FHitResult& Impact)
+{
+	Super::MoveBlockedBy(Impact);
+	if (HiredCrewComponent)
+	{
+		HiredCrewComponent->OnMoveBlocked(Impact);
+	}
+}
+
+void AYSPlayerCharacter::SetHealthRatio(float Ratio)
+{
+	if (HasAuthority())
+	{
+		Health = FMath::Max(1.0f, FMath::RoundToFloat(FMath::Clamp(Ratio, 0.0f, 1.0f) * GetMaxHealth()));
+		ForceNetUpdate();
+	}
+}
+
 FVector AYSPlayerCharacter::GetAimLocation() const
 {
+	// HiredMouss : sa cible
+	if (HiredCrewComponent)
+	{
+		return HiredCrewComponent->GetAimLocation();
+	}
 	const AYSPlayerController* PC = Cast<AYSPlayerController>(GetController());
 	return PC ? PC->GetAimLocation() : GetActorLocation() + GetActorForwardVector() * 1000.0f;
 }
@@ -2670,11 +2710,14 @@ void AYSPlayerCharacter::RefreshCustomization()
 {
 	const AYSPlayerState* YSPlayerState = GetPlayerState<AYSPlayerState>();
 	const AYSGameState* YSGameState = GetWorld() ? GetWorld()->GetGameState<AYSGameState>() : nullptr;
-	if (YSPlayerState && YSGameState)
+	// HiredMouss : sa couleur et son visage (pas de PlayerState)
+	const int32 ColorIndex = HiredCrewComponent ? HiredCrewComponent->GetColorIndex() : YSPlayerState ? YSPlayerState->GetColorIndex() : INDEX_NONE;
+	const int32 FaceIndex = HiredCrewComponent ? HiredCrewComponent->GetFaceIndex() : YSPlayerState ? YSPlayerState->GetFaceIndex() : INDEX_NONE;
+	if ((YSPlayerState || HiredCrewComponent) && YSGameState)
 	{
-		UMaterialInterface* ColorMaterial = YSGameState->GetCustomizationMaterial(YSPlayerState->GetColorIndex());
-		UTexture2D* FaceTexture = YSGameState->GetCustomizationFace(YSPlayerState->GetFaceIndex());
-		ApplyCustomization(ColorMaterial, FaceTexture, YSGameState->GetCustomizationEmissive(YSPlayerState->GetColorIndex()));
+		UMaterialInterface* ColorMaterial = YSGameState->GetCustomizationMaterial(ColorIndex);
+		UTexture2D* FaceTexture = YSGameState->GetCustomizationFace(FaceIndex);
+		ApplyCustomization(ColorMaterial, FaceTexture, YSGameState->GetCustomizationEmissive(ColorIndex));
 		bCustomizationApplied = ColorMaterial && FaceTexture;
 	}
 }
@@ -2731,9 +2774,10 @@ void AYSPlayerCharacter::ApplyCustomization(UMaterialInterface* ColorMaterial, U
 
 void AYSPlayerCharacter::UpdateNameplate()
 {
-	// alliés uniquement : pas le joueur local (HUD), ni un personnage sans joueur (aperçu)
-	const APlayerState* OwningPlayerState = GetPlayerState();
-	const bool bShow = OwningPlayerState && !IsLocallyControlled() && IsAlive();
+	// alliés uniquement : pas le joueur local (HUD), ni un personnage sans joueur (aperçu) ; HiredMouss : toujours
+	FText Name;
+	float StaminaRatio = -1.0f;
+	const bool bShow = IsAlive() && GetNameplateInfo(Name, StaminaRatio);
 	Nameplate->SetVisibility(bShow);
 	if (!bShow)
 	{
@@ -2742,9 +2786,38 @@ void AYSPlayerCharacter::UpdateNameplate()
 
 	if (UYSNameplateWidget* Widget = Cast<UYSNameplateWidget>(Nameplate->GetUserWidgetObject()))
 	{
-		const AYSPlayerState* YSOwningState = Cast<AYSPlayerState>(OwningPlayerState);
-		Widget->SetPlayer(FText::FromString(YSOwningState ? YSOwningState->GetDisplayName() : OwningPlayerState->GetPlayerName()), Health, GetMaxHealth());
+		Widget->SetPlayer(Name, Health, GetMaxHealth(), StaminaRatio);
 	}
+}
+
+bool AYSPlayerCharacter::GetNameplateInfo(FText& OutName, float& OutStaminaRatio) const
+{
+	// HiredMouss : toujours affichée (aussi chez l'hôte : un personnage d'IA est « contrôlé localement » sur le serveur), avec sa stamina
+	if (HiredCrewComponent)
+	{
+		OutName = HiredCrewComponent->GetDisplayName();
+		OutStaminaRatio = GetMaxStamina() > 0.0f ? GetStamina() / GetMaxStamina() : 0.0f;
+		return true;
+	}
+	const APlayerState* OwningPlayerState = GetPlayerState();
+	if (!OwningPlayerState || IsLocallyControlled())
+	{
+		return false;
+	}
+	const AYSPlayerState* YSOwningState = Cast<AYSPlayerState>(OwningPlayerState);
+	OutName = FText::FromString(YSOwningState ? YSOwningState->GetDisplayName() : OwningPlayerState->GetPlayerName());
+	OutStaminaRatio = -1.0f;
+	return true;
+}
+
+int32 AYSPlayerCharacter::GetCustomizationColorIndex() const
+{
+	if (HiredCrewComponent)
+	{
+		return HiredCrewComponent->GetColorIndex();
+	}
+	const AYSPlayerState* YSPlayerState = GetPlayerState<AYSPlayerState>();
+	return YSPlayerState ? YSPlayerState->GetColorIndex() : INDEX_NONE;
 }
 
 bool AYSPlayerCharacter::IsAkimbo() const
@@ -3265,7 +3338,7 @@ AYSInteractiveObject* AYSPlayerCharacter::FindInteractTarget() const
 
 		const FVector ToObject = (Object->GetInteractLocation(GetActorLocation()) - GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
 		const float DistSq = ToObject.SizeSquared();
-		if (DistSq > RangeSq)
+		if (DistSq > RangeSq * FMath::Square(Object->GetInteractRangeMultiplier()))
 		{
 			continue;
 		}

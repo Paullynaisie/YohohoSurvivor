@@ -146,7 +146,7 @@ float AYSShipStation::TakeDamage(float DamageAmount, const FDamageEvent& DamageE
 	{
 		// (le joueur au poste y reste : il peut le réparer avec Espace)
 		UE_LOG(LogTemp, Log, TEXT("%s %s : à 0 PV, inutilisable (Espace maintenu au poste pour réparer)"), GetLogTag(), *GetName());
-		if (Occupant && Occupant->IsA<AYSCaptainMinion>())
+		if (Occupant && Occupant->IsAutoCrew())
 		{
 			Occupant->LeaveStation(TEXT("module à 0 PV"), true);
 		}
@@ -285,7 +285,7 @@ bool AYSShipStation::GetActionIcon(UTexture2D*& OutIcon, FLinearColor& OutTint, 
 void AYSShipStation::UpdateWork(float DeltaSeconds)
 {
 	// minions : jamais de touche maintenue
-	AYSPlayerCharacter* User = Occupant && !Occupant->IsA<AYSCaptainMinion>() ? Occupant.Get() : nullptr;
+	AYSPlayerCharacter* User = Occupant && !Occupant->IsAutoCrew() ? Occupant.Get() : nullptr;
 	const uint8 Held = User ? User->GetStationHeldInputs() : 0;
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
@@ -479,7 +479,7 @@ bool AYSShipStation::CanInteract(const AYSPlayerCharacter* Character) const
 
 bool AYSShipStation::CanTakeOverFrom(const AYSPlayerCharacter* Character) const
 {
-	return Occupant && Occupant->IsA<AYSCaptainMinion>() && Character && !Character->IsA<AYSCaptainMinion>();
+	return Occupant && Occupant->IsAutoCrew() && Character && !Character->IsAutoCrew();
 }
 
 void AYSShipStation::Interact(AYSPlayerCharacter* Character)

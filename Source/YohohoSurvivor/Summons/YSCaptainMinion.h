@@ -113,6 +113,8 @@ public:
 
 	virtual bool UsesStamina() const override { return false; }
 
+	virtual bool IsAutoCrew() const override { return true; }
+
 	/** Toujours critique sur le NME marqué par la Captain Sword de son Captain */
 	virtual bool HasForcedCriticalAgainst(const AActor* Target) const override;
 

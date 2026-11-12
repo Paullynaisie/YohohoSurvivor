@@ -32,6 +32,7 @@
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Summons/YSCaptainMinion.h"
+#include "Summons/YSHiredCrewComponent.h"
 #include "EngineUtils.h"
 #include "UI/YSHealthBarWidget.h"
 #include "Components/ChildActorComponent.h"
@@ -2035,6 +2036,23 @@ APawn* AYSFoeCharacter::FindNearestPlayer(bool bIncludeSwimmers, float* OutScore
 		{
 			NearestDistSq = DistSq;
 			Nearest = Pawn;
+		}
+	}
+
+	// HiredMouss (Hired crew) : ciblés comme des joueurs (pas de PlayerState)
+	for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
+	{
+		AYSPlayerCharacter* Hired = *It;
+		if (!Hired->GetHiredCrew() || !Hired->IsAlive() || Hired->IsDying() || Hired->IsActorBeingDestroyed() || (Hired->IsSwimming() && !bIncludeSwimmers) || (CrewShip && Hired->GetShipUnderFeet() != CrewShip))
+		{
+			continue;
+		}
+		const float EdgeDistance = FMath::Max(0.0f, FVector::Dist2D(Hired->GetActorLocation(), GetActorLocation()) - Hired->GetSimpleCollisionRadius());
+		const float DistSq = FMath::Square(EdgeDistance) / FMath::Square(FMath::Max(Hired->GetFoeAttractionMultiplier(), KINDA_SMALL_NUMBER));
+		if (DistSq < NearestDistSq)
+		{
+			NearestDistSq = DistSq;
+			Nearest = Hired;
 		}
 	}
 

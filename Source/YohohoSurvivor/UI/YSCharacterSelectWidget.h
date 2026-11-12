@@ -250,6 +250,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
 	float PlayModeSpacing = 32.0f;
 
+	// ---- case « Hired crew » (hôte seulement), sous le dernier personnage ----
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Hired Crew")
+	FText HiredCrewLabel = NSLOCTEXT("YS", "HiredCrew", "Hired crew");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Hired Crew", meta=(ClampMin="1"))
+	int32 HiredCrewFontSize = 20;
+
+	/** Espace au-dessus de la case (sous le dernier bouton de personnage) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Hired Crew")
+	float HiredCrewSpacing = 16.0f;
+
+	/** Espace entre la case et son texte */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Hired Crew")
+	float HiredCrewLabelSpacing = 10.0f;
+
 	// ---- colonne infos : fiche du personnage ----
 
 	/** Nom du personnage */
@@ -428,6 +444,12 @@ public:
 	/** Bloc « Mode de jeu » affiché (hôte) ou caché, mode affiché (index dans Play Mode Names) */
 	void SetPlayMode(bool bVisible, int32 ModeIndex);
 
+	/** Appelé quand l'hôte coche / décoche « Hired crew » */
+	FYSOnCameraLockChanged OnHiredCrewChanged;
+
+	/** Case « Hired crew » affichée (hôte, avant le début de la partie) ou cachée, et cochée ou non (sans rappeler On Hired Crew Changed) */
+	void SetHiredCrew(bool bVisible, bool bChecked);
+
 	/** Appelé quand le joueur valide son pseudo (Entrée ou perte du focus) */
 	FYSOnNicknameCommitted OnNicknameCommitted;
 
@@ -508,6 +530,16 @@ private:
 	/** Case « Camera Lock » */
 	UPROPERTY(Transient)
 	TObjectPtr<UCheckBox> CameraLockBox;
+
+	UFUNCTION()
+	void HandleHiredCrewChanged(bool bIsChecked);
+
+	/** Case « Hired crew » et sa ligne (cachée hors de l'hôte) */
+	UPROPERTY(Transient)
+	TObjectPtr<UCheckBox> HiredCrewBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UWidget> HiredCrewRow;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UVerticalBox> ButtonList;

@@ -561,6 +561,31 @@ void AYSFlowMode::RestartPlayer(AController* NewPlayer)
 	}
 }
 
+AYSShipStation* AYSFlowMode::FindHiredIntroSeat(FTransform& OutFeet) const
+{
+	const AYSGameBoatLongboat* Boat = GetArrivingBoat();
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!Boat || !YSGameState)
+	{
+		return nullptr;
+	}
+	for (int32 Seat = 0; Seat < AYSGameBoatLongboat::SeatCount; ++Seat)
+	{
+		AYSGameBoatSeat* Station = Boat->GetSeat(Seat);
+		const bool bPlayerSeat = YSGameState->PlayerArray.ContainsByPredicate([Seat](const APlayerState* Other)
+		{
+			const AYSPlayerState* YSOther = Cast<AYSPlayerState>(Other);
+			return YSOther && YSOther->GetBoatSeat() == Seat;
+		});
+		if (Station && !bPlayerSeat && !Station->GetOccupant())
+		{
+			OutFeet = Boat->GetSeatFeetTransform(Seat);
+			return Station;
+		}
+	}
+	return nullptr;
+}
+
 void AYSFlowMode::OnAllPlayersReady()
 {
 	if (AYSGameBoatLongboat* Boat = GetArrivingBoat())

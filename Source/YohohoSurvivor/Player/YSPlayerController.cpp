@@ -171,6 +171,7 @@ void AYSPlayerController::BeginPlay()
 			CharacterSelectMenu->OnReadyClicked.BindUObject(this, &AYSPlayerController::ToggleReady);
 			CharacterSelectMenu->OnInviteClicked.BindUObject(this, &AYSPlayerController::YSInviteFriends);
 			CharacterSelectMenu->OnPlayModeStep.BindUObject(this, &AYSPlayerController::StepPlayMode);
+			CharacterSelectMenu->OnHiredCrewChanged.BindUObject(this, &AYSPlayerController::SetHiredCrew);
 
 			FGameViewportWidgetSlot MenuSlot;
 			MenuSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
@@ -612,6 +613,37 @@ void AYSPlayerController::StepPlayMode(int32 Step)
 	YSPlayMode((static_cast<int32>(YSGameState->GetPlayMode()) + Step % Count + Count) % Count);
 }
 
+void AYSPlayerController::YSHiredCrew(int32 bEnabled)
+{
+	SetHiredCrew(bEnabled != 0);
+}
+
+void AYSPlayerController::YSHiredStatus()
+{
+	if (const AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->DebugHiredStatus();
+	}
+}
+
+void AYSPlayerController::YSKillHired(int32 Number)
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->DebugKillHired(Number);
+	}
+}
+
+void AYSPlayerController::SetHiredCrew(bool bEnabled)
+{
+	// hôte seulement (le GameMode n'existe que sur le serveur) ; refusé une fois la partie commencée
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	if (GameMode && IsLocalController())
+	{
+		GameMode->SetHiredCrew(bEnabled);
+	}
+}
+
 void AYSPlayerController::YSInviteFriends()
 {
 	UYSGameInstance* GameInstance = GetGameInstance<UYSGameInstance>();
@@ -670,6 +702,8 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	// mode de jeu : seulement chez l'hôte (serveur), tant que la partie n'a pas commencé
 	CharacterSelectMenu->SetPlayMode(GetNetMode() != NM_Client && IntroGameState && !IntroGameState->IsMatchStarted(),
 		IntroGameState ? static_cast<int32>(IntroGameState->GetPlayMode()) : static_cast<int32>(EYSPlayMode::Normal));
+	// Hired crew : même règle (hôte, avant le début de la partie)
+	CharacterSelectMenu->SetHiredCrew(GetNetMode() != NM_Client && IntroGameState && !IntroGameState->IsMatchStarted(), IntroGameState && IntroGameState->IsHiredCrew());
 	UpdateCharacterPreview(!bHasCharacter && !bDead && !(bBoatIntro && MyPlayerState && MyPlayerState->IsReady()));
 	if (bHasCharacter || bDead)
 	{

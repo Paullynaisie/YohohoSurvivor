@@ -581,6 +581,15 @@ namespace YSIslandGen
 				Walkway.bPosts = true;
 				Walkway.Width = Rules.BeachPierWidth;
 			}
+			// échelles côté large (-X), près des deux bouts du quai
+			if (Rules.bBeachQuayLadders)
+			{
+				for (const float Side : { -1.0f, 1.0f })
+				{
+					const float Y = AxisY + Side * FMath::Max(0.0f, HalfLength - Rules.BeachQuayLadderInset);
+					OutPlan.PierLadders.Add(FVector4f(QuayOuter, Y, Deck, 180.0f));
+				}
+			}
 			OutPlan.bHasBerth = true;
 			OutPlan.bBerthAlongQuay = true;
 			OutPlan.BerthLocation = FVector2f(QuayOuter - Rules.BeachPierGap * 0.5f, AxisY);

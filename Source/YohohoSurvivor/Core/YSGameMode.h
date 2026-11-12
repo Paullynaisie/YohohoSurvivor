@@ -5,6 +5,7 @@
 #include "Core/YSCustomization.h"
 #include "Core/YSShipRewardTypes.h"
 #include "Core/YSGameState.h"
+#include "Upgrades/YSShardUpgrade.h"
 #include "YSGameMode.generated.h"
 
 class AYSPlayerCharacter;
@@ -60,6 +61,47 @@ struct FYSPlayerCountScaling
 	/** PV des élites (boss), à la place de Health Multiplier */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Player Count", meta=(ClampMin="0"))
 	float EliteHealthMultiplier = 1.0f;
+};
+
+/** Une place du Hired crew (serveur) : son HiredMouss, et ce qu'il garde entre deux vies (set, upgrades, shards) */
+USTRUCT()
+struct FYSHiredCrewSlot
+{
+	GENERATED_BODY()
+
+	/** Numéro affiché (« Hired Mouss N ») */
+	UPROPERTY()
+	int32 Number = 1;
+
+	UPROPERTY()
+	int32 ColorIndex = 0;
+
+	UPROPERTY()
+	int32 FaceIndex = 0;
+
+	/** Personnage en vie (ou en train de mourir) ; nullptr = mort, en attente de réanimation, ou pas encore apparu */
+	UPROPERTY()
+	TObjectPtr<AYSPlayerCharacter> Mouss;
+
+	/** Déjà apparu une fois : il revient au bateau (réanimation), sinon il apparaît à côté du chef */
+	UPROPERTY()
+	bool bSpawned = false;
+
+	/** Mort à cette heure (temps de jeu) : réanimé après Hired Revive Delay */
+	double DeathTime = -1.0;
+
+	/** Gardé à sa mort (le set d'arme ne change jamais : pas de choix de classe pour le Hired crew) */
+	UPROPERTY()
+	TArray<TObjectPtr<class UYSUpgrade>> UpgradePool;
+
+	UPROPERTY()
+	TArray<FYSUpgradeProgress> UpgradeProgress;
+
+	UPROPERTY()
+	TArray<FYSShardLevel> ShardLevels;
+
+	/** Level up passés pendant qu'il était mort : upgrades tirées et prises à sa réanimation */
+	int32 MissedLevelUps = 0;
 };
 
 /**
@@ -384,6 +426,26 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Phoenix", meta=(ClampMin="0", Units="Centimeters"))
 	float PhoenixReviveDistance = 200.0f;
 
+	/** Hired crew : personnage piloté par IA qui prend les places vides (Blueprint enfant de Mouss avec un composant YSHiredCrewComponent) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Hired Crew")
+	TSoftClassPtr<AYSPlayerCharacter> HiredMoussClass;
+
+	/** Hired crew : places comblées jusqu'à ce nombre de personnages (joueurs + HiredMouss) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Hired Crew", meta=(ClampMin="1"))
+	int32 HiredCrewTeamSize = 4;
+
+	/** Un HiredMouss mort revient au bateau (à côté du core, sinon du Brooker de l'île) ce délai après la disparition de son corps, sans plume de phoenix */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Hired Crew", meta=(ClampMin="0", Units="s"))
+	float HiredReviveDelay = 1.0f;
+
+	/** Part des PV max à la réanimation */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Hired Crew", meta=(ClampMin="0.01", ClampMax="1"))
+	float HiredReviveHealthRatio = 1.0f;
+
+	/** Apparition (début de partie) : à cette distance du chef, tout autour */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Hired Crew", meta=(ClampMin="0", Units="Centimeters"))
+	float HiredSpawnDistance = 250.0f;
+
 	/** Carte au trésor qui apparaît au hasard au début de chaque jour (vide = aucune) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap")
 	TSubclassOf<AYSTreasureMap> TreasureMapClass;
@@ -577,6 +639,19 @@ public:
 	/** Mode de jeu (serveur, hôte sur l'écran de sélection) : refusé une fois la partie commencée */
 	void SetPlayMode(EYSPlayMode Mode);
 
+	/** Hired crew (serveur, hôte sur l'écran de sélection) : refusé une fois la partie commencée */
+	void SetHiredCrew(bool bEnabled);
+
+	/** Un HiredMouss meurt (serveur, avant son ragdoll) : son set, ses upgrades et ses shards sont gardés pour sa réanimation */
+	void OnHiredMoussDied(AYSPlayerCharacter* Mouss);
+
+	/** Personnage que les HiredMouss suivent : celui de l'hôte, sinon un joueur vivant (nullptr si aucun) */
+	AYSPlayerCharacter* GetHiredCrewLeader() const;
+
+	/** Debug : état du Hired crew dans le log (YSHiredStatus) ; tue un HiredMouss (YSKillHired, 0 = tous) */
+	void DebugHiredStatus() const;
+	void DebugKillHired(int32 Number);
+
 	/** Peaceful : les vagues répétées des îles (Repeat Interval > 0, hors écran, ex. 7 Skull toutes les 20 s) ne s'arrêtent plus après Repeat Count */
 	bool UsesPeacefulEndlessWaves() const { return bPeacefulEndlessWaves; }
 
@@ -661,6 +736,26 @@ protected:
 
 	/** Tous les joueurs morts : les plumes en stock les ressuscitent automatiquement */
 	void TickPhoenixAutoRevive();
+
+	/** Hired crew : places vides comblées (ou rendues quand un joueur arrive), apparition, réanimation au bateau */
+	void TickHiredCrew();
+
+	/** Fait apparaître le HiredMouss d'une place (début de partie ou réanimation) ; faux si pas encore possible */
+	bool SpawnHiredMouss(FYSHiredCrewSlot& Slot, int32 SlotIndex);
+
+	/** Level up : chaque HiredMouss vivant prend une upgrade tirée comme pour un joueur (les morts la prendront à leur réanimation) */
+	void GiveHiredCrewLevelUp();
+
+	/** Une upgrade tirée au hasard parmi les propositions d'un level up, prise tout de suite */
+	void ApplyRandomHiredUpgrade(AYSPlayerCharacter* Mouss);
+
+	UPROPERTY(Transient)
+	TArray<FYSHiredCrewSlot> HiredCrew;
+
+	int32 NextHiredNumber = 1;
+
+	/** Place d'apparition libre sur la chaloupe de l'intro (FlowMod) : poste où l'installer, sinon nullptr */
+	virtual class AYSShipStation* FindHiredIntroSeat(FTransform& OutFeet) const { return nullptr; }
 
 	/** Game over : tous les joueurs sont morts, sans plume de phoenix ni réanimation gratuite (demande de Paul du 2026-11-12) */
 	void TickAllPlayersDead();
