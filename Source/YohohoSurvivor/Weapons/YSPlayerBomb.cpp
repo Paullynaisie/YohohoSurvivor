@@ -221,7 +221,9 @@ void AYSPlayerBomb::BeginPlay()
 	}
 
 	// rayon de l'explosion : disque posé sur le relief (pas pour une explosion immédiate ni une mine collée, qui bouge)
-	const bool bZone = bShowZone && !bInstant && !IsStuck();
+	// prévisu du joueur qui l'a lancée (lui-même, son minion, le poste qu'il utilise) : seulement chez lui ; tirée par un NME : chez tous
+	const AYSPlayerCharacter* Thrower = YSPlayerColor::FindPlayer(this);
+	const bool bZone = bShowZone && !bInstant && !IsStuck() && (!Thrower || Thrower->IsLocallyControlled());
 	ExplosionZone->SetVisibility(bZone);
 	if (bZone)
 	{
