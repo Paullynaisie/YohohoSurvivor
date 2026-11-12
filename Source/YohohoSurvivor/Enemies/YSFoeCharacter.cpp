@@ -2252,12 +2252,13 @@ void AYSFoeCharacter::UpdateClimb()
 		bClimbing = true;
 		Movement->SetMovementMode(MOVE_Flying);
 		UE_LOG(LogTemp, Verbose, TEXT("[YSClimb] %s grimpe à (%.0f, %.0f, %.0f) : %.0f gardés, %.0f vers le haut%s"), *GetName(),
-			GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, KeptSpeed, (bFullSpeedClimb ? Speed : LostSpeed) * ClimbSpeedMultiplier,
+			GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z, KeptSpeed, (bFullSpeedClimb || KeptSpeed < Speed * ClimbFullSpeedKeptRatio ? Speed : LostSpeed) * ClimbSpeedMultiplier,
 			bFullSpeedClimb ? TEXT(" (nage contre un bateau : pleine vitesse)") : TEXT(""));
 	}
 
-	// vol sans gravité : horizontal plafonné à Move Speed, la vitesse perdue part vers le haut (nageur contre un bateau : toute la vitesse)
-	const float VerticalSpeed = (bFullSpeedClimb ? Speed : LostSpeed) * ClimbSpeedMultiplier;
+	// vol sans gravité : horizontal plafonné à Move Speed ; vers le haut : toute la vitesse (moins de Climb Full Speed Kept Ratio gardé, nageur
+	// contre un bateau), sinon la vitesse perdue
+	const float VerticalSpeed = (bFullSpeedClimb || KeptSpeed < Speed * ClimbFullSpeedKeptRatio ? Speed : LostSpeed) * ClimbSpeedMultiplier;
 	Movement->MaxFlySpeed = Speed + VerticalSpeed + 1.0f;
 	const FVector Horizontal = FVector(Movement->Velocity.X, Movement->Velocity.Y, 0.0f).GetClampedToMaxSize(Speed);
 	Movement->Velocity = FVector(Horizontal.X, Horizontal.Y, VerticalSpeed);
@@ -2760,6 +2761,10 @@ void AYSFoeCharacter::SpawnShieldSummon()
 		if (Tentacle)
 		{
 			Tentacle->SetEmergeImmediately();
+			if (AYSKrakenTentacleDavyJones* DavyTentacle = Cast<AYSKrakenTentacleDavyJones>(Tentacle))
+			{
+				DavyTentacle->SetSummoner(this);
+			}
 			Tentacle->FinishSpawning(Transform);
 			Summon = Tentacle;
 		}
@@ -2803,6 +2808,13 @@ void AYSFoeCharacter::RemoveShieldSummon(const TCHAR* Reason, bool bImmediate)
 	}
 	if (!IsValid(Summon) || Summon->IsDying())
 	{
+		return;
+	}
+	// bouclier brisé, invocation gardée jusqu'à la mort du boss (Davy Jones)
+	if (bShieldSummonUntilDeath && !bImmediate)
+	{
+		LingeringShieldSummons.Add(Summon);
+		UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : %s reste jusqu'à la mort du boss (%s)"), *GetName(), *Summon->GetName(), Reason);
 		return;
 	}
 	// bouclier brisé : une tentacule reste jusqu'à avoir lancé sa prochaine attaque

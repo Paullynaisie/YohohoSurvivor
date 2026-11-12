@@ -358,6 +358,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss|Shield Summon", meta=(EditCondition="bIsElite && bBossArmor"))
 	TSubclassOf<AYSFoeCharacter> ShieldSummonClass;
 
+	/** L'invocation reste après la fin du bouclier, jusqu'à la mort du boss (un nouveau bouclier en ajoute une ; Davy Jones). Décoché : une
+	 *  tentacule disparaît après sa prochaine attaque une fois le bouclier brisé, un autre NME tout de suite */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss|Shield Summon", meta=(EditCondition="bIsElite && bBossArmor"))
+	bool bShieldSummonUntilDeath = false;
+
 	/** NME invoqué (autre qu'une tentacule) : posé au sol à cette distance du boss */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss|Shield Summon", meta=(ClampMin="0", Units="Centimeters", EditCondition="bIsElite && bBossArmor"))
 	float ShieldSummonDistance = 600.0f;
@@ -601,6 +606,11 @@ protected:
 	 *  s'il garde de la vitesse horizontale (demande de Paul, 2026-11-11 : il glissait le long de la coque sans monter) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Climb", meta=(EditCondition="bClimbWhenBlocked"))
 	bool bSwimmerFullClimbOnShips = true;
+
+	/** En grimpant, vitesse horizontale gardée sous cette part de Move Speed : vitesse verticale maximale (Move Speed x Climb Speed Multiplier),
+	 *  sinon la vitesse perdue (demande de Paul, 2026-11-12 ; 0.5 : 200 / 300 gardés = 100 vers le haut, 140 / 300 = 300 ; 0 = toujours la vitesse perdue) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Movement|Climb", meta=(ClampMin="0", ClampMax="1", EditCondition="bClimbWhenBlocked"))
+	float ClimbFullSpeedKeptRatio = 0.5f;
 
 	/**
 	 *  Élite : poursuit aussi les joueurs qui nagent et entre dans la mer tant que l'eau devant lui (à Water Stop Distance x sa
@@ -880,6 +890,9 @@ public:
 	int32 GetNumpadSpawnKey() const { return NumpadSpawnKey; }
 
 	float GetDamageMultiplier() const { return DamageMultiplier; }
+
+	/** Dégâts de contact (niveau compris) : ceux de ses attaques d'arme de mêlée */
+	float GetContactDamage() const { return ContactDamage; }
 
 	/** Élite avec Boss armor (rage, bouclier de boss) ; morceaux du Kraken : voir AYSKrakenPart */
 	virtual bool UsesBossArmor() const { return bIsElite && (bBossArmor || bShipCaptainBoss); }

@@ -264,6 +264,41 @@ TArray<AYSFoeCharacter*> AYSFoeGalion::SpawnFreeCrew(const TArray<FYSGalionCrewG
 	return Spawned;
 }
 
+TArray<AYSFoeCharacter*> AYSFoeGalion::SpawnFreeCrewAtLongboat(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, float Radius)
+{
+	TArray<AYSFoeCharacter*> Spawned;
+	if (!HasAuthority() || Classes.Num() == 0)
+	{
+		return Spawned;
+	}
+	// chalouperie : sur le pont devant la porte de la cabine (sinon le milieu du pont)
+	const FTransform& Transform = GetActorTransform();
+	const USceneComponent* Station = GetLongboatStationComponent();
+	const FVector Center = Station ? Station->GetComponentLocation()
+		: Transform.TransformPositionNoScale(FVector((DeckSpawnMin.X + DeckSpawnMax.X) * 0.5f, (DeckSpawnMin.Y + DeckSpawnMax.Y) * 0.5f, DeckHeight));
+	const FVector2D CenterLocal(Transform.InverseTransformPositionNoScale(Center));
+	const float Offset = FMath::FRandRange(0.0f, 360.0f);
+	for (int32 Index = 0; Index < Classes.Num(); ++Index)
+	{
+		if (!Classes[Index])
+		{
+			continue;
+		}
+		// en cercle autour du poste (le premier au centre), gardé sur le pont
+		const float Angle = FMath::DegreesToRadians(Offset + 360.0f * Index / FMath::Max(Classes.Num() - 1, 1));
+		const float Distance = Index == 0 ? 0.0f : Radius;
+		const FVector2D Point(FMath::Clamp(CenterLocal.X + FMath::Cos(Angle) * Distance, DeckSpawnMin.X, DeckSpawnMax.X),
+			FMath::Clamp(CenterLocal.Y + FMath::Sin(Angle) * Distance, DeckSpawnMin.Y, DeckSpawnMax.Y));
+		const FVector Feet = Transform.TransformPositionNoScale(FVector(Point.X, Point.Y, DeckHeight + YSGalion::CrewSpawnHeight));
+		if (AYSFoeCharacter* Foe = SpawnCrewMember(Classes[Index], Feet, INDEX_NONE))
+		{
+			Foe->ClearCrewShip();
+			Spawned.Add(Foe);
+		}
+	}
+	return Spawned;
+}
+
 bool AYSFoeGalion::GetPlatformTop(FVector& OutLocation) const
 {
 	const FString Wanted = PlatformComponentName.ToString().Replace(TEXT(" "), TEXT(""));

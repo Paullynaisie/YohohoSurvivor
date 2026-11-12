@@ -3,6 +3,7 @@
 #include "Core/YSFlowMode.h"
 #include "Core/YSGameState.h"
 #include "Ship/YSBoatCrew.h"
+#include "Enemies/YSEnemySpawnRule.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Engine/DamageEvents.h"
 #include "EngineUtils.h"
@@ -130,6 +131,9 @@ void AYSDavyJonesArena::TickFight()
 		UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] %s tombé à l'eau : reposé sur %s"), *Davy->GetName(), *GetNameSafe(PlayerBoat));
 	}
 
+	// paquets d'équipage restants (même s'il est déjà descendu)
+	TickCrewBatches();
+
 	switch (State)
 	{
 	case EYSDavyJonesState::Summoning:
@@ -142,15 +146,16 @@ void AYSDavyJonesArena::TickFight()
 	case EYSDavyJonesState::Crew:
 	{
 		Crew.RemoveAll([](const TWeakObjectPtr<AYSFoeCharacter>& Foe) { return !Foe.IsValid() || Foe->IsDying() || Foe->GetHealth() <= 0.0f; });
-		// Descend Crew Killed Ratio de l'équipage tué, Descend Max Crew Time écoulé (ou plus de Galion sous ses pieds) : il descend se battre
+		// Descend Crew Killed Ratio de l'équipage tué (part de tout l'équipage, paquets à venir compris), Descend Max Crew Time écoulé (ou plus
+		// de Galion sous ses pieds) : il descend se battre
 		const bool bGalionLost = !IsValid(DavyGalion) || DavyGalion->IsSinking();
 		const int32 Killed = CrewSpawnedCount - Crew.Num();
-		const bool bEnoughKilled = Crew.Num() == 0 || Killed >= FMath::CeilToInt(CrewSpawnedCount * DescendCrewKilledRatio);
+		const bool bEnoughKilled = (Crew.Num() == 0 && PendingCrew.Num() == 0) || Killed >= FMath::CeilToInt(CrewPlannedCount * DescendCrewKilledRatio);
 		const bool bTimeUp = DescendMaxCrewTime > 0.0f && Elapsed >= DescendMaxCrewTime;
 		if (bEnoughKilled || bTimeUp || bGalionLost)
 		{
 			UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] Phase %d : %s (%d / %d tués, %.0f s), Davy Jones descend"), Phase + 1,
-				bGalionLost ? TEXT("son Galion coule") : bEnoughKilled ? TEXT("équipage tué") : TEXT("temps écoulé"), Killed, CrewSpawnedCount, Elapsed);
+				bGalionLost ? TEXT("son Galion coule") : bEnoughKilled ? TEXT("équipage tué") : TEXT("temps écoulé"), Killed, CrewPlannedCount, Elapsed);
 			DavyGalion = nullptr;
 			StartJump(FindDescendPoint(), false);
 		}
@@ -326,6 +331,9 @@ void AYSDavyJonesArena::BeginSummon()
 void AYSDavyJonesArena::SpawnCrewWave()
 {
 	Crew.Reset();
+	PendingCrew.Reset();
+	CrewSpawnedCount = 0;
+	CrewPlannedCount = 0;
 	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
 	const FYSDavyJonesCrewWave* Wave = CrewWaves.IsValidIndex(Phase) ? &CrewWaves[Phase] : (CrewWaves.Num() > 0 ? &CrewWaves.Last() : nullptr);
 	if (Wave && GameMode)
@@ -336,18 +344,80 @@ void AYSDavyJonesArena::SpawnCrewWave()
 		{
 			Group.Count = GameMode->ScaleEnemyCount(Group.Count);
 		}
+		// par Galion : classes tirées pour chaque NME, mélangées (chaque paquet mêle les types)
 		for (AYSFoeGalion* Galion : GetLiveGalions())
 		{
-			for (AYSFoeCharacter* Foe : Galion->SpawnFreeCrew(Groups))
+			FPendingCrew Pending;
+			Pending.Galion = Galion;
+			for (const FYSGalionCrewGroup& Group : Groups)
 			{
-				Foe->MarkArenaFoe();
-				Crew.Add(Foe);
+				TArray<TSubclassOf<AYSFoeCharacter>> Classes = Group.Classes;
+				Classes.RemoveAll([](const TSubclassOf<AYSFoeCharacter>& Class) { return !Class; });
+				for (int32 Index = 0; Classes.Num() > 0 && Index < Group.Count; ++Index)
+				{
+					Pending.Classes.Add(UYSEnemySpawnRule::PickEnemyClass(Classes));
+				}
 			}
+			for (int32 K = Pending.Classes.Num() - 1; K > 0; --K)
+			{
+				Pending.Classes.Swap(K, FMath::RandRange(0, K));
+			}
+			CrewPlannedCount += Pending.Classes.Num();
+			PendingCrew.Add(MoveTemp(Pending));
 		}
 	}
-	CrewSpawnedCount = Crew.Num();
-	UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] Phase %d : équipage de %d NME sur %d Galion(s)"), Phase + 1, Crew.Num(), GetLiveGalions().Num());
+	UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] Phase %d : équipage de %d NME sur %d Galion(s), %d à la fois toutes les %.2f s depuis les chalouperies"), Phase + 1,
+		CrewPlannedCount, GetLiveGalions().Num(), CrewBatchSize, CrewBatchInterval);
 	SetState(EYSDavyJonesState::Crew);
+	NextCrewBatchTime = 0.0;
+	TickCrewBatches();
+}
+
+int32 AYSDavyJonesArena::CountPendingCrew() const
+{
+	int32 Count = 0;
+	for (const FPendingCrew& Pending : PendingCrew)
+	{
+		Count += Pending.Classes.Num();
+	}
+	return Count;
+}
+
+void AYSDavyJonesArena::TickCrewBatches()
+{
+	// Galion coulé : ses paquets restants sont perdus
+	PendingCrew.RemoveAll([this](const FPendingCrew& Pending)
+	{
+		const bool bLost = !Pending.Galion.IsValid() || Pending.Galion->IsSinking();
+		if (bLost && Pending.Classes.Num() > 0)
+		{
+			CrewPlannedCount -= Pending.Classes.Num();
+			UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] %d NME pas apparus (Galion coulé)"), Pending.Classes.Num());
+		}
+		return bLost || Pending.Classes.Num() == 0;
+	});
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (PendingCrew.Num() == 0 || Now < NextCrewBatchTime)
+	{
+		return;
+	}
+	NextCrewBatchTime = Now + CrewBatchInterval;
+	for (FPendingCrew& Pending : PendingCrew)
+	{
+		const int32 Count = FMath::Min(FMath::Max(CrewBatchSize, 1), Pending.Classes.Num());
+		TArray<TSubclassOf<AYSFoeCharacter>> Batch(Pending.Classes.GetData(), Count);
+		Pending.Classes.RemoveAt(0, Count);
+		const TArray<AYSFoeCharacter*> Spawned = Pending.Galion->SpawnFreeCrewAtLongboat(Batch, CrewBatchRadius);
+		for (AYSFoeCharacter* Foe : Spawned)
+		{
+			Foe->MarkArenaFoe();
+			Crew.Add(Foe);
+			++CrewSpawnedCount;
+		}
+		// apparition ratée : pas comptée
+		CrewPlannedCount -= Count - Spawned.Num();
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSDavyJones] paquet d'équipage : %d / %d apparus, %d en attente"), CrewSpawnedCount, CrewPlannedCount, CountPendingCrew());
 }
 
 void AYSDavyJonesArena::StartNextPhase()
@@ -466,6 +536,7 @@ void AYSDavyJonesArena::Victory()
 {
 	UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] DAVY JONES VAINCU"));
 	SetState(EYSDavyJonesState::Defeated);
+	PendingCrew.Reset();
 	DavyGalion = nullptr;
 	for (AYSFoeGalion* Galion : GetLiveGalions())
 	{
@@ -594,6 +665,9 @@ void AYSDavyJonesArena::DebugSkip()
 {
 	if (State == EYSDavyJonesState::Crew)
 	{
+		// paquets à venir annulés
+		CrewPlannedCount -= CountPendingCrew();
+		PendingCrew.Reset();
 		int32 Killed = 0;
 		for (const TWeakObjectPtr<AYSFoeCharacter>& Foe : Crew)
 		{

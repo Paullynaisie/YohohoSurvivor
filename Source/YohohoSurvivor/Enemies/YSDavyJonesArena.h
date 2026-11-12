@@ -115,6 +115,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight", meta=(ClampMin="0", Units="s"))
 	float DescendMaxCrewTime = 60.0f;
 
+	/** L'équipage n'apparaît pas d'un coup : sur chaque Galion, Crew Batch Size NME à la fois depuis sa chalouperie, toutes les Crew Batch Interval */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight", meta=(ClampMin="1"))
+	int32 CrewBatchSize = 7;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight", meta=(ClampMin="0", Units="s"))
+	float CrewBatchInterval = 0.5f;
+
+	/** Un paquet : un NME sur la chalouperie, les autres en cercle de ce rayon autour d'elle */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight", meta=(ClampMin="0", Units="Centimeters"))
+	float CrewBatchRadius = 160.0f;
+
 	/** Geste du crochet avant l'apparition de l'équipage */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight", meta=(ClampMin="0", Units="s"))
 	float SummonAnimDuration = 1.5f;
@@ -171,8 +182,23 @@ private:
 
 	TArray<TWeakObjectPtr<AYSFoeCharacter>> Crew;
 
-	/** NME de l'équipage en cours à son apparition */
+	/** NME de l'équipage en cours déjà apparus, et en tout (tous les paquets) */
 	int32 CrewSpawnedCount = 0;
+	int32 CrewPlannedCount = 0;
+
+	/** Paquets restants par Galion (classes dans l'ordre d'apparition) */
+	struct FPendingCrew
+	{
+		TWeakObjectPtr<AYSFoeGalion> Galion;
+		TArray<TSubclassOf<AYSFoeCharacter>> Classes;
+	};
+	TArray<FPendingCrew> PendingCrew;
+	double NextCrewBatchTime = 0.0;
+
+	/** Un paquet par Galion quand c'est l'heure (serveur) */
+	void TickCrewBatches();
+
+	int32 CountPendingCrew() const;
 
 	/** Phase en cours (0 = première), heure (monde) du début de l'état */
 	int32 Phase = 0;

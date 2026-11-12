@@ -632,6 +632,9 @@ public:
 	/** Postes du bateau (barre, nid d'pie, chalouperie, canonneries ; pas le core), acteurs enfants existants */
 	TArray<AYSShipStation*> GetStations() const;
 
+	/** Emplacement de la chalouperie (composant LongboatStation, même sans poste), ou nullptr */
+	const USceneComponent* GetLongboatStationComponent() const { return LongboatStation; }
+
 	/** Réceptacles à poste de combat du bateau, dans l'ordre des composants */
 	TArray<class AYSCombatPostReceptacle*> GetCombatPostReceptacles() const;
 

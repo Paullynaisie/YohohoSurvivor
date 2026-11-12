@@ -5,10 +5,11 @@ Cartes au trésor d'objectif, Super carte au trésor, world boss Davy Jones (202
   - BP_InteractiveObject_ObjectiveTreasureMap : copie de la carte au trésor reparentée sur YSObjectiveTreasureMap, croix en vert émissif
     (m_PH_emissive_turboGreen), pointillés verts, 2 Basic Chest en récompense, embuscade 20 Skull / 7 Skull Gun / 3 Skull Bomb
   - BP_InteractiveObject_SuperTreasureMap : reparentée sur YSSuperTreasureMap (pointillés dorés vers Davy Jones)
-  - Weapons/Foe/BP_NME_DavyJonesSword (copie de BP_NME_EliteGreatSword : même swing que le Boss Skull) et BP_NME_DavyJonesHook (copie du
-    crochet du Captain sans son Ability, non répliqué comme les armes de NME) ; set DA_WeaponSet_NME_DavyJones (épée droite, crochet gauche)
-  - Character/Foe/Boss/FoeCharacter_DavyJones : copie du Boss Skull, 5000 PV de base, sans Boss Big Slash, Shield Action = tentacule à
-    distance du Kraken, Head Feature copiée de celle du Captain, pas de coffre à sa mort (butin de l'arène)
+  - Weapons/Foe/BP_NME_DavyJonesSword (copie de BP_NME_EliteGreatSword : même swing que le Boss Skull, mais à une main) et BP_NME_DavyJonesHook
+    (copie du crochet du Captain sans son Ability, non répliqué comme les armes de NME) ; set DA_WeaponSet_NME_DavyJones (épée droite, crochet gauche)
+  - FoeCharacter_KrakenTentacle_DavyJones (à côté de la tentacule à distance) : copie reparentée sur YSKrakenTentacleDavyJones
+  - Character/Foe/Boss/FoeCharacter_DavyJones : copie du Boss Skull, 5000 PV de base, sans Boss Big Slash, Shield Action = tentacule de
+    Davy Jones gardée jusqu'à sa mort, Head Feature copiée de celle du Captain, pas de coffre à sa mort (butin de l'arène)
   - Ship/BP_DavyJonesGalion : copie de BP_NME_Galion sans capitaine ni équipage, grand mât (vergues, voiles, nid de pie, drapeau) remplacé par
     une plateforme (DavyPlatform) sur un pilier
   - Character/Foe/DavyJones/BP_DavyJonesArena : équipages des 3 phases, butin (3 Elite Chest, 2 Boss Chest, + 2 membres d'équipage)
@@ -202,6 +203,11 @@ try:
 
     # --- 3) armes de Davy Jones et leur set
     duplicate(f"{FOE_WEAPONS}/BP_NME_EliteGreatSword", DAVY_SWORD)
+    # épée à une main (2026-11-12, demande de Paul) : la main gauche tient le crochet
+    sword = cdo(DAVY_SWORD)
+    sword.set_editor_property("two_handed", False)
+    log(f"épée de Davy Jones : une main ; main {sword.get_editor_property('override_hand_location')} {sword.get_editor_property('hand_location')}, "
+        f"rotation {sword.get_editor_property('override_hand_rotation')} {sword.get_editor_property('hand_rotation')}")
     assets.save_asset(DAVY_SWORD, only_if_is_dirty=False)
     hook_bp, created = duplicate(find_path("BP_CaptainHook"), DAVY_HOOK)
     if created:
@@ -218,6 +224,29 @@ try:
     set_asset.set_editor_property("right_hand_weapon", assets.load_blueprint_class(DAVY_SWORD))
     set_asset.set_editor_property("left_hand_weapon", assets.load_blueprint_class(DAVY_HOOK))
     assets.save_asset(DAVY_SET, only_if_is_dirty=False)
+
+    # --- 3b) tentacule de Davy Jones : copie de la tentacule à distance reparentée sur YSKrakenTentacleDavyJones
+    range_path = find_path("FoeCharacter_KrakenTentacle_Range")
+    davy_tentacle_path = range_path.rsplit("/", 1)[0] + "/FoeCharacter_KrakenTentacle_DavyJones"
+    tentacle_bp, _ = duplicate(range_path, davy_tentacle_path)
+    if not unreal.MathLibrary.class_is_child_of(tentacle_bp.generated_class(), unreal.YSKrakenTentacleDavyJones):
+        bp_lib.reparent_blueprint(tentacle_bp, unreal.YSKrakenTentacleDavyJones)
+        log("tentacule de Davy Jones reparentée sur YSKrakenTentacleDavyJones")
+    bp_lib.compile_blueprint(tentacle_bp)
+    davy_tentacle = assets.load_blueprint_class(davy_tentacle_path)
+    tentacle = unreal.get_default_object(davy_tentacle)
+    # valeurs de la classe C++ (la copie garde celles de la tentacule à distance)
+    tentacle.set_editor_property("foe_name", unreal.Text("Tentacule de Davy Jones"))
+    tentacle.set_editor_property("stay_emerged", True)
+    tentacle.set_editor_property("recover_duration", 2.0)
+    tentacle.set_editor_property("attack_delay_range", unreal.Vector2D(1.0, 3.0))
+    tentacle.set_editor_property("ink_radius", 300.0)
+    tentacle.set_editor_property("ink_ball_size", 200.0)
+    tentacle.set_editor_property("ink_flight_duration", 1.5)
+    tentacle.set_editor_property("ink_apex_height", 1200.0)
+    tentacle.set_editor_property("ink_damage", 0.0)
+    assets.save_asset(davy_tentacle_path, only_if_is_dirty=False)
+    log(f"tentacule de Davy Jones : {davy_tentacle_path}")
 
     # --- 4) Davy Jones : copie du Boss Skull
     davy_bp, created = duplicate(f"{BOSS_DIR}/FoeCharacter_Skull_Boss", DAVY)
@@ -263,7 +292,8 @@ try:
     davy.set_editor_property("base_health", base)
     davy.set_editor_property("health_per_level", base)
     davy.set_editor_property("boss_big_slash", False)
-    davy.set_editor_property("shield_summon_class", tentacle_range)
+    davy.set_editor_property("shield_summon_class", davy_tentacle)
+    davy.set_editor_property("shield_summon_until_death", True)
     davy.set_editor_property("death_loot_class", None)
     davy.set_editor_property("numpad_spawn_key", -1)
     davy.set_editor_property("left_handed_chance", 0.0)
@@ -356,6 +386,11 @@ try:
     log(f"relu Davy Jones : set {check.get_editor_property('weapon_set').get_name()}, Big Slash {check.get_editor_property('boss_big_slash')}, "
         f"Shield Action {check.get_editor_property('shield_summon_class').get_name()}, PV de base {check.get_editor_property('base_health')}, "
         f"bouclier {check.get_editor_property('boss_shield')}")
+    log(f"relu Davy Jones : invocation jusqu'à sa mort {check.get_editor_property('shield_summon_until_death')}, "
+        f"épée à deux mains {cdo(DAVY_SWORD).get_editor_property('two_handed')}")
+    check_tentacle = unreal.get_default_object(assets.load_blueprint_class(davy_tentacle_path))
+    log(f"relu tentacule : reste sortie {check_tentacle.get_editor_property('stay_emerged')}, {check_tentacle.get_editor_property('line_shot_count')} tirs, "
+        f"rayon {check_tentacle.get_editor_property('ink_radius')}, PV {check_tentacle.get_editor_property('base_health')}")
     check_set = assets.load_asset(DAVY_SET)
     log(f"relu set : droite {check_set.get_editor_property('right_hand_weapon').get_name()}, gauche {check_set.get_editor_property('left_hand_weapon').get_name()}")
     log(f"relu Galion : composants {sorted(handles_by_name(assets.load_asset(DAVY_GALION)))}")

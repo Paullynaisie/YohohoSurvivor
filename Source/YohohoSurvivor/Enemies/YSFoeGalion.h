@@ -310,6 +310,9 @@ public:
 	/** NME libres sur son pont (serveur) : ils quittent tout de suite l'équipage et attaquent les joueurs ; renvoie ceux qui sont apparus */
 	TArray<AYSFoeCharacter*> SpawnFreeCrew(const TArray<FYSGalionCrewGroup>& Groups);
 
+	/** NME libres (serveur), un par classe, sur le pont autour de la chalouperie (LongboatStation), en cercle de Radius ; renvoie ceux qui sont apparus */
+	TArray<AYSFoeCharacter*> SpawnFreeCrewAtLongboat(const TArray<TSubclassOf<AYSFoeCharacter>>& Classes, float Radius);
+
 	/** Plateforme de Davy Jones (composant Platform Component Name, à la place du grand mât) : point au milieu de son dessus ; faux sans elle */
 	bool GetPlatformTop(FVector& OutLocation) const;
 

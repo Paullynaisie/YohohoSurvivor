@@ -797,7 +797,16 @@ void AYSKrakenTentacle::TickTentacleServer(float DeltaSeconds)
 	case EYSKrakenTentaclePhase::Recover:
 		if (Elapsed >= RecoverDuration)
 		{
-			SetPhase(EYSKrakenTentaclePhase::Sinking);
+			if (bStayEmerged)
+			{
+				// reste sortie : nouvelle attaque après Attack Delay Range
+				CurrentAttackDelay = FMath::Max(static_cast<float>(FMath::FRandRange(AttackDelayRange.X, FMath::Max(AttackDelayRange.X, AttackDelayRange.Y))), 0.0f);
+				SetPhase(EYSKrakenTentaclePhase::Waiting);
+			}
+			else
+			{
+				SetPhase(EYSKrakenTentaclePhase::Sinking);
+			}
 		}
 		break;
 	case EYSKrakenTentaclePhase::Sinking:
@@ -1037,6 +1046,77 @@ void AYSKrakenTentacleRange::FireScatterBalls(const AYSPirateShip* Boat)
 void AYSKrakenTentacleRange::OnWindupFinished()
 {
 	SetPhase(EYSKrakenTentaclePhase::Recover);
+}
+
+// ==================================================================== AYSKrakenTentacleDavyJones
+
+AYSKrakenTentacleDavyJones::AYSKrakenTentacleDavyJones()
+{
+	FoeName = NSLOCTEXT("YS", "KrakenTentacleDavyJonesName", "Tentacule de Davy Jones");
+	// sortie jusqu'à la mort de Davy Jones (choix de Claude : une ligne toutes les ~4 à 6 s)
+	bStayEmerged = true;
+	RecoverDuration = 2.0f;
+	AttackDelayRange = FVector2D(1.0, 3.0);
+	// tirs vers les joueurs : impacts plus petits que ceux visant le bateau, pas de dégâts au core (bateau invulnérable pendant le combat)
+	InkRadius = 300.0f;
+	InkBallSize = 200.0f;
+	InkFlightDuration = 1.5f;
+	InkApexHeight = 1200.0f;
+	InkDamage = 0.0f;
+}
+
+void AYSKrakenTentacleDavyJones::OnWindupStarted()
+{
+	// un joueur vivant au hasard
+	TArray<AYSPlayerCharacter*> Players;
+	for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
+	{
+		if (It->IsAlive() && !It->IsDying())
+		{
+			Players.Add(*It);
+		}
+	}
+	if (Players.Num() == 0)
+	{
+		return;
+	}
+	const AYSPlayerCharacter* Victim = Players[FMath::RandRange(0, Players.Num() - 1)];
+	const float Sea = GetSeaLevel();
+	const FVector Foot(State.Location.X, State.Location.Y, Sea);
+	const FVector Dir = (Victim->GetActorLocation() - Foot).GetSafeNormal2D();
+	if (Dir.IsNearlyZero())
+	{
+		return;
+	}
+	// tournée vers le joueur visé
+	State.Yaw = Dir.Rotation().Yaw;
+	ForceNetUpdate();
+
+	// joueur loin : écart agrandi pour que l'avant-dernier tir tombe sur lui (le dernier au-delà)
+	const int32 ShotCount = FMath::Max(LineShotCount, 1);
+	const float Spacing = FMath::Max3(LineSpacing, 50.0f, static_cast<float>(FVector::Dist2D(Victim->GetActorLocation(), Foot) / FMath::Max(ShotCount - 1, 1)));
+	TArray<FYSKrakenInkShot> Shots;
+	for (int32 Step = 0; Step < ShotCount; ++Step)
+	{
+		FYSKrakenInkShot Shot;
+		const FVector Point = Foot + Dir * Spacing * (Step + 1);
+		Shot.Target = ProjectOntoShips(FVector(Point.X, Point.Y, Sea));
+		Shot.Delay = LineStepDelay * Step;
+		Shots.Add(Shot);
+	}
+	const AYSFoeCharacter* Boss = Summoner.Get();
+	const float PlayerDamage = (IsValid(Boss) ? Boss->GetContactDamage() : FallbackPlayerDamage) * SummonerDamageMultiplier;
+
+	const FTransform Transform(FRotator::ZeroRotator, Foot);
+	AYSKrakenInkBarrage* Barrage = GetWorld()->SpawnActorDeferred<AYSKrakenInkBarrage>(AYSKrakenInkBarrage::StaticClass(), Transform, this, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (Barrage)
+	{
+		Barrage->Init(GetTipLocation(), InkFlightDuration, InkApexHeight, InkRadius, InkBallSize, TentacleWindupDuration, InkDamage, Shots);
+		Barrage->SetPlayerDamage(PlayerDamage, PlayerHitHeight, IsValid(Boss) ? Boss->GetController() : nullptr);
+		Barrage->FinishSpawning(Transform);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s : ligne de %d tirs vers %s (%.0f cm), %.0f dégâts aux joueurs chacun (%s)"), *GetName(), Shots.Num(), *Victim->GetName(),
+		FVector::Dist2D(Victim->GetActorLocation(), Foot), PlayerDamage, IsValid(Boss) ? *Boss->GetName() : TEXT("sans boss"));
 }
 
 // ==================================================================== AYSKrakenTentacleMelee
@@ -1621,10 +1701,26 @@ void AYSKrakenInkBarrage::Tick(float DeltaSeconds)
 		if (Time > FlightDuration && !Landed[Index])
 		{
 			Landed[Index] = true;
-			if (Boat && Boat->IsInsideHull(FVector(Shot.Target), Radius))
+			if (Boat && Damage > 0.0f && Boat->IsInsideHull(FVector(Shot.Target), Radius))
 			{
 				Boat->TakeCoreDamage(Damage, nullptr, FVector(Shot.Target));
 				++Hits;
+			}
+			// tentacule de Davy Jones : les joueurs dans le rayon
+			if (HasAuthority() && PlayerDamage > 0.0f)
+			{
+				const FVector Impact(Shot.Target);
+				for (TActorIterator<AYSPlayerCharacter> It(GetWorld()); It; ++It)
+				{
+					AYSPlayerCharacter* Player = *It;
+					if (!Player->IsAlive() || Player->IsDying() || FVector::Dist2D(Player->GetActorLocation(), Impact) > Radius
+						|| FMath::Abs(Player->GetActorLocation().Z - Impact.Z) > PlayerHitHeight)
+					{
+						continue;
+					}
+					Player->TakeDamage(PlayerDamage, FDamageEvent(), PlayerDamageInstigator.Get(), this);
+					UE_LOG(LogTemp, Log, TEXT("[YSKraken] tir d'encre en cloche : %s touché (%.0f dégâts)"), *Player->GetName(), PlayerDamage);
+				}
 			}
 		}
 	}

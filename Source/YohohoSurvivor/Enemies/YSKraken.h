@@ -450,6 +450,10 @@ protected:
 
 	bool bEmergeImmediately = false;
 
+	/** Ne replonge jamais : après Recover Duration, attend Attack Delay Range et attaque de nouveau (tentacule de Davy Jones) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle")
+	bool bStayEmerged = false;
+
 	/** Sous l'eau au début, puis sort après ce délai */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle", meta=(ClampMin="0", Units="s"))
 	float FirstEmergeDelay = 10.0f;
@@ -646,6 +650,56 @@ private:
 
 	/** Croix / cercle : un AYSKrakenInkBarrage depuis le haut de la tentacule */
 	void FirePattern(EYSKrakenTentacleAttack Attack, const AYSPirateShip* Boat);
+};
+
+/**
+ *  Tentacule de Davy Jones (Shield Action) : sort tout de suite près du bateau des joueurs et ne replonge plus jusqu'à la mort de Davy Jones.
+ *  Un seul motif : une ligne de Line Shot Count tirs d'encre en cloche depuis son pied vers un joueur vivant au hasard. Chaque tir blesse les
+ *  joueurs dans son rayon des dégâts de Davy Jones (ses dégâts de contact, ceux de son épée) x Summoner Damage Multiplier.
+ */
+UCLASS(meta=(PrioritizeCategories="Kraken Foe"))
+class AYSKrakenTentacleDavyJones : public AYSKrakenTentacleRange
+{
+	GENERATED_BODY()
+
+public:
+
+	AYSKrakenTentacleDavyJones();
+
+	/** Serveur, avant FinishSpawning : le boss qui l'invoque (ses dégâts) */
+	void SetSummoner(AYSFoeCharacter* InSummoner) { Summoner = InSummoner; }
+
+protected:
+
+	/** Tirs de la ligne (du pied de la tentacule vers le joueur visé) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Davy Jones Line", meta=(ClampMin="1"))
+	int32 LineShotCount = 7;
+
+	/** Distance minimale entre deux impacts, et du pied de la tentacule au premier ; agrandie si le joueur visé est plus loin, pour que
+	 *  l'avant-dernier tir tombe sur lui (les impacts ne se touchent alors plus : on passe entre eux) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Davy Jones Line", meta=(ClampMin="50", Units="Centimeters"))
+	float LineSpacing = 600.0f;
+
+	/** Départ de chaque tir après le précédent (du pied vers le bout) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Davy Jones Line", meta=(ClampMin="0", Units="s"))
+	float LineStepDelay = 0.08f;
+
+	/** Dégâts aux joueurs par tir = dégâts de Davy Jones x ceci */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Davy Jones Line", meta=(ClampMin="0"))
+	float SummonerDamageMultiplier = 1.0f;
+
+	/** Sans boss (tentacule posée à la main) : dégâts aux joueurs par tir */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Davy Jones Line", meta=(ClampMin="0"))
+	float FallbackPlayerDamage = 30.0f;
+
+	/** Un joueur est touché s'il est à moins de Ink Radius (à plat) et de cette hauteur du point d'impact */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Davy Jones Line", meta=(ClampMin="0", Units="Centimeters"))
+	float PlayerHitHeight = 300.0f;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<AYSFoeCharacter> Summoner;
+
+	virtual void OnWindupStarted() override;
 };
 
 /** Tentacule de mêlée : sort à 5 m du bateau, s'abat sur lui ; touché = bateau immobilisé et Skull qui en sortent jusqu'à ce qu'elle lâche */
@@ -867,6 +921,14 @@ public:
 	void Init(const FVector& InStart, float InFlightDuration, float InApexHeight, float InRadius, float InBallSize, float InMarkerLead, float InDamage,
 		const TArray<FYSKrakenInkShot>& InShots);
 
+	/** Serveur, avant FinishSpawning : chaque impact blesse aussi les joueurs dans son rayon (à moins de Hit Height en Z) */
+	void SetPlayerDamage(float InDamage, float InHitHeight, AController* InInstigator)
+	{
+		PlayerDamage = InDamage;
+		PlayerHitHeight = InHitHeight;
+		PlayerDamageInstigator = InInstigator;
+	}
+
 protected:
 
 	virtual void BeginPlay() override;
@@ -914,6 +976,9 @@ protected:
 private:
 
 	float Damage = 0.0f;
+	float PlayerDamage = 0.0f;
+	float PlayerHitHeight = 300.0f;
+	TWeakObjectPtr<AController> PlayerDamageInstigator;
 
 	/** Tirs déjà tombés (local) */
 	TBitArray<> Landed;
