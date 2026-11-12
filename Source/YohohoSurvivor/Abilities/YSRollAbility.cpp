@@ -11,8 +11,12 @@ UYSRollAbility::UYSRollAbility()
 
 bool UYSRollAbility::CanActivateNow() const
 {
-	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	return Character && !Character->IsCarrying() && !Character->IsSwimming() && !Character->IsAtStation() && Character->GetStamina() >= StaminaCost;
+	return CanCharacterUseMoveAction(Cast<AYSPlayerCharacter>(GetHolderPawn()), StaminaCost);
+}
+
+bool UYSRollAbility::CanCharacterUseMoveAction(const AYSPlayerCharacter* Character, float Cost)
+{
+	return Character && !Character->IsCarrying() && !Character->IsSwimming() && !Character->IsAtStation() && Character->GetStamina() >= Cost;
 }
 
 void UYSRollAbility::OnActivationPredicted(const FVector& TargetLocation)

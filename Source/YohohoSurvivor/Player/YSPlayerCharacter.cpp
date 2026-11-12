@@ -218,6 +218,8 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, Health);
 	DOREPLIFETIME(AYSPlayerCharacter, UpgradeProgress);
 	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedMultiplier);
+	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedBuffMultiplier);
+	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedBuffEndServerTime);
 	DOREPLIFETIME(AYSPlayerCharacter, SummonSystemBonus);
 	DOREPLIFETIME(AYSPlayerCharacter, MeleeRangeMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, Stamina);
@@ -1856,6 +1858,7 @@ void AYSPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		EnhancedInput->BindAction(FireAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Fire);
 		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Started, this, &AYSPlayerCharacter::Interact);
 		EnhancedInput->BindAction(MoveActionInput, ETriggerEvent::Started, this, &AYSPlayerCharacter::OnMoveActionPressed);
+		EnhancedInput->BindAction(MoveActionInput, ETriggerEvent::Completed, this, &AYSPlayerCharacter::OnMoveActionReleased);
 	}
 }
 
@@ -2032,10 +2035,23 @@ void AYSPlayerCharacter::Fire()
 
 void AYSPlayerCharacter::OnMoveActionPressed()
 {
-	if (MoveActionAbility)
+	if (UYSAbilityComponent* MoveAbility = GetMoveActionAbility())
 	{
-		MoveActionAbility->TryActivate(GetAimLocation());
+		MoveAbility->OnInputPressed(GetAimLocation());
 	}
+}
+
+void AYSPlayerCharacter::OnMoveActionReleased()
+{
+	if (UYSAbilityComponent* MoveAbility = GetMoveActionAbility())
+	{
+		MoveAbility->OnInputReleased();
+	}
+}
+
+UYSAbilityComponent* AYSPlayerCharacter::GetMoveActionAbility() const
+{
+	return ActiveMoveAction ? ActiveMoveAction.Get() : MoveActionAbility.Get();
 }
 
 void AYSPlayerCharacter::UpdateAutoAttackInput()
@@ -2114,6 +2130,18 @@ void AYSPlayerCharacter::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
 	HiredCrewComponent = FindComponentByClass<UYSHiredCrewComponent>();
+
+	// MoveAction : un composant MoveAction ajouté dans le Blueprint remplace le Roll de base
+	ActiveMoveAction = MoveActionAbility;
+	TInlineComponentArray<UYSAbilityComponent*> OwnActions(this);
+	for (UYSAbilityComponent* Action : OwnActions)
+	{
+		if (Action != MoveActionAbility && Action->IsMoveAction())
+		{
+			ActiveMoveAction = Action;
+			break;
+		}
+	}
 	if (HiredCrewComponent)
 	{
 		// HiredMouss : pas de cadavre (le corps disparaît, le GameMode le fait revenir au bateau)
@@ -2254,11 +2282,42 @@ void AYSPlayerCharacter::SetStaminaMaxMultiplier(float Multiplier)
 	ForceNetUpdate();
 }
 
-void AYSPlayerCharacter::ConsumeStamina(float Amount)
+void AYSPlayerCharacter::ConsumeStamina(float Amount, bool bLog)
 {
 	Stamina = FMath::Max(0.0f, Stamina - Amount);
 	LastStaminaUseTime = GetWorld()->GetTimeSeconds();
-	UE_LOG(LogTemp, Verbose, TEXT("[YSStamina] %s -%.1f : %.1f / %.1f"), *GetName(), Amount, Stamina, GetMaxStamina());
+	if (bLog)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSStamina] %s -%.1f : %.1f / %.1f"), *GetName(), Amount, Stamina, GetMaxStamina());
+	}
+}
+
+void AYSPlayerCharacter::ApplyMoveSpeedBuff(float Multiplier, float Duration)
+{
+	if (!HasAuthority() || Duration <= 0.0f)
+	{
+		return;
+	}
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const bool bActive = Now < MoveSpeedBuffEndServerTime;
+	MoveSpeedBuffMultiplier = bActive ? FMath::Max(MoveSpeedBuffMultiplier, Multiplier) : Multiplier;
+	MoveSpeedBuffEndServerTime = FMath::Max(bActive ? MoveSpeedBuffEndServerTime : 0.0, Now + Duration);
+	ForceNetUpdate();
+	UpdateMaxWalkSpeed();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSSpeedBuff] %s : vitesse x%.2f jusqu'à %.2f"), *GetName(), MoveSpeedBuffMultiplier, MoveSpeedBuffEndServerTime);
+}
+
+float AYSPlayerCharacter::GetMoveSpeedBuffMultiplier() const
+{
+	const UWorld* World = GetWorld();
+	if (MoveSpeedBuffEndServerTime <= 0.0 || !World)
+	{
+		return 1.0f;
+	}
+	const AGameStateBase* GameState = World->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+	return Now < MoveSpeedBuffEndServerTime ? MoveSpeedBuffMultiplier : 1.0f;
 }
 
 void AYSPlayerCharacter::SetStamina(float Value)
@@ -3280,6 +3339,8 @@ void AYSPlayerCharacter::UpdateMaxWalkSpeed()
 		});
 		ActionMultiplier *= AutoAttackMultiplier;
 	}
+	// bonus temporaire (Booster de moral)
+	ActionMultiplier *= GetMoveSpeedBuffMultiplier();
 	// nage : Swim Speed Multiplier seulement quand la stamina est vide
 	const float SwimMultiplier = bSwimming && !IgnoresPassiveSlowdown() ? SwimSpeedMultiplier : 1.0f;
 	GetCharacterMovement()->MaxWalkSpeed = GetUnmodifiedWalkSpeed() * ActionMultiplier * SwimMultiplier;
@@ -3970,9 +4031,9 @@ void AYSPlayerCharacter::ForEachHeldAction(TFunctionRef<void(const UYSAbilityCom
 		}
 	}
 	// la MoveAction n'est pas sur une arme
-	if (MoveActionAbility)
+	if (const UYSAbilityComponent* MoveAbility = GetMoveActionAbility())
 	{
-		Function(MoveActionAbility);
+		Function(MoveAbility);
 	}
 }
 

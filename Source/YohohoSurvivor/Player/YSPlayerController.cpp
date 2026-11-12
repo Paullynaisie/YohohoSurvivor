@@ -718,7 +718,7 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 		Info.MaxHealth = PreviewCharacter->GetMaxHealth();
 		Info.HealthRegenPerSecond = PreviewCharacter->GetBaseHealthRegenPerSecond();
 		Info.MaxStamina = PreviewCharacter->GetMaxStamina();
-		if (const UYSRollAbility* MoveAbility = PreviewCharacter->GetMoveActionAbility())
+		if (const UYSAbilityComponent* MoveAbility = PreviewCharacter->GetMoveActionAbility())
 		{
 			Info.MoveActionName = MoveAbility->DisplayName;
 		}
@@ -2587,10 +2587,10 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 	const bool bAliveCharacter = StationCharacter && StationCharacter->IsAlive();
 
 	// stamina : cachée sans personnage vivant
-	const UYSRollAbility* MoveAbility = bAliveCharacter ? StationCharacter->GetMoveActionAbility() : nullptr;
+	const UYSAbilityComponent* MoveAbility = bAliveCharacter ? StationCharacter->GetMoveActionAbility() : nullptr;
 	if (StaminaBar)
 	{
-		StaminaBar->Refresh(MoveAbility ? StationCharacter->GetStamina() : 0.0f, MoveAbility ? StationCharacter->GetMaxStamina() : 0.0f, MoveAbility ? MoveAbility->StaminaCost : 0.0f);
+		StaminaBar->Refresh(MoveAbility ? StationCharacter->GetStamina() : 0.0f, MoveAbility ? StationCharacter->GetMaxStamina() : 0.0f, MoveAbility ? MoveAbility->GetMoveActionStaminaCost() : 0.0f);
 	}
 
 	const auto ApplyAction = [](UYSAbilityIconWidget* Widget, const UYSAbilityComponent* Action, const FText& Key)

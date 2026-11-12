@@ -119,6 +119,12 @@ protected:
 	/** Lance la roulade (bonus de vitesse, traversée des NME) et note son début */
 	void StartRoll();
 
+	/** Sans input de direction, la roulade part vers le curseur (ex. Shoulder bump) au lieu de partir à l'opposé */
+	virtual bool RollsTowardAim() const { return false; }
+
+	/** Direction de la dernière roulade (machine qui la joue : serveur et client qui l'a prédite ; nulle ailleurs) */
+	FVector LastRollDirection = FVector::ZeroVector;
+
 private:
 
 	/** Fin de la visée : rafale de cette arme, puis de l'autre en akimbo (serveur) */

@@ -201,6 +201,15 @@ public:
 	/** MoveAction du personnage (ex. Roll) : rang de priorité entre l'Ability et l'attaque auto */
 	virtual bool IsMoveAction() const { return false; }
 
+	/** MoveAction : stamina dépensée à l'activation (cran de la barre de stamina) ; 0 pour les autres actions */
+	virtual float GetMoveActionStaminaCost() const { return 0.0f; }
+
+	/** Touche de l'action enfoncée (machine qui contrôle le personnage) : par défaut TryActivate (ex. Run en bascule : arrête la course) */
+	virtual void OnInputPressed(const FVector& TargetLocation) { TryActivate(TargetLocation); }
+
+	/** Touche de l'action relâchée (machine qui contrôle le personnage ; ex. Run maintenu : fin de la course) */
+	virtual void OnInputReleased() {}
+
 	/** Une action plus prioritaire attend la fin de celle-ci au lieu de l'interrompre (ex. Roll : pas d'Ability pendant la roulade) */
 	virtual bool IsUninterruptible() const { return false; }
 
@@ -358,6 +367,9 @@ protected:
 
 	/** Effet de la capacité, exécuté uniquement sur le serveur */
 	virtual void ExecuteAbility(const FVector& TargetLocation) {}
+
+	/** Client qui avait prédit l'activation : le serveur l'a refusée (avant StopActionLocally ; ex. Run : course arrêtée) */
+	virtual void OnActivationRejected() {}
 
 	UFUNCTION(Server, Reliable)
 	void ServerActivate(FVector_NetQuantize TargetLocation);

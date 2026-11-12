@@ -17,6 +17,7 @@ class UYSFaceDecalComponent;
 class UBlendSpace;
 class UInputAction;
 class UYSRollAbility;
+class UYSAbilityComponent;
 class UInputMappingContext;
 class ULocalPlayer;
 class UChildActorComponent;
@@ -119,9 +120,16 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UInputAction> MoveActionInput;
 
-	/** MoveAction du personnage (de base : Roll) ; coût et réglages sur le composant */
+	/**
+	 *  MoveAction de base du personnage (Roll) ; coût et réglages sur le composant. Un autre composant MoveAction ajouté dans le
+	 *  Blueprint (Run, Shoulder bump, Morale boost...) la remplace (ActiveMoveAction) : ce Roll reste alors sans effet.
+	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UYSRollAbility> MoveActionAbility;
+
+	/** MoveAction utilisée : le premier composant MoveAction du Blueprint autre que le Roll de base, sinon le Roll (PostInitializeComponents) */
+	UPROPERTY(Transient)
+	TObjectPtr<UYSAbilityComponent> ActiveMoveAction;
 
 	/** Contexte d'input clavier/souris par défaut, créé à l'exécution */
 	UPROPERTY(Transient)
@@ -650,6 +658,13 @@ protected:
 	/** Multiplicateur de la vitesse de déplacement (Move speed bonus ; répliqué : la prédiction de mouvement du client doit le connaître) */
 	UPROPERTY(ReplicatedUsing=OnRep_MoveSpeedMultiplier, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	float MoveSpeedMultiplier = 1.0f;
+
+	/** Bonus de vitesse temporaire (Booster de moral) : multiplicateur et fin (temps serveur) ; voir ApplyMoveSpeedBuff */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
+	float MoveSpeedBuffMultiplier = 1.0f;
+
+	UPROPERTY(Replicated, Transient)
+	double MoveSpeedBuffEndServerTime = 0.0;
 
 	/** Multiplicateur des PV max (Hps bonus) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
@@ -1471,8 +1486,17 @@ public:
 	/** Shard Stamina regen (serveur) */
 	void SetStaminaRegenMultiplier(float Multiplier) { StaminaRegenMultiplier = Multiplier; }
 
-	/** Retire de la stamina et relance le délai de regen (serveur) */
-	void ConsumeStamina(float Amount);
+	/** Retire de la stamina et relance le délai de regen (serveur) ; bLog faux pour une consommation continue (Run) */
+	void ConsumeStamina(float Amount, bool bLog = true);
+
+	/**
+	 *  Bonus de vitesse temporaire (serveur ; ex. Booster de moral) : vitesse x Multiplier pendant Duration ; un bonus déjà actif
+	 *  garde le plus grand multiplicateur et la fin la plus lointaine. Répliqué, appliqué par UpdateMaxWalkSpeed sur chaque machine.
+	 */
+	void ApplyMoveSpeedBuff(float Multiplier, float Duration);
+
+	/** Multiplicateur du bonus de vitesse temporaire en ce moment (1 sans bonus) */
+	float GetMoveSpeedBuffMultiplier() const;
 
 	/** Fixe la stamina (serveur, debug) */
 	void SetStamina(float Value);
@@ -1482,7 +1506,11 @@ public:
 
 	void ClearPredictedStamina() { PredictedStaminaCost = 0.0f; }
 
-	UYSRollAbility* GetMoveActionAbility() const { return MoveActionAbility; }
+	/** MoveAction utilisée par le personnage (Roll de base ou celle ajoutée dans le Blueprint) */
+	UYSAbilityComponent* GetMoveActionAbility() const;
+
+	/** Touche Espace relâchée (machine qui contrôle le personnage ; Run maintenu) */
+	void OnMoveActionReleased();
 
 	/** Comme la touche Espace (debug YSMoveAction) */
 	void TriggerMoveAction() { OnMoveActionPressed(); }

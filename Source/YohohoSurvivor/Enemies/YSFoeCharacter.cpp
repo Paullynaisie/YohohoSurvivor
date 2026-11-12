@@ -586,7 +586,7 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	// coup qui bumpe (Bumping Slash) : NME lancé en cloche ; un élite seulement si l'Ability le permet (Bump Elites), sinon pushback normal
 	// ; jamais sous bouclier de boss, pendant le Boss Big Slash / Roll360shot ni à bord d'un Jolly Ship
 	const FYSBumpDamageEvent* BumpEventPtr = DamageEvent.IsOfType(FYSBumpDamageEvent::ClassID) ? static_cast<const FYSBumpDamageEvent*>(&DamageEvent) : nullptr;
-	if (BumpEventPtr && (!bIsElite || BumpEventPtr->bBumpElites) && !HasBossShield() && !BossDash.bActive && !Roll360Shot.bActive && !bLocalShipRide)
+	if (BumpEventPtr && CanBeBumped(BumpEventPtr->bBumpElites))
 	{
 		const FYSBumpDamageEvent& BumpEvent = *BumpEventPtr;
 		StartBump(BumpEvent.ShotDirection, BumpEvent.Distance, BumpEvent.ApexHeight, BumpEvent.Duration, BumpEvent.SpinTurns);
@@ -595,6 +595,11 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 
 	ApplyPushback(Damage, DamageEvent, EventInstigator);
 	return Damage;
+}
+
+bool AYSFoeCharacter::CanBeBumped(bool bBumpElites) const
+{
+	return (!bIsElite || bBumpElites) && !HasBossShield() && !BossDash.bActive && !Roll360Shot.bActive && !bLocalShipRide;
 }
 
 void AYSFoeCharacter::StartBump(const FVector& Direction, float Distance, float ApexHeight, float Duration, float SpinTurns)

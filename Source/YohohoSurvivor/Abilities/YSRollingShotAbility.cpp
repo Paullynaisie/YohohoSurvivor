@@ -45,9 +45,11 @@ void UYSRollingShotAbility::StartRoll()
 
 	// vitesse x RollSpeedMultiplier tout de suite (dans la direction du mouvement) ; elle retombe ensuite avec MaxWalkSpeed
 	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
-	// direction : celle de l'input, sinon à l'opposé du curseur (= du regard)
-	const FVector Direction = Movement->GetCurrentAcceleration().IsNearlyZero() ? -Character->GetActorForwardVector().GetSafeNormal2D() : Movement->GetCurrentAcceleration().GetSafeNormal2D();
-	ForcedRollDirection = -Character->GetActorForwardVector().GetSafeNormal2D();
+	// direction : celle de l'input, sinon à l'opposé du curseur (= du regard) ; vers le curseur si RollsTowardAim
+	const FVector NoInputDirection = Character->GetActorForwardVector().GetSafeNormal2D() * (RollsTowardAim() ? 1.0f : -1.0f);
+	const FVector Direction = Movement->GetCurrentAcceleration().IsNearlyZero() ? NoInputDirection : Movement->GetCurrentAcceleration().GetSafeNormal2D();
+	ForcedRollDirection = NoInputDirection;
+	LastRollDirection = Direction;
 	if (!Direction.IsNearlyZero())
 	{
 		const float RollSpeed = Movement->MaxWalkSpeed * RollSpeedMultiplier;

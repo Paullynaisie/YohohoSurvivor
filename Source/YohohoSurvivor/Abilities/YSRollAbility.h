@@ -26,6 +26,11 @@ public:
 
 	virtual bool IsMoveAction() const override { return true; }
 
+	virtual float GetMoveActionStaminaCost() const override { return StaminaCost; }
+
+	/** Conditions communes des MoveActions : assez de stamina (Cost), pas d'objet porté, pas dans l'eau, pas à un poste */
+	static bool CanCharacterUseMoveAction(const class AYSPlayerCharacter* Character, float Cost);
+
 	virtual bool IsUninterruptible() const override { return true; }
 
 	/** Assez de stamina, mains libres, pas dans l'eau */

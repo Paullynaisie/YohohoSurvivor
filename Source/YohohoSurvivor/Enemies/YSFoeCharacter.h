@@ -827,6 +827,12 @@ public:
 	 */
 	void StartBump(const FVector& Direction, float Distance, float ApexHeight, float Duration, float SpinTurns);
 
+	/**
+	 *  Un bump peut le lancer en ce moment (sinon un coup qui bumpe fait un pushback normal) : élite seulement si bBumpElites ;
+	 *  jamais sous bouclier de boss, pendant le Boss Big Slash / Roll360shot ni à bord d'un Jolly Ship
+	 */
+	bool CanBeBumped(bool bBumpElites) const;
+
 	/** En vol après un bump (comportement coupé) */
 	bool IsBumped() const { return Bump.bActive; }
 

@@ -246,6 +246,7 @@ void UYSAbilityComponent::ClientActivationRejected_Implementation(double ServerR
 	UE_LOG(LogTemp, Log, TEXT("[YSAbility] %s.%s refusée par le serveur : prête à %.2f (prédiction %.2f)"), *GetOwner()->GetName(), *GetName(), ServerReadyTime, ReadyServerTime);
 	ReadyServerTime = ServerReadyTime;
 	bLastActivationForced = false;
+	OnActivationRejected();
 	StopActionLocally();
 }
 
@@ -454,15 +455,13 @@ void UYSAbilityComponent::GetPriorityGroup(TArray<UYSAbilityComponent*>& OutActi
 	}
 
 	// MoveAction du personnage (composant du personnage, pas d'une arme)
+	// (seulement celle utilisée : le Roll de base reste sur un personnage qui a une autre MoveAction)
 	if (Character && Character != GetOwner())
 	{
-		TInlineComponentArray<UYSAbilityComponent*> Actions(Character);
-		for (UYSAbilityComponent* Action : Actions)
+		UYSAbilityComponent* Action = Character->GetMoveActionAbility();
+		if (Action && (BlocksAllWeapons() || Action->BlocksAllWeapons()))
 		{
-			if (BlocksAllWeapons() || Action->BlocksAllWeapons())
-			{
-				OutActions.Add(Action);
-			}
+			OutActions.Add(Action);
 		}
 	}
 }
