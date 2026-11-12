@@ -892,9 +892,11 @@ void AYSIsland::Tick(float DeltaSeconds)
 	TickPendingCenterSpawns(DeltaSeconds);
 
 	// flow : overtime une fois la nuit écoulée (ses vagues comptées depuis), spawn constant, évacuation
+	// mode Peaceful : ni timer de jour ni overtime, ni spawn constant ; la nuit tombe quand l'objectif de l'île est atteint
+	const bool bPeaceful = IsPeacefulFlow();
 	if (UsesObjectiveFlow())
 	{
-		if (Phase == EYSIslandPhase::Night && !bOvertime && PhaseElapsed >= Data->NightDuration)
+		if (!bPeaceful && Phase == EYSIslandPhase::Night && !bOvertime && PhaseElapsed >= Data->NightDuration)
 		{
 			StartOvertime();
 		}
@@ -902,15 +904,22 @@ void AYSIsland::Tick(float DeltaSeconds)
 		{
 			TickEventList(Data->OvertimeEvents, OvertimeEventsFired, PhaseElapsed - Data->NightDuration);
 		}
-		TickConstantSpawn(DeltaSeconds);
+		if (!bPeaceful)
+		{
+			TickConstantSpawn(DeltaSeconds);
+		}
 		if (Phase == EYSIslandPhase::Evacuation)
 		{
 			TickEvacuation();
 		}
 	}
 
-	if (Phase == EYSIslandPhase::Day && PhaseElapsed >= Data->DayDuration)
+	if (Phase == EYSIslandPhase::Day && (bPeaceful ? bMainObjectivesDone : PhaseElapsed >= Data->DayDuration))
 	{
+		if (bPeaceful)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : Peaceful, objectif atteint : la nuit tombe"), *Data->GetName());
+		}
 		StartNightPhase();
 	}
 	else if (Phase == EYSIslandPhase::Sinking && !bSinkStarted && PhaseElapsed >= Data->SinkDelay)
@@ -1099,7 +1108,7 @@ void AYSIsland::StartNightPhase()
 	Phase = EYSIslandPhase::Night;
 	NightElites.Reset();
 	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : tombée de la nuit %d de l'île%s"), *Data->GetName(), GetIslandDay(),
-		UsesObjectiveFlow() ? *FString::Printf(TEXT(" (overtime dans %.0f s)"), Data->NightDuration) : TEXT(""));
+		IsPeacefulFlow() ? TEXT(" (Peaceful : pas d'overtime)") : UsesObjectiveFlow() ? *FString::Printf(TEXT(" (overtime dans %.0f s)"), Data->NightDuration) : TEXT(""));
 	StartPhaseEvents(&Data->NightEvents);
 
 	// flow : les élites / boss de la nuit suivent la séquence de nuits de la partie (quelle que soit l'île), à la place des vagues « au centre »
@@ -1125,6 +1134,12 @@ void AYSIsland::StartNightPhase()
 bool AYSIsland::UsesObjectiveFlow() const
 {
 	return Data && Data->bObjectiveFlow;
+}
+
+bool AYSIsland::IsPeacefulFlow() const
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	return UsesObjectiveFlow() && YSGameState && YSGameState->IsPeaceful();
 }
 
 void AYSIsland::StartOvertime()
@@ -1253,7 +1268,8 @@ void AYSIsland::UpdateFlowStatus()
 	{
 		Status.Objective = bMainObjectivesDone ? EYSFlowObjective::Defend : EYSFlowObjective::FindCore;
 		Status.ObjectiveText = bMainObjectivesDone ? Data->DefendText : BuildFindText();
-		Status.PhaseDuration = Phase == EYSIslandPhase::Day ? Data->DayDuration : Data->NightDuration;
+		// Peaceful : pas de timer de jour ni de nuit (barre cachée)
+		Status.PhaseDuration = IsPeacefulFlow() ? 0.0f : Phase == EYSIslandPhase::Day ? Data->DayDuration : Data->NightDuration;
 		Status.bNight = Phase == EYSIslandPhase::Night;
 		Status.bOvertime = bOvertime;
 	}
@@ -1550,6 +1566,11 @@ void AYSIsland::TickEventList(const TArray<FYSIslandSpawnEvent>& Events, TArray<
 		Fired.SetNumZeroed(Events.Num());
 	}
 	const int32 Day = GetIslandDay();
+	// Peaceful : seulement les vagues répétées hors écran (ex. 7 Skull toutes les 20 s, sans fin si Peaceful Endless Waves) et les élites / boss
+	// au centre (la nuit finit à leur mort) ; ni vagues uniques, ni cercles
+	const bool bPeaceful = IsPeacefulFlow();
+	const AYSGameMode* EventGameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	const bool bEndless = bPeaceful && EventGameMode && EventGameMode->UsesPeacefulEndlessWaves();
 	for (int32 Index = 0; Index < Events.Num(); ++Index)
 	{
 		const FYSIslandSpawnEvent& Event = Events[Index];
@@ -1558,12 +1579,18 @@ void AYSIsland::TickEventList(const TArray<FYSIslandSpawnEvent>& Events, TArray<
 		{
 			continue;
 		}
-		// jusqu'à la fin de la phase sans intervalle : une seule fois (sinon boucle sans fin)
-		if (Event.RepeatCount == 0 && Event.RepeatInterval <= 0.0f && Fired[Index] > 0)
+		const bool bRepeatedWave = Event.Shape == EYSIslandSpawnShape::OffScreen && Event.RepeatInterval > 0.0f && Event.RepeatCount != 1;
+		if (bPeaceful && !bRepeatedWave && Event.Shape != EYSIslandSpawnShape::Center)
 		{
 			continue;
 		}
-		while ((Event.RepeatCount == 0 || Fired[Index] < Event.RepeatCount) && Elapsed >= Event.Time + Fired[Index] * Event.RepeatInterval)
+		const int32 RepeatCount = bEndless && bRepeatedWave ? 0 : Event.RepeatCount;
+		// jusqu'à la fin de la phase sans intervalle : une seule fois (sinon boucle sans fin)
+		if (RepeatCount == 0 && Event.RepeatInterval <= 0.0f && Fired[Index] > 0)
+		{
+			continue;
+		}
+		while ((RepeatCount == 0 || Fired[Index] < RepeatCount) && Elapsed >= Event.Time + Fired[Index] * Event.RepeatInterval)
 		{
 			FireEvent(Event, Fired[Index]);
 			++Fired[Index];
@@ -1611,7 +1638,7 @@ void AYSIsland::FireEvent(const FYSIslandSpawnEvent& Event, int32 Repeat)
 		Classes.Swap(K, ServerRng.RandRange(0, K));
 	}
 
-	const int32 ForcedLevel = Event.bOvertimeLevel ? YSGameState->GetDayNumber() + Event.LevelOffset + Event.LevelStepPerRepeat * Repeat : INDEX_NONE;
+	const int32 ForcedLevel = Event.bOvertimeLevel ? YSGameState->GetFoeDayNumber() + Event.LevelOffset + Event.LevelStepPerRepeat * Repeat : INDEX_NONE;
 	const int32 LevelBonus = Event.bOvertimeLevel ? 0 : Event.LevelStepPerRepeat * Repeat;
 
 	int32 Spawned = 0;

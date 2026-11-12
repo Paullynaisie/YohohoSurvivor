@@ -1496,7 +1496,7 @@ void AYSFoeCharacter::RecomputeStats()
 	}
 	else if (bLevelFromDay && YSGameState)
 	{
-		Level = FMath::Max(0, YSGameState->GetDayNumber() + LevelFromDayOffset);
+		Level = FMath::Max(0, YSGameState->GetFoeDayNumber() + LevelFromDayOffset);
 	}
 	if (LevelBonus != 0)
 	{

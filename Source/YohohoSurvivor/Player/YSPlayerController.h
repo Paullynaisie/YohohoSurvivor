@@ -743,6 +743,10 @@ public:
 	UFUNCTION(Exec)
 	void YSInviteFriends();
 
+	/** Hôte, avant le début de la partie : mode de jeu (0 = Peaceful, 1 = Normal, 2 = Hardcore ; aussi les flèches du menu de sélection) */
+	UFUNCTION(Exec)
+	void YSPlayMode(int32 Mode);
+
 	/** Triche (flèche haut, builds non Shipping) : +1 niveau d'équipe, donc un choix d'upgrade */
 	UFUNCTION(Exec)
 	void YSCheatLevelUp();
@@ -892,6 +896,9 @@ protected:
 	void ServerSetLeftHanded(bool bLeftHanded);
 	void CommitNickname(const FString& Nickname);
 	void ToggleReady();
+
+	/** Flèche du mode de jeu (hôte) : mode précédent / suivant, en boucle */
+	void StepPlayMode(int32 Step);
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetReady(bool bReady);

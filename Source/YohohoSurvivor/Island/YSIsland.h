@@ -188,6 +188,9 @@ public:
 	/** Île du flow à objectifs affichés (Objective Flow du Data Asset) */
 	bool UsesObjectiveFlow() const;
 
+	/** Île à objectifs en mode de jeu Peaceful (AYSGameState::IsPeaceful) */
+	bool IsPeacefulFlow() const;
+
 	/** Place du bateau entre les pontons de la plage : milieu au niveau de la mer, tourné vers le sud (faux sans pontons) */
 	bool GetBerthTransform(FTransform& OutTransform) const;
 

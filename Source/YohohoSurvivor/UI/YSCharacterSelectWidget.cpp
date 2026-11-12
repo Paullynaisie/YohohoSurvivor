@@ -140,6 +140,44 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
 	AddColumn(Column, LeftColumnWeight, LeftColumnPadding);
 
+	// mode de jeu (hôte seulement : caché tant que SetPlayMode ne l'affiche pas) : titre, puis « < nom > »
+	UVerticalBox* PlayMode = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("PlayMode"));
+	PlayMode->SetVisibility(ESlateVisibility::Collapsed);
+	PlayModeBlock = PlayMode;
+	UVerticalBoxSlot* PlayModeSlot = Column->AddChildToVerticalBox(PlayMode);
+	PlayModeSlot->SetHorizontalAlignment(HAlign_Center);
+	PlayModeSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, PlayModeSpacing));
+	UVerticalBoxSlot* PlayModeTitleSlot = PlayMode->AddChildToVerticalBox(YSCharacterSelect::MakeLabel(WidgetTree, NSLOCTEXT("YS", "PlayModeTitle", "Mode de jeu"), PlayModeTitleFontSize));
+	PlayModeTitleSlot->SetHorizontalAlignment(HAlign_Center);
+	PlayModeTitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, PlayModeTitleSpacing));
+	UHorizontalBox* PlayModeRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("PlayModeRow"));
+	PlayMode->AddChildToVerticalBox(PlayModeRow)->SetHorizontalAlignment(HAlign_Center);
+	auto AddPlayModeArrow = [this, PlayModeRow](int32 Step, const FText& Label)
+	{
+		USizeBox* ArrowSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		ArrowSize->SetWidthOverride(PlayModeArrowSize.X);
+		ArrowSize->SetHeightOverride(PlayModeArrowSize.Y);
+		UButton* Arrow = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+		Arrow->SetBackgroundColor(NormalColor);
+		Arrow->AddChild(YSCharacterSelect::MakeLabel(WidgetTree, Label, PlayModeArrowFontSize));
+		ArrowSize->AddChild(Arrow);
+		UYSCharacterSelectButtonProxy* ArrowProxy = NewObject<UYSCharacterSelectButtonProxy>(this);
+		ArrowProxy->Group = 6;
+		ArrowProxy->Index = Step;
+		ArrowProxy->Menu = this;
+		Arrow->OnClicked.AddDynamic(ArrowProxy, &UYSCharacterSelectButtonProxy::HandleClicked);
+		ButtonProxies.Add(ArrowProxy);
+		PlayModeRow->AddChildToHorizontalBox(ArrowSize)->SetVerticalAlignment(VAlign_Center);
+	};
+	AddPlayModeArrow(-1, PlayModeLeftArrow);
+	USizeBox* PlayModeNameSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	PlayModeNameSize->SetWidthOverride(PlayModeNameWidth);
+	PlayModeNameText = YSCharacterSelect::MakeLabel(WidgetTree, FText::GetEmpty(), PlayModeNameFontSize);
+	PlayModeNameText->SetJustification(ETextJustify::Center);
+	PlayModeNameSize->AddChild(PlayModeNameText);
+	PlayModeRow->AddChildToHorizontalBox(PlayModeNameSize)->SetVerticalAlignment(VAlign_Center);
+	AddPlayModeArrow(1, PlayModeRightArrow);
+
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
 	TitleText = Title;
 	Title->SetText(NSLOCTEXT("YS", "CharacterSelectTitle", "Choisis ta classe"));
@@ -273,6 +311,25 @@ void UYSCharacterSelectWidget::SetInviteAvailable(bool bAvailable)
 	if (InviteRow)
 	{
 		InviteRow->SetVisibility(bAvailable ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+}
+
+void UYSCharacterSelectWidget::SetPlayMode(bool bVisible, int32 ModeIndex)
+{
+	if (!PlayModeBlock || !PlayModeNameText)
+	{
+		return;
+	}
+	const ESlateVisibility Wanted = bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	if (PlayModeBlock->GetVisibility() != Wanted)
+	{
+		PlayModeBlock->SetVisibility(Wanted);
+	}
+	if (ModeIndex != DisplayedPlayMode)
+	{
+		DisplayedPlayMode = ModeIndex;
+		PlayModeNameText->SetText(PlayModeNames.IsValidIndex(ModeIndex) ? PlayModeNames[ModeIndex] : FText::AsNumber(ModeIndex));
+		PlayModeNameText->SetColorAndOpacity(FSlateColor(PlayModeColors.IsValidIndex(ModeIndex) ? PlayModeColors[ModeIndex] : FLinearColor::White));
 	}
 }
 
@@ -619,6 +676,9 @@ void UYSCharacterSelectWidget::NotifyButtonClicked(int32 Group, int32 Index)
 		break;
 	case 5:
 		OnInviteClicked.ExecuteIfBound();
+		break;
+	case 6:
+		OnPlayModeStep.ExecuteIfBound(Index);
 		break;
 	default:
 		SetSelectedIndex(Index);

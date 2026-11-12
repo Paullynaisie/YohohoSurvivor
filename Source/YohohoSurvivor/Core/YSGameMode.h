@@ -4,6 +4,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "Core/YSCustomization.h"
 #include "Core/YSShipRewardTypes.h"
+#include "Core/YSGameState.h"
 #include "YSGameMode.generated.h"
 
 class AYSPlayerCharacter;
@@ -363,6 +364,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="0"))
 	int32 DoubloonGoalPerShipLevel = 50;
 
+	/** Hardcore : jour des NME (leur niveau) = jour en cours x ceci (jour 1 -> 2, jour 3 -> 6) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Play Mode", meta=(ClampMin="1"))
+	int32 HardcoreFoeDayMultiplier = 2;
+
+	/** Peaceful : les vagues répétées des îles (Repeat Interval > 0, hors écran) continuent tant que dure le jour (sinon : Repeat Count fois) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Play Mode")
+	bool bPeacefulEndlessWaves = true;
+
 	/** Plumes de phoenix dans le stock de l'équipe au début de la partie */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Phoenix", meta=(ClampMin="0"))
 	int32 StartingPhoenixFeathers = 1;
@@ -564,6 +573,12 @@ public:
 
 	/** Ajoute des plumes de phoenix au stock de l'équipe (serveur) */
 	void AddPhoenixFeathers(int32 Amount);
+
+	/** Mode de jeu (serveur, hôte sur l'écran de sélection) : refusé une fois la partie commencée */
+	void SetPlayMode(EYSPlayMode Mode);
+
+	/** Peaceful : les vagues répétées des îles (Repeat Interval > 0, hors écran, ex. 7 Skull toutes les 20 s) ne s'arrêtent plus après Repeat Count */
+	bool UsesPeacefulEndlessWaves() const { return bPeacefulEndlessWaves; }
 
 	/**
 	 *  Consomme une plume de phoenix pour ressusciter ce joueur mort (serveur) : même personnage, set d'arme et upgrades, au Brooker du

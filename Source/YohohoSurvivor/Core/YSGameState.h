@@ -13,6 +13,17 @@ class AYSPirateShip;
 class UTexture2D;
 class UMaterialInterface;
 
+/** Mode de jeu choisi par l'hôte sur l'écran de sélection (avant le début de la partie) */
+UENUM(BlueprintType)
+enum class EYSPlayMode : uint8
+{
+	/** Pas de timer de jour (la nuit tombe quand l'objectif de l'île est atteint), seulement les vagues répétées des îles, pas de 20 min en partie 2 */
+	Peaceful,
+	Normal,
+	/** Jour des NME doublé (niveau), plumes de phoenix inutilisables */
+	Hardcore
+};
+
 /** Objectif affiché du flow en 3 parties (partie 1 : île de départ) */
 UENUM(BlueprintType)
 enum class EYSFlowObjective : uint8
@@ -135,6 +146,14 @@ protected:
 	/** Vrai une fois que tous les joueurs ont choisi leur personnage */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
 	bool bMatchStarted = false;
+
+	/** Mode de jeu (choisi par l'hôte avant le début de la partie) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
+	EYSPlayMode PlayMode = EYSPlayMode::Normal;
+
+	/** Copié de AYSGameMode (Play Mode) */
+	UPROPERTY(Replicated)
+	int32 HardcoreFoeDayMultiplier = 2;
 
 	/** FlowMod : sélection des personnages avec le GameBoat en fond */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
@@ -464,6 +483,17 @@ public:
 	EYSUpgradeSelectionKind GetUpgradeSelectionKind() const { return UpgradeSelectionKind; }
 
 	int32 GetDayNumber() const { return DayNumber; }
+
+	/** Jour compté pour le niveau des NME : jour en cours x Hardcore Foe Day Multiplier en Hardcore (jour 1 -> 2, jour 3 -> 6) */
+	int32 GetFoeDayNumber() const { return PlayMode == EYSPlayMode::Hardcore ? DayNumber * FMath::Max(HardcoreFoeDayMultiplier, 1) : DayNumber; }
+
+	EYSPlayMode GetPlayMode() const { return PlayMode; }
+	bool IsPeaceful() const { return PlayMode == EYSPlayMode::Peaceful; }
+	bool IsHardcore() const { return PlayMode == EYSPlayMode::Hardcore; }
+
+	/** Serveur uniquement (AYSGameMode::SetPlayMode) */
+	void SetPlayMode(EYSPlayMode Mode, int32 FoeDayMultiplier) { PlayMode = Mode; HardcoreFoeDayMultiplier = FoeDayMultiplier; ForceNetUpdate(); }
+
 	bool IsNight() const { return bNight; }
 
 	/** Nuit à cet endroit (une île générée a sa propre phase) */
@@ -487,6 +517,9 @@ public:
 	void SetShipLevel(int32 Level) { ShipLevel = Level; ForceNetUpdate(); }
 
 	int32 GetPhoenixFeathers() const { return PhoenixFeathers; }
+
+	/** Plumes utilisables pour une réanimation (Hardcore : aucune ; le Medic d'équipage et les coéquipiers réaniment toujours) */
+	int32 GetUsablePhoenixFeathers() const { return PlayMode == EYSPlayMode::Hardcore ? 0 : PhoenixFeathers; }
 
 	/** Serveur uniquement (AYSGameMode) */
 	void SetPhoenixFeathers(int32 Amount) { PhoenixFeathers = FMath::Max(0, Amount); ForceNetUpdate(); }

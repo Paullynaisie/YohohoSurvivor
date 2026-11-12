@@ -170,6 +170,7 @@ void AYSPlayerController::BeginPlay()
 			CharacterSelectMenu->OnNicknameCommitted.BindUObject(this, &AYSPlayerController::CommitNickname);
 			CharacterSelectMenu->OnReadyClicked.BindUObject(this, &AYSPlayerController::ToggleReady);
 			CharacterSelectMenu->OnInviteClicked.BindUObject(this, &AYSPlayerController::YSInviteFriends);
+			CharacterSelectMenu->OnPlayModeStep.BindUObject(this, &AYSPlayerController::StepPlayMode);
 
 			FGameViewportWidgetSlot MenuSlot;
 			MenuSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
@@ -589,6 +590,28 @@ void AYSPlayerController::YSLeaveGame()
 	}
 }
 
+void AYSPlayerController::YSPlayMode(int32 Mode)
+{
+	// hôte seulement (le GameMode n'existe que sur le serveur) ; refusé une fois la partie commencée
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	if (!GameMode || !IsLocalController())
+	{
+		return;
+	}
+	GameMode->SetPlayMode(static_cast<EYSPlayMode>(FMath::Clamp(Mode, 0, static_cast<int32>(EYSPlayMode::Hardcore))));
+}
+
+void AYSPlayerController::StepPlayMode(int32 Step)
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (!YSGameState)
+	{
+		return;
+	}
+	constexpr int32 Count = static_cast<int32>(EYSPlayMode::Hardcore) + 1;
+	YSPlayMode((static_cast<int32>(YSGameState->GetPlayMode()) + Step % Count + Count) % Count);
+}
+
 void AYSPlayerController::YSInviteFriends()
 {
 	UYSGameInstance* GameInstance = GetGameInstance<UYSGameInstance>();
@@ -644,6 +667,9 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	const AYSGameState* IntroGameState = GetWorld()->GetGameState<AYSGameState>();
 	const bool bBoatIntro = IntroGameState && IntroGameState->UsesBoatIntro();
 	CharacterSelectMenu->SetBoatIntro(bBoatIntro, MyPlayerState && MyPlayerState->IsReady());
+	// mode de jeu : seulement chez l'hôte (serveur), tant que la partie n'a pas commencé
+	CharacterSelectMenu->SetPlayMode(GetNetMode() != NM_Client && IntroGameState && !IntroGameState->IsMatchStarted(),
+		IntroGameState ? static_cast<int32>(IntroGameState->GetPlayMode()) : static_cast<int32>(EYSPlayMode::Normal));
 	UpdateCharacterPreview(!bHasCharacter && !bDead && !(bBoatIntro && MyPlayerState && MyPlayerState->IsReady()));
 	if (bHasCharacter || bDead)
 	{
@@ -2764,7 +2790,7 @@ void AYSPlayerController::UpdateSpectating()
 		DeathScreen->SetSpectating(true, TargetName);
 		const AYSGameState* FeatherState = GetWorld()->GetGameState<AYSGameState>();
 		// (plume de phoenix, ou réanimation gratuite du Medic de l'équipage)
-		DeathScreen->SetReviveAvailable(FeatherState && (FeatherState->GetPhoenixFeathers() > 0 || AYSBoatCrew::FindFreeRevive(GetWorld())) && !IsPaused());
+		DeathScreen->SetReviveAvailable(FeatherState && (FeatherState->GetUsablePhoenixFeathers() > 0 || AYSBoatCrew::FindFreeRevive(GetWorld())) && !IsPaused());
 	}
 }
 

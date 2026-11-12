@@ -51,7 +51,7 @@ AYSFoeGalion::AYSFoeGalion(const FObjectInitializer& ObjectInitializer)
 int32 AYSFoeGalion::GetElapsedDays() const
 {
 	const AYSGameState* YSGameState = GetWorld() ? GetWorld()->GetGameState<AYSGameState>() : nullptr;
-	return YSGameState ? FMath::Max(0, YSGameState->GetDayNumber() - 1) : 0;
+	return YSGameState ? FMath::Max(0, YSGameState->GetFoeDayNumber() - 1) : 0;
 }
 
 void AYSFoeGalion::ApplyDayScaling(const TCHAR* Reason)

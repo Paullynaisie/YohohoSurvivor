@@ -88,7 +88,7 @@ void AYSGameMode::TickAllPlayersDead()
 {
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
 	// encore une plume (ou la réanimation gratuite du Medic de l'équipage) : TickPhoenixAutoRevive s'en charge
-	if (!YSGameState || YSGameState->IsMatchEnded() || YSGameState->GetPhoenixFeathers() > 0 || AYSBoatCrew::FindFreeRevive(GetWorld()) || GetWorld()->IsPaused())
+	if (!YSGameState || YSGameState->IsMatchEnded() || YSGameState->GetUsablePhoenixFeathers() > 0 || AYSBoatCrew::FindFreeRevive(GetWorld()) || GetWorld()->IsPaused())
 	{
 		return;
 	}
@@ -105,7 +105,7 @@ void AYSGameMode::TickAllPlayersDead()
 	}
 	if (Dead > 0)
 	{
-		GameOver(*FString::Printf(TEXT("les %d joueur(s) sont morts sans plume de phoenix"), Dead));
+		GameOver(*FString::Printf(TEXT("les %d joueur(s) sont morts %s"), Dead, YSGameState->IsHardcore() ? TEXT("(Hardcore : plumes de phoenix inutilisables)") : TEXT("sans plume de phoenix")));
 	}
 }
 
@@ -248,7 +248,7 @@ void AYSGameMode::TickOvertime()
 	}
 
 	// circle spawn sur la plage, niveau = jour en cours + décalage (nombre selon les joueurs de la partie, comme les vagues)
-	const int32 Level = YSGameState->GetDayNumber() + Wave.LevelOffset;
+	const int32 Level = YSGameState->GetFoeDayNumber() + Wave.LevelOffset;
 	SpawnCircle(Wave.EnemyClasses, ScaleEnemyCount(Wave.EnemiesPerPlayer), FString::Printf(TEXT("overtime %d, niveau %d"), NextOvertimeWave + 1, Level), Level);
 	++NextOvertimeWave;
 	// sans vague (liste vide) : l'île coule le même délai après le début de l'overtime
@@ -1054,6 +1054,17 @@ bool AYSGameMode::RevivePlayer(AYSPlayerCorpse* Corpse, const FVector& Ground, f
 	return true;
 }
 
+void AYSGameMode::SetPlayMode(EYSPlayMode Mode)
+{
+	AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || YSGameState->IsMatchStarted())
+	{
+		return;
+	}
+	YSGameState->SetPlayMode(Mode, HardcoreFoeDayMultiplier);
+	UE_LOG(LogTemp, Log, TEXT("[YSPlayMode] Mode de jeu : %s"), *UEnum::GetValueAsString(Mode));
+}
+
 void AYSGameMode::AddPhoenixFeathers(int32 Amount)
 {
 	if (AYSGameState* YSGameState = GetGameState<AYSGameState>())
@@ -1106,7 +1117,7 @@ bool AYSGameMode::PhoenixRevivePlayer(AController* Controller, int32 Index)
 	AYSPlayerState* PlayerState = Controller ? Controller->GetPlayerState<AYSPlayerState>() : nullptr;
 	// Medic dans l'équipage : réanimation gratuite (sans plume) quand elle est prête, utilisée avant les plumes
 	AYSBoatCrew* FreeReviver = AYSBoatCrew::FindFreeRevive(GetWorld());
-	if (!YSGameState || !PlayerState || !PlayerState->IsDead() || (YSGameState->GetPhoenixFeathers() <= 0 && !FreeReviver) || Cast<AYSPlayerCharacter>(Controller->GetPawn()))
+	if (!YSGameState || !PlayerState || !PlayerState->IsDead() || (YSGameState->GetUsablePhoenixFeathers() <= 0 && !FreeReviver) || Cast<AYSPlayerCharacter>(Controller->GetPawn()))
 	{
 		return false;
 	}
@@ -1160,7 +1171,7 @@ bool AYSGameMode::PhoenixRevivePlayer(AController* Controller, int32 Index)
 void AYSGameMode::TickPhoenixAutoRevive()
 {
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
-	if (!YSGameState || (YSGameState->GetPhoenixFeathers() <= 0 && !AYSBoatCrew::FindFreeRevive(GetWorld())) || GetWorld()->IsPaused())
+	if (!YSGameState || (YSGameState->GetUsablePhoenixFeathers() <= 0 && !AYSBoatCrew::FindFreeRevive(GetWorld())) || GetWorld()->IsPaused())
 	{
 		return;
 	}

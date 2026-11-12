@@ -1000,17 +1000,26 @@ void AYSFlowMode::StartPart2(const TCHAR* Reason)
 		return;
 	}
 	bPart2Started = true;
-	YSGameState->StartFlowPart2(YSGameState->GetMatchElapsedTime(), Part2Duration);
+	// Peaceful : pas de 20 min (ni timer affiché, ni overtime de Galions Nemesis)
+	const bool bPeaceful = YSGameState->IsPeaceful();
+	YSGameState->StartFlowPart2(YSGameState->GetMatchElapsedTime(), bPeaceful ? 0.0f : Part2Duration);
 	// « Victoire » de l'île de départ effacé ; les îles de la partie 2 affichent le leur en s'activant
 	YSGameState->SetFlowStatus(FYSFlowStatus());
-	NextPart2GalionElapsed = Part2Duration;
+	NextPart2GalionElapsed = bPeaceful ? -1.0f : Part2Duration;
 	// la nuit de l'île de départ compte comme la nuit 1 de la séquence, même sautée
 	FlowNightsStarted = FMath::Max(FlowNightsStarted, 1);
 	if (bZonesOfInterest)
 	{
 		StartSeaObjectives(Reason);
 	}
-	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] PARTIE 2 (%s) : %.0f s avant l'overtime (Galion Nemesis toutes les %.0f s ensuite)"), Reason, Part2Duration, Part2OvertimeInterval);
+	if (bPeaceful)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] PARTIE 2 (%s) : Peaceful, pas de limite de temps ni d'overtime"), Reason);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] PARTIE 2 (%s) : %.0f s avant l'overtime (Galion Nemesis toutes les %.0f s ensuite)"), Reason, Part2Duration, Part2OvertimeInterval);
+	}
 }
 
 void AYSFlowMode::StartPart3(const TCHAR* Reason)

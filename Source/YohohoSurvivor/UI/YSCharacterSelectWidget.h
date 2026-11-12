@@ -81,7 +81,7 @@ class UYSCharacterSelectButtonProxy : public UObject
 
 public:
 
-	/** 0 = choix du personnage, 1 = couleur, 2 = visage, 3 = « Prêt », 4 = main (0 droitier, 1 gaucher) */
+	/** 0 = choix du personnage, 1 = couleur, 2 = visage, 3 = « Prêt », 4 = main (0 droitier, 1 gaucher), 5 = inviter, 6 = flèche du mode de jeu (-1 / +1) */
 	int32 Group = 0;
 
 	int32 Index = INDEX_NONE;
@@ -208,6 +208,47 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Choices")
 	float StatusSpacing = 24.0f;
+
+	// ---- mode de jeu (hôte seulement, au-dessus de « Choisis ta classe ») ----
+
+	/** Noms des modes, dans l'ordre de EYSPlayMode (Peaceful, Normal, Hardcore) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	TArray<FText> PlayModeNames = { NSLOCTEXT("YS", "PlayModePeaceful", "Peaceful"), NSLOCTEXT("YS", "PlayModeNormal", "Normal"), NSLOCTEXT("YS", "PlayModeHardcore", "Hardcore") };
+
+	/** « Mode de jeu » */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	int32 PlayModeTitleFontSize = 24;
+
+	/** Nom du mode, entre les deux flèches (largeur fixe : les flèches ne bougent pas) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	int32 PlayModeNameFontSize = 28;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	float PlayModeNameWidth = 220.0f;
+
+	/** Couleur du nom de chaque mode (Peaceful, Normal, Hardcore) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	TArray<FLinearColor> PlayModeColors = { FLinearColor(0.45f, 1.0f, 0.55f), FLinearColor::White, FLinearColor(1.0f, 0.3f, 0.25f) };
+
+	/** Flèches de chaque côté */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	FVector2D PlayModeArrowSize = FVector2D(48.0f, 48.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	int32 PlayModeArrowFontSize = 24;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	FText PlayModeLeftArrow = NSLOCTEXT("YS", "PlayModeLeft", "<");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	FText PlayModeRightArrow = NSLOCTEXT("YS", "PlayModeRight", ">");
+
+	/** Espace entre le titre et la ligne du mode, et sous le bloc (au-dessus de « Choisis ta classe ») */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	float PlayModeTitleSpacing = 8.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
+	float PlayModeSpacing = 32.0f;
 
 	// ---- colonne infos : fiche du personnage ----
 
@@ -381,6 +422,12 @@ public:
 	/** Appelé quand le joueur clique sur « Prêt » */
 	FSimpleDelegate OnReadyClicked;
 
+	/** Appelé quand l'hôte clique sur une flèche du mode de jeu (-1 = gauche, +1 = droite) */
+	FYSOnCharacterChosen OnPlayModeStep;
+
+	/** Bloc « Mode de jeu » affiché (hôte) ou caché, mode affiché (index dans Play Mode Names) */
+	void SetPlayMode(bool bVisible, int32 ModeIndex);
+
 	/** Appelé quand le joueur valide son pseudo (Entrée ou perte du focus) */
 	FYSOnNicknameCommitted OnNicknameCommitted;
 
@@ -547,4 +594,13 @@ private:
 	/** Boutons Droitier / Gaucher */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UButton>> HandednessButtons;
+
+	/** Bloc « Mode de jeu » et nom du mode */
+	UPROPERTY(Transient)
+	TObjectPtr<UWidget> PlayModeBlock;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> PlayModeNameText;
+
+	int32 DisplayedPlayMode = INDEX_NONE;
 };
