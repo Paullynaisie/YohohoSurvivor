@@ -1901,7 +1901,7 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 	{
 		Objective->SetProgress(YSGameState->GetDoubloons(), YSGameState->GetDoubloonGoal());
 		Objective->SetShipLevel(YSGameState->GetShipLevel());
-		Objective->SetPhoenixFeathers(YSGameState->GetPhoenixFeathers());
+		Objective->SetPhoenixFeathers(YSGameState->IsHardcore() ? -1 : YSGameState->GetPhoenixFeathers());
 		Objective->SetCoreBoats(YSGameState->UsesCoreBoatStock(), YSGameState->GetCoreBoatStock(), YSGameState->GetNextStageCoreBoatCost());
 		const AYSPirateShip* HudGameBoat = YSGameState->GetGameBoat();
 		Objective->SetShipHealth(IsValid(HudGameBoat) && HudGameBoat->GetMaxHealth() > 0.0f, HudGameBoat ? HudGameBoat->GetHealth() : 0.0f, HudGameBoat ? HudGameBoat->GetMaxHealth() : 0.0f);

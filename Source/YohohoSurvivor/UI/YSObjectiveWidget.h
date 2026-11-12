@@ -138,7 +138,7 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> FeatherLabel;
 
-	int32 DisplayedFeathers = INDEX_NONE;
+	int32 DisplayedFeathers = TNumericLimits<int32>::Min();
 
 	UPROPERTY(Transient)
 	TObjectPtr<class USizeBox> ShipHealthBox;

@@ -162,7 +162,12 @@ void UYSObjectiveWidget::SetPhoenixFeathers(int32 Feathers)
 		return;
 	}
 	DisplayedFeathers = Feathers;
-	FeatherLabel->SetText(FText::Format(FeatherFormat, FText::AsNumber(Feathers)));
+	// < 0 : compteur caché (mode Hardcore : plumes inutilisables)
+	FeatherLabel->SetVisibility(Feathers < 0 ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+	if (Feathers >= 0)
+	{
+		FeatherLabel->SetText(FText::Format(FeatherFormat, FText::AsNumber(Feathers)));
+	}
 }
 
 void UYSObjectiveWidget::SetProgress(int32 Doubloons, int32 Goal)
