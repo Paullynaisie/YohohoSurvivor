@@ -172,6 +172,10 @@ private:
 	/** Abordé par un Galion (planches d'abordage) : immobile tant que ça dure (serveur) */
 	bool bGrappled = false;
 
+	/** Combat de boss mis en scène : voir SetBossFightLocked */
+	UPROPERTY(Replicated)
+	bool bBossFightLocked = false;
+
 protected:
 
 	/** Nom affiché */
@@ -605,6 +609,13 @@ public:
 	/** Abordé (planches d'abordage d'un Galion) : immobile, commandes ignorées (serveur) */
 	void SetGrappled(bool bInGrappled);
 	bool IsGrappled() const { return bGrappled; }
+
+	/**
+	 *  Combat de boss mis en scène (Davy Jones, serveur, répliqué) : bateau invulnérable (core et modules), ignoré par les NME, postes de combat
+	 *  inutilisables (ceux qui y sont en sont sortis)
+	 */
+	void SetBossFightLocked(bool bLocked);
+	bool IsBossFightLocked() const { return bBossFightLocked; }
 
 	/**
 	 *  Point sur l'eau à moins de Radius de Center (serveur) : assez de fond (RequiredDepth) sur ClearanceRadius autour, hors de l'emprise

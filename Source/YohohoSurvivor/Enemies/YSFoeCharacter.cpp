@@ -549,7 +549,7 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 		// Shield Action : l'invocation disparaît avec le bouclier
 		if (Shield <= 0.0f)
 		{
-			RemoveShieldSummon(TEXT("bouclier brisé"));
+			RemoveShieldSummon(TEXT("bouclier brisé"), false);
 		}
 		UpdateHealthBar();
 		ApplyPushback(Damage, DamageEvent, EventInstigator);
@@ -994,7 +994,7 @@ void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEven
 void AYSFoeCharacter::Die()
 {
 	// Shield Action : l'invocation disparaît avec le boss
-	RemoveShieldSummon(TEXT("boss mort"));
+	RemoveShieldSummon(TEXT("boss mort"), true);
 
 	// XP commune à toute l'équipe ; rien pour un NME mort dans l'eau (tombé dans la deadzone sous la mer, ou pieds sous la surface)
 	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
@@ -1946,7 +1946,8 @@ bool AYSFoeCharacter::CanTargetCore(const AYSShipCore* Core) const
 {
 	const AYSPirateShip* Ship = AYSPirateShip::GetShipOf(Core);
 	// équipage d'un Galion : il garde son pont
-	if (!Ship || Ship->IsFoeShip() || !Ship->IsPresent() || Ship->IsActorBeingDestroyed() || CrewShip)
+	// combat de boss mis en scène (Davy Jones) : le bateau des joueurs n'est pas une cible
+	if (!Ship || Ship->IsFoeShip() || !Ship->IsPresent() || Ship->IsActorBeingDestroyed() || CrewShip || Ship->IsBossFightLocked())
 	{
 		return false;
 	}
@@ -2779,12 +2780,38 @@ void AYSFoeCharacter::SpawnShieldSummon()
 	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : Shield Action, %s invoqué"), *GetName(), Summon ? *Summon->GetName() : TEXT("ÉCHEC"));
 }
 
-void AYSFoeCharacter::RemoveShieldSummon(const TCHAR* Reason)
+void AYSFoeCharacter::RemoveShieldSummon(const TCHAR* Reason, bool bImmediate)
 {
 	AYSFoeCharacter* Summon = ShieldSummon.Get();
 	ShieldSummon = nullptr;
-	if (!HasAuthority() || !IsValid(Summon) || Summon->IsDying())
+	if (!HasAuthority())
 	{
+		return;
+	}
+	// boss mort : aussi les tentacules qui attendaient de lancer leur dernière attaque
+	if (bImmediate)
+	{
+		for (const TWeakObjectPtr<AYSFoeCharacter>& Lingering : LingeringShieldSummons)
+		{
+			AYSKrakenPart* LingeringPart = Cast<AYSKrakenPart>(Lingering.Get());
+			if (IsValid(LingeringPart) && !LingeringPart->IsDying())
+			{
+				LingeringPart->Vanish(Reason);
+			}
+		}
+		LingeringShieldSummons.Reset();
+	}
+	if (!IsValid(Summon) || Summon->IsDying())
+	{
+		return;
+	}
+	// bouclier brisé : une tentacule reste jusqu'à avoir lancé sa prochaine attaque
+	AYSKrakenTentacle* Tentacle = Cast<AYSKrakenTentacle>(Summon);
+	if (Tentacle && !bImmediate)
+	{
+		Tentacle->VanishAfterNextAttack();
+		LingeringShieldSummons.Add(Tentacle);
+		UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : %s retiré après sa prochaine attaque (%s)"), *GetName(), *Summon->GetName(), Reason);
 		return;
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : %s retiré (%s)"), *GetName(), *Summon->GetName(), Reason);

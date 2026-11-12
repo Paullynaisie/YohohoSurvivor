@@ -1203,10 +1203,13 @@ protected:
 
 	/** Shield Action : NME invoqué au lever du bouclier, retiré quand il est brisé ou à la mort (serveur) */
 	void SpawnShieldSummon();
-	void RemoveShieldSummon(const TCHAR* Reason);
+	void RemoveShieldSummon(const TCHAR* Reason, bool bImmediate);
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<AYSFoeCharacter> ShieldSummon;
+
+	/** Invocations d'un bouclier fini qui attendent de lancer leur dernière attaque */
+	TArray<TWeakObjectPtr<AYSFoeCharacter>> LingeringShieldSummons;
 
 	/** Mise en scène d'un combat de boss (serveur) */
 	bool bScriptedHold = false;

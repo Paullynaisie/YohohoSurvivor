@@ -107,6 +107,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight")
 	TArray<float> PhaseHealthThresholds = { 0.65f, 0.30f };
 
+	/** Équipage invoqué : Davy Jones descend dès que cette part de l'équipage est tuée... */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight", meta=(ClampMin="0", ClampMax="1"))
+	float DescendCrewKilledRatio = 0.75f;
+
+	/** ... ou au bout de ce temps après l'apparition de l'équipage (0 = jamais) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight", meta=(ClampMin="0", Units="s"))
+	float DescendMaxCrewTime = 60.0f;
+
 	/** Geste du crochet avant l'apparition de l'équipage */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight", meta=(ClampMin="0", Units="s"))
 	float SummonAnimDuration = 1.5f;
@@ -129,7 +137,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Loot")
 	TArray<TSubclassOf<AYSInteractiveObject>> LootClasses;
 
-	/** Plus ce nombre de membres d'équipage (crewboat) tirés au hasard dans Crew Item Classes du FlowMod */
+	/**
+	 *  Plus ce nombre de membres d'équipage (crewboat) tirés au hasard dans Crew Item Classes du FlowMod, parmi ceux qu'on ne trouve pas
+	 *  ailleurs (ni posés dans les zones d'intérêt, ni déjà en jeu) ; le core du bateau des joueurs les prend (ils rejoignent l'équipage)
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Loot", meta=(ClampMin="0"))
 	int32 RandomCrewLootCount = 2;
 
@@ -159,6 +170,9 @@ private:
 	TObjectPtr<AYSPirateShip> PlayerBoat;
 
 	TArray<TWeakObjectPtr<AYSFoeCharacter>> Crew;
+
+	/** NME de l'équipage en cours à son apparition */
+	int32 CrewSpawnedCount = 0;
 
 	/** Phase en cours (0 = première), heure (monde) du début de l'état */
 	int32 Phase = 0;

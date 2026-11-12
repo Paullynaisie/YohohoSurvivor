@@ -141,6 +141,7 @@ void AYSPirateShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AYSPirateShip, Health);
 	DOREPLIFETIME(AYSPirateShip, bDisabled);
 	DOREPLIFETIME(AYSPirateShip, bPlaytestMode);
+	DOREPLIFETIME(AYSPirateShip, bBossFightLocked);
 	DOREPLIFETIME(AYSPirateShip, SinkStartServerTime);
 	DOREPLIFETIME(AYSPirateShip, SinkStartLocation);
 	DOREPLIFETIME(AYSPirateShip, SinkStartYaw);
@@ -761,10 +762,34 @@ void AYSPirateShip::UpdateShipHealthBar()
 	}
 }
 
+void AYSPirateShip::SetBossFightLocked(bool bLocked)
+{
+	if (!HasAuthority() || bBossFightLocked == bLocked)
+	{
+		return;
+	}
+	bBossFightLocked = bLocked;
+	ForceNetUpdate();
+	// postes de combat inutilisables : ceux qui y sont en sortent
+	if (bLocked)
+	{
+		for (AYSShipStation* Station : GetStations())
+		{
+			AYSPlayerCharacter* Occupant = Station && Station->IsCombatPost() ? Station->GetOccupant() : nullptr;
+			if (Occupant)
+			{
+				Occupant->LeaveStation(TEXT("combat de boss : postes de combat bloqués"), true);
+			}
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : combat de boss %s (invulnérable, ignoré par les NME, postes de combat bloqués)"), *GetName(), bLocked ? TEXT("commencé") : TEXT("fini"));
+}
+
 void AYSPirateShip::TakeCoreDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation)
 {
 	const float MaxHealth = GetMaxHealth();
-	if (!HasAuthority() || Damage <= 0.0f || MaxHealth <= 0.0f || IsActorBeingDestroyed() || IsSinking())
+	// combat de boss mis en scène (Davy Jones) : invulnérable
+	if (!HasAuthority() || Damage <= 0.0f || MaxHealth <= 0.0f || IsActorBeingDestroyed() || IsSinking() || bBossFightLocked)
 	{
 		return;
 	}

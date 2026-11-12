@@ -879,6 +879,7 @@ void AYSFlowMode::SpawnZonesOfInterest()
 	{
 		Crew.SetNum(CrewCount);
 	}
+	ZoneCrewClasses = Crew;
 	FString CrewNames;
 	for (const TSubclassOf<AYSInteractiveObject>& Class : Crew)
 	{

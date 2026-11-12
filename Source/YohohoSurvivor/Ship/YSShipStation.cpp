@@ -104,7 +104,7 @@ void AYSShipStation::GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) c
 float AYSShipStation::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	AYSPirateShip* Ship = GetShip();
-	if (!HasAuthority() || !bTakesDamage || DamageAmount <= 0.0f || !Ship || Ship->IsActorBeingDestroyed())
+	if (!HasAuthority() || !bTakesDamage || DamageAmount <= 0.0f || !Ship || Ship->IsActorBeingDestroyed() || Ship->IsBossFightLocked())
 	{
 		return 0.0f;
 	}
@@ -189,7 +189,8 @@ void AYSShipStation::DamageModulesInRadius(UWorld* World, const FVector& Center,
 bool AYSShipStation::IsUsable() const
 {
 	const AYSPirateShip* Ship = GetShip();
-	return !IsBroken() && Ship && !Ship->IsDisabled();
+	// combat de boss mis en scène (Davy Jones) : postes de combat bloqués
+	return !IsBroken() && Ship && !Ship->IsDisabled() && !(IsCombatPost() && Ship->IsBossFightLocked());
 }
 
 void AYSShipStation::RestoreFullHealth()
@@ -469,7 +470,7 @@ bool AYSShipStation::CanInteract(const AYSPlayerCharacter* Character) const
 {
 	const AYSPirateShip* Ship = GetShip();
 	// bateau de NME : pas pour les joueurs ; bateau hors d'usage : plus rien ne marche ; module à 0 PV : un joueur peut le réparer
-	if (!Ship || Ship->IsFoeShip() || Ship->IsDisabled() || FoeOccupant || (IsBroken() && Occupant))
+	if (!Ship || Ship->IsFoeShip() || Ship->IsDisabled() || FoeOccupant || (IsBroken() && Occupant) || (IsCombatPost() && Ship->IsBossFightLocked()))
 	{
 		return false;
 	}

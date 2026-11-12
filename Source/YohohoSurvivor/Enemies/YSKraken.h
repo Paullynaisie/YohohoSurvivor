@@ -436,7 +436,15 @@ public:
 	/** Serveur, avant FinishSpawning : première sortie tout de suite, sans First Emerge Delay (Shield Action de Davy Jones) */
 	void SetEmergeImmediately() { bEmergeImmediately = true; }
 
+	/** Serveur : retirée dès que sa prochaine attaque est lancée (pas celle d'avant la demande) ; bouclier de Davy Jones brisé */
+	void VanishAfterNextAttack();
+
 protected:
+
+	/** Point d'impact posé sur le pont du bateau qui est dessous (sinon inchangé, sur l'eau) */
+	FVector ProjectOntoShips(const FVector& ImpactPoint) const;
+
+	double VanishAfterAttackRequestTime = 0.0;
 
 	float EmergeStagger = 0.0f;
 

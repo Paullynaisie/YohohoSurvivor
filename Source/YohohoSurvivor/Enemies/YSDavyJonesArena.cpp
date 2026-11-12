@@ -2,6 +2,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Core/YSFlowMode.h"
 #include "Core/YSGameState.h"
+#include "Ship/YSBoatCrew.h"
 #include "Enemies/YSFoeCharacter.h"
 #include "Engine/DamageEvents.h"
 #include "EngineUtils.h"
@@ -141,11 +142,15 @@ void AYSDavyJonesArena::TickFight()
 	case EYSDavyJonesState::Crew:
 	{
 		Crew.RemoveAll([](const TWeakObjectPtr<AYSFoeCharacter>& Foe) { return !Foe.IsValid() || Foe->IsDying() || Foe->GetHealth() <= 0.0f; });
-		// équipage mort (ou plus de Galion sous ses pieds) : il descend se battre
+		// Descend Crew Killed Ratio de l'équipage tué, Descend Max Crew Time écoulé (ou plus de Galion sous ses pieds) : il descend se battre
 		const bool bGalionLost = !IsValid(DavyGalion) || DavyGalion->IsSinking();
-		if (Crew.Num() == 0 || bGalionLost)
+		const int32 Killed = CrewSpawnedCount - Crew.Num();
+		const bool bEnoughKilled = Crew.Num() == 0 || Killed >= FMath::CeilToInt(CrewSpawnedCount * DescendCrewKilledRatio);
+		const bool bTimeUp = DescendMaxCrewTime > 0.0f && Elapsed >= DescendMaxCrewTime;
+		if (bEnoughKilled || bTimeUp || bGalionLost)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] Phase %d : %s, Davy Jones descend"), Phase + 1, bGalionLost ? TEXT("son Galion coule") : TEXT("équipage tué"));
+			UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] Phase %d : %s (%d / %d tués, %.0f s), Davy Jones descend"), Phase + 1,
+				bGalionLost ? TEXT("son Galion coule") : bEnoughKilled ? TEXT("équipage tué") : TEXT("temps écoulé"), Killed, CrewSpawnedCount, Elapsed);
 			DavyGalion = nullptr;
 			StartJump(FindDescendPoint(), false);
 		}
@@ -193,6 +198,8 @@ void AYSDavyJonesArena::StartFight(const TCHAR* Reason)
 		}
 	}
 	PlayerBoat->SetGrappled(true);
+	// tout le combat : invulnérable, ignoré par les NME, postes de combat bloqués
+	PlayerBoat->SetBossFightLocked(true);
 
 	SpawnGalions();
 	Phase = 0;
@@ -338,6 +345,7 @@ void AYSDavyJonesArena::SpawnCrewWave()
 			}
 		}
 	}
+	CrewSpawnedCount = Crew.Num();
 	UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] Phase %d : équipage de %d NME sur %d Galion(s)"), Phase + 1, Crew.Num(), GetLiveGalions().Num());
 	SetState(EYSDavyJonesState::Crew);
 }
@@ -466,6 +474,7 @@ void AYSDavyJonesArena::Victory()
 	if (IsValid(PlayerBoat))
 	{
 		PlayerBoat->SetGrappled(false);
+		PlayerBoat->SetBossFightLocked(false);
 	}
 	SpawnLoot();
 	if (AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>())
@@ -484,11 +493,23 @@ void AYSDavyJonesArena::SpawnLoot()
 			Loot.Add(Class);
 		}
 	}
-	// membres d'équipage tirés au hasard (crewboat)
-	if (const AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())
+	// membres d'équipage tirés au hasard (crewboat), parmi ceux qu'on ne trouve pas ailleurs : ni posés dans les zones d'intérêt, ni déjà en jeu
+	AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	if (FlowMode)
 	{
+		TArray<UClass*> InGame;
+		for (TActorIterator<AYSBoatCrew> It(GetWorld()); It; ++It)
+		{
+			InGame.AddUnique(It->GetClass());
+		}
+		const TArray<TSubclassOf<AYSInteractiveObject>>& ZoneCrew = FlowMode->GetZoneCrewClasses();
 		TArray<TSubclassOf<AYSInteractiveObject>> CrewPool = FlowMode->CrewItemClasses;
-		CrewPool.RemoveAll([](const TSubclassOf<AYSInteractiveObject>& Class) { return !Class; });
+		CrewPool.RemoveAll([&ZoneCrew, &InGame](const TSubclassOf<AYSInteractiveObject>& Class)
+		{
+			return !Class || ZoneCrew.Contains(Class) || InGame.ContainsByPredicate([&Class](const UClass* Existing) { return Existing->IsChildOf(Class.Get()); });
+		});
+		UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] Membres d'équipage possibles pour le butin : %d (sur %d, %d dans les zones d'intérêt, %d déjà en jeu)"), CrewPool.Num(),
+			FlowMode->CrewItemClasses.Num(), ZoneCrew.Num(), InGame.Num());
 		for (int32 K = CrewPool.Num() - 1; K > 0; --K)
 		{
 			CrewPool.Swap(K, FMath::RandRange(0, K));
@@ -514,8 +535,13 @@ void AYSDavyJonesArena::SpawnLoot()
 		const FVector Location(Edge.X + Direction.X * LootDistanceFromHull, Edge.Y + Direction.Y * LootDistanceFromHull, Sea);
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		if (const AYSInteractiveObject* Object = GetWorld()->SpawnActor<AYSInteractiveObject>(Loot[Index], Location, FRotator(0.0f, FMath::FRandRange(0.0f, 360.0f), 0.0f), Params))
+		if (AYSInteractiveObject* Object = GetWorld()->SpawnActor<AYSInteractiveObject>(Loot[Index], Location, FRotator(0.0f, FMath::FRandRange(0.0f, 360.0f), 0.0f), Params))
 		{
+			// objet sans valeur en doublons (membre d'équipage) : le core du bateau des joueurs le prend comme un objet des zones d'intérêt
+			if (FlowMode && Object->GetDoubloonValue() <= 0)
+			{
+				FlowMode->AddZoneItem(Object);
+			}
 			Names += (Names.IsEmpty() ? TEXT("") : TEXT(", ")) + Object->GetName();
 		}
 	}

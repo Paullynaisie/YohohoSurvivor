@@ -309,6 +309,21 @@ try:
     if nest:
         nest.set_editor_property("child_actor_class", None)
         log("Galion de Davy Jones : CrowsNestStation sans poste")
+    # pas de poste de combat (2026-11-12, demande de Paul) : canons, réceptacles et ShootPosts sans acteur
+    galion_bp = assets.load_asset(DAVY_GALION)
+    emptied = []
+    for name in sorted(handles_by_name(galion_bp)):
+        if not (name.startswith("Cannon") or name.startswith("ShootPost")):
+            continue
+        template = None
+        try:
+            template = galion.get_editor_property(name)
+        except Exception:  # noqa
+            template = component_template(galion_bp, name)
+        if isinstance(template, unreal.ChildActorComponent):
+            template.set_editor_property("child_actor_class", None)
+            emptied.append(name)
+    log(f"Galion de Davy Jones : postes de combat retirés {emptied}")
     assets.save_asset(DAVY_GALION, only_if_is_dirty=False)
 
     # --- 6) arène

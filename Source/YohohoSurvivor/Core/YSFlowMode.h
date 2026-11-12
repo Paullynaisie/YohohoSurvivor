@@ -345,8 +345,12 @@ public:
 	/** Objet d'une zone d'intérêt posé sur un Galion (boussole, équipage...) : le core du bateau des joueurs le prend */
 	bool IsZoneItem(const AYSInteractiveObject* Object) const;
 
-	/** Debug : objet compté comme un objet de zone d'intérêt (le core du bateau des joueurs le prend) */
+	/** Objet compté comme un objet de zone d'intérêt (le core du bateau des joueurs le prend : butin de Davy Jones, debug) */
 	void DebugAddZoneItem(AYSInteractiveObject* Object) { ZoneItems.Add(Object); }
+	void AddZoneItem(AYSInteractiveObject* Object) { ZoneItems.Add(Object); }
+
+	/** Membres d'équipage tirés au lancement et posés dans les zones d'intérêt */
+	const TArray<TSubclassOf<AYSInteractiveObject>>& GetZoneCrewClasses() const { return ZoneCrewClasses; }
 
 	/** CoreBoat posé dans la zone du core du bateau des joueurs (serveur) : détruit, +1 au stock ; l'étape suivante se fait à l'image suivante */
 	void StoreCoreBoat(AYSInteractiveObject* Object);
@@ -460,6 +464,10 @@ private:
 
 	/** Objets des zones d'intérêt posés sur les Galions */
 	TArray<TWeakObjectPtr<AYSInteractiveObject>> ZoneItems;
+
+	/** Membres d'équipage tirés au lancement (zones d'intérêt) */
+	UPROPERTY(Transient)
+	TArray<TSubclassOf<AYSInteractiveObject>> ZoneCrewClasses;
 
 	/** CoreBoats nécessaires pour l'étape après GameBoatStage (0 = aucune) */
 	int32 GetNextStageCoreBoatCost() const;

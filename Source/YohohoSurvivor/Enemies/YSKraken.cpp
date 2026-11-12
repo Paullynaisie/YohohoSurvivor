@@ -709,8 +709,43 @@ void AYSKrakenTentacle::TickKraken(float DeltaSeconds)
 	if (HasAuthority())
 	{
 		TickTentacleServer(DeltaSeconds);
+		// retrait demandé (bouclier de Davy Jones brisé) : dès que sa prochaine attaque est lancée
+		if (VanishAfterAttackRequestTime > 0.0 && State.Phase == EYSKrakenTentaclePhase::Recover && State.PhaseStartServerTime >= VanishAfterAttackRequestTime)
+		{
+			Vanish(TEXT("attaque lancée après la fin du bouclier"));
+			return;
+		}
 	}
 	ApplyStateLocally();
+}
+
+void AYSKrakenTentacle::VanishAfterNextAttack()
+{
+	if (HasAuthority() && VanishAfterAttackRequestTime <= 0.0)
+	{
+		VanishAfterAttackRequestTime = FMath::Max(GetServerTime(), 0.001);
+		UE_LOG(LogTemp, Log, TEXT("[YSKraken] %s disparaîtra après sa prochaine attaque"), *GetName());
+	}
+}
+
+FVector AYSKrakenTentacle::ProjectOntoShips(const FVector& ImpactPoint) const
+{
+	// un bateau sous ce point (bateau des joueurs, Galions de Davy Jones) : l'impact est sur son pont, pas sur l'eau
+	const float Sea = GetSeaLevel();
+	TArray<FHitResult> Hits;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSKrakenInkDeck), false, this);
+	GetWorld()->LineTraceMultiByObjectType(Hits, FVector(ImpactPoint.X, ImpactPoint.Y, Sea + 2500.0f), FVector(ImpactPoint.X, ImpactPoint.Y, Sea - 100.0f), FCollisionObjectQueryParams(ECC_WorldStatic), Params);
+	// le plus haut des ponts (gaillard compris), pas les voiles, vergues ni la plateforme de Davy Jones au-dessus
+	constexpr float MaxDeckHeightAboveSea = 700.0f;
+	float DeckZ = -TNumericLimits<float>::Max();
+	for (const FHitResult& Hit : Hits)
+	{
+		if (AYSPirateShip::GetShipOf(Hit.GetActor()) && Hit.ImpactPoint.Z <= Sea + MaxDeckHeightAboveSea)
+		{
+			DeckZ = FMath::Max(DeckZ, static_cast<float>(Hit.ImpactPoint.Z));
+		}
+	}
+	return DeckZ > Sea ? FVector(ImpactPoint.X, ImpactPoint.Y, DeckZ) : ImpactPoint;
 }
 
 void AYSKrakenTentacle::TickTentacleServer(float DeltaSeconds)
@@ -923,7 +958,7 @@ void AYSKrakenTentacleRange::FirePattern(EYSKrakenTentacleAttack Attack, const A
 	{
 		const FVector Dir = FRotator(0.0f, AngleDeg, 0.0f).Vector();
 		FYSKrakenInkShot Shot;
-		Shot.Target = FVector(Foot.X + Dir.X * Radius, Foot.Y + Dir.Y * Radius, Sea);
+		Shot.Target = ProjectOntoShips(FVector(Foot.X + Dir.X * Radius, Foot.Y + Dir.Y * Radius, Sea));
 		Shot.Delay = Delay;
 		Shots.Add(Shot);
 	};
@@ -981,7 +1016,7 @@ void AYSKrakenTentacleRange::FireScatterBalls(const AYSPirateShip* Boat)
 		const float Distance = InkScatterRadius * FMath::Sqrt(FMath::FRand());
 		FYSKrakenInkBallFlight Flight;
 		Flight.Start = GetTipLocation();
-		Flight.Target = FVector(Center.X + FMath::Cos(Angle) * Distance, Center.Y + FMath::Sin(Angle) * Distance, GetSeaLevel());
+		Flight.Target = ProjectOntoShips(FVector(Center.X + FMath::Cos(Angle) * Distance, Center.Y + FMath::Sin(Angle) * Distance, GetSeaLevel()));
 		Flight.LaunchServerTime = GetServerTime() + TentacleWindupDuration + InkBallInterval * Index;
 		Flight.FlightDuration = InkFlightDuration;
 		Flight.ApexHeight = InkApexHeight;
