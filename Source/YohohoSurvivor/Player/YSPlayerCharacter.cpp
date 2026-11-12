@@ -1365,6 +1365,7 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateDayNight(DeltaSeconds);
 	UpdateCursorCamera(DeltaSeconds);
 	UpdateAutoAttackInput();
+	UpdateAbilityHeldInput();
 	UpdateNameplate();
 	UpdateInteractPrompt();
 	if (HasAuthority())
@@ -2106,6 +2107,43 @@ void AYSPlayerCharacter::ServerSetAutoAttackHeld_Implementation(bool bHeld)
 	bAutoAttackHeld = bHeld;
 }
 
+void AYSPlayerCharacter::UpdateAbilityHeldInput()
+{
+	if (!IsLocallyControlled() || !IsPlayerControlled())
+	{
+		return;
+	}
+	bool bHeld = false;
+	const APlayerController* PC = Cast<APlayerController>(GetController());
+	const UEnhancedInputLocalPlayerSubsystem* Subsystem = PC ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()) : nullptr;
+	if (const UEnhancedPlayerInput* PlayerInput = Subsystem ? Subsystem->GetPlayerInput() : nullptr)
+	{
+		bHeld = FireAction && PlayerInput->GetActionValue(FireAction).Get<bool>();
+	}
+	if (bHeld == bAbilityHeld)
+	{
+		return;
+	}
+	bAbilityHeld = bHeld;
+	UE_LOG(LogTemp, VeryVerbose, TEXT("[YSAbility] %s : clic droit %s"), *GetName(), bHeld ? TEXT("maintenu") : TEXT("relâché"));
+	if (!HasAuthority())
+	{
+		ServerSetAbilityHeld(bHeld);
+	}
+}
+
+void AYSPlayerCharacter::ServerSetAbilityHeld_Implementation(bool bHeld)
+{
+	bAbilityHeld = bHeld;
+}
+
+bool AYSPlayerCharacter::IsCameraCenteredByAction() const
+{
+	bool bCentered = false;
+	ForEachHeldAction([&bCentered](const UYSAbilityComponent* Action) { bCentered = bCentered || Action->CentersCamera(); });
+	return bCentered;
+}
+
 void AYSPlayerCharacter::ServerSetAutoAttackAimDistance_Implementation(float Distance)
 {
 	AutoAttackAimDistance = FMath::Max(0.0f, Distance);
@@ -2405,7 +2443,7 @@ void AYSPlayerCharacter::UpdateCursorCamera(float DeltaSeconds)
 	int32 ViewportX = 0, ViewportY = 0;
 	// Camera Lock (réglage du joueur, TAB) : caméra centrée sur le PJ
 	const AYSPlayerController* YSController = Cast<AYSPlayerController>(PlayerController);
-	const bool bCameraLocked = YSController && YSController->IsCameraLocked();
+	const bool bCameraLocked = (YSController && YSController->IsCameraLocked()) || IsCameraCenteredByAction();
 	// poste de bateau : réglages de caméra du poste (Station|Camera)
 	const AYSShipStation* Station = IsValid(CurrentStation) ? CurrentStation.Get() : nullptr;
 	const bool bStationCursor = Station && Station->GetCameraOffsetMode() == EYSStationCameraOffset::Cursor;
@@ -3323,6 +3361,23 @@ float AYSPlayerCharacter::GetUnmodifiedWalkSpeed() const
 void AYSPlayerCharacter::UpdateMaxWalkSpeed()
 {
 	// serveur et client propriétaire doivent avoir la même vitesse (prédiction de mouvement)
+	// vitesse imposée par une action (TOURBILOL !) : rien d'autre ne compte
+	bool bFixedSpeed = false;
+	float FixedRatio = 1.0f;
+	ForEachHeldAction([&bFixedSpeed, &FixedRatio](const UYSAbilityComponent* Action)
+	{
+		float Ratio = 1.0f;
+		if (!bFixedSpeed && Action->GetFixedMoveSpeedRatio(Ratio))
+		{
+			bFixedSpeed = true;
+			FixedRatio = Ratio;
+		}
+	});
+	if (bFixedSpeed)
+	{
+		GetCharacterMovement()->MaxWalkSpeed = MoveSpeed * FixedRatio;
+		return;
+	}
 	float ActionMultiplier = 1.0f;
 	ForEachHeldAction([&ActionMultiplier](const UYSAbilityComponent* Action) { ActionMultiplier *= Action->GetMoveSpeedMultiplier(); });
 	// attaque auto en train de frapper (joueurs) : ralentissement le plus fort des armes, appliqué une seule fois (akimbo)

@@ -253,6 +253,15 @@ public:
 	virtual float GetMoveSpeedMultiplier() const { return 1.0f; }
 
 	/**
+	 *  Vitesse imposée en ce moment (ex. TOURBILOL ! : 100 %) : MaxWalkSpeed = Move Speed du personnage x OutRatio, en ignorant
+	 *  tous les autres bonus et ralentissements (upgrades, actions, buffs, objet porté, nage)
+	 */
+	virtual bool GetFixedMoveSpeedRatio(float& OutRatio) const { return false; }
+
+	/** Caméra recentrée sur le personnage pendant l'action (comme Camera Lock ; ex. TOURBILOL !), décentrée à nouveau ensuite */
+	virtual bool CentersCamera() const { return false; }
+
+	/**
 	 *  Attaque auto d'un joueur en train de frapper (Melee : préparation + coupe ; Gun : rafale) : ralentissement du PJ
 	 *  (OutMultiplier, Auto Atk Move Speed Multiplier) ; faux hors attaque. Le personnage applique le plus fort, une seule fois.
 	 */

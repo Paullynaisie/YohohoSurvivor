@@ -3073,6 +3073,15 @@ void AYSPlayerController::YSHoldAutoAttack(int32 bHeld)
 	}
 }
 
+void AYSPlayerController::YSHoldAbility(int32 bHeld)
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->SetDebugAbilityHeld(bHeld != 0);
+		UE_LOG(LogTemp, Log, TEXT("[YSAbility] %s : clic droit (debug) %s"), *PlayerCharacter->GetName(), bHeld != 0 ? TEXT("maintenu") : TEXT("relâché"));
+	}
+}
+
 void AYSPlayerController::YSCameraLock(int32 bLocked)
 {
 	SetCameraLock(bLocked != 0);

@@ -399,6 +399,10 @@ public:
 	UFUNCTION(Exec)
 	void YSHoldAutoAttack(int32 bHeld = 1);
 
+	/** Debug (console, hôte) : clic droit considéré comme maintenu (1) ou non (0) : Tourbillon infinie.  Ex : YSHoldAbility 1 */
+	UFUNCTION(Exec)
+	void YSHoldAbility(int32 bHeld = 1);
+
 	/** Debug (console) : Camera Lock (1 = caméra centrée sur le PJ, 0 = décalée vers le curseur) */
 	UFUNCTION(Exec)
 	void YSCameraLock(int32 bLocked = 1);

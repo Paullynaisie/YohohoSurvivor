@@ -1412,6 +1412,15 @@ public:
 	/** Debug (YSHoldAutoAttack) : clic gauche considéré comme maintenu */
 	void SetDebugAutoAttack(bool bHeld);
 
+	/** Clic droit (Ability) maintenu, connu du serveur (Tourbillon infinie) */
+	bool IsAbilityHeld() const { return bAbilityHeld || bDebugAbilityHeld; }
+
+	/** Debug (YSHoldAbility, serveur / hôte) : clic droit considéré comme maintenu */
+	void SetDebugAbilityHeld(bool bHeld) { bDebugAbilityHeld = bHeld; }
+
+	/** Une action en cours recentre la caméra (TOURBILOL !) */
+	bool IsCameraCenteredByAction() const;
+
 	/** Comme la touche E (debug YSInteract) */
 	void TriggerInteract() { Interact(); }
 
@@ -1619,6 +1628,16 @@ protected:
 
 	/** Debug : clic gauche considéré comme maintenu */
 	bool bDebugAutoAttack = false;
+
+	/** Clic droit (Ability) maintenu (machine qui contrôle, Tick) : envoyé au serveur quand il change (Tourbillon infinie) */
+	void UpdateAbilityHeldInput();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetAbilityHeld(bool bHeld);
+
+	/** Clic droit maintenu (machine qui contrôle ; serveur : dernier état reçu) ; debug : considéré comme maintenu */
+	bool bAbilityHeld = false;
+	bool bDebugAbilityHeld = false;
 
 	/** Comme Fire, mais en activation forcée accordée par ForceAbility (machine qui contrôle le personnage) */
 	void ForceFire();

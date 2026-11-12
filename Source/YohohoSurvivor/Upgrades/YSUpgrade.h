@@ -1091,6 +1091,34 @@ protected:
 };
 
 /**
+ *  « Tourbillon infinie » (Boulet et Chaîne, Ability TOURBILOL !) :
+ *  Déblocage : clic droit maintenu au-delà des tours de base -> un tour de plus par Infinite Turn Stamina Cost (30) de stamina,
+ *  jusqu'au relâchement du clic ou au manque de stamina ; Bonus « Tourbillon infinie ++ » : coût d'un tour - Bonus Value (3) par bonus ;
+ *  Super « Golden Tourbillon infinie » : à la fin du tourbilol, saut puis impact au sol, dégâts = stamina consommée x Golden Damage Per Stamina.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : Tourbillon infinie"))
+class UYSInfiniteTourbillonUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSInfiniteTourbillonUpgrade();
+
+	/** Noms des propriétés d'arme posées sur le personnage (lues par TOURBILOL !) */
+	static const FName InfiniteStat;
+	static const FName CostReductionStat;
+	static const FName GoldenStat;
+
+protected:
+
+	/** Réduction du coût en stamina d'un tour en plus */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return BonusTotal; }
+
+	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+};
+
+/**
  *  « Marquage Critique » (Captain et Corsaire : Summon the crew ; jumeau de You're all my minions) :
  *  Déblocage : tous les joueurs font des coups critiques sur le NME marqué par ce Captain ;
  *  Bonus « Marquage Critique ++ » : le NME marqué subit + Bonus Value de dégâts par bonus (additif : 0.1 = +10 %), de toutes les sources ;

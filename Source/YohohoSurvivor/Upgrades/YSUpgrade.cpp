@@ -6,6 +6,7 @@
 #include "Abilities/YSGoMinionsAbility.h"
 #include "Abilities/YSRollAndBombAbility.h"
 #include "Abilities/YSSummonCrewAbility.h"
+#include "Abilities/YSTourbilolAbility.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Upgrades/YSShardUpgrade.h"
 #include "Weapons/YSWeapon.h"
@@ -917,6 +918,33 @@ void UYSAllMyMinionsUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, 
 	Character->SetWeaponStat(AllMyMinionsStat, bUnlocked ? 1.0f : 0.0f);
 	Character->SetWeaponStat(ForcedDamageStat, bUnlocked ? BonusTotal : 0.0f);
 	Character->SetWeaponStat(ForcedCooldownResetStat, bUnlocked && bSuper ? 1.0f : 0.0f);
+}
+
+const FName UYSInfiniteTourbillonUpgrade::InfiniteStat(TEXT("InfiniteTourbillon"));
+const FName UYSInfiniteTourbillonUpgrade::CostReductionStat(TEXT("InfiniteTourbillonCostReduction"));
+const FName UYSInfiniteTourbillonUpgrade::GoldenStat(TEXT("GoldenTourbillon"));
+
+UYSInfiniteTourbillonUpgrade::UYSInfiniteTourbillonUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "InfiniteTourbillonName", "Tourbillon infinie");
+	RequiredActionClass = UYSTourbilolAbility::StaticClass();
+	UnlockName = NSLOCTEXT("YS", "InfiniteTourbillonUnlockName", "Tourbillon infinie");
+	UnlockDescription = NSLOCTEXT("YS", "InfiniteTourbillonUnlockDesc", "Maintenir le clic prolonge le TOURBILOL !\nUn tour de plus par tranche de 30 de stamina");
+	BonusDescription = NSLOCTEXT("YS", "InfiniteTourbillonBonusDesc", "Les tours en plus coûtent moins de stamina");
+	BonusName = NSLOCTEXT("YS", "InfiniteTourbillonBonusName", "Tourbillon infinie ++");
+	BonusStatLabel = NSLOCTEXT("YS", "InfiniteTourbillonBonusStat", "Coût d'un tour en plus (- stamina)");
+	BonusSilverValue = 3.0f;
+	BonusGoldValue = 3.0f;
+	MaxBonusStacks = 5;
+	SuperName = NSLOCTEXT("YS", "InfiniteTourbillonSuperName", "Golden Tourbillon infinie");
+	SuperDescription = NSLOCTEXT("YS", "InfiniteTourbillonSuperDesc", "À la fin du TOURBILOL !, saut puis impact au sol :\n1 dégât par point de stamina consommé");
+}
+
+void UYSInfiniteTourbillonUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
+{
+	Character->SetWeaponStat(InfiniteStat, bUnlocked ? 1.0f : 0.0f);
+	Character->SetWeaponStat(CostReductionStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(GoldenStat, bUnlocked && bSuper ? 1.0f : 0.0f);
 }
 
 const FName UYSMarkCriticalUpgrade::MarkCriticalStat(TEXT("MarkCritical"));
