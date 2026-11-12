@@ -32,6 +32,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static int32 ReplaceMaterialColorConstants(UMaterial* Material, FLinearColor From, FLinearColor To, float Tolerance = 0.01f);
 
+	/** Valeur par défaut du nœud ScalarParameter ParameterName du matériau, puis recompile ; faux s'il n'existe pas */
+	UFUNCTION(BlueprintCallable, Category="YS|Editor")
+	static bool SetMaterialScalarParameterDefault(UMaterial* Material, FName ParameterName, float Value);
+
 	/** Ligne RowName de DT_CustomizationColors : Emissive Material et Emissive Color */
 	UFUNCTION(BlueprintCallable, Category="YS|Editor")
 	static bool SetCustomizationColorEmissive(UDataTable* Table, FName RowName, UMaterialInterface* EmissiveMaterial, FLinearColor EmissiveColor);

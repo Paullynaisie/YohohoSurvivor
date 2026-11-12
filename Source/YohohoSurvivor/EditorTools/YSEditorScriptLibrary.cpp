@@ -22,6 +22,7 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionConstant3Vector.h"
 #include "Materials/MaterialExpressionConstant4Vector.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
 #include "Materials/MaterialExpressionVectorParameter.h"
 #include "Materials/MaterialInterface.h"
 #include "Upgrades/YSShardUpgrade.h"
@@ -236,6 +237,29 @@ TArray<FLinearColor> UYSEditorScriptLibrary::GetMaterialColorConstants(UMaterial
 		}
 	}
 	return Colors;
+}
+
+bool UYSEditorScriptLibrary::SetMaterialScalarParameterDefault(UMaterial* Material, FName ParameterName, float Value)
+{
+	if (!Material)
+	{
+		return false;
+	}
+	for (UMaterialExpression* Expression : Material->GetExpressions())
+	{
+		UMaterialExpressionScalarParameter* Parameter = Cast<UMaterialExpressionScalarParameter>(Expression);
+		if (Parameter && Parameter->ParameterName == ParameterName)
+		{
+			Material->Modify();
+			Parameter->Modify();
+			Material->PreEditChange(nullptr);
+			Parameter->DefaultValue = Value;
+			Material->PostEditChange();
+			Material->MarkPackageDirty();
+			return true;
+		}
+	}
+	return false;
 }
 
 int32 UYSEditorScriptLibrary::ReplaceMaterialColorConstants(UMaterial* Material, FLinearColor From, FLinearColor To, float Tolerance)

@@ -110,13 +110,13 @@ struct FYSIslandGenerationRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="1 Shape")
 	TObjectPtr<UMaterialInterface> GroundMaterial;
 
-	/** Hauteur du plateau de jungle */
+	/** Hauteur du plateau de jungle (350 avant le 2026-11-12 : relief divisé par deux) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2 Relief", meta=(Units="Centimeters"))
-	float PlateauHeight = 350.0f;
+	float PlateauHeight = 175.0f;
 
-	/** Ondulation du plateau (amplitude de 2 ondulations) */
+	/** Ondulation du plateau (amplitude de 2 ondulations ; (30, 25) avant le 2026-11-12) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2 Relief", meta=(Units="Centimeters"))
-	FVector2D PlateauNoise = FVector2D(30.0, 25.0);
+	FVector2D PlateauNoise = FVector2D(15.0, 12.5);
 
 	/** Largeur de la falaise, du haut jusqu'au fond */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2 Relief", meta=(ClampMin="10", Units="Centimeters"))
