@@ -137,7 +137,7 @@ float AYSShipStation::TakeDamage(float DamageAmount, const FDamageEvent& DamageE
 	}
 
 	Health = FMath::Max(0.0f, Health - DamageAmount);
-	AYSGameState::ReportDamage(this, DamageAmount, ImpactLocation, EventInstigator, UYSCriticalDamageType::IsCritical(DamageEvent));
+	AYSGameState::ReportDamage(this, DamageAmount, ImpactLocation, EventInstigator, UYSCriticalDamageType::IsCritical(DamageEvent), DamageCauser);
 	UE_LOG(LogTemp, Log, TEXT("%s %s : -%.0f -> %.0f / %.0f"), GetLogTag(), *GetName(), DamageAmount, Health, MaxHealth);
 	ForceNetUpdate();
 

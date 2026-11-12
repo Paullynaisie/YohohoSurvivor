@@ -34,6 +34,22 @@ void AYSPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AYSPlayerState, ColorIndex);
 	DOREPLIFETIME(AYSPlayerState, FaceIndex);
 	DOREPLIFETIME(AYSPlayerState, bLeftHanded);
+	DOREPLIFETIME(AYSPlayerState, MatchStats);
+	DOREPLIFETIME(AYSPlayerState, FinalUpgrades);
+}
+
+void AYSPlayerState::CaptureFinalUpgrades()
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetPawn());
+	if (!Character)
+	{
+		Character = GetDeadBody();
+	}
+	FinalUpgrades = YSMatchStats::CaptureUpgrades(Character);
+	UE_LOG(LogTemp, Log, TEXT("[YSScoreboard] %s : %d classe(s), %d upgrade(s) d'arme, %d golden, %d shard(s) ; %.0f dégâts (max %.0f), %d NME tués, %.0f subis, %.0f par l'armure, %d réanimation(s), %d objet(s) déposé(s)"),
+		*GetPlayerName(), FinalUpgrades.ClassUpgrades.Num(), FinalUpgrades.WeaponUpgrades.Num(), FinalUpgrades.GoldenUpgrades.Num(), FinalUpgrades.Shards.Num(),
+		MatchStats.DamageDealt, MatchStats.BiggestHit, MatchStats.Kills, MatchStats.DamageTaken, MatchStats.ArmorReduced, MatchStats.Revives, MatchStats.ItemsDelivered);
+	ForceNetUpdate();
 }
 
 void AYSPlayerState::SetCustomization(int32 NewColorIndex, int32 NewFaceIndex)

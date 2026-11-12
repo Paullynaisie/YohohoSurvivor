@@ -1094,6 +1094,9 @@ public:
 
 	const TArray<FYSShardLevel>& GetShardLevels() const { return ShardLevels; }
 
+	/** Progression de toutes les upgrades du pool obtenues (écran des scores) */
+	const TArray<FYSUpgradeProgress>& GetAllUpgradeProgress() const { return UpgradeProgress; }
+
 	/** Ajoute des niveaux à une shard (au plus son maximum) et applique son effet (serveur) */
 	void AddShardLevels(UYSUpShard* Shard, int32 Levels);
 

@@ -264,6 +264,29 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Ship")
 	float VictoryReturnDelay = 5.0f;
 
+	/**
+	 *  Chrono global (HUD en haut à droite, écran des scores) : il continue pendant les pauses du choix d'upgrade (demande de Paul du
+	 *  2026-11-12), contrairement au temps de partie du jeu (phases, partie 2, vagues). Durée des pauses finies, pause en cours,
+	 *  temps final (fin de partie ; -1 = il tourne)
+	 */
+	UPROPERTY(Replicated)
+	float ClockPausedTime = 0.0f;
+
+	UPROPERTY(ReplicatedUsing=OnRep_ClockPaused)
+	bool bClockPaused = false;
+
+	UPROPERTY(Replicated)
+	float FinalClockTime = -1.0f;
+
+	/** Début de la pause en cours, en temps réel de cette machine */
+	double ClockPauseStartRealTime = 0.0;
+
+	UFUNCTION()
+	void OnRep_ClockPaused();
+
+	/** Fin de partie (serveur, une fois) : chrono arrêté, upgrades des joueurs copiées pour l'écran des scores */
+	void FinishMatch();
+
 	/** L'île est en overtime */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Overtime")
 	bool bOvertime = false;
@@ -465,11 +488,20 @@ public:
 	/** Serveur uniquement (AYSGameMode) */
 	void SetShipPresent(bool bPresent) { bShipPresent = bPresent; ForceNetUpdate(); }
 	void SetShipBoarding(int32 Aboard, int32 Total) { ShipAboardPlayers = Aboard; ShipTotalPlayers = Total; ForceNetUpdate(); }
-	void SetVictory(float ReturnDelay) { bVictory = true; VictoryReturnDelay = ReturnDelay; ForceNetUpdate(); }
+	void SetVictory(float ReturnDelay) { bVictory = true; VictoryReturnDelay = ReturnDelay; FinishMatch(); ForceNetUpdate(); }
 
-	/** Game over (bateau des joueurs coulé) : « GAME OVER » puis retour au menu après ReturnDelay */
-	void SetGameOver(float ReturnDelay) { bGameOver = true; VictoryReturnDelay = ReturnDelay; ForceNetUpdate(); }
+	/** Game over : « GAME OVER » puis écran des scores après ReturnDelay */
+	void SetGameOver(float ReturnDelay) { bGameOver = true; VictoryReturnDelay = ReturnDelay; FinishMatch(); ForceNetUpdate(); }
 	bool IsGameOver() const { return bGameOver; }
+
+	/** Victoire ou game over */
+	bool IsMatchEnded() const { return bVictory || bGameOver; }
+
+	/** Serveur uniquement (AYSGameMode : pause du choix d'upgrade) */
+	void SetClockPaused(bool bPaused);
+
+	/** Chrono global : temps de partie + pauses du choix d'upgrade, arrêté à la fin de la partie */
+	float GetMatchClockTime() const;
 	void SetOvertime() { bOvertime = true; ForceNetUpdate(); }
 	void StartIslandSink(float Duration, float Depth, float EaseExponent);
 
@@ -496,7 +528,7 @@ public:
 	 *  À appeler sur le serveur quand des dégâts sont infligés : affiche le chiffre chez tous les joueurs.
 	 *  InstigatorController / Victim servent à déterminer la couleur selon chaque point de vue.
 	 */
-	static void ReportDamage(const AActor* Victim, float Amount, const FVector& ImpactLocation, const AController* InstigatorController, bool bCritical = false);
+	static void ReportDamage(const AActor* Victim, float Amount, const FVector& ImpactLocation, const AController* InstigatorController, bool bCritical = false, const AActor* DamageCauser = nullptr);
 
 protected:
 

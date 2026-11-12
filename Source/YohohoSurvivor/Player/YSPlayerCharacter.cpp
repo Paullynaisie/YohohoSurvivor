@@ -1,5 +1,6 @@
 #include "Player/YSPlayerCharacter.h"
 #include "Core/YSCustomization.h"
+#include "Core/YSMatchStats.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/BlendSpace.h"
 #include "Camera/CameraComponent.h"
@@ -297,6 +298,13 @@ float AYSPlayerCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Dam
 	}
 
 	UE_LOG(LogTemp, Verbose, TEXT("[YSPlayerCharacter] %s subit %.1f -> %.0f (%%Armor %.0f %%, armure %.1f)"), *GetName(), IncomingDamage, Damage, ArmorPercent * 100.0f, TotalArmor);
+
+	// écran des scores : dégâts subis et PV retirés par l'armure (joueurs seulement, pas après la fin de la partie)
+	const AYSGameState* StatsGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (StatsGameState && !StatsGameState->IsMatchEnded())
+	{
+		YSMatchStats::RecordDamageTaken(this, IncomingDamage, Damage);
+	}
 
 	// BloodRage : chaque coup reçu donne une stack de rage (après l'armure du coup)
 	AddBloodRageStack();
@@ -3436,8 +3444,16 @@ void AYSPlayerCharacter::DropCarriedObject(const TCHAR* Reason)
 	ForceNetUpdate();
 	UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s repose %s (%s)"), *GetName(), *Object->GetName(), Reason);
 
-	// près d'un Brooker : racheté (doublons pour l'équipe)
-	AYSBrookerNPC::TrySell(Object);
+	// près d'un Brooker : racheté (doublons pour l'équipe) ; écran des scores : objet déposé, ou réanimation (cadavre chez un Medic)
+	const bool bCorpse = Object->IsA<AYSPlayerCorpse>();
+	if (AYSBrookerNPC::TrySell(Object))
+	{
+		const AYSGameState* StatsGameState = GetWorld()->GetGameState<AYSGameState>();
+		if (StatsGameState && !StatsGameState->IsMatchEnded())
+		{
+			YSMatchStats::RecordDelivery(this, bCorpse);
+		}
+	}
 }
 
 void AYSPlayerCharacter::OnRep_CarriedObject()

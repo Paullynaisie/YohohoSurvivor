@@ -647,6 +647,9 @@ protected:
 	/** Tous les joueurs morts : les plumes en stock les ressuscitent automatiquement */
 	void TickPhoenixAutoRevive();
 
+	/** Game over : tous les joueurs sont morts, sans plume de phoenix ni réanimation gratuite (demande de Paul du 2026-11-12) */
+	void TickAllPlayersDead();
+
 	/** Sol où ressusciter : à côté du Brooker du bateau, sinon de celui de l'île */
 	bool FindPhoenixRevivePoint(const AActor* Body, int32 Index, FVector& OutGround) const;
 

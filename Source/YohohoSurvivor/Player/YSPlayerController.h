@@ -67,6 +67,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSDeathScreenWidget> DeathScreenClass;
 
+	/** Écran des scores de fin de partie, après « BRAVO » / « GAME OVER » (réglages : WBP_Scoreboard) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<class UYSScoreboardWidget> ScoreboardClass;
+
 	/** Widget de l'icône de capacité (en bas au centre de l'écran) */
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSAbilityIconWidget> AbilityIconClass;
@@ -225,8 +229,23 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<class UYSFlowHUDWidget> FlowHUD;
 
-	/** Victoire vue par cette machine : secondes avant le retour au menu (-1 = pas de victoire, -2 = déjà parti) */
+	/** Fin de partie vue par cette machine : secondes avant l'écran des scores (-1 = partie en cours, -2 = écran affiché) */
 	float VictoryReturnTimer = -1.0f;
+
+	/** Écran des scores (créé à la fin de la partie) */
+	UPROPERTY(Transient)
+	TObjectPtr<class UYSScoreboardWidget> Scoreboard;
+
+	/** Écran rempli avec les upgrades copiées par le serveur (sinon il se remplit dès qu'elles arrivent) */
+	bool bScoreboardCaptured = false;
+
+	/** Affiche l'écran des scores (fin du « BRAVO » / « GAME OVER ») */
+	void ShowScoreboard();
+
+	/** Remplit l'écran des scores avec les données répliquées (joueur local et équipe) */
+	void RefreshScoreboard();
+
+	bool IsScoreboardShown() const;
 
 	/** Annonce « Jour X » */
 	UPROPERTY(Transient)

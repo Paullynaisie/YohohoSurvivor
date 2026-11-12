@@ -9,6 +9,7 @@
 #include "EngineUtils.h"
 #include "Island/YSIsland.h"
 #include "LandscapeProxy.h"
+#include "Core/YSMatchStats.h"
 #include "Core/YSPlayerState.h"
 #include "NPC/YSBrookerNPC.h"
 #include "Player/YSPlayerCharacter.h"
@@ -85,6 +86,9 @@ void AYSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSGameState, bVictory);
 	DOREPLIFETIME(AYSGameState, bGameOver);
 	DOREPLIFETIME(AYSGameState, VictoryReturnDelay);
+	DOREPLIFETIME(AYSGameState, ClockPausedTime);
+	DOREPLIFETIME(AYSGameState, bClockPaused);
+	DOREPLIFETIME(AYSGameState, FinalClockTime);
 	DOREPLIFETIME(AYSGameState, bOvertime);
 	DOREPLIFETIME(AYSGameState, IslandSinkStartServerTime);
 	DOREPLIFETIME(AYSGameState, IslandSinkDuration);
@@ -276,6 +280,63 @@ float AYSGameState::GetMatchElapsedTime() const
 	return bMatchStarted ? FMath::Max(0.0, GetServerWorldTimeSeconds() - MatchStartServerTime) : 0.0f;
 }
 
+void AYSGameState::SetClockPaused(bool bPaused)
+{
+	if (bPaused == bClockPaused)
+	{
+		return;
+	}
+	const double Now = GetWorld()->GetRealTimeSeconds();
+	if (!bPaused)
+	{
+		ClockPausedTime += static_cast<float>(FMath::Max(0.0, Now - ClockPauseStartRealTime));
+	}
+	bClockPaused = bPaused;
+	ClockPauseStartRealTime = Now;
+	ForceNetUpdate();
+}
+
+void AYSGameState::OnRep_ClockPaused()
+{
+	// client : la pause en cours est comptée depuis son arrivée sur cette machine
+	ClockPauseStartRealTime = GetWorld()->GetRealTimeSeconds();
+}
+
+float AYSGameState::GetMatchClockTime() const
+{
+	if (FinalClockTime >= 0.0f)
+	{
+		return FinalClockTime;
+	}
+	if (!bMatchStarted)
+	{
+		return 0.0f;
+	}
+	float Time = GetMatchElapsedTime() + ClockPausedTime;
+	if (bClockPaused)
+	{
+		Time += static_cast<float>(FMath::Max(0.0, GetWorld()->GetRealTimeSeconds() - ClockPauseStartRealTime));
+	}
+	return Time;
+}
+
+void AYSGameState::FinishMatch()
+{
+	if (!HasAuthority() || FinalClockTime >= 0.0f)
+	{
+		return;
+	}
+	FinalClockTime = GetMatchClockTime();
+	UE_LOG(LogTemp, Log, TEXT("[YSScoreboard] Fin de partie (%s) : durée %.0f s (dont %.0f s de pauses d'upgrade)"), bVictory ? TEXT("BRAVO") : TEXT("GAME OVER"), FinalClockTime, ClockPausedTime);
+	for (APlayerState* Player : PlayerArray)
+	{
+		if (AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player))
+		{
+			YSPlayer->CaptureFinalUpgrades();
+		}
+	}
+}
+
 void AYSGameState::StartDay(int32 Day)
 {
 	DayNumber = Day;
@@ -289,7 +350,7 @@ float AYSGameState::GetDayElapsedTime() const
 	return bMatchStarted ? FMath::Max(0.0, GetServerWorldTimeSeconds() - DayStartServerTime) : 0.0f;
 }
 
-void AYSGameState::ReportDamage(const AActor* Victim, float Amount, const FVector& ImpactLocation, const AController* InstigatorController, bool bCritical)
+void AYSGameState::ReportDamage(const AActor* Victim, float Amount, const FVector& ImpactLocation, const AController* InstigatorController, bool bCritical, const AActor* DamageCauser)
 {
 	if (!Victim || !Victim->HasAuthority())
 	{
@@ -300,6 +361,12 @@ void AYSGameState::ReportDamage(const AActor* Victim, float Amount, const FVecto
 	if (!GameState)
 	{
 		return;
+	}
+
+	// écran des scores : dégâts infligés par un joueur (NME, bateaux de NME), pas après la fin de la partie
+	if (!GameState->IsMatchEnded())
+	{
+		YSMatchStats::RecordDamageDealt(Victim, Amount, InstigatorController, DamageCauser);
 	}
 
 	const APawn* VictimPawn = Cast<APawn>(Victim);

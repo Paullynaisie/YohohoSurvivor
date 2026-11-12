@@ -81,6 +81,32 @@ void AYSGameMode::Tick(float DeltaSeconds)
 	TickJollyShips();
 	TickGalions();
 	TickPhoenixAutoRevive();
+	TickAllPlayersDead();
+}
+
+void AYSGameMode::TickAllPlayersDead()
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	// encore une plume (ou la réanimation gratuite du Medic de l'équipage) : TickPhoenixAutoRevive s'en charge
+	if (!YSGameState || YSGameState->IsMatchEnded() || YSGameState->GetPhoenixFeathers() > 0 || AYSBoatCrew::FindFreeRevive(GetWorld()) || GetWorld()->IsPaused())
+	{
+		return;
+	}
+	// tous morts, corps au sol (la dernière mort a fini son ragdoll : plus de personnage contrôlé), comme la réanimation automatique
+	int32 Dead = 0;
+	for (const APlayerState* Player : YSGameState->PlayerArray)
+	{
+		const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(Player);
+		if (!YSPlayer || Cast<AYSPlayerCharacter>(Player->GetPawn()) || !YSPlayer->IsDead())
+		{
+			return;
+		}
+		++Dead;
+	}
+	if (Dead > 0)
+	{
+		GameOver(*FString::Printf(TEXT("les %d joueur(s) sont morts sans plume de phoenix"), Dead));
+	}
 }
 
 bool AYSGameMode::IsGalionPhase() const
@@ -394,7 +420,8 @@ void AYSGameMode::AddTeamExperience(float Amount)
 void AYSGameMode::StartUpgradeSelection()
 {
 	AYSGameState* YSGameState = GetGameState<AYSGameState>();
-	if (!YSGameState || (PendingLevelUps <= 0 && PendingDoubloonRewards.Num() == 0))
+	// partie finie : plus de choix (l'écran des scores est affiché)
+	if (!YSGameState || YSGameState->IsMatchEnded() || (PendingLevelUps <= 0 && PendingDoubloonRewards.Num() == 0))
 	{
 		return;
 	}
@@ -467,6 +494,8 @@ void AYSGameMode::StartUpgradeSelection()
 		SetPause(FirstPlayer);
 		// la pause vit sur le WorldSettings (Pauser répliqué) : envoi immédiat, le temps du serveur étant figé
 		GetWorldSettings()->ForceNetUpdate();
+		// le chrono global continue pendant le choix (pas les timers de phase)
+		YSGameState->SetClockPaused(true);
 	}
 
 	TryFinishUpgradeSelection();
@@ -702,6 +731,7 @@ void AYSGameMode::TryFinishUpgradeSelection()
 		UE_LOG(LogTemp, Log, TEXT("[YSGameMode] Tous les joueurs ont choisi : la partie reprend"));
 		ClearPause();
 		GetWorldSettings()->ForceNetUpdate();
+		YSGameState->SetClockPaused(false);
 	}
 }
 
@@ -1583,7 +1613,7 @@ void AYSGameMode::GameOver(const TCHAR* Reason)
 		return;
 	}
 	YSGameState->SetGameOver(GameOverReturnDelay);
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] GAME OVER (%s) : retour au menu dans %.0f s"), Reason, GameOverReturnDelay);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] GAME OVER (%s) : écran des scores dans %.0f s"), Reason, GameOverReturnDelay);
 }
 
 void AYSGameMode::TriggerVictory(const TCHAR* Reason, float ReturnDelay)
@@ -1595,7 +1625,7 @@ void AYSGameMode::TriggerVictory(const TCHAR* Reason, float ReturnDelay)
 	}
 	const float Delay = ReturnDelay >= 0.0f ? ReturnDelay : VictoryReturnDelay;
 	YSGameState->SetVictory(Delay);
-	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] BRAVO (%s) : retour au menu dans %.0f s"), Reason, Delay);
+	UE_LOG(LogTemp, Log, TEXT("[YSGameMode] BRAVO (%s) : écran des scores dans %.0f s"), Reason, Delay);
 }
 
 TSubclassOf<AYSInteractiveObject> AYSGameMode::PickRandomCombatPostItem() const

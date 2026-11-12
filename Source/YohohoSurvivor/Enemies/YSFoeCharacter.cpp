@@ -19,6 +19,7 @@
 #include "Components/WidgetComponent.h"
 #include "Core/YSCombat.h"
 #include "Core/YSCustomization.h"
+#include "Core/YSMatchStats.h"
 #include "Core/YSDamageTypes.h"
 #include "Core/YSGameplayTags.h"
 #include "Core/YSGameMode.h"
@@ -510,7 +511,7 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	}
 
 	// chiffre de dégâts chez tous les joueurs, au point d'impact (position du projectile)
-	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator, UYSCriticalDamageType::IsCritical(DamageEvent));
+	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator, UYSCriticalDamageType::IsCritical(DamageEvent), DamageCauser);
 
 	// hit color : couleur du joueur qui frappe, sur toutes les machines
 	StartHitColor(EventInstigator, DamageCauser);
@@ -532,6 +533,12 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 
 	if (Health <= 0.0f)
 	{
+		// écran des scores : NME tué par ce joueur (ou son minion, sa bombe, son poste)
+		const AYSGameState* KillGameState = GetWorld()->GetGameState<AYSGameState>();
+		if (KillGameState && !KillGameState->IsMatchEnded())
+		{
+			YSMatchStats::RecordKill(EventInstigator, DamageCauser);
+		}
 		PendingDeathImpulse = ComputeDeathImpulse(DamageEvent, EventInstigator);
 		Die();
 		return Damage;

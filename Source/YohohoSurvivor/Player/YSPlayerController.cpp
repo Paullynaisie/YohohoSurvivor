@@ -48,6 +48,8 @@
 #include "UI/YSDayBannerWidget.h"
 #include "Upgrades/YSUpgrade.h"
 #include "UI/YSDeathScreenWidget.h"
+#include "UI/YSScoreboardWidget.h"
+#include "Components/Button.h"
 #include "Camera/CameraActor.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/SceneCapture2D.h"
@@ -628,7 +630,7 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	const bool bDead = MyPlayerState && MyPlayerState->IsDead();
 	if (DeathScreen)
 	{
-		DeathScreen->SetVisibility(bDead ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+		DeathScreen->SetVisibility(bDead && !IsScoreboardShown() ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 	}
 
 	// le menu disparaît dès que le joueur a son personnage (et ne revient plus : entre deux personnages, réanimation ou
@@ -1117,12 +1119,14 @@ void AYSPlayerController::UpdateShipBoardingUI(float DeltaSeconds)
 	ShipBoarding->SetBoarding(YSGameState->IsShipPresent() && !bVictory ? YSGameState->GetShipAboardPlayers() : 0, YSGameState->GetShipTotalPlayers());
 	ShipBoarding->SetVictory(bVictory);
 	ShipBoarding->SetGameOver(bGameOver);
+	// écran des scores : plus de « BRAVO » / « GAME OVER » derrière
+	ShipBoarding->SetVisibility(IsScoreboardShown() ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
 
-	// « BRAVO » puis retour au menu ; l'hôte part un peu après ses clients (sinon ils voient une erreur réseau)
+	// « BRAVO » / « GAME OVER » puis écran des scores (bouton « Retour menu »), au lieu du retour automatique au menu
 	if (bVictory && VictoryReturnTimer == -1.0f)
 	{
-		VictoryReturnTimer = YSGameState->GetVictoryReturnDelay() + (HasAuthority() && GetNetMode() != NM_Standalone ? 0.5f : 0.0f);
-		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : %s, retour au menu dans %.1f s"), *GetName(), bGameOver ? TEXT("GAME OVER") : TEXT("BRAVO"), VictoryReturnTimer);
+		VictoryReturnTimer = YSGameState->GetVictoryReturnDelay();
+		UE_LOG(LogTemp, Log, TEXT("[YSScoreboard] %s : %s, écran des scores dans %.1f s"), *GetName(), bGameOver ? TEXT("GAME OVER") : TEXT("BRAVO"), VictoryReturnTimer);
 	}
 	if (VictoryReturnTimer >= 0.0f)
 	{
@@ -1130,9 +1134,69 @@ void AYSPlayerController::UpdateShipBoardingUI(float DeltaSeconds)
 		if (VictoryReturnTimer < 0.0f)
 		{
 			VictoryReturnTimer = -2.0f;
-			YSLeaveGame();
+			ShowScoreboard();
 		}
 	}
+	// upgrades copiées par le serveur pas encore arrivées : l'écran se remplit dès qu'elles sont là
+	if (IsScoreboardShown() && !bScoreboardCaptured)
+	{
+		RefreshScoreboard();
+	}
+}
+
+bool AYSPlayerController::IsScoreboardShown() const
+{
+	return Scoreboard && Scoreboard->IsVisible();
+}
+
+void AYSPlayerController::ShowScoreboard()
+{
+	UGameViewportSubsystem* ViewportSubsystem = UGameViewportSubsystem::Get(GetWorld());
+	if (!Scoreboard && ViewportSubsystem)
+	{
+		Scoreboard = CreateWidget<UYSScoreboardWidget>(this, ScoreboardClass ? ScoreboardClass.Get() : UYSScoreboardWidget::StaticClass());
+		Scoreboard->OnReturnClicked.BindUObject(this, &AYSPlayerController::YSLeaveGame);
+		FGameViewportWidgetSlot ScoreSlot;
+		ScoreSlot.Anchors = FAnchors(0.0f, 0.0f, 1.0f, 1.0f);
+		ScoreSlot.ZOrder = 50;
+		ViewportSubsystem->AddWidgetForPlayer(Scoreboard, GetLocalPlayer(), ScoreSlot);
+	}
+	if (!Scoreboard)
+	{
+		return;
+	}
+	Scoreboard->SetVisibility(ESlateVisibility::Visible);
+	if (DeathScreen)
+	{
+		DeathScreen->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	RefreshScoreboard();
+	// manette : focus sur le bouton
+	if (UButton* ReturnButton = Scoreboard->GetReturnButton())
+	{
+		ReturnButton->SetKeyboardFocus();
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSScoreboard] %s : écran des scores affiché"), *GetName());
+}
+
+void AYSPlayerController::RefreshScoreboard()
+{
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPlayerState* MyPlayerState = GetPlayerState<AYSPlayerState>();
+	if (!Scoreboard || !YSGameState || !MyPlayerState)
+	{
+		return;
+	}
+	TArray<FYSMatchStats> TeamStats;
+	for (const APlayerState* TeamPlayer : YSGameState->PlayerArray)
+	{
+		if (const AYSPlayerState* YSPlayer = Cast<AYSPlayerState>(TeamPlayer))
+		{
+			TeamStats.Add(YSPlayer->GetMatchStats());
+		}
+	}
+	bScoreboardCaptured = MyPlayerState->GetFinalUpgrades().bCaptured;
+	Scoreboard->SetResult(YSGameState->IsVictory(), YSGameState->GetMatchClockTime(), MyPlayerState->GetFinalUpgrades(), MyPlayerState->GetMatchStats(), TeamStats);
 }
 
 void AYSPlayerController::YSShipArrive()
@@ -1763,7 +1827,7 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 			Sea.bShow = true;
 			Sea.bPart3 = true;
 		}
-		FlowHUD->Refresh(YSGameState->GetFlowStatus(), YSGameState->GetFlowPhaseRemaining(), YSGameState->GetMatchElapsedTime(), YSGameState->IsMatchStarted(),
+		FlowHUD->Refresh(YSGameState->GetFlowStatus(), YSGameState->GetFlowPhaseRemaining(), YSGameState->GetMatchClockTime(), YSGameState->IsMatchStarted(),
 			bPart3 ? -1.0f : YSGameState->GetPart2Elapsed(), YSGameState->GetPart2Duration(), Sea);
 	}
 }

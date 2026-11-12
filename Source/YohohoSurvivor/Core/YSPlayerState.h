@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
 #include "Upgrades/YSUpgrade.h"
+#include "Core/YSMatchStats.h"
 #include "YSPlayerState.generated.h"
 
 class AYSPlayerCharacter;
@@ -57,6 +58,14 @@ protected:
 	/** Gaucher (miroir du personnage) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Customization")
 	bool bLeftHanded = false;
+
+	/** Statistiques de la partie (serveur ; écran des scores) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Stats")
+	FYSMatchStats MatchStats;
+
+	/** Upgrades copiées à la fin de la partie (écran des scores) */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Stats")
+	FYSScoreUpgrades FinalUpgrades;
 
 	/** Numéro d'arrivée dans la partie (hôte = 1 ; serveur) : nom par défaut « Player N » */
 	int32 PlayerNumber = 0;
@@ -134,4 +143,14 @@ public:
 	/** Serveur uniquement */
 	void SetPlayerNumber(int32 Number) { PlayerNumber = Number; }
 	void SetCustomization(int32 NewColorIndex, int32 NewFaceIndex);
+
+	const FYSMatchStats& GetMatchStats() const { return MatchStats; }
+
+	/** Serveur uniquement (YSMatchStats) ; répliqué au rythme du PlayerState, envoyé en entier à la fin (CaptureFinalUpgrades) */
+	FYSMatchStats& EditMatchStats() { return MatchStats; }
+
+	const FYSScoreUpgrades& GetFinalUpgrades() const { return FinalUpgrades; }
+
+	/** Serveur, fin de partie : upgrades du personnage (vivant, sinon son corps) copiées pour l'écran des scores */
+	void CaptureFinalUpgrades();
 };
