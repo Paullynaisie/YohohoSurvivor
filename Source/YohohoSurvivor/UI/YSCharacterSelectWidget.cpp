@@ -167,6 +167,7 @@ void UYSCharacterSelectWidget::BuildWidgetTree()
 		ArrowProxy->Menu = this;
 		Arrow->OnClicked.AddDynamic(ArrowProxy, &UYSCharacterSelectButtonProxy::HandleClicked);
 		ButtonProxies.Add(ArrowProxy);
+		PlayModeArrows.Add(ArrowSize);
 		PlayModeRow->AddChildToHorizontalBox(ArrowSize)->SetVerticalAlignment(VAlign_Center);
 	};
 	AddPlayModeArrow(-1, PlayModeLeftArrow);
@@ -329,7 +330,7 @@ void UYSCharacterSelectWidget::SetInviteAvailable(bool bAvailable)
 	}
 }
 
-void UYSCharacterSelectWidget::SetPlayMode(bool bVisible, int32 ModeIndex)
+void UYSCharacterSelectWidget::SetPlayMode(bool bVisible, int32 ModeIndex, bool bEditable)
 {
 	if (!PlayModeBlock || !PlayModeNameText)
 	{
@@ -339,6 +340,15 @@ void UYSCharacterSelectWidget::SetPlayMode(bool bVisible, int32 ModeIndex)
 	if (PlayModeBlock->GetVisibility() != Wanted)
 	{
 		PlayModeBlock->SetVisibility(Wanted);
+	}
+	// client : le mode est affiché, les flèches restent (cachées sans prendre de place en moins : le nom reste centré)
+	const ESlateVisibility ArrowVisibility = bEditable ? ESlateVisibility::Visible : ESlateVisibility::Hidden;
+	for (UWidget* Arrow : PlayModeArrows)
+	{
+		if (Arrow && Arrow->GetVisibility() != ArrowVisibility)
+		{
+			Arrow->SetVisibility(ArrowVisibility);
+		}
 	}
 	if (ModeIndex != DisplayedPlayMode)
 	{

@@ -34,6 +34,12 @@ AYSSuperTreasureMap::AYSSuperTreasureMap()
 	DisplayName = NSLOCTEXT("YS", "SuperTreasureMap", "Super carte au trésor");
 }
 
+bool AYSSuperTreasureMap::CanInteract(const AYSPlayerCharacter* Character) const
+{
+	// comme un objet portable, livré ou non
+	return IsCarriable() && !GetCarrier() && Character && Character->IsAlive() && !Character->IsCarrying() && !IsActorBeingDestroyed();
+}
+
 void AYSSuperTreasureMap::BeginPlay()
 {
 	Super::BeginPlay();

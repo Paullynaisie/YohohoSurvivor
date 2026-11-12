@@ -889,11 +889,35 @@ void AYSFlowMode::SpawnZonesOfInterest()
 			(Zone.IslandData ? Zone.SecondaryItems : Zone.MainItems).Add(BoatCoreItemClass);
 		}
 	}
+	// répartition (demande de Paul du 2026-11-12) : les boussoles sur les îles, l'équipage sur les batailles navales ;
+	// s'il y en a plus que de ZI du bon type, les suivantes vont sur les autres ZI (une boussole au plus par ZI)
+	TArray<int32> IslandZones;
+	TArray<int32> BattleZones;
+	for (const int32 Index : Order)
+	{
+		(Zones[Index].IslandData ? IslandZones : BattleZones).Add(Index);
+	}
+	TArray<int32> CompassSlots = IslandZones;
+	CompassSlots.Append(BattleZones);
 	const int32 Compasses = CompassItemClass ? FMath::Min(CompassCount, Zones.Num()) : 0;
 	CompassTotal = Compasses;
 	for (int32 K = 0; K < Compasses; ++K)
 	{
-		Zones[Order[K]].MainItems.Add(CompassItemClass);
+		Zones[CompassSlots[K]].MainItems.Add(CompassItemClass);
+	}
+	// équipage : batailles navales d'abord, puis les ZI sans boussole, puis n'importe où
+	TArray<int32> CrewSlots = BattleZones;
+	for (const int32 Index : IslandZones)
+	{
+		if (!Zones[Index].MainItems.Contains(CompassItemClass))
+		{
+			CrewSlots.Add(Index);
+		}
+	}
+	CrewSlots.StableSort([&Zones, this](int32 A, int32 B) { return !Zones[A].MainItems.Contains(CompassItemClass) && Zones[B].MainItems.Contains(CompassItemClass); });
+	if (CrewSlots.Num() == 0)
+	{
+		CrewSlots = Order;
 	}
 	TArray<TSubclassOf<AYSInteractiveObject>> Crew = CrewItemClasses;
 	Crew.RemoveAll([](const TSubclassOf<AYSInteractiveObject>& Class) { return !Class; });
@@ -915,8 +939,8 @@ void AYSFlowMode::SpawnZonesOfInterest()
 	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Zones d'intérêt : équipage tiré au hasard (%d sur %d) : %s"), Crew.Num(), CrewItemClasses.Num(), CrewNames.IsEmpty() ? TEXT("-") : *CrewNames);
 	for (int32 K = 0; K < Crew.Num(); ++K)
 	{
-		// ZI sans boussole d'abord ; s'il y a plus de membres d'équipage que de ZI sans boussole, les suivants vont n'importe où (choix de Claude)
-		const int32 Slot = Compasses + K < Order.Num() ? Order[Compasses + K] : Order[K % Order.Num()];
+		// s'il y a plus de membres d'équipage que de places prévues, les suivants vont n'importe où (choix de Claude)
+		const int32 Slot = K < CrewSlots.Num() ? CrewSlots[K] : Order[K % Order.Num()];
 		Zones[Slot].MainItems.Add(Crew[K]);
 	}
 	if (SuperTreasureMapClass)

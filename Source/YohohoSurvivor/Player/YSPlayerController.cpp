@@ -699,9 +699,9 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	const AYSGameState* IntroGameState = GetWorld()->GetGameState<AYSGameState>();
 	const bool bBoatIntro = IntroGameState && IntroGameState->UsesBoatIntro();
 	CharacterSelectMenu->SetBoatIntro(bBoatIntro, MyPlayerState && MyPlayerState->IsReady());
-	// mode de jeu : seulement chez l'hôte (serveur), tant que la partie n'a pas commencé
-	CharacterSelectMenu->SetPlayMode(GetNetMode() != NM_Client && IntroGameState && !IntroGameState->IsMatchStarted(),
-		IntroGameState ? static_cast<int32>(IntroGameState->GetPlayMode()) : static_cast<int32>(EYSPlayMode::Normal));
+	// mode de jeu : affiché chez tout le monde tant que la partie n'a pas commencé, choisi par l'hôte seul (flèches cachées chez les clients)
+	CharacterSelectMenu->SetPlayMode(IntroGameState && !IntroGameState->IsMatchStarted(),
+		IntroGameState ? static_cast<int32>(IntroGameState->GetPlayMode()) : static_cast<int32>(EYSPlayMode::Normal), GetNetMode() != NM_Client);
 	// Hired crew : même règle (hôte, avant le début de la partie)
 	CharacterSelectMenu->SetHiredCrew(GetNetMode() != NM_Client && IntroGameState && !IntroGameState->IsMatchStarted(), IntroGameState && IntroGameState->IsHiredCrew());
 	UpdateCharacterPreview(!bHasCharacter && !bDead && !(bBoatIntro && MyPlayerState && MyPlayerState->IsReady()));

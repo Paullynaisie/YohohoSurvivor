@@ -4,6 +4,7 @@
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/YSGameplayTags.h"
+#include "Core/YSGameState.h"
 #include "Engine/DamageEvents.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
@@ -173,9 +174,30 @@ void AYSProjectile::BeginPlay()
 		}
 	}
 
-	// AMMO de canon : aucun bateau ne l'arrête, elle vole sous les ponts (leurs modules ont des hurtbox jusqu'au niveau de la mer)
+	// balle d'un joueur (ou de son minion / poste de combat) : le bateau des joueurs ne l'arrête pas (mât, bastingage : demande de Paul
+	// du 2026-11-12, les balles tirées depuis le poste de shoot restaient bloquées dans le mât)
+	const AYSPlayerCharacter* ShooterCharacter = Cast<AYSPlayerCharacter>(GetInstigator());
+	const AYSGameState* ShotGameState = GetWorld()->GetGameState<AYSGameState>();
+	AYSPirateShip* PlayersBoat = ShotGameState ? ShotGameState->GetGameBoat() : nullptr;
+	if (ShooterCharacter && PlayersBoat)
+	{
+		Collision->IgnoreActorWhenMoving(PlayersBoat, true);
+		TArray<AActor*> Attached;
+		PlayersBoat->GetAttachedActors(Attached, true, true);
+		for (AActor* Actor : Attached)
+		{
+			if (!Actor->IsA<APawn>())
+			{
+				Collision->IgnoreActorWhenMoving(Actor, true);
+			}
+		}
+	}
+
+	// AMMO de canon : aucun bateau ne l'arrête, elle vole sous les ponts (leurs modules ont des hurtbox jusqu'au niveau de la mer) ;
+	// ni le sol ni les props (boulets trop gros, bloqués par certaines surfaces : demande de Paul du 2026-11-12)
 	if (bShipShot)
 	{
+		Collision->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Ignore);
 		for (TActorIterator<AYSPirateShip> It(GetWorld()); It; ++It)
 		{
 			Collision->IgnoreActorWhenMoving(*It, true);

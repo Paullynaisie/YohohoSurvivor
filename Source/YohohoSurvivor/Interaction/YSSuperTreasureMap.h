@@ -27,6 +27,12 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
+	/**
+	 *  Toujours reprenable, même livrée au core du bateau (objectif secondaire validé une seule fois : une carte livrée ne valide plus
+	 *  rien), tant qu'elle n'a pas disparu au début du combat contre Davy Jones (demande de Paul du 2026-11-12)
+	 */
+	virtual bool CanInteract(const AYSPlayerCharacter* Character) const override;
+
 protected:
 
 	/** Pointillés (locaux, coordonnées monde, seulement chez le joueur qui tient la carte) */

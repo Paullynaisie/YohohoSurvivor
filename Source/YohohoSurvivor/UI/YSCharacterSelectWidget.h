@@ -441,8 +441,8 @@ public:
 	/** Appelé quand l'hôte clique sur une flèche du mode de jeu (-1 = gauche, +1 = droite) */
 	FYSOnCharacterChosen OnPlayModeStep;
 
-	/** Bloc « Mode de jeu » affiché (hôte) ou caché, mode affiché (index dans Play Mode Names) */
-	void SetPlayMode(bool bVisible, int32 ModeIndex);
+	/** Bloc « Mode de jeu » affiché ou caché, mode affiché (index dans Play Mode Names) ; bEditable faux (clients) : sans les flèches */
+	void SetPlayMode(bool bVisible, int32 ModeIndex, bool bEditable = true);
 
 	/** Appelé quand l'hôte coche / décoche « Hired crew » */
 	FYSOnCameraLockChanged OnHiredCrewChanged;
@@ -633,6 +633,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> PlayModeNameText;
+
+	/** Flèches du mode (cachées chez les clients : l'hôte seul choisit) */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UWidget>> PlayModeArrows;
 
 	int32 DisplayedPlayMode = INDEX_NONE;
 };

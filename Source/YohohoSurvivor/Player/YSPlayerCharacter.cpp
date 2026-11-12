@@ -1366,6 +1366,10 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	UpdateCursorCamera(DeltaSeconds);
 	UpdateAutoAttackInput();
 	UpdateAbilityHeldInput();
+	if (HiredCrewComponent)
+	{
+		UpdateHiredCarryPassThrough();
+	}
 	UpdateNameplate();
 	UpdateInteractPrompt();
 	if (HasAuthority())
@@ -2279,7 +2283,7 @@ void AYSPlayerCharacter::UpdateStamina(float DeltaSeconds)
 			}
 
 			// noyade : la nage consomme les PV une fois la stamina vide, jusqu'à la mort (god : rien)
-			if (bSwimDrain && !bHadStamina && CanBeDamaged())
+			if (bSwimDrain && !bHadStamina && CanBeDamaged() && !IsHiredCarrying())
 			{
 				Health = FMath::Max(0.0f, Health - DrownHealthCost);
 				LastDamageTime = Now;
@@ -4104,9 +4108,37 @@ void AYSPlayerCharacter::ForEachHeldAction(TFunctionRef<void(const UYSAbilityCom
 
 bool AYSPlayerCharacter::IsInvulnerable() const
 {
+	// HiredMouss qui porte un objet : invulnérable (il mourait au milieu d'un massif ; demande de Paul du 2026-11-12)
+	if (IsHiredCarrying())
+	{
+		return true;
+	}
 	bool bInvulnerable = false;
 	ForEachHeldAction([&bInvulnerable](const UYSAbilityComponent* Action) { bInvulnerable = bInvulnerable || Action->IsGrantingInvulnerability(); });
 	return bInvulnerable;
+}
+
+bool AYSPlayerCharacter::IsHiredCarrying() const
+{
+	return HiredCrewComponent != nullptr && IsValid(CarriedObject);
+}
+
+void AYSPlayerCharacter::UpdateHiredCarryPassThrough()
+{
+	// imposé tant qu'il porte (une roulade / un dash qui finit ne le rend pas solide), rendu solide une fois l'objet posé
+	if (IsHiredCarrying())
+	{
+		if (!IsPassingThroughPawns())
+		{
+			YSCombat::SetPassThroughCharacters(GetCapsuleComponent(), true);
+		}
+		bHiredCarryPassThrough = true;
+	}
+	else if (bHiredCarryPassThrough)
+	{
+		bHiredCarryPassThrough = false;
+		YSCombat::SetPassThroughCharacters(GetCapsuleComponent(), false);
+	}
 }
 
 bool AYSPlayerCharacter::IsPassingThroughPawns() const

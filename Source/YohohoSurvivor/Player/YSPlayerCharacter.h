@@ -1368,6 +1368,13 @@ public:
 	/** Invulnérable en ce moment (action en cours : roulade du Rolling shot…) */
 	bool IsInvulnerable() const;
 
+	/** HiredMouss qui porte un objet : invulnérable, traverse les NME (et les autres personnages) */
+	bool IsHiredCarrying() const;
+
+	/** HiredMouss : traversée des personnages appliquée par le port d'un objet (toutes les machines, Tick) */
+	void UpdateHiredCarryPassThrough();
+	bool bHiredCarryPassThrough = false;
+
 	/** Traverse les pawns en ce moment (capsule qui ignore les Pawns : roulade, dash, saut, apparition d'un minion) : les projectiles NME le traversent aussi */
 	bool IsPassingThroughPawns() const;
 
