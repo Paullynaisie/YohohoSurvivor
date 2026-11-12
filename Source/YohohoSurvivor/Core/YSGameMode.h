@@ -170,6 +170,19 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="-1", EditCondition="bAllowUpgradeReroll"))
 	int32 MaxUpgradeRerolls = -1;
 
+	/**
+	 *  Réseau : pendant un choix d'upgrade, un client qui n'a pas encore choisi est vérifié toutes ces secondes (temps réel) : son état
+	 *  lui est renvoyé, et s'il n'affiche pas ses propositions il en reçoit de nouvelles (0 = jamais)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Network", meta=(ClampMin="0", Units="Seconds"))
+	float UpgradeResyncInterval = 5.0f;
+
+	/** Réseau : un joueur prêt et vivant sans personnage (apparition ratée au lancement) est cherché toutes ces secondes (0 = jamais) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Network", meta=(ClampMin="0", Units="Seconds"))
+	float MissingPawnCheckInterval = 5.0f;
+
+	float MissingPawnTimer = 0.0f;
+
 	/** Niveau d'équipe où chaque joueur choisit sa classe (upgrades de classe de son personnage, sans hasard) ; ignoré avec Doubloon Rewards */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level", meta=(ClampMin="1", EditCondition="!bDoubloonRewards"))
 	int32 ClassUpgradeLevel = 5;
@@ -524,6 +537,26 @@ public:
 
 	/** XP gagnée par l'équipe (NME tué, debug) : gère les montées de niveau et la sélection d'upgrade */
 	void AddTeamExperience(float Amount);
+
+	/**
+	 *  Réseau : renvoie l'état d'un joueur à son client. PlayerController, personnage, PlayerState, GameState et pause en réplication
+	 *  forcée (pendant la pause du choix d'upgrade, le temps du serveur est figé : rien n'est répliqué sans ForceNetUpdate), et
+	 *  possession renvoyée (ClientRestart) si le client n'a pas confirmé son personnage actuel (la relance automatique du moteur ne
+	 *  tourne pas pendant la pause).
+	 */
+	void ResyncPlayer(APlayerController* Player, const TCHAR* Reason);
+
+	/** Sélection d'upgrade : le client dit ne pas afficher ses propositions -> nouvelles propositions pour lui, renvoyées */
+	void PlayerRequestedUpgradeResync(APlayerController* Player);
+
+	/**
+	 *  Joueurs prêts, pas morts, sans personnage alors que la partie a commencé (apparition ratée au lancement) : ils apparaissent ;
+	 *  les autres sont resynchronisés (bResyncOthers). Appelé toutes les Missing Pawn Check Interval et au débarquement de la chaloupe.
+	 */
+	void RespawnMissingPlayers(const TCHAR* Reason, bool bResyncOthers);
+
+	/** Réseau : un joueur qui n'a pas encore choisi son upgrade est vérifié toutes ces secondes (temps réel) */
+	float GetUpgradeResyncInterval() const { return UpgradeResyncInterval; }
 
 	bool IsUpgradeRerollAllowed() const { return bAllowUpgradeReroll; }
 

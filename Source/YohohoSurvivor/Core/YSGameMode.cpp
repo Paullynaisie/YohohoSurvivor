@@ -89,6 +89,107 @@ void AYSGameMode::Tick(float DeltaSeconds)
 	TickPhoenixAutoRevive();
 	TickAllPlayersDead();
 	TickHiredCrew();
+
+	// apparition ratée au lancement : le joueur restait « mort » pour l'hôte
+	if (MissingPawnCheckInterval > 0.0f && !YSGameState->IsMatchEnded() && !GetWorld()->IsPaused())
+	{
+		MissingPawnTimer += DeltaSeconds;
+		if (MissingPawnTimer >= MissingPawnCheckInterval)
+		{
+			MissingPawnTimer = 0.0f;
+			RespawnMissingPlayers(TEXT("vérification périodique"), false);
+		}
+	}
+}
+
+void AYSGameMode::ResyncPlayer(APlayerController* Player, const TCHAR* Reason)
+{
+	if (!Player)
+	{
+		return;
+	}
+	APawn* Pawn = Player->GetPawn();
+	Player->ForceNetUpdate();
+	if (Pawn)
+	{
+		Pawn->ForceNetUpdate();
+	}
+	if (APlayerState* PlayerState = Player->GetPlayerState<APlayerState>())
+	{
+		PlayerState->ForceNetUpdate();
+	}
+	if (AGameStateBase* State = GetGameState<AGameStateBase>())
+	{
+		State->ForceNetUpdate();
+	}
+	GetWorldSettings()->ForceNetUpdate();
+
+	// client qui n'a pas confirmé son personnage actuel : possession renvoyée
+	const bool bResendPossession = Pawn && !Player->IsLocalController() && Player->AcknowledgedPawn != Pawn;
+	if (bResendPossession)
+	{
+		Player->ClientRestart(Pawn);
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSResync] %s (%s) : état renvoyé, personnage %s%s"), *Player->GetName(), Reason, Pawn ? *Pawn->GetName() : TEXT("aucun"),
+		bResendPossession ? TEXT(", possession renvoyée (pas confirmée par le client)") : TEXT(""));
+}
+
+void AYSGameMode::PlayerRequestedUpgradeResync(APlayerController* Player)
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
+	const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
+	if (!YSGameState || !YSGameState->IsUpgradeSelectionActive() || !PlayerState || !PlayerState->IsChoosingUpgrade())
+	{
+		return;
+	}
+
+	// nouvelles propositions du même type (la réplication les renvoie : le client les affiche s'il a son personnage)
+	if (Character && Character->IsAlive())
+	{
+		EYSUpgradeSelectionKind PlayerKind = CurrentSelectionKind;
+		const TArray<FYSUpgradeOffer> Offers = PickOffersForKind(Character, CurrentSelectionKind, PlayerKind);
+		if (Offers.Num() > 0)
+		{
+			const int32 RerollsLeft = PlayerState->GetUpgradeRerollsLeft();
+			PlayerState->SetUpgradeOffers(Offers);
+			PlayerState->SetUpgradeRerollsLeft(RerollsLeft);
+		}
+		UE_LOG(LogTemp, Warning, TEXT("[YSResync] %s n'affiche pas ses upgrades : %d nouvelle(s) proposition(s)"), *PlayerState->GetPlayerName(), Offers.Num());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSResync] %s n'affiche pas ses upgrades et n'a pas de personnage vivant sur le serveur"), *PlayerState->GetPlayerName());
+	}
+	ResyncPlayer(Player, TEXT("upgrades pas affichées"));
+}
+
+void AYSGameMode::RespawnMissingPlayers(const TCHAR* Reason, bool bResyncOthers)
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	if (!YSGameState || !YSGameState->IsMatchStarted() || YSGameState->IsMatchEnded())
+	{
+		return;
+	}
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* Player = It->Get();
+		const AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
+		if (!PlayerState || !PlayerState->IsReady() || PlayerState->IsDead())
+		{
+			continue;
+		}
+		if (!HasCharacter(Player))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[YSResync] %s : prêt, pas mort, mais sans personnage (%s) : il apparaît"), *PlayerState->GetPlayerName(), Reason);
+			RestartPlayer(Player);
+			ResyncPlayer(Player, Reason);
+		}
+		else if (bResyncOthers)
+		{
+			ResyncPlayer(Player, Reason);
+		}
+	}
 }
 
 void AYSGameMode::SetHiredCrew(bool bEnabled)
@@ -748,6 +849,12 @@ void AYSGameMode::StartUpgradeSelection()
 			}
 			PlayerState->SetUpgradeOffers(Offers);
 			PlayerState->SetUpgradeRerollsLeft(MaxUpgradeRerolls);
+			// pendant la pause rien n'est répliqué sans ForceNetUpdate : personnage (nouveau après un changement de classe), contrôleur
+			Player->ForceNetUpdate();
+			if (APawn* Pawn = Player->GetPawn())
+			{
+				Pawn->ForceNetUpdate();
+			}
 			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s : sélection %s%s"), *PlayerState->GetPlayerName(), *UEnum::GetValueAsString(Kind),
 				PlayerKind != Kind ? *FString::Printf(TEXT(" -> %s (rien à proposer)"), *UEnum::GetValueAsString(PlayerKind)) : TEXT(""));
 			UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s (%s, pool de %d, armes G %s / D %s) : %d proposition(s)"), *PlayerState->GetPlayerName(),
@@ -1287,9 +1394,13 @@ APawn* AYSGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewP
 	SpawnInfo.Instigator = GetInstigator();
 	SpawnInfo.ObjectFlags |= RF_Transient;
 	SpawnInfo.bDeferConstruction = true;
+	// jamais refusé pour une collision (chaloupe : places serrées, un autre joueur ou un HiredMouss à côté) : sans personnage,
+	// le joueur restait « mort » pour l'hôte au lancement de la partie
+	SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 	APawn* Pawn = GetWorld()->SpawnActor<APawn>(PawnClass, SpawnTransform, SpawnInfo);
 	if (!Pawn)
 	{
+		UE_LOG(LogTemp, Error, TEXT("[YSGameMode] Personnage %s de %s impossible à faire apparaître en %s"), *PawnClass->GetName(), NewPlayer ? *NewPlayer->GetName() : TEXT("?"), *SpawnTransform.GetLocation().ToCompactString());
 		return nullptr;
 	}
 
@@ -1300,6 +1411,11 @@ APawn* AYSGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewP
 		PlayerCharacter->SetLeftHanded(PlayerState && PlayerState->IsLeftHanded());
 	}
 	Pawn->FinishSpawning(SpawnTransform);
+	// tests automatisés en réseau : -YSGodAll = aucun joueur ne prend de dégâts (le « god » de la console ne touche que l'hôte)
+	if (FParse::Param(FCommandLine::Get(), TEXT("YSGodAll")))
+	{
+		Pawn->SetCanBeDamaged(false);
+	}
 	return Pawn;
 }
 

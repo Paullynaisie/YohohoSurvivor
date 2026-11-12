@@ -626,6 +626,8 @@ void AYSFlowMode::OnGameBoatLanded(AYSGameBoatLongboat* Boat, const FVector& Lan
 	{
 		Island->SpawnStartBoat(Landing, Boat->GetActorRotation().Yaw);
 	}
+	// joueur « mort » pour l'hôte (apparition ratée au lancement) : il apparaît sur la plage ; les autres reçoivent leur état à nouveau
+	RespawnMissingPlayers(TEXT("débarquement"), true);
 }
 
 void AYSFlowMode::UpgradeGameBoat()

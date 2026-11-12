@@ -960,6 +960,22 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerChooseUpgrade(int32 OfferIndex);
 
+	/** Serveur : choix d'upgrade de ce client en attente -> état renvoyé et vérification toutes les Upgrade Resync Interval (temps réel) */
+	void TickUpgradeResync();
+
+	/** Serveur : début de l'attente en cours (temps réel) */
+	double UpgradeResyncStartTime = 0.0;
+
+	/** Client : affiche-t-il ses OfferCount propositions ? Sinon il en demande de nouvelles */
+	UFUNCTION(Client, Reliable)
+	void ClientCheckUpgradeSelection(int32 OfferCount);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestUpgradeResync();
+
+	/** Personnage du menu d'upgrade : celui du contrôleur, sinon celui du PlayerState (possession pas encore reçue) */
+	AYSPlayerCharacter* GetUpgradeMenuCharacter() const;
+
 	/** Bouton « Relance » : nouveau tirage de propositions pour ce joueur */
 	void RerollUpgrades();
 

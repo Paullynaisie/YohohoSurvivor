@@ -1144,9 +1144,73 @@ void AYSPlayerController::ServerSetNickname_Implementation(const FString& Nickna
 	}
 }
 
+void AYSPlayerController::TickUpgradeResync()
+{
+	// serveur, contrôleur d'un client : choix d'upgrade en attente de ce joueur -> vérification toutes les Upgrade Resync Interval
+	// (temps réel : la partie est en pause)
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
+	const double Now = FPlatformTime::Seconds();
+	if (!GameMode || GameMode->GetUpgradeResyncInterval() <= 0.0f || !YSGameState || !YSGameState->IsUpgradeSelectionActive() || !MyState || !MyState->IsChoosingUpgrade())
+	{
+		UpgradeResyncStartTime = Now;
+		return;
+	}
+	if (Now - UpgradeResyncStartTime < GameMode->GetUpgradeResyncInterval())
+	{
+		return;
+	}
+	UpgradeResyncStartTime = Now;
+	GameMode->ResyncPlayer(this, TEXT("choix d'upgrade en attente"));
+	ClientCheckUpgradeSelection(MyState->GetUpgradeOffers().Num());
+}
+
+void AYSPlayerController::ClientCheckUpgradeSelection_Implementation(int32 OfferCount)
+{
+	// menu affiché avec les propositions du serveur : rien à faire (le joueur réfléchit) ; sinon nouvelles propositions demandées
+	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
+	const bool bMenuVisible = UpgradeMenu && UpgradeMenu->IsVisible();
+	const bool bShowing = bMenuVisible && MyState && MyState->GetUpgradeOffers().Num() == OfferCount && DisplayedUpgradeOffers == MyState->GetUpgradeOffers();
+	if (bShowing)
+	{
+		return;
+	}
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	UE_LOG(LogTemp, Warning, TEXT("[YSResync] %s : upgrades pas affichées (menu %s, sélection active %d, %d proposition(s) reçue(s) / %d, personnage %s) : nouvelles propositions demandées"),
+		*GetName(), bMenuVisible ? TEXT("visible") : TEXT("caché"), YSGameState ? YSGameState->IsUpgradeSelectionActive() : -1, MyState ? MyState->GetUpgradeOffers().Num() : -1, OfferCount,
+		GetUpgradeMenuCharacter() ? *GetUpgradeMenuCharacter()->GetName() : TEXT("aucun"));
+	ServerRequestUpgradeResync();
+}
+
+void AYSPlayerController::ServerRequestUpgradeResync_Implementation()
+{
+	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
+	{
+		GameMode->PlayerRequestedUpgradeResync(this);
+	}
+}
+
+AYSPlayerCharacter* AYSPlayerController::GetUpgradeMenuCharacter() const
+{
+	// personnage du contrôleur ; sinon celui du PlayerState (la possession peut arriver après le personnage pendant la pause)
+	if (AYSPlayerCharacter* PawnCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		return PawnCharacter;
+	}
+	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
+	AYSPlayerCharacter* StateCharacter = MyState ? Cast<AYSPlayerCharacter>(MyState->GetPawn()) : nullptr;
+	return IsValid(StateCharacter) && StateCharacter->IsAlive() ? StateCharacter : nullptr;
+}
+
 void AYSPlayerController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	if (HasAuthority() && !IsLocalController())
+	{
+		TickUpgradeResync();
+	}
 
 	// en pause (choix d'upgrade), PlayerTick n'est plus appelé mais Tick si : l'UI reste vivante
 	// suivi de la pause (vérification réseau : les clients doivent aussi être en pause)
@@ -2235,7 +2299,7 @@ void AYSPlayerController::UpdateUpgradeMenu()
 
 	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
 	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
-	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	const AYSPlayerCharacter* PlayerCharacter = GetUpgradeMenuCharacter();
 	const bool bShow = YSGameState && YSGameState->IsUpgradeSelectionActive() && MyState && MyState->GetUpgradeOffers().Num() > 0 && PlayerCharacter;
 	if (bShow != UpgradeMenu->IsVisible())
 	{

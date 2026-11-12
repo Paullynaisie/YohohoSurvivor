@@ -2657,6 +2657,14 @@ void AYSPlayerCharacter::ChangeClass(TSubclassOf<AYSPlayerCharacter> NewClass, U
 	}
 
 	OwningController->Possess(NewCharacter);
+	// souvent pendant la pause du choix d'upgrade (temps du serveur figé) : sans réplication forcée le client ne reçoit ni le
+	// nouveau personnage ni la possession, n'affiche pas la sélection suivante et toute la partie reste bloquée
+	OwningController->ForceNetUpdate();
+	NewCharacter->ForceNetUpdate();
+	if (APlayerState* OwningPlayerState = OwningController->GetPlayerState<APlayerState>())
+	{
+		OwningPlayerState->ForceNetUpdate();
+	}
 	for (AYSCaptainMinion* Minion : Minions)
 	{
 		Minion->SetCaptain(NewCharacter);
@@ -2695,6 +2703,8 @@ AYSPlayerCharacter* AYSPlayerCharacter::Revive(AController* NewController, const
 	NewCharacter->FinishSpawning(SpawnTransform);
 
 	NewController->Possess(NewCharacter);
+	NewController->ForceNetUpdate();
+	NewCharacter->ForceNetUpdate();
 	NewCharacter->RestoreUpgrades(UpgradePool, UpgradeProgress);
 	NewCharacter->RestoreShards(ShardLevels);
 	NewCharacter->Health = FMath::Max(1.0f, FMath::RoundToFloat(HealthRatio * NewCharacter->GetMaxHealth()));
