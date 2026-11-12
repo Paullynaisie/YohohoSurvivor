@@ -84,6 +84,32 @@ protected:
 	UPROPERTY(EditAnywhere, Category="SuperTreasureMap|Dashes")
 	FName DashColorParameterName = TEXT("Color");
 
+	/** Flèches (un pointillé sur Arrow Every, vers la zone du world boss) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TObjectPtr<UInstancedStaticMeshComponent> GuideArrows;
+
+	/** Un pointillé sur N est une flèche qui pointe vers la zone du world boss (0 = aucune flèche) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SuperTreasureMap|Arrows", meta=(ClampMin="0"))
+	int32 ArrowEvery = 10;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SuperTreasureMap|Arrows", meta=(ClampMin="1", Units="Centimeters"))
+	float ArrowLength = 200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SuperTreasureMap|Arrows", meta=(ClampMin="1", Units="Centimeters"))
+	float ArrowWidth = 130.0f;
+
+	/** Forme d'une flèche (cône aplati par défaut, pointe = son +Z) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SuperTreasureMap|Arrows")
+	TObjectPtr<UStaticMesh> ArrowMesh;
+
+	/** Cercle en pointillés autour de la zone du world boss, de la taille de son déclencheur (Trigger Radius de la zone) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SuperTreasureMap|End Circle")
+	bool bShowEndCircle = true;
+
+	/** Distance entre deux pointillés du cercle (0 = Dash Spacing) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SuperTreasureMap|End Circle", meta=(ClampMin="0", Units="Centimeters", EditCondition="bShowEndCircle"))
+	float EndCircleDashSpacing = 0.0f;
+
 private:
 
 	UPROPERTY(Transient)

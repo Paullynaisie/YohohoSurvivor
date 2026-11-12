@@ -235,6 +235,7 @@ void UYSScoreboardWidget::SetResult(bool bVictory, float DurationSeconds, const 
 		Team.ArmorReduced += Stats.ArmorReduced;
 		Team.Revives += Stats.Revives;
 		Team.ItemsDelivered += Stats.ItemsDelivered;
+		Team.Deaths += Stats.Deaths;
 	}
 	const auto Shared = [this](const FText& Unit, double Mine, double TeamTotal)
 	{
@@ -248,4 +249,5 @@ void UYSScoreboardWidget::SetResult(bool bVictory, float DurationSeconds, const 
 	AddStat(ArmorLabel, Shared(ArmorUnit, MyStats.ArmorReduced, Team.ArmorReduced));
 	AddStat(RevivesLabel, Shared(RevivesUnit, MyStats.Revives, Team.Revives));
 	AddStat(ItemsLabel, Shared(ItemsUnit, MyStats.ItemsDelivered, Team.ItemsDelivered));
+	AddStat(DeathsLabel, Shared(DeathsUnit, MyStats.Deaths, Team.Deaths));
 }

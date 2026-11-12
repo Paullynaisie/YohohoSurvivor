@@ -89,6 +89,9 @@ protected:
 
 	virtual int32 GetLastVisiblePointIndex() const override { return GetMaxReachablePointIndex(); }
 
+	/** Jamais avant le début du tracé en cours : les tracés déjà validés (embuscade) ne sont plus affichés */
+	virtual int32 GetFirstVisiblePointIndex() const override;
+
 	virtual void OnPointsReached(int32 PreviousReached) override;
 
 	virtual void Complete() override;

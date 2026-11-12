@@ -55,10 +55,23 @@ AYSTreasureMap::AYSTreasureMap()
 	PathDashes->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	PathDashes->SetCastShadow(false);
 
+	PathArrows = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("PathArrows"));
+	PathArrows->SetupAttachment(GetRootComponent());
+	PathArrows->SetUsingAbsoluteLocation(true);
+	PathArrows->SetUsingAbsoluteRotation(true);
+	PathArrows->SetUsingAbsoluteScale(true);
+	PathArrows->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	PathArrows->SetCastShadow(false);
+
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	if (CubeMesh.Succeeded())
 	{
 		DashMesh = CubeMesh.Object;
+	}
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> ConeMesh(TEXT("/Engine/BasicShapes/Cone.Cone"));
+	if (ConeMesh.Succeeded())
+	{
+		ArrowMesh = ConeMesh.Object;
 	}
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> BasicMaterial(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	if (BasicMaterial.Succeeded())
@@ -85,11 +98,14 @@ void AYSTreasureMap::BeginPlay()
 	PathSpline->SetWorldTransform(FTransform::Identity);
 	PathDashes->SetWorldTransform(FTransform::Identity);
 	PathDashes->SetStaticMesh(DashMesh);
+	PathArrows->SetWorldTransform(FTransform::Identity);
+	PathArrows->SetStaticMesh(ArrowMesh ? ArrowMesh.Get() : DashMesh.Get());
 	if (DashMaterial)
 	{
 		DashMaterialInstance = UMaterialInstanceDynamic::Create(DashMaterial, this);
 		DashMaterialInstance->SetVectorParameterValue(DashColorParameterName, DashColor);
 		PathDashes->SetMaterial(0, DashMaterialInstance);
+		PathArrows->SetMaterial(0, DashMaterialInstance);
 	}
 	RebuildSpline();
 }
@@ -410,6 +426,7 @@ void AYSTreasureMap::UpdateDashes()
 		if (VisibleDashCount > 0)
 		{
 			PathDashes->ClearInstances();
+			PathArrows->ClearInstances();
 			VisibleDashCount = 0;
 		}
 		// pas de fondu à rejouer en reprenant une carte déjà avancée
@@ -419,7 +436,7 @@ void AYSTreasureMap::UpdateDashes()
 
 	const FVector Center = Character->GetActorLocation();
 	const int32 LastPoint = PathSpline->GetNumberOfSplinePoints() - 1;
-	const float StartDistance = bHideTravelledPath ? PathSpline->GetDistanceAlongSplineAtSplinePoint(FMath::Clamp(ReachedPointIndex, 0, LastPoint)) : 0.0f;
+	const float StartDistance = PathSpline->GetDistanceAlongSplineAtSplinePoint(FMath::Clamp(GetFirstVisiblePointIndex(), 0, LastPoint));
 	const float VisibleRadiusSquared = FMath::Square(VisibleRadius);
 
 	// point atteint : le segment terminé rétrécit au lieu de disparaître d'un coup
@@ -437,6 +454,7 @@ void AYSTreasureMap::UpdateDashes()
 	const float VisibleEnd = PathSpline->GetDistanceAlongSplineAtSplinePoint(FMath::Clamp(GetLastVisiblePointIndex(), 0, LastPoint));
 
 	TArray<FTransform> Transforms;
+	TArray<FTransform> ArrowTransforms;
 	// grille fixe le long du chemin : les pointillés ne sautent pas quand le début affiché change
 	for (float Distance = FMath::FloorToFloat(FirstDistance / DashSpacing) * DashSpacing; Distance < VisibleEnd; Distance += DashSpacing)
 	{
@@ -472,11 +490,55 @@ void AYSTreasureMap::UpdateDashes()
 		Location.Z += DashHeightOffset + YSTreasureMap::DashThickness * 0.5f;
 
 		const FVector Direction = PathSpline->GetDirectionAtDistanceAlongSpline(DashCenter, ESplineCoordinateSpace::World);
+		// un pointillé sur Arrow Every (grille fixe) : flèche dans le sens de la marche
+		const int32 DashIndex = FMath::RoundToInt(Distance / DashSpacing);
+		if (ArrowEvery > 0 && DashIndex % ArrowEvery == ArrowEvery - 1)
+		{
+			ArrowTransforms.Add(MakeArrowTransform(Location, Direction.Rotation().Yaw, ArrowLength * Fade, ArrowWidth * Fade, YSTreasureMap::DashThickness));
+			continue;
+		}
 		const FVector Scale(DashLength * Fade / YSTreasureMap::CubeSize, DashWidth * Fade / YSTreasureMap::CubeSize, YSTreasureMap::DashThickness / YSTreasureMap::CubeSize);
 		Transforms.Emplace(FRotator(0.0f, Direction.Rotation().Yaw, 0.0f), Location, Scale);
 	}
 
+	// cercle de fin : zone (Reach Radius) où marcher pour valider le chemin affiché, mêmes règles d'affichage que les pointillés
+	const int32 EndIndex = FMath::Clamp(GetLastVisiblePointIndex(), 0, LastPoint);
+	if (bShowEndCircle && ReachRadius > 0.0f && EndIndex > ReachedPointIndex)
+	{
+		const FVector EndPoint = PathSpline->GetLocationAtSplinePoint(EndIndex, ESplineCoordinateSpace::World);
+		const float Spacing = EndCircleDashSpacing > 0.0f ? EndCircleDashSpacing : DashSpacing;
+		const int32 Count = FMath::Max(8, FMath::CeilToInt(2.0f * PI * ReachRadius / Spacing));
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const float Angle = 2.0f * PI * Index / Count;
+			FVector Location = EndPoint + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * ReachRadius;
+			const float DistanceToCarrier = FVector::Dist2D(Location, Center);
+			const float Fade = FadeDistance > 0.0f ? FMath::Clamp((VisibleRadius - DistanceToCarrier) / FadeDistance, 0.0f, 1.0f) : (DistanceToCarrier <= VisibleRadius ? 1.0f : 0.0f);
+			if (Fade <= 0.0f)
+			{
+				continue;
+			}
+			FVector Ground;
+			if (FindPathGround(GetWorld(), Location, EndPoint.Z, MaxHeightDifference, Ground))
+			{
+				Location.Z = Ground.Z;
+			}
+			Location.Z += DashHeightOffset + YSTreasureMap::DashThickness * 0.5f;
+			const FVector Scale(DashLength * Fade / YSTreasureMap::CubeSize, DashWidth * Fade / YSTreasureMap::CubeSize, YSTreasureMap::DashThickness / YSTreasureMap::CubeSize);
+			Transforms.Emplace(FRotator(0.0f, FMath::RadiansToDegrees(Angle) + 90.0f, 0.0f), Location, Scale);
+		}
+	}
+
 	PathDashes->ClearInstances();
 	PathDashes->AddInstances(Transforms, false, true);
-	VisibleDashCount = Transforms.Num();
+	PathArrows->ClearInstances();
+	PathArrows->AddInstances(ArrowTransforms, false, true);
+	VisibleDashCount = Transforms.Num() + ArrowTransforms.Num();
+}
+
+FTransform AYSTreasureMap::MakeArrowTransform(const FVector& Location, float Yaw, float Length, float Width, float Thickness)
+{
+	// cône de base : pointe vers +Z ; tangage -90° = pointe vers +X, son X local devient la verticale (épaisseur)
+	const FQuat Rotation = FQuat(FRotator(0.0f, Yaw, 0.0f)) * FQuat(FRotator(-90.0f, 0.0f, 0.0f));
+	return FTransform(Rotation, Location, FVector(Thickness / YSTreasureMap::CubeSize, Width / YSTreasureMap::CubeSize, Length / YSTreasureMap::CubeSize));
 }

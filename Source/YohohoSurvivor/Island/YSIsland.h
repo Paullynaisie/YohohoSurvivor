@@ -257,6 +257,13 @@ protected:
 	UPROPERTY(Replicated)
 	float RiseDuration = 15.0f;
 
+	/** Évacuation : heure serveur du début du despawn des props (0 = pas encore), et heure à partir de laquelle tous les restants partent (l'île coule) */
+	UPROPERTY(Replicated)
+	double PropDespawnStartServerTime = 0.0;
+
+	UPROPERTY(Replicated)
+	double PropDespawnRushServerTime = 0.0;
+
 private:
 
 	/** Plan prêt (serveur) : construction, parts répliquées, objectifs */
@@ -270,6 +277,22 @@ private:
 	void TickPendingProps();
 	TArray<FYSIslandPropSpawn> PendingProps;
 	int32 PendingPropIndex = 0;
+
+	/** Props posés sur cette machine (même ordre partout : celui du plan) */
+	TArray<TWeakObjectPtr<AActor>> LocalProps;
+
+	/** Évacuation, sur chaque machine : props tirés au hasard (graine du plan) par paquets, rétrécis puis détruits */
+	void UpdatePropDespawn();
+	bool bPropDespawnShuffled = false;
+	int32 PropDespawnNext = 0;
+	int32 PropDespawnBatchSize = 1;
+	struct FShrinkingProp
+	{
+		TWeakObjectPtr<AActor> Actor;
+		FVector StartScale = FVector::OneVector;
+		double StartTime = 0.0;
+	};
+	TArray<FShrinkingProp> ShrinkingProps;
 
 	/** Génération du plan sur un autre fil (îles qui apparaissent en cours de partie) */
 	struct FAsyncPlanResult

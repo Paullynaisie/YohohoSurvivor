@@ -6,6 +6,7 @@
 #include "Components/SceneComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Core/YSCombat.h"
+#include "Core/YSCustomization.h"
 #include "Core/YSGameState.h"
 #include "Core/YSGameMode.h"
 #include "Engine/World.h"
@@ -338,12 +339,15 @@ void AYSPirateShip::HandleRamImpact(AYSPirateShip* Target)
 	// point touché : là où la coque (la proue) rencontre celle de l'autre bateau
 	const FVector Impact = GetRamImpactPoint(Target);
 	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s éperonne %s (« À l'abordage ») : %.0f dégâts"), *GetName(), *Target->GetName(), RamDamage);
+	const float CoreHealthBefore = Target->GetHealth();
 	{
 		// éperonnage = dégâts d'un bateau (Boat Dmg Multiplier des NME)
 		YSCombat::FBoatDamageScope BoatScope(true);
 		Target->ReceiveRamDamage(RamDamage, RamInstigator.Get(), Impact);
 	}
-	if (IsValid(Target) && !Target->IsSinking() && Target->TryStartBoardingBy(this, Impact))
+	// dégâts au core du bateau percuté : abordage automatique (demande de Paul du 2026-11-13)
+	const bool bCoreDamaged = IsValid(Target) && Target->GetHealth() < CoreHealthBefore;
+	if (IsValid(Target) && !Target->IsSinking() && Target->TryStartBoardingBy(this, Impact, bCoreDamaged))
 	{
 		SetRamming(false);
 		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : point abordable, phase d'abordage de %s"), *GetName(), *Target->GetName());
@@ -544,6 +548,24 @@ void AYSPirateShip::UpdateBoardableOverlay()
 	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : zones abordables affichées (%s, %d morceau(x))"), *GetName(), bAll ? TEXT("toute la coque, core négatif") : *FString::Printf(TEXT("%d poste(s) à 0 PV"), BrokenStations.Num()), Triangles.Num() / 6);
 }
 
+FLinearColor AYSPirateShip::GetCurrentWakeColor() const
+{
+	// « À l'abordage » (répliqué avec le mouvement) : couleur du joueur à la barre, sur toutes les machines
+	if (bRamWakePilotColor && Motion.bRamming)
+	{
+		const AYSShipHelm* Helm = GetHelm();
+		const AYSPlayerCharacter* Pilot = Helm ? Helm->GetPilot() : nullptr;
+		if (const FYSCustomizationColor* PilotColor = Pilot ? YSPlayerColor::Find(Pilot) : nullptr)
+		{
+			// couleur choisie à l'écran de sélection (l'émissif du rouge et du noir est blanc : invisible sur l'écume)
+			FLinearColor Color = PilotColor->ButtonColor;
+			Color.A = RamWakeOpacity;
+			return Color;
+		}
+	}
+	return WakeColor;
+}
+
 void AYSPirateShip::UpdateWake(float DeltaSeconds)
 {
 	if (!bWakeTrail || GetNetMode() == NM_DedicatedServer)
@@ -577,6 +599,7 @@ void AYSPirateShip::UpdateWake(float DeltaSeconds)
 			Point.Time = Now;
 			Point.HalfWidth = Bounds.GetSize().Y * 0.5f * WakeWidthRatio;
 			Point.Strength = FMath::Clamp((Speed - WakeMinSpeed) / FMath::Max(WakeFullSpeed - WakeMinSpeed, 1.0f), 0.15f, 1.0f);
+			Point.Color = GetCurrentWakeColor();
 			WakePoints.Add(Point);
 		}
 	}
@@ -618,10 +641,10 @@ void AYSPirateShip::UpdateWake(float DeltaSeconds)
 	TArray<FVector> Vertices;
 	TArray<int32> Triangles;
 	TArray<FLinearColor> Colors;
-	const auto AddRow = [&](const FVector& Location, const FVector& Side, float HalfWidth, float Alpha)
+	const auto AddRow = [&](const FVector& Location, const FVector& Side, float HalfWidth, float Alpha, const FLinearColor& BaseColor)
 	{
-		FLinearColor Color = WakeColor;
-		Color.A = WakeColor.A * Alpha;
+		FLinearColor Color = BaseColor;
+		Color.A = BaseColor.A * Alpha;
 		FLinearColor Edge = Color;
 		Edge.A = 0.0f;
 		// bords transparents, milieu opaque (3 sommets par rangée)
@@ -638,7 +661,7 @@ void AYSPirateShip::UpdateWake(float DeltaSeconds)
 	for (const FWakePoint& Point : WakePoints)
 	{
 		const float Age = FMath::Clamp(static_cast<float>(Now - Point.Time) / Duration, 0.0f, 1.0f);
-		AddRow(Point.Location, Point.Side, Point.HalfWidth * (1.0f + WakeSpread * Age), Point.Strength * (1.0f - Age));
+		AddRow(Point.Location, Point.Side, Point.HalfWidth * (1.0f + WakeSpread * Age), Point.Strength * (1.0f - Age), Point.Color);
 	}
 	// raccord à la poupe actuelle (la bande suit le bateau entre deux points)
 	const FWakePoint& Last = WakePoints.Last();
@@ -646,7 +669,7 @@ void AYSPirateShip::UpdateWake(float DeltaSeconds)
 	if (Bounds.bIsValid && Now - Last.Time < WakeSampleInterval * 2.0)
 	{
 		const FVector Stern = GetActorTransform().TransformPosition(FVector(Bounds.Min.X, Bounds.GetCenter().Y, 0.0f));
-		AddRow(FVector(Stern.X, Stern.Y, Last.Location.Z), GetActorRightVector().GetSafeNormal2D(), Last.HalfWidth, Last.Strength);
+		AddRow(FVector(Stern.X, Stern.Y, Last.Location.Z), GetActorRightVector().GetSafeNormal2D(), Last.HalfWidth, Last.Strength, GetCurrentWakeColor());
 	}
 	WakeMesh->CreateMeshSection_LinearColor(0, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
 	if (!WakeMaterial)

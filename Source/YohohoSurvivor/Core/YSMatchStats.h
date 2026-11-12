@@ -42,6 +42,10 @@ struct FYSMatchStats
 	/** Objets déposés (coffres, CoreBoats, boussoles, équipage...) */
 	UPROPERTY(BlueprintReadOnly, Category="Stats")
 	int32 ItemsDelivered = 0;
+
+	/** Morts du joueur */
+	UPROPERTY(BlueprintReadOnly, Category="Stats")
+	int32 Deaths = 0;
 };
 
 /** Une ligne d'upgrade de l'écran des scores (icône + nom) */
@@ -114,6 +118,9 @@ namespace YSMatchStats
 
 	/** Objet déposé par Carrier (cadavre chez un Medic = réanimation) */
 	void RecordDelivery(AYSPlayerCharacter* Carrier, bool bCorpse);
+
+	/** Mort d'un joueur (pas les minions ni le Hired crew : sans PlayerState) */
+	void RecordDeath(AYSPlayerCharacter* Victim);
 
 	/** Upgrades du personnage pour l'écran des scores */
 	FYSScoreUpgrades CaptureUpgrades(const AYSPlayerCharacter* Character);

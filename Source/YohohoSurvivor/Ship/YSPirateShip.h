@@ -395,11 +395,11 @@ protected:
 
 	/** « À l'abordage » (clic gauche maintenu à la barre) : vitesse max x ce multiplicateur, plein gaz, la barre ne tourne plus */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="1"))
-	float RamSpeedMultiplier = 1.2f;
+	float RamSpeedMultiplier = 1.5f;
 
-	/** « À l'abordage » : dégâts au bateau percuté (core ; coque d'un Jolly Ship) */
+	/** « À l'abordage » : dégâts au bateau percuté (core ; coque d'un Jolly Ship) ; des dégâts au core d'un Galion de NME lancent l'abordage */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Helm|Ram", meta=(ClampMin="0"))
-	float RamDamage = 500.0f;
+	float RamDamage = 1000.0f;
 
 	/**
 	 *  Zones abordables (demande de Paul du 2026-11-10) : bande rouge mi-émissive sur la coque là où l'autre camp peut aborder (toute la
@@ -467,6 +467,13 @@ protected:
 	/** Couleur (alpha = opacité à la poupe, à pleine vitesse) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(EditCondition="bWakeTrail"))
 	FLinearColor WakeColor = FLinearColor(1.0f, 1.0f, 1.0f, 0.55f);
+
+	/** « À l'abordage » : la traînée prend la couleur du joueur qui pilote (Button Color de DT_CustomizationColors), avec cette opacité à la poupe */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(EditCondition="bWakeTrail"))
+	bool bRamWakePilotColor = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(ClampMin="0", ClampMax="1", EditCondition="bWakeTrail && bRamWakePilotColor"))
+	float RamWakeOpacity = 0.8f;
 
 	/** Sous cette vitesse rien n'est ajouté ; opacité pleine à Wake Full Speed */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ship|Wake", meta=(ClampMin="0", Units="CentimetersPerSecond", EditCondition="bWakeTrail"))
@@ -688,7 +695,7 @@ public:
 	virtual void ReceiveRamDamage(float Damage, AController* EventInstigator, const FVector& ImpactLocation);
 
 	/** Serveur : Rammer éperonne la coque à ImpactLocation ; vrai = une phase d'abordage commence (Galion de NME : point abordable) */
-	virtual bool TryStartBoardingBy(AYSPirateShip* Rammer, const FVector& ImpactLocation) { return false; }
+	virtual bool TryStartBoardingBy(AYSPirateShip* Rammer, const FVector& ImpactLocation, bool bCoreDamaged) { return false; }
 
 	/** Serveur : la coque a touché le fond (pas un autre bateau) il y a moins d'une demi-seconde */
 	bool IsHullGrounded() const;
@@ -786,8 +793,13 @@ private:
 		double Time;
 		float HalfWidth;
 		float Strength;
+		/** Couleur (alpha compris) : Wake Color, ou couleur du pilote pendant « À l'abordage » */
+		FLinearColor Color = FLinearColor::White;
 	};
 	TArray<FWakePoint> WakePoints;
+
+	/** Couleur de la traînée en ce moment (couleur du pilote qui éperonne, sinon Wake Color) */
+	FLinearColor GetCurrentWakeColor() const;
 	FVector LastWakeLocation = FVector::ZeroVector;
 	double LastWakeSampleTime = -1.0;
 

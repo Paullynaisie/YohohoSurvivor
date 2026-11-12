@@ -403,6 +403,13 @@ void AYSPlayerCharacter::Die()
 	}
 	Health = 0.0f;
 
+	// écran des scores : morts du joueur (pas après la fin de la partie)
+	const AYSGameState* DeathStatsGameState = GetWorld()->GetGameState<AYSGameState>();
+	if (DeathStatsGameState && !DeathStatsGameState->IsMatchEnded())
+	{
+		YSMatchStats::RecordDeath(this);
+	}
+
 	// l'objet porté tombe au sol, le poste (barre...) est lâché
 	DropCarriedObject(TEXT("mort"));
 	LeaveStation(TEXT("mort"), true);
@@ -1302,6 +1309,7 @@ void AYSPlayerCharacter::BeginPlay()
 
 	// appliqué sur le serveur ET les clients pour que la prédiction de mouvement reste cohérente
 	UpdateMaxWalkSpeed();
+	GetCharacterMovement()->GravityScale = CharacterGravityScale;
 
 	// caméra à pied (réglée dans le Blueprint) : retrouvée en quittant la barre d'un bateau
 	DefaultCameraArmLength = CameraBoom->TargetArmLength;
@@ -3647,12 +3655,14 @@ void AYSPlayerCharacter::DropCarriedObject(const TCHAR* Reason)
 	ForceNetUpdate();
 	UE_LOG(LogTemp, Log, TEXT("[YSCarry] %s repose %s (%s)"), *GetName(), *Object->GetName(), Reason);
 
-	// près d'un Brooker : racheté (doublons pour l'équipe) ; écran des scores : objet déposé, ou réanimation (cadavre chez un Medic)
+	// dans une zone de dépôt (core du bateau, zone de la plage, Brooker / Medic) : validé ; écran des scores : objet déposé, ou réanimation
+	// (cadavre chez un Medic). Un objet déjà livré puis reposé (Super carte au trésor) ne compte qu'une fois
 	const bool bCorpse = Object->IsA<AYSPlayerCorpse>();
+	const bool bAlreadyDelivered = Object->IsDelivered();
 	if (AYSBrookerNPC::TrySell(Object))
 	{
 		const AYSGameState* StatsGameState = GetWorld()->GetGameState<AYSGameState>();
-		if (StatsGameState && !StatsGameState->IsMatchEnded())
+		if (StatsGameState && !StatsGameState->IsMatchEnded() && !bAlreadyDelivered)
 		{
 			YSMatchStats::RecordDelivery(this, bCorpse);
 		}
@@ -3734,11 +3744,70 @@ void AYSPlayerCharacter::LeaveStation(const TCHAR* Reason, bool bForce)
 	ForceNetUpdate();
 	UE_LOG(LogTemp, Log, TEXT("[YSStation] %s quitte %s (%s)"), *GetName(), IsValid(Station) ? *Station->GetName() : TEXT("?"), Reason);
 
-	// nid d'pie : redescendu au pied du mât
+	// nid d'pie : redescendu au pied du mât ; posé sur une place libre (sinon les joueurs déjà là le propulsaient), sans vitesse, sur le pont
 	if (IsValid(Station) && Station->TeleportsOnLeave() && IsAlive())
 	{
-		TeleportToFeetLocation(Station->GetExitFeetLocation(), GetActorForwardVector());
+		const FVector Exit = Station->GetExitFeetLocation();
+		FVector Feet = Exit;
+		const bool bFree = FindFreeFeetLocation(Exit, Feet);
+		TeleportToFeetLocation(Feet, GetActorForwardVector());
+		if (!bFree && StationExitPassThroughDuration > 0.0f && !IsPassingThroughPawns())
+		{
+			// rien de libre : traverse les personnages un instant plutôt que d'être poussé (serveur ; le client corrige par la position)
+			YSCombat::SetPassThroughCharacters(GetCapsuleComponent(), true);
+			TWeakObjectPtr<AYSPlayerCharacter> WeakThis(this);
+			FTimerHandle Handle;
+			GetWorldTimerManager().SetTimer(Handle, [WeakThis]()
+			{
+				if (WeakThis.IsValid() && !WeakThis->IsHiredCarrying())
+				{
+					YSCombat::SetPassThroughCharacters(WeakThis->GetCapsuleComponent(), false);
+				}
+			}, StationExitPassThroughDuration, false);
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSStation] %s posé à %.0f cm du point de sortie%s"), *GetName(), FVector::Dist2D(Feet, Exit), bFree ? TEXT("") : TEXT(" (aucune place libre : traverse les personnages)"));
 	}
+}
+
+bool AYSPlayerCharacter::FindFreeFeetLocation(const FVector& Feet, FVector& OutFeet) const
+{
+	OutFeet = Feet;
+	const UCapsuleComponent* Capsule = GetCapsuleComponent();
+	const float Radius = Capsule->GetScaledCapsuleRadius();
+	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSStationExit), false, this);
+	constexpr float TraceUp = 150.0f;
+	constexpr float TraceDown = 300.0f;
+
+	// sol sous le point prévu : la place trouvée doit être sur le même bateau (pas dans l'eau à côté)
+	FHitResult NominalHit;
+	const bool bNominalGround = GetWorld()->LineTraceSingleByChannel(NominalHit, Feet + FVector(0.0f, 0.0f, TraceUp), Feet - FVector(0.0f, 0.0f, TraceDown), ECC_WorldStatic, Params);
+	const AYSPirateShip* NominalShip = bNominalGround ? AYSPirateShip::GetShipOf(NominalHit.GetActor()) : nullptr;
+
+	const float Step = FMath::Max(StationExitSearchStep, 10.0f);
+	for (float Ring = 0.0f; Ring <= StationExitSearchRadius; Ring += Step)
+	{
+		const int32 Count = Ring <= 0.0f ? 1 : FMath::Max(8, FMath::CeilToInt(2.0f * PI * Ring / Step));
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const float Angle = 2.0f * PI * Index / Count;
+			const FVector Candidate = Feet + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Ring;
+			FHitResult Hit;
+			if (!GetWorld()->LineTraceSingleByChannel(Hit, Candidate + FVector(0.0f, 0.0f, TraceUp), Candidate - FVector(0.0f, 0.0f, TraceDown), ECC_WorldStatic, Params)
+				|| Hit.ImpactNormal.Z < 0.7f || (NominalShip && AYSPirateShip::GetShipOf(Hit.GetActor()) != NominalShip))
+			{
+				continue;
+			}
+			// la capsule tient au-dessus de ce sol : ni personnage (canal Pawn), ni mât, ni bastingage
+			const FVector Center = Hit.ImpactPoint + FVector(0.0f, 0.0f, HalfHeight + 5.0f);
+			if (!GetWorld()->OverlapBlockingTestByChannel(Center, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(Radius, HalfHeight), Params))
+			{
+				OutFeet = Hit.ImpactPoint;
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 void AYSPlayerCharacter::TeleportToFeetLocation(const FVector& FeetLocation, const FVector& Facing)

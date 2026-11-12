@@ -642,6 +642,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(ClampMin="1", Units="s", EditCondition="bObjectiveFlow"))
 	float EvacuationDuration = 30.0f;
 
+	/**
+	 *  Évacuation : tous les props de l'île (arbres, buissons, rochers, maisons) disparaissent avant qu'elle coule (perf) : un paquet de props tirés
+	 *  au hasard toutes les Prop Despawn Batch Interval, chacun rétrécit en Prop Despawn Scale Duration puis est détruit ; paquets calculés pour
+	 *  que tout soit parti à la fin de l'évacuation. L'île coule plus tôt (tous à bord) : tous les props restants rétrécissent d'un coup
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Prop Despawn", meta=(EditCondition="bObjectiveFlow"))
+	bool bDespawnPropsOnEvacuation = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Prop Despawn", meta=(ClampMin="0.05", Units="s", EditCondition="bObjectiveFlow && bDespawnPropsOnEvacuation"))
+	float PropDespawnScaleDuration = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Prop Despawn", meta=(ClampMin="0.05", Units="s", EditCondition="bObjectiveFlow && bDespawnPropsOnEvacuation"))
+	float PropDespawnBatchInterval = 1.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
 	FText FindText = NSLOCTEXT("YS", "FlowFindCore", "Trouve et ramène un CoreBoat");
 

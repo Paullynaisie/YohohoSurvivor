@@ -149,6 +149,13 @@ int32 AYSObjectiveTreasureMap::GetCurrentLeg() const
 	return LegEnds.Num();
 }
 
+int32 AYSObjectiveTreasureMap::GetFirstVisiblePointIndex() const
+{
+	const int32 Leg = GetCurrentLeg();
+	const int32 LegStart = Leg > 0 && LegEnds.IsValidIndex(Leg - 1) ? LegEnds[Leg - 1] : 0;
+	return FMath::Max(Super::GetFirstVisiblePointIndex(), LegStart);
+}
+
 int32 AYSObjectiveTreasureMap::GetMaxReachablePointIndex() const
 {
 	// seule la fin du tracé en cours compte (et seul lui est affiché)

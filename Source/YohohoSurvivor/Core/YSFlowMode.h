@@ -234,6 +234,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|World Boss", meta=(ClampMin="0", Units="Centimeters"))
 	float WorldBossRandomOffset = 20000.0f;
 
+	/** Distance de la zone du world boss au centre de l'île de départ = distance du Kraken x ce facteur (0.8 = 20 % plus près), avant le décalage au hasard */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|World Boss", meta=(ClampMin="0"))
+	float WorldBossDistanceMultiplier = 0.8f;
+
 	AYSFlowMode();
 
 	virtual void InitGameState() override;

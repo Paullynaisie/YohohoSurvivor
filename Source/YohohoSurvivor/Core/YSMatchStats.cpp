@@ -63,6 +63,14 @@ void YSMatchStats::RecordDelivery(AYSPlayerCharacter* Carrier, bool bCorpse)
 	}
 }
 
+void YSMatchStats::RecordDeath(AYSPlayerCharacter* Victim)
+{
+	if (AYSPlayerState* State = Victim ? Victim->GetPlayerState<AYSPlayerState>() : nullptr)
+	{
+		++State->EditMatchStats().Deaths;
+	}
+}
+
 FYSScoreUpgrades YSMatchStats::CaptureUpgrades(const AYSPlayerCharacter* Character)
 {
 	FYSScoreUpgrades Result;

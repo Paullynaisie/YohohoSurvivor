@@ -160,6 +160,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Movement", meta=(ClampMin="0", Units="CentimetersPerSecond"))
 	float MoveSpeed = 600.0f;
 
+	/**
+	 *  Gravité du personnage (x la gravité du monde) : Gravity Scale du Character Movement, imposée au lancement (3 = chute 3x plus forte ;
+	 *  demande de Paul du 2026-11-13). Les sauts à vitesse de départ fixe (pushback vertical, saut du Tourbillon Golden) montent moins haut
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Movement", meta=(ClampMin="0"))
+	float CharacterGravityScale = 3.0f;
+
 	/** Manette : zone morte du stick gauche (déplacement) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Gamepad", meta=(ClampMin="0", ClampMax="1"))
 	float GamepadMoveDeadZone = 0.2f;
@@ -1547,6 +1554,23 @@ public:
 
 	/** Téléporte le personnage (pieds sur FeetLocation, tourné vers Facing) : serveur et machine qui le contrôle */
 	void TeleportToFeetLocation(const FVector& FeetLocation, const FVector& Facing);
+
+	/**
+	 *  Place libre la plus proche de Feet pour ce personnage (sol sous la capsule, ni autre personnage ni obstacle dedans), sur le même sol que Feet
+	 *  (le même bateau) ; en anneaux de Station Exit Search Step jusqu'à Station Exit Search Radius. Faux = rien de libre (Feet gardé)
+	 */
+	bool FindFreeFeetLocation(const FVector& Feet, FVector& OutFeet) const;
+
+	/** Sortie d'un poste : place libre autour du point de sortie (on n'est plus éjecté par les joueurs déjà là) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Ship", meta=(ClampMin="0", Units="Centimeters"))
+	float StationExitSearchRadius = 400.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Ship", meta=(ClampMin="10", Units="Centimeters"))
+	float StationExitSearchStep = 60.0f;
+
+	/** Sortie d'un poste sans place libre : traverse les personnages pendant cette durée (pas de poussée) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Ship", meta=(ClampMin="0", Units="s"))
+	float StationExitPassThroughDuration = 0.75f;
 
 	/** Debug (YSTakeHelm) : prend la barre du bateau pilotable le plus proche (Skip : le suivant par distance) */
 	void DebugTakeHelm(int32 Skip = 0);

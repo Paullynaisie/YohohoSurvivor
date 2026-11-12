@@ -93,6 +93,8 @@ void AYSIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	DOREPLIFETIME(AYSIsland, SubmergedDepth);
 	DOREPLIFETIME(AYSIsland, RiseStartServerTime);
 	DOREPLIFETIME(AYSIsland, RiseDuration);
+	DOREPLIFETIME(AYSIsland, PropDespawnStartServerTime);
+	DOREPLIFETIME(AYSIsland, PropDespawnRushServerTime);
 }
 
 void AYSIsland::StartRise(float Duration)
@@ -292,6 +294,7 @@ void AYSIsland::TickPendingProps()
 				}
 			}
 			Actor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+			LocalProps.Add(Actor);
 		}
 	}
 	if (PendingPropIndex >= PendingProps.Num())
@@ -844,6 +847,7 @@ void AYSIsland::Tick(float DeltaSeconds)
 	if (Data)
 	{
 		TickPendingProps();
+		UpdatePropDespawn();
 	}
 
 	if (!HasAuthority() || !Data)
@@ -1176,6 +1180,10 @@ void AYSIsland::StartEvacuation()
 	FlowBoarded = INDEX_NONE;
 	FlowBoardingTotal = INDEX_NONE;
 	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : « %s » (%.0f s pour monter à bord)"), *Data->GetName(), *Data->EvacuateText.ToString(), Data->EvacuationDuration);
+	if (Data->bDespawnPropsOnEvacuation && PropDespawnStartServerTime <= 0.0)
+	{
+		PropDespawnStartServerTime = FMath::Max(YSIslandActor::GetServerTime(GetWorld()), 0.001);
+	}
 	TickEvacuation();
 	UpdateFlowStatus();
 	ForceNetUpdate();
@@ -1245,11 +1253,89 @@ void AYSIsland::FinishEvacuation(const TCHAR* Reason)
 	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : fin de l'évacuation (%s, %d / %d à bord) : bateau pilotable, l'île coule%s"),
 		*Data->GetName(), Reason, FlowBoarded, FlowBoardingTotal, bStartIsland ? TEXT(" (la partie 2 commencera quand elle aura coulé)") : TEXT(""));
 	UpdateFlowStatus();
+	// props pas encore partis (tous à bord avant la fin) : tous les restants rétrécissent maintenant
+	if (PropDespawnStartServerTime > 0.0 && PropDespawnRushServerTime <= 0.0)
+	{
+		PropDespawnRushServerTime = FMath::Max(YSIslandActor::GetServerTime(GetWorld()), 0.001);
+	}
 	if (!bSinkStarted)
 	{
 		StartSinking();
 	}
 	ForceNetUpdate();
+}
+
+void AYSIsland::UpdatePropDespawn()
+{
+	if (PropDespawnStartServerTime <= 0.0 || (PropDespawnNext >= LocalProps.Num() && ShrinkingProps.IsEmpty()))
+	{
+		return;
+	}
+	const double Now = YSIslandActor::GetServerTime(GetWorld());
+	const float ScaleDuration = FMath::Max(Data->PropDespawnScaleDuration, 0.05f);
+	const float BatchInterval = FMath::Max(Data->PropDespawnBatchInterval, 0.05f);
+
+	// ordre tiré au hasard, le même sur chaque machine (graine du plan, props posés dans l'ordre du plan) : les collisions restent d'accord
+	if (!bPropDespawnShuffled)
+	{
+		bPropDespawnShuffled = true;
+		FRandomStream Stream(Plan.Seed ^ 0x5EED);
+		for (int32 Index = LocalProps.Num() - 1; Index > 0; --Index)
+		{
+			LocalProps.Swap(Index, Stream.RandRange(0, Index));
+		}
+		// le dernier paquet doit avoir fini de rétrécir à la fin de l'évacuation
+		const int32 Batches = FMath::Max(1, FMath::FloorToInt((Data->EvacuationDuration - ScaleDuration) / BatchInterval) + 1);
+		PropDespawnBatchSize = FMath::Max(1, FMath::DivideAndRoundUp(LocalProps.Num(), Batches));
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : évacuation, %d props retirés par paquets de %d toutes les %.1f s (%s)"), *Data->GetName(), LocalProps.Num(),
+			PropDespawnBatchSize, BatchInterval, HasAuthority() ? TEXT("serveur") : TEXT("client"));
+	}
+
+	const bool bRush = PropDespawnRushServerTime > 0.0 && Now >= PropDespawnRushServerTime;
+	const int32 BatchesStarted = FMath::FloorToInt(FMath::Max(0.0, Now - PropDespawnStartServerTime) / BatchInterval) + 1;
+	const int32 Due = bRush ? LocalProps.Num() : FMath::Min(LocalProps.Num(), BatchesStarted * PropDespawnBatchSize);
+	if (bRush && PropDespawnNext < Due)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : l'île coule, %d props restants retirés d'un coup"), *Data->GetName(), Due - PropDespawnNext);
+	}
+	for (; PropDespawnNext < Due; ++PropDespawnNext)
+	{
+		AActor* Actor = LocalProps[PropDespawnNext].Get();
+		if (!IsValid(Actor))
+		{
+			continue;
+		}
+		// prop statique : rendu mobile pour pouvoir changer d'échelle
+		TInlineComponentArray<USceneComponent*> Components(Actor);
+		for (USceneComponent* Component : Components)
+		{
+			Component->SetMobility(EComponentMobility::Movable);
+		}
+		ShrinkingProps.Add({ Actor, Actor->GetActorScale3D(), Now });
+	}
+
+	for (int32 Index = ShrinkingProps.Num() - 1; Index >= 0; --Index)
+	{
+		const FShrinkingProp& Prop = ShrinkingProps[Index];
+		AActor* Actor = Prop.Actor.Get();
+		const float Alpha = static_cast<float>((Now - Prop.StartTime) / ScaleDuration);
+		if (!IsValid(Actor) || Alpha >= 1.0f)
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+			}
+			ShrinkingProps.RemoveAtSwap(Index);
+			continue;
+		}
+		Actor->SetActorScale3D(Prop.StartScale * FMath::Max(1.0f - FMath::InterpEaseIn(0.0f, 1.0f, Alpha, 2.0f), 0.01f));
+	}
+	if (PropDespawnNext >= LocalProps.Num() && ShrinkingProps.IsEmpty())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : tous les props retirés"), *Data->GetName());
+		LocalProps.Empty();
+		PropDespawnNext = 0;
+	}
 }
 
 void AYSIsland::DebugFinishEvacuation()

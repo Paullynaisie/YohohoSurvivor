@@ -36,7 +36,35 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UInstancedStaticMeshComponent> PathDashes;
 
+	/** Flèches du chemin (un pointillé sur Arrow Every, sens de la marche) et du cercle de fin (local, coordonnées monde) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UInstancedStaticMeshComponent> PathArrows;
+
 protected:
+
+	/** Un pointillé sur N est une flèche qui pointe dans le sens où il faut aller (0 = aucune flèche) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Arrows", meta=(ClampMin="0"))
+	int32 ArrowEvery = 10;
+
+	/** Longueur d'une flèche (de la base à la pointe) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Arrows", meta=(ClampMin="1", Units="Centimeters"))
+	float ArrowLength = 70.0f;
+
+	/** Largeur de la base d'une flèche */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Arrows", meta=(ClampMin="1", Units="Centimeters"))
+	float ArrowWidth = 45.0f;
+
+	/** Forme d'une flèche (cône aplati par défaut, pointe = son +Z) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Arrows")
+	TObjectPtr<UStaticMesh> ArrowMesh;
+
+	/** Cercle en pointillés autour de la fin du chemin affiché : zone où marcher pour valider (rayon = Reach Radius) ; mêmes règles d'affichage que les pointillés */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|End Circle")
+	bool bShowEndCircle = true;
+
+	/** Distance entre deux pointillés du cercle (0 = Dash Spacing) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|End Circle", meta=(ClampMin="0", Units="Centimeters", EditCondition="bShowEndCircle"))
+	float EndCircleDashSpacing = 0.0f;
 
 	/** Nombre de segments du chemin */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="TreasureMap|Path", meta=(ClampMin="1"))
@@ -206,6 +234,9 @@ public:
 	/** Point au sol (WorldStatic) sous XY, à moins de MaxHeight de ReferenceZ ; faux sinon (vide, dessus d'un obstacle) */
 	static bool FindPathGround(const UWorld* World, const FVector& Location, float ReferenceZ, float MaxHeight, FVector& OutGround);
 
+	/** Instance d'une flèche à plat (cône de 100 cm, pointe = +Z du mesh) centrée sur Location, pointe vers Yaw */
+	static FTransform MakeArrowTransform(const FVector& Location, float Yaw, float Length, float Width, float Thickness);
+
 protected:
 
 	/** Serveur : le porteur atteint le point suivant (vague au point WaveAtPoint, récompense au dernier) */
@@ -219,6 +250,9 @@ protected:
 
 	/** Dernier point affiché en pointillés (carte d'objectif : fin du tracé en cours) */
 	virtual int32 GetLastVisiblePointIndex() const { return PathPoints.Num() - 1; }
+
+	/** Premier point affiché en pointillés : dernier point atteint si Hide Travelled Path, sinon le départ (carte d'objectif : jamais avant le tracé en cours) */
+	virtual int32 GetFirstVisiblePointIndex() const { return bHideTravelledPath ? ReachedPointIndex : 0; }
 
 	/** Dernier point atteint : la carte disparaît, la récompense apparaît (serveur) */
 	virtual void Complete();

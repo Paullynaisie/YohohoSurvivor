@@ -207,6 +207,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Stats")
 	FText ItemsUnit = NSLOCTEXT("YS", "ScoreItemsUnit", "{0} objets");
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Stats")
+	FText DeathsLabel = NSLOCTEXT("YS", "ScoreDeaths", "Morts");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Stats")
+	FText DeathsUnit = NSLOCTEXT("YS", "ScoreDeathsUnit", "{0} morts");
+
 	// --- Bas : bouton ---
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Button")

@@ -1134,7 +1134,7 @@ void AYSFlowMode::SpawnDavyJonesArena()
 		: FRotator(0.0f, FMath::FRandRange(0.0f, 360.0f), 0.0f).Vector() * KrakenArenaDistance;
 	const float JitterAngle = FMath::FRandRange(0.0f, 2.0f * PI);
 	const float JitterRadius = WorldBossRandomOffset * FMath::Sqrt(FMath::FRand());
-	FVector Location = Center - KrakenOffset + FVector(FMath::Cos(JitterAngle), FMath::Sin(JitterAngle), 0.0f) * JitterRadius;
+	FVector Location = Center - KrakenOffset * WorldBossDistanceMultiplier + FVector(FMath::Cos(JitterAngle), FMath::Sin(JitterAngle), 0.0f) * JitterRadius;
 	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
 	Location.Z = Ocean ? Ocean->GetSeaLevel() : 0.0f;
 	DavyJonesArena = GetWorld()->SpawnActor<AYSDavyJonesArena>(DavyJonesArenaClass, Location, FRotator::ZeroRotator);

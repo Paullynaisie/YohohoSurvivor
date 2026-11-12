@@ -46,9 +46,9 @@ void AYSPlayerState::CaptureFinalUpgrades()
 		Character = GetDeadBody();
 	}
 	FinalUpgrades = YSMatchStats::CaptureUpgrades(Character);
-	UE_LOG(LogTemp, Log, TEXT("[YSScoreboard] %s : %d classe(s), %d upgrade(s) d'arme, %d golden, %d shard(s) ; %.0f dégâts (max %.0f), %d NME tués, %.0f subis, %.0f par l'armure, %d réanimation(s), %d objet(s) déposé(s)"),
+	UE_LOG(LogTemp, Log, TEXT("[YSScoreboard] %s : %d classe(s), %d upgrade(s) d'arme, %d golden, %d shard(s) ; %.0f dégâts (max %.0f), %d NME tués, %.0f subis, %.0f par l'armure, %d réanimation(s), %d objet(s) déposé(s), %d mort(s)"),
 		*GetPlayerName(), FinalUpgrades.ClassUpgrades.Num(), FinalUpgrades.WeaponUpgrades.Num(), FinalUpgrades.GoldenUpgrades.Num(), FinalUpgrades.Shards.Num(),
-		MatchStats.DamageDealt, MatchStats.BiggestHit, MatchStats.Kills, MatchStats.DamageTaken, MatchStats.ArmorReduced, MatchStats.Revives, MatchStats.ItemsDelivered);
+		MatchStats.DamageDealt, MatchStats.BiggestHit, MatchStats.Kills, MatchStats.DamageTaken, MatchStats.ArmorReduced, MatchStats.Revives, MatchStats.ItemsDelivered, MatchStats.Deaths);
 	ForceNetUpdate();
 }
 
