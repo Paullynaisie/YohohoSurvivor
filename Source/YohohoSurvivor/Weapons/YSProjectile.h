@@ -108,6 +108,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground", meta=(ClampMin="0", EditCondition="bFollowGround"))
 	float GroundFollowInterpSpeed = 15.0f;
 
+	/**
+	 *  Jamais plus haut que ça au-dessus de la surface sous la balle (sol, pont, mer) : tirée plus haut, elle part à cette hauteur ; au
+	 *  bord d'une falaise / d'un pont, elle redescend tout de suite à cette hauteur au lieu de lisser la descente (0 = pas de limite)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Ground", meta=(ClampMin="0", Units="Centimeters", EditCondition="bFollowGround"))
+	float GroundFollowMaxHeight = 200.0f;
+
 	/** Couleur appliquée au mesh */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Appearance")
 	FLinearColor Color = FLinearColor::Black;

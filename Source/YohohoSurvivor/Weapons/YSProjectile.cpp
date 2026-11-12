@@ -211,7 +211,12 @@ void AYSProjectile::BeginPlay()
 			}
 		}
 		// au moins un peu plus que le rayon de la balle, pour ne pas frotter le sol ; canon : hauteur imposée
-		HeightAboveGround = FMath::Max(ForcedHeightAboveGround >= 0.0f ? ForcedHeightAboveGround : GetActorLocation().Z - ShooterGroundZ, Collision->GetScaledSphereRadius() + YSProjectile::MinGroundClearance);
+		HeightAboveGround = ForcedHeightAboveGround >= 0.0f ? ForcedHeightAboveGround : GetActorLocation().Z - ShooterGroundZ;
+		if (GroundFollowMaxHeight > 0.0f)
+		{
+			HeightAboveGround = FMath::Min(HeightAboveGround, GroundFollowMaxHeight);
+		}
+		HeightAboveGround = FMath::Max(HeightAboveGround, Collision->GetScaledSphereRadius() + YSProjectile::MinGroundClearance);
 		LastGroundZ = GroundZ;
 
 		// vol à plat : la hauteur ne vient que du sol
@@ -347,7 +352,12 @@ void AYSProjectile::Tick(float DeltaSeconds)
 	const float TargetZ = FMath::Max(LastGroundZ, AheadGroundZ) + HeightAboveGround;
 	const float Drop = Location.Z - TargetZ;
 	const bool bFollowExactly = TargetZ >= Location.Z || GroundFollowInterpSpeed <= 0.0f || Drop <= Step.Size() * GroundFollowMaxSlope + 1.0f;
-	const float NewZ = bFollowExactly ? TargetZ : FMath::FInterpTo(Location.Z, TargetZ, DeltaSeconds, GroundFollowInterpSpeed);
+	float NewZ = bFollowExactly ? TargetZ : FMath::FInterpTo(Location.Z, TargetZ, DeltaSeconds, GroundFollowInterpSpeed);
+	// jamais plus de Ground Follow Max Height au-dessus de la surface sous la balle (bord de falaise, de pont : descente immédiate)
+	if (GroundFollowMaxHeight > 0.0f)
+	{
+		NewZ = FMath::Min(NewZ, FMath::Max(LastGroundZ, AheadGroundZ) + FMath::Max(GroundFollowMaxHeight, HeightAboveGround));
+	}
 	UE_LOG(LogTemp, VeryVerbose, TEXT("[YSProjectile] %s en vol (%.0f, %.0f) : sol %.0f, %.0f cm au-dessus (voulu %.0f)%s"), *GetName(),
 		Location.X, Location.Y, LastGroundZ, NewZ - LastGroundZ, HeightAboveGround, bFollowExactly ? TEXT("") : TEXT(", descente adoucie"));
 	if (!FMath::IsNearlyEqual(NewZ, Location.Z, 0.1f))
