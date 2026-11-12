@@ -95,6 +95,9 @@ protected:
 
 	virtual void Die() override;
 
+	/** Hit color : les formes du prop (le corps est la hurtbox cachée) */
+	virtual void GatherHitColorMeshes(TArray<UMeshComponent*>& OutMeshes) const override;
+
 	/** Bateau des joueurs (GameBoat) */
 	AYSPirateShip* GetGameBoat() const;
 

@@ -21,6 +21,7 @@ class AYSShipCore;
 class UChildActorComponent;
 class UYSWeaponSet;
 class UMaterialInterface;
+class UMeshComponent;
 class UYSFoeRangedAction;
 class UYSAutoSwingAbility;
 class UYSBossBigSlashAbility;
@@ -475,6 +476,20 @@ protected:
 	/** Durée du retour à la position d'origine */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction", meta=(ClampMin="0.01", Units="s"))
 	float HitReactionRecoverDuration = 0.25f;
+
+	/**
+	 *  Hit color : à chaque coup d'un joueur (ou de son minion / poste de combat), le corps et les mains prennent sa couleur pendant
+	 *  Hit Color Duration puis reprennent leurs matériaux ; aussi sur le coup qui bumpe, celui qui tue et sur les NME immobiles
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction")
+	bool bHitColor = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction", meta=(ClampMin="0.01", Units="s", EditCondition="bHitColor"))
+	float HitColorDuration = 0.1f;
+
+	/** Matériau émissif du joueur (celui de ses armes ; rouge et noir : blanc) au lieu de son matériau de couleur (Head Feature) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Hit Reaction", meta=(EditCondition="bHitColor"))
+	bool bHitColorUseEmissive = false;
 
 	/** Bump, part de sa durée : backflip (vol, finit sur le dos) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Bump", meta=(ClampMin="0", ClampMax="1"))
@@ -1279,6 +1294,26 @@ protected:
 
 	/** Plus d'inclinaison : corps remis à sa place */
 	void CancelHitReaction();
+
+	/** Hit color (serveur) : couleur du joueur dont vient le coup, envoyée à toutes les machines */
+	void StartHitColor(const AController* EventInstigator, const AActor* DamageCauser);
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastHitColor(UMaterialInterface* Material);
+
+	/** Matériaux remis en place à la fin du hit color */
+	void EndHitColor();
+
+	/** Formes recolorées par le hit color : corps, mains, et les static / skeletal meshes accrochés au corps */
+	virtual void GatherHitColorMeshes(TArray<UMeshComponent*>& OutMeshes) const;
+
+	struct FYSHitColorSave
+	{
+		TWeakObjectPtr<UMeshComponent> Mesh;
+		TArray<TObjectPtr<UMaterialInterface>> Materials;
+	};
+	TArray<FYSHitColorSave> HitColorSaved;
+	FTimerHandle HitColorTimer;
 
 	bool bHitReactionActive = false;
 	double HitReactionStartTime = 0.0;

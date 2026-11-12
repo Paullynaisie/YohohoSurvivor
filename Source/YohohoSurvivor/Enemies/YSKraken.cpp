@@ -5,6 +5,8 @@
 #include "Components/DecalComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/MeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Core/YSCombat.h"
 #include "Engine/DamageEvents.h"
@@ -157,6 +159,21 @@ void AYSKrakenPart::SetTargetable(bool bTargetable)
 	if (AActor* VisualActor = Visual->GetChildActor())
 	{
 		VisualActor->SetActorHiddenInGame(!bTargetable);
+	}
+}
+
+void AYSKrakenPart::GatherHitColorMeshes(TArray<UMeshComponent*>& OutMeshes) const
+{
+	if (const AActor* VisualActor = Visual ? Visual->GetChildActor() : nullptr)
+	{
+		TInlineComponentArray<UMeshComponent*> Meshes(VisualActor);
+		for (UMeshComponent* PropMesh : Meshes)
+		{
+			if (PropMesh->IsA<UStaticMeshComponent>() || PropMesh->IsA<USkeletalMeshComponent>())
+			{
+				OutMeshes.Add(PropMesh);
+			}
+		}
 	}
 }
 

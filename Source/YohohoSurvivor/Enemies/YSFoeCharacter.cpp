@@ -18,6 +18,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Components/WidgetComponent.h"
 #include "Core/YSCombat.h"
+#include "Core/YSCustomization.h"
 #include "Core/YSDamageTypes.h"
 #include "Core/YSGameplayTags.h"
 #include "Core/YSGameMode.h"
@@ -511,6 +512,9 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	// chiffre de dégâts chez tous les joueurs, au point d'impact (position du projectile)
 	AYSGameState::ReportDamage(this, Damage, DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation(), EventInstigator, UYSCriticalDamageType::IsCritical(DamageEvent));
 
+	// hit color : couleur du joueur qui frappe, sur toutes les machines
+	StartHitColor(EventInstigator, DamageCauser);
+
 	// bouclier de boss : il prend tout le coup (pas de débordement sur les PV), pas de rage, pas de bump (pushback normal)
 	if (bShieldHit)
 	{
@@ -731,6 +735,98 @@ void AYSFoeCharacter::StartHitReaction(float Damage, const FDamageEvent& DamageE
 	++HitReaction.Counter;
 	BeginHitReactionLocal();
 	UE_LOG(LogTemp, Verbose, TEXT("[YSHitReaction] %s : %.0f dégâts sur %.0f PV max -> %.1f°, direction %.0f"), *GetName(), Damage, MaxHealth, HitReaction.Angle, HitReaction.DirectionYaw);
+}
+
+void AYSFoeCharacter::StartHitColor(const AController* EventInstigator, const AActor* DamageCauser)
+{
+	if (!bHitColor)
+	{
+		return;
+	}
+	// le projectile / l'arme / la bombe remonte à son joueur ; sinon le pion de l'instigateur (minion -> son Captain)
+	const FYSCustomizationColor* Color = DamageCauser ? YSPlayerColor::Find(DamageCauser) : nullptr;
+	if (!Color && EventInstigator)
+	{
+		Color = YSPlayerColor::Find(EventInstigator->GetPawn());
+	}
+	if (!Color)
+	{
+		return;
+	}
+	UMaterialInterface* Material = bHitColorUseEmissive && Color->EmissiveMaterial ? Color->EmissiveMaterial.Get() : Color->Material.Get();
+	if (!Material)
+	{
+		Material = Color->EmissiveMaterial;
+	}
+	if (Material)
+	{
+		MulticastHitColor(Material);
+	}
+}
+
+void AYSFoeCharacter::MulticastHitColor_Implementation(UMaterialInterface* Material)
+{
+	if (!Material || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+	// déjà en couleur (coup pendant le flash) : les matériaux d'origine restent ceux sauvés au premier coup
+	if (HitColorSaved.IsEmpty())
+	{
+		TArray<UMeshComponent*> Meshes;
+		GatherHitColorMeshes(Meshes);
+		for (UMeshComponent* ColorMesh : Meshes)
+		{
+			FYSHitColorSave& Save = HitColorSaved.AddDefaulted_GetRef();
+			Save.Mesh = ColorMesh;
+			for (int32 Slot = 0; Slot < ColorMesh->GetNumMaterials(); ++Slot)
+			{
+				Save.Materials.Add(ColorMesh->GetMaterial(Slot));
+			}
+		}
+	}
+	for (const FYSHitColorSave& Save : HitColorSaved)
+	{
+		if (UMeshComponent* ColorMesh = Save.Mesh.Get())
+		{
+			for (int32 Slot = 0; Slot < Save.Materials.Num(); ++Slot)
+			{
+				ColorMesh->SetMaterial(Slot, Material);
+			}
+		}
+	}
+	GetWorldTimerManager().SetTimer(HitColorTimer, this, &AYSFoeCharacter::EndHitColor, HitColorDuration, false);
+}
+
+void AYSFoeCharacter::EndHitColor()
+{
+	for (const FYSHitColorSave& Save : HitColorSaved)
+	{
+		if (UMeshComponent* ColorMesh = Save.Mesh.Get())
+		{
+			for (int32 Slot = 0; Slot < Save.Materials.Num(); ++Slot)
+			{
+				ColorMesh->SetMaterial(Slot, Save.Materials[Slot]);
+			}
+		}
+	}
+	HitColorSaved.Reset();
+}
+
+void AYSFoeCharacter::GatherHitColorMeshes(TArray<UMeshComponent*>& OutMeshes) const
+{
+	OutMeshes.Add(BodyMesh);
+	OutMeshes.Add(LeftHandMesh);
+	OutMeshes.Add(RightHandMesh);
+	TArray<USceneComponent*> AttachedComponents;
+	BodyMesh->GetChildrenComponents(true, AttachedComponents);
+	for (USceneComponent* Child : AttachedComponents)
+	{
+		if (Child && (Child->IsA<UStaticMeshComponent>() || Child->IsA<USkeletalMeshComponent>()))
+		{
+			OutMeshes.Add(Cast<UMeshComponent>(Child));
+		}
+	}
 }
 
 void AYSFoeCharacter::OnRep_HitReaction()
