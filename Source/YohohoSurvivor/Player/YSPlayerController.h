@@ -656,6 +656,26 @@ public:
 	UFUNCTION(Exec)
 	void YSKrakenKillStage();
 
+	/** Debug (hôte, FlowMod) : bateau des joueurs posé à Distance (cm, 0 = 100 m) du centre de la zone de Davy Jones, tourné vers elle, le joueur sur son pont */
+	UFUNCTION(Exec)
+	void YSShipToDavyJones(float Distance);
+
+	/** Debug (hôte, FlowMod) : combat contre Davy Jones lancé tout de suite autour du bateau des joueurs, où qu'il soit */
+	UFUNCTION(Exec)
+	void YSDavyJonesStart();
+
+	/** Debug (hôte, FlowMod) : équipage de Davy Jones tué, sinon Davy Jones au seuil de la phase suivante (tué à la dernière) */
+	UFUNCTION(Exec)
+	void YSDavyJonesSkip();
+
+	/** Debug (hôte) : le porteur d'une carte au trésor d'objectif est posé à la fin du tracé en cours */
+	UFUNCTION(Exec)
+	void YSObjectiveMapLeg();
+
+	/** Debug (hôte) : le joueur prend la Super Treasure Map, où qu'elle soit (pointillés dorés vers Davy Jones) */
+	UFUNCTION(Exec)
+	void YSCarrySuperMap();
+
 	/** Debug (hôte, FlowMod) : bateau des joueurs posé face à la plage de l'île Index (1.. = îles suivantes), à Distance (cm) du bord de l'eau, le joueur sur son pont */
 	UFUNCTION(Exec)
 	void YSShipToBeach(int32 Index, float Distance);

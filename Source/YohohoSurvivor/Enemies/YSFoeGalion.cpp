@@ -227,7 +227,60 @@ bool AYSFoeGalion::IsGuardedItemTaken()
 	return false;
 }
 
-void AYSFoeGalion::SpawnCrewGroups(const TArray<FYSGalionCrewGroup>& Groups, bool bFree)
+void AYSFoeGalion::StartScriptedBoarding(AYSPirateShip* Other)
+{
+	if (!HasAuthority() || RamState == ERamState::Boarded || !IsValid(Other))
+	{
+		return;
+	}
+	bScriptedBoarding = true;
+	RamState = ERamState::Boarded;
+	BoardedShip = Other;
+	SetDormant(false);
+	SetGrappled(true);
+	SpawnBoardingPlanks(Other);
+	UE_LOG(LogTemp, Log, TEXT("[YSGalion] %s : abordage mis en scène de %s (%d planche(s))"), *GetName(), *Other->GetName(), BoardingPlanks.Num());
+}
+
+void AYSFoeGalion::EndScriptedBoarding(const TCHAR* Reason)
+{
+	if (!bScriptedBoarding)
+	{
+		return;
+	}
+	// le bateau abordé reste immobilisé par l'arène : EndBoarding ne le libère pas
+	BoardedShip = nullptr;
+	EndBoarding(Reason);
+	bScriptedBoarding = false;
+}
+
+TArray<AYSFoeCharacter*> AYSFoeGalion::SpawnFreeCrew(const TArray<FYSGalionCrewGroup>& Groups)
+{
+	TArray<AYSFoeCharacter*> Spawned;
+	if (HasAuthority())
+	{
+		SpawnCrewGroups(Groups, true, &Spawned);
+	}
+	return Spawned;
+}
+
+bool AYSFoeGalion::GetPlatformTop(FVector& OutLocation) const
+{
+	const FString Wanted = PlatformComponentName.ToString().Replace(TEXT(" "), TEXT(""));
+	TInlineComponentArray<UPrimitiveComponent*> Primitives(this);
+	for (const UPrimitiveComponent* Primitive : Primitives)
+	{
+		if (Primitive && Primitive->GetName().Replace(TEXT(" "), TEXT("")).Equals(Wanted, ESearchCase::IgnoreCase))
+		{
+			const FBoxSphereBounds Bounds = Primitive->Bounds;
+			OutLocation = FVector(Bounds.Origin.X, Bounds.Origin.Y, Bounds.Origin.Z + Bounds.BoxExtent.Z);
+			return true;
+		}
+	}
+	return false;
+}
+
+void AYSFoeGalion::SpawnCrewGroups(const TArray<FYSGalionCrewGroup>& Groups, bool bFree, TArray<AYSFoeCharacter*>* OutSpawned)
 {
 	// matelots sur le pont, à distance les uns des autres
 	const FTransform& Transform = GetActorTransform();
@@ -258,6 +311,10 @@ void AYSFoeGalion::SpawnCrewGroups(const TArray<FYSGalionCrewGroup>& Groups, boo
 			if (AYSFoeCharacter* Foe = SpawnCrewMember(UYSEnemySpawnRule::PickEnemyClass(Classes), Feet, INDEX_NONE))
 			{
 				++Spawned;
+				if (OutSpawned)
+				{
+					OutSpawned->Add(Foe);
+				}
 				if (bFree)
 				{
 					Foe->ClearCrewShip();
@@ -379,7 +436,8 @@ void AYSFoeGalion::EndBoarding(const TCHAR* Reason)
 		}
 	}
 	BoardingPlanks.Reset();
-	if (IsValid(BoardedShip))
+	// abordage mis en scène : le bateau abordé reste immobilisé par l'arène de Davy Jones
+	if (IsValid(BoardedShip) && !bScriptedBoarding)
 	{
 		BoardedShip->SetGrappled(false);
 	}
@@ -674,7 +732,7 @@ void AYSFoeGalion::Tick(float DeltaSeconds)
 	// abordage : il dure jusqu'à la mort du capitaine ; plus d'équipage à répartir
 	if (RamState == ERamState::Boarded || RamState == ERamState::Done)
 	{
-		if (RamState == ERamState::Boarded && (IsDefeated() || !IsValid(BoardedShip)))
+		if (RamState == ERamState::Boarded && !bScriptedBoarding && (IsDefeated() || !IsValid(BoardedShip)))
 		{
 			EndBoarding(IsValid(BoardedShip) ? TEXT("capitaine tué") : TEXT("bateau abordé disparu"));
 		}

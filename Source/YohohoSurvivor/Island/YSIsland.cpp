@@ -11,6 +11,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "Interaction/YSTreasureMap.h"
+#include "Interaction/YSObjectiveTreasureMap.h"
 #include "Island/YSIslandData.h"
 #include "Island/YSIslandNPC.h"
 #include "Island/YSIslandParts.h"
@@ -557,11 +558,162 @@ void AYSIsland::SpawnDueObjectives()
 	const int32 Day = GetIslandDay();
 	for (FYSIslandObjectiveState& State : Objectives)
 	{
-		if (!State.bSpawned && !State.bDone && State.Def.SpawnDay <= Day)
+		// boussole d'une île des zones d'intérêt : posée par la carte au trésor d'objectif (accostage), pas sur l'île
+		if (!State.bSpawned && !State.bDone && !State.bWaitsObjectiveMap && UsesObjectiveMap(State))
+		{
+			State.bWaitsObjectiveMap = true;
+			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : objectif « %s » posé par une carte au trésor d'objectif à l'accostage"), *Data->GetName(), *State.Def.DisplayName.ToString());
+		}
+		if (!State.bSpawned && !State.bDone && !State.bWaitsObjectiveMap && State.Def.SpawnDay <= Day)
 		{
 			SpawnObjective(State);
 		}
 	}
+}
+
+bool AYSIsland::UsesObjectiveMap(const FYSIslandObjectiveState& State) const
+{
+	const AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	return !bStartIsland && FlowMode && FlowMode->ObjectiveTreasureMapClass && FlowMode->IsCompassClass(State.Def.ItemClass);
+}
+
+bool AYSIsland::FindObjectiveMapSpot(const FVector* AwayFrom, float MinDistance, float MaxDistanceFromCenter, FVector& OutWorld)
+{
+	const float Reach = Data->Generation.Radius;
+	const FVector2f AwayLocal = AwayFrom ? WorldToLocal(*AwayFrom) : FVector2f::ZeroVector;
+	const FVector2f AwayDirection = AwayLocal.GetSafeNormal();
+	for (int32 Attempt = 0; Attempt < YSIslandActor::SpotAttempts * 4; ++Attempt)
+	{
+		const float Range = MaxDistanceFromCenter > 0.0f ? FMath::Min(MaxDistanceFromCenter, Reach) : Reach;
+		const FVector2f Spot(ServerRng.FRandRange(-Range, Range), ServerRng.FRandRange(-Range, Range));
+		if (MaxDistanceFromCenter > 0.0f && Spot.SizeSquared() > FMath::Square(MaxDistanceFromCenter))
+		{
+			continue;
+		}
+		// moitié opposée : de l'autre côté du centre par rapport à AwayFrom, et assez loin de lui
+		if (AwayFrom && (FVector2f::DotProduct(Spot, AwayDirection) > 0.0f || (Spot - AwayLocal).Size() < MinDistance))
+		{
+			continue;
+		}
+		// sur le plateau : ni sur la plage ni au bord de la falaise, hors des massifs et des props
+		const float Theta = FMath::Atan2(Spot.Y, Spot.X);
+		if (Terrain.Inland(Spot.X, Spot.Y) < FMath::Max(300.0f, Terrain.BeachDepth(Theta) * Terrain.BeachWeight(Theta)) || !IsSpotFree(Spot, YSIslandActor::SpotMargin))
+		{
+			continue;
+		}
+		const FVector Ground = LocalToWorld(Spot, Terrain.Height(Spot.X, Spot.Y));
+		if (AYSOcean::IsUnderwater(GetWorld(), Ground))
+		{
+			continue;
+		}
+		OutWorld = Ground;
+		return true;
+	}
+	return false;
+}
+
+void AYSIsland::SpawnObjectiveMaps(const FVector& Landing, const TCHAR* Reason)
+{
+	const AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>();
+	const UClass* MapClass = FlowMode ? FlowMode->ObjectiveTreasureMapClass.Get() : nullptr;
+	const AYSObjectiveTreasureMap* Settings = MapClass ? MapClass->GetDefaultObject<AYSObjectiveTreasureMap>() : nullptr;
+	if (!Settings)
+	{
+		return;
+	}
+	int32 MapRank = 0;
+	for (int32 Index = 0; Index < Objectives.Num(); ++Index)
+	{
+		FYSIslandObjectiveState& State = Objectives[Index];
+		if (!State.bWaitsObjectiveMap || State.bObjectiveMapSpawned || State.bDone)
+		{
+			continue;
+		}
+		State.bObjectiveMapSpawned = true;
+
+		// sur la plage, à côté du point d'accostage (vers l'intérieur, décalée sur le côté de la zone de dépôt)
+		const FVector2f LandingLocal = WorldToLocal(Landing);
+		const FVector2f Inward = (-LandingLocal).GetSafeNormal();
+		const FVector2f Side(-Inward.Y, Inward.X);
+		const float SideOffset = (Data->BoatZoneRadius + 250.0f) * (MapRank % 2 == 0 ? 1.0f : -1.0f) * (1 + MapRank / 2);
+		FVector2f StartLocal = LandingLocal + Side * SideOffset;
+		if (Terrain.Inland(StartLocal.X, StartLocal.Y) < 0.0f)
+		{
+			StartLocal = FindShorePointToward(StartLocal) + Inward * 150.0f;
+		}
+		const FVector Start = LocalToWorld(StartLocal, Terrain.Height(StartLocal.X, StartLocal.Y));
+		++MapRank;
+
+		// 3 tracés : moitié opposée au départ, moitié opposée à la fin du 1er, autour du centre
+		FVector End1, End2, End3;
+		const bool bFound1 = FindObjectiveMapSpot(&Start, Settings->GetMinLegLength(), 0.0f, End1);
+		const bool bFound2 = bFound1 && FindObjectiveMapSpot(&End1, Settings->GetMinLegLength(), 0.0f, End2);
+		const bool bFound3 = FindObjectiveMapSpot(nullptr, 0.0f, Settings->GetFinalCenterRadius(), End3);
+		if (!bFound1 || !bFound2 || !bFound3)
+		{
+			// sans place : la boussole est posée normalement (l'objectif ne doit jamais être perdu)
+			UE_LOG(LogTemp, Warning, TEXT("[YSIsland] %s : carte au trésor d'objectif sans emplacement (%d / %d / %d), objectif « %s » posé sur l'île"), *Data->GetName(),
+				bFound1, bFound2, bFound3, *State.Def.DisplayName.ToString());
+			State.bWaitsObjectiveMap = false;
+			SpawnObjective(State);
+			continue;
+		}
+		TArray<FVector> Path;
+		Path.Add(Start);
+		TArray<int32> LegEnds;
+		for (const FVector& End : { End1, End2, End3 })
+		{
+			TArray<FVector> Leg;
+			Settings->BuildLeg(GetWorld(), Path.Last(), End, Leg);
+			Path.Append(Leg);
+			LegEnds.Add(Path.Num() - 1);
+		}
+
+		const FTransform Transform(FRotator(0.0f, ServerRng.FRandRange(0.0f, 360.0f), 0.0f), Start);
+		AYSObjectiveTreasureMap* Map = GetWorld()->SpawnActorDeferred<AYSObjectiveTreasureMap>(FlowMode->ObjectiveTreasureMapClass.Get(), Transform, nullptr, nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (!Map)
+		{
+			State.bWaitsObjectiveMap = false;
+			SpawnObjective(State);
+			continue;
+		}
+		Map->InitObjectiveMap(Path, LegEnds, this, Index);
+		Map->FinishSpawning(Transform);
+		ObjectiveMaps.Add(Map);
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : carte au trésor d'objectif %s (%s) en %s pour « %s » : %d points, fins des tracés %s / %s / %s"), *Data->GetName(), *Map->GetName(), Reason,
+			*Start.ToCompactString(), *State.Def.DisplayName.ToString(), Path.Num(), *End1.ToCompactString(), *End2.ToCompactString(), *End3.ToCompactString());
+	}
+}
+
+void AYSIsland::OnObjectiveMapCompleted(AYSObjectiveTreasureMap* Map, int32 ObjectiveIndex, const FVector& Location)
+{
+	ObjectiveMaps.Remove(Map);
+	if (!Objectives.IsValidIndex(ObjectiveIndex))
+	{
+		return;
+	}
+	FYSIslandObjectiveState& State = Objectives[ObjectiveIndex];
+	State.bWaitsObjectiveMap = false;
+	State.bSpawned = true;
+	if (State.Def.ItemClass)
+	{
+		State.Item = AYSInteractiveObject::SpawnOnGround(GetWorld(), State.Def.ItemClass, Location + FVector(0.0f, 0.0f, 100.0f), ServerRng.FRandRange(0.0f, 360.0f));
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : carte au trésor d'objectif %s finie, objectif « %s » : %s en %s"), *Data->GetName(), *GetNameSafe(Map), *State.Def.DisplayName.ToString(),
+		State.Item ? *State.Item->GetName() : TEXT("ÉCHEC"), *Location.ToCompactString());
+}
+
+AYSObjectiveTreasureMap* AYSIsland::GetObjectiveMap() const
+{
+	for (const TWeakObjectPtr<AYSObjectiveTreasureMap>& Map : ObjectiveMaps)
+	{
+		if (Map.IsValid())
+		{
+			return Map.Get();
+		}
+	}
+	return nullptr;
 }
 
 bool AYSIsland::IsSpotFree(const FVector2f& Spot, float Margin) const
@@ -902,6 +1054,10 @@ void AYSIsland::TickActivation()
 		if (BaseActor && (BaseActor == this || BaseActor->GetAttachParentActor() == this))
 		{
 			UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s pose le pied sur %s"), *Character->GetName(), *Data->GetName());
+			// arrivé sans accoster (à la nage, en chaloupe) : la carte au trésor d'objectif apparaît sur la plage la plus proche de lui
+			const FVector2f Shore = FindShorePointToward(WorldToLocal(Character->GetActorLocation()) * 1.5f);
+			const FVector2f Inland = Shore - Shore.GetSafeNormal() * Data->BoatZoneRadius * 0.5f;
+			SpawnObjectiveMaps(LocalToWorld(Inland, Terrain.Height(Inland.X, Inland.Y)), TEXT("joueur arrivé sans accoster"));
 			Activate();
 			return;
 		}
@@ -1179,6 +1335,12 @@ void AYSIsland::TickDocking()
 		const FVector2f Inland = Shore - Shore.GetSafeNormal() * Inset;
 		SpawnStartBoat(LocalToWorld(Inland, Terrain.Height(Inland.X, Inland.Y)), GameBoat->GetActorRotation().Yaw);
 		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : zone de dépôt posée au point d'accostage (%s)"), *Data->GetName(), StartBoat ? *StartBoat->GetActorLocation().ToCompactString() : TEXT("échec"));
+	}
+	// boussole de l'île : carte au trésor d'objectif sur la plage, à côté du point d'accostage
+	{
+		const FVector2f Shore = FindShorePointToward(Local);
+		const FVector2f Inland = Shore - Shore.GetSafeNormal() * Data->BoatZoneRadius * 0.5f;
+		SpawnObjectiveMaps(LocalToWorld(Inland, Terrain.Height(Inland.X, Inland.Y)), TEXT("accostage"));
 	}
 	if (Phase == EYSIslandPhase::Inactive)
 	{

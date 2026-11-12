@@ -347,6 +347,28 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(ClampMin="0", ClampMax="1", EditCondition="bIsElite && bBossArmor"))
 	float ShieldHealthThreshold = 0.5f;
 
+	/** Sous bouclier : Boss Big Slash de l'arme (si elle en a un) ; décoché = l'arme garde seulement son attaque de base (Davy Jones) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss", meta=(EditCondition="bIsElite && bBossArmor"))
+	bool bBossBigSlash = true;
+
+	/**
+	 *  « Shield Action » : NME invoqué quand le bouclier de boss se lève (un par bouclier), retiré dès que le bouclier est brisé ou que le
+	 *  boss meurt (Davy Jones : tentacule à distance du Kraken, qui sort tout de suite de l'eau près du bateau des joueurs). Vide = rien
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss|Shield Summon", meta=(EditCondition="bIsElite && bBossArmor"))
+	TSubclassOf<AYSFoeCharacter> ShieldSummonClass;
+
+	/** NME invoqué (autre qu'une tentacule) : posé au sol à cette distance du boss */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Boss|Shield Summon", meta=(ClampMin="0", Units="Centimeters", EditCondition="bIsElite && bBossArmor"))
+	float ShieldSummonDistance = 600.0f;
+
+	/** Main levée (geste du crochet de Davy Jones qui invoque son équipage) : position et rotation de la main, exprimées pour la main droite */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Raise Hand", meta=(Units="Centimeters"))
+	FVector RaisedHandLocation = FVector(20.0f, 45.0f, 95.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Raise Hand")
+	FRotator RaisedHandRotation = FRotator(-20.0f, 0.0f, 0.0f);
+
 	/**
 	 *  Dégâts subis x ceci quand ils viennent directement d'un personnage (joueur, minion : armes, Abilities, bombes...).
 	 *  Appliqué avant la Boss armor. Réglages de Paul (2026-11-11) : NME de base 1, élites / boss / capitaines 1, Nemesis 1, Kraken 0.65.
@@ -893,6 +915,29 @@ public:
 	/** Debug (serveur) : rage ajoutée (élite avec Boss armor, sans bouclier) ; pleine = bouclier */
 	void DebugAddRage(float Amount);
 
+	/**
+	 *  Mise en scène d'un combat de boss (serveur, ex. Davy Jones) : bHold = plus aucun comportement (ni poursuite ni attaque, la gravité et
+	 *  la réplication du mouvement continuent) ; bInvulnerable = aucun dégât ; Health Floor > 0 = les PV ne descendent pas sous cette valeur
+	 */
+	void SetScriptedHold(bool bHold) { bScriptedHold = bHold; }
+	bool IsScriptedHold() const { return bScriptedHold; }
+	void SetScriptedInvulnerable(bool bInvulnerable) { bScriptedInvulnerable = bInvulnerable; }
+	bool IsScriptedInvulnerable() const { return bScriptedInvulnerable; }
+	void SetScriptedHealthFloor(float Floor) { ScriptedHealthFloor = FMath::Max(Floor, 0.0f); }
+
+	/** Debug (serveur) : PV posés à cette valeur (au plancher scripté près) ; 0 = mort */
+	void DebugSetHealth(float NewHealth);
+
+	/** NME d'un combat de boss scripté (serveur) : sa mort ne compte pas comme celle de l'élite d'une nuit d'île */
+	void MarkArenaFoe() { bArenaFoe = true; }
+
+	/** Geste : une main levée pendant Duration secondes (Raised Hand Location / Rotation), sur toutes les machines */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRaiseHand(bool bLeft, float Duration);
+
+	/** NME invoqué par le bouclier en cours (Shield Summon Class), ou nullptr */
+	AYSFoeCharacter* GetShieldSummon() const { return ShieldSummon.Get(); }
+
 	/** Boss Big Slash en cours (préparation ou dash) */
 	bool IsBossDashing() const { return BossDash.bActive; }
 
@@ -1155,6 +1200,25 @@ protected:
 
 	/** Rage pleine ou PV sous le seuil : bouclier de boss, rage vidée (serveur) */
 	void TryTriggerBossShield();
+
+	/** Shield Action : NME invoqué au lever du bouclier, retiré quand il est brisé ou à la mort (serveur) */
+	void SpawnShieldSummon();
+	void RemoveShieldSummon(const TCHAR* Reason);
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<AYSFoeCharacter> ShieldSummon;
+
+	/** Mise en scène d'un combat de boss (serveur) */
+	bool bScriptedHold = false;
+	bool bScriptedInvulnerable = false;
+	float ScriptedHealthFloor = 0.0f;
+	bool bArenaFoe = false;
+
+	/** Main levée jusqu'à cette heure (monde, locale) : gauche, droite */
+	double RaisedLeftHandUntil = -1.0;
+	double RaisedRightHandUntil = -1.0;
+
+	bool IsHandRaised(bool bLeft) const;
 
 	/** Boss Big Slash d'une arme tenue (attaque en plus sous bouclier), ou nullptr */
 	UYSBossBigSlashAbility* GetBossAttack() const;

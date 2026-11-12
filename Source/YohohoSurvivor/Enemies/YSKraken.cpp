@@ -675,7 +675,7 @@ void AYSKrakenTentacle::BeginPlay()
 		State.Phase = EYSKrakenTentaclePhase::Submerged;
 		State.Location = FVector(GetActorLocation().X, GetActorLocation().Y, GetSeaLevel());
 		State.PhaseStartServerTime = GetServerTime();
-		NextEmergeServerTime = GetServerTime() + FirstEmergeDelay + EmergeStagger;
+		NextEmergeServerTime = GetServerTime() + (bEmergeImmediately ? 0.0f : FirstEmergeDelay + EmergeStagger);
 	}
 	ApplyStateLocally();
 }

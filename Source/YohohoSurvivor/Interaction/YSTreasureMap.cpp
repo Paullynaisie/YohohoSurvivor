@@ -303,7 +303,8 @@ void AYSTreasureMap::RebuildSpline()
 void AYSTreasureMap::UpdateProgress()
 {
 	AYSPlayerCharacter* Character = GetCarrier();
-	if (!Character || PathPoints.Num() < 2 || ReachedPointIndex >= PathPoints.Num() - 1)
+	const int32 MaxReachable = FMath::Min(GetMaxReachablePointIndex(), PathPoints.Num() - 1);
+	if (!Character || PathPoints.Num() < 2 || ReachedPointIndex >= MaxReachable)
 	{
 		return;
 	}
@@ -311,7 +312,7 @@ void AYSTreasureMap::UpdateProgress()
 	// n'importe quel point plus loin sur le chemin (le plus loin d'abord) : un virage coupé sans passer près du coin
 	// ne bloque plus la progression (avant : seul le point suivant comptait, le trésor n'était alors jamais trouvé)
 	int32 Reached = INDEX_NONE;
-	for (int32 Index = PathPoints.Num() - 1; Index > ReachedPointIndex && Reached == INDEX_NONE; --Index)
+	for (int32 Index = MaxReachable; Index > ReachedPointIndex && Reached == INDEX_NONE; --Index)
 	{
 		Reached = FVector::Dist2D(Character->GetActorLocation(), PathPoints[Index]) <= ReachRadius ? Index : INDEX_NONE;
 	}
@@ -325,7 +326,11 @@ void AYSTreasureMap::UpdateProgress()
 	ForceNetUpdate();
 	UE_LOG(LogTemp, Log, TEXT("[YSTreasureMap] %s : %s atteint le point %d / %d%s"), *GetName(), *Character->GetName(), ReachedPointIndex, PathPoints.Num() - 1,
 		Reached > PreviousReached + 1 ? *FString::Printf(TEXT(" (%d point(s) passé(s) de loin)"), Reached - PreviousReached - 1) : TEXT(""));
+	OnPointsReached(PreviousReached);
+}
 
+void AYSTreasureMap::OnPointsReached(int32 PreviousReached)
+{
 	// milieu du chemin : grosse vague (aussi si le point a été passé de loin)
 	if (WaveAtPoint > PreviousReached && WaveAtPoint <= ReachedPointIndex)
 	{
@@ -428,15 +433,18 @@ void AYSTreasureMap::UpdateDashes()
 	const float TravelledFade = TravelledFadeDuration > 0.0f ? 1.0f - FMath::Clamp(static_cast<float>(Now - TravelledFadeStartTime) / TravelledFadeDuration, 0.0f, 1.0f) : 0.0f;
 	const float FirstDistance = TravelledFade > 0.0f ? FMath::Min(TravelledFadeFromDistance, StartDistance) : StartDistance;
 
+	// fin affichée : tout le chemin, ou la fin du tracé en cours (carte d'objectif)
+	const float VisibleEnd = PathSpline->GetDistanceAlongSplineAtSplinePoint(FMath::Clamp(GetLastVisiblePointIndex(), 0, LastPoint));
+
 	TArray<FTransform> Transforms;
 	// grille fixe le long du chemin : les pointillés ne sautent pas quand le début affiché change
-	for (float Distance = FMath::FloorToFloat(FirstDistance / DashSpacing) * DashSpacing; Distance < SplineLength; Distance += DashSpacing)
+	for (float Distance = FMath::FloorToFloat(FirstDistance / DashSpacing) * DashSpacing; Distance < VisibleEnd; Distance += DashSpacing)
 	{
 		if (Distance < FirstDistance)
 		{
 			continue;
 		}
-		const float DashCenter = FMath::Min(Distance + DashLength * 0.5f, SplineLength);
+		const float DashCenter = FMath::Min(Distance + DashLength * 0.5f, VisibleEnd);
 		FVector Location = PathSpline->GetLocationAtDistanceAlongSpline(DashCenter, ESplineCoordinateSpace::World);
 		const float DistanceSquared = FVector::DistSquared2D(Location, Center);
 		if (DistanceSquared > VisibleRadiusSquared)

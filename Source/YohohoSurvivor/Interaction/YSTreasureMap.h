@@ -206,13 +206,24 @@ public:
 	/** Point au sol (WorldStatic) sous XY, à moins de MaxHeight de ReferenceZ ; faux sinon (vide, dessus d'un obstacle) */
 	static bool FindPathGround(const UWorld* World, const FVector& Location, float ReferenceZ, float MaxHeight, FVector& OutGround);
 
-private:
+protected:
 
 	/** Serveur : le porteur atteint le point suivant (vague au point WaveAtPoint, récompense au dernier) */
 	void UpdateProgress();
 
+	/** Dernier point que le porteur peut atteindre maintenant (carte d'objectif : fin du tracé en cours) */
+	virtual int32 GetMaxReachablePointIndex() const { return PathPoints.Num() - 1; }
+
+	/** Serveur : ReachedPointIndex vient d'avancer depuis PreviousReached (vague, récompense au dernier point) */
+	virtual void OnPointsReached(int32 PreviousReached);
+
+	/** Dernier point affiché en pointillés (carte d'objectif : fin du tracé en cours) */
+	virtual int32 GetLastVisiblePointIndex() const { return PathPoints.Num() - 1; }
+
 	/** Dernier point atteint : la carte disparaît, la récompense apparaît (serveur) */
-	void Complete();
+	virtual void Complete();
+
+private:
 
 	/** Spline locale reconstruite depuis PathPoints */
 	void RebuildSpline();

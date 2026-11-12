@@ -26,6 +26,8 @@
 #include "Core/YSGameState.h"
 #include "Enemies/YSFoeBomb.h"
 #include "Enemies/YSFoeJollyShip.h"
+#include "Enemies/YSKraken.h"
+#include "Enemies/YSKrakenArena.h"
 #include "Interaction/YSInteractiveObject.h"
 #include "Player/YSFaceDecalComponent.h"
 #include "Player/YSPlayerCharacter.h"
@@ -281,11 +283,29 @@ FVector AYSFoeCharacter::GetHandTargetLocation(bool bLeft) const
 	{
 		Location = WeaponLocation;
 	}
+	// geste : main levée (invocation de Davy Jones)
+	if (IsHandRaised(bLeft))
+	{
+		Location = RaisedHandLocation;
+	}
 	if (bLeft)
 	{
 		Location.Y = -Location.Y;
 	}
 	return Location;
+}
+
+bool AYSFoeCharacter::IsHandRaised(bool bLeft) const
+{
+	const UWorld* World = GetWorld();
+	return World && (bLeft ? RaisedLeftHandUntil : RaisedRightHandUntil) > World->GetTimeSeconds();
+}
+
+void AYSFoeCharacter::MulticastRaiseHand_Implementation(bool bLeft, float Duration)
+{
+	const double Until = GetWorld()->GetTimeSeconds() + FMath::Max(Duration, 0.0f);
+	(bLeft ? RaisedLeftHandUntil : RaisedRightHandUntil) = Until;
+	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s lève la main %s pendant %.1f s (%s)"), *GetName(), bLeft ? TEXT("gauche") : TEXT("droite"), Duration, HasAuthority() ? TEXT("serveur") : TEXT("client"));
 }
 
 FRotator AYSFoeCharacter::GetHandTargetRotation(bool bLeft) const
@@ -296,6 +316,10 @@ FRotator AYSFoeCharacter::GetHandTargetRotation(bool bLeft) const
 	if (Weapon && Weapon->GetHandRotationOverride(WeaponRotation))
 	{
 		Rotation = WeaponRotation;
+	}
+	if (IsHandRaised(bLeft))
+	{
+		Rotation = RaisedHandRotation;
 	}
 	// symétrie par rapport au plan avant/haut du corps : Yaw et Roll s'inversent
 	if (bLeft)
@@ -475,7 +499,8 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	// Marquage Critique ++ : le NME marqué subit plus de dégâts (toutes les sources) ; dégâts toujours entiers (arrondis à l'entier le plus proche)
 	const float MarkMultiplier = HasAuthority() ? 1.0f + AYSPlayerCharacter::GetMarkStat(this, UYSMarkCriticalUpgrade::MarkDamageBonusStat) : 1.0f;
 	float Incoming = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-	if (!HasAuthority() || Health <= 0.0f || Incoming <= 0.0f)
+	// combat de boss scripté : invulnérable (ex. Davy Jones sur la plateforme de son Galion)
+	if (!HasAuthority() || Health <= 0.0f || Incoming <= 0.0f || bScriptedInvulnerable)
 	{
 		return 0.0f;
 	}
@@ -521,12 +546,22 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	{
 		Shield = FMath::Max(0.0f, Shield - Damage);
 		UE_LOG(LogTemp, Verbose, TEXT("[YSBoss] %s : bouclier -%.0f -> %.0f / %.0f%s"), *GetName(), Damage, Shield, MaxShield, Shield <= 0.0f ? TEXT(", BRISÉ") : TEXT(""));
+		// Shield Action : l'invocation disparaît avec le bouclier
+		if (Shield <= 0.0f)
+		{
+			RemoveShieldSummon(TEXT("bouclier brisé"));
+		}
 		UpdateHealthBar();
 		ApplyPushback(Damage, DamageEvent, EventInstigator);
 		return Damage;
 	}
 
 	Health = FMath::Max(0.0f, Health - Damage);
+	// combat de boss scripté : PV gardés au seuil de la phase suivante (Davy Jones remonte sur un Galion)
+	if (ScriptedHealthFloor > 0.0f)
+	{
+		Health = FMath::Max(Health, ScriptedHealthFloor);
+	}
 
 	// OnRep n'est pas appelé sur le serveur : mise à jour directe pour le joueur hôte
 	UpdateHealthBar();
@@ -958,6 +993,9 @@ void AYSFoeCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageEven
 
 void AYSFoeCharacter::Die()
 {
+	// Shield Action : l'invocation disparaît avec le boss
+	RemoveShieldSummon(TEXT("boss mort"));
+
 	// XP commune à toute l'équipe ; rien pour un NME mort dans l'eau (tombé dans la deadzone sous la mer, ou pieds sous la surface)
 	if (AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>())
 	{
@@ -983,8 +1021,8 @@ void AYSFoeCharacter::Die()
 			UE_LOG(LogTemp, Log, TEXT("[YSFoe] %s laisse %s"), *GetName(), Loot ? *Loot->GetName() : TEXT("(échec)"));
 		}
 
-		// la mort de l'élite termine la nuit (pas le capitaine d'un Galion)
-		if (bIsElite && !CrewShip)
+		// la mort de l'élite termine la nuit (pas le capitaine d'un Galion, ni un NME d'un combat de boss scripté)
+		if (bIsElite && !CrewShip && !bArenaFoe)
 		{
 			GameMode->OnEliteKilled(this);
 		}
@@ -1682,6 +1720,12 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 
 	// serveur autoritaire : les clients reçoivent position et rotation par réplication
 	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// combat de boss scripté (Davy Jones sur sa plateforme, en plein saut) : aucun comportement
+	if (bScriptedHold)
 	{
 		return;
 	}
@@ -2678,6 +2722,80 @@ void AYSFoeCharacter::TryTriggerBossShield()
 	ForceNetUpdate();
 	UpdateHealthBar();
 	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : bouclier de boss %.0f (%s), rage vidée"), *GetName(), Shield, bRageFull ? TEXT("rage pleine") : TEXT("PV sous le seuil"));
+	SpawnShieldSummon();
+}
+
+void AYSFoeCharacter::DebugSetHealth(float NewHealth)
+{
+	if (!HasAuthority() || IsDying() || Health <= 0.0f)
+	{
+		return;
+	}
+	Health = FMath::Clamp(FMath::Max(NewHealth, ScriptedHealthFloor), 0.0f, MaxHealth);
+	ForceNetUpdate();
+	UpdateHealthBar();
+	UE_LOG(LogTemp, Log, TEXT("[YSFoe] %s : PV posés à %.0f / %.0f (debug)"), *GetName(), Health, MaxHealth);
+	if (Health <= 0.0f)
+	{
+		Die();
+	}
+}
+
+void AYSFoeCharacter::SpawnShieldSummon()
+{
+	if (!HasAuthority() || !ShieldSummonClass || ShieldSummon.IsValid())
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	AYSFoeCharacter* Summon = nullptr;
+	if (ShieldSummonClass->IsChildOf(AYSKrakenTentacle::StaticClass()))
+	{
+		// tentacule : posée sous l'eau, elle sort tout de suite à sa distance du bateau des joueurs (choisie par elle)
+		const AYSOcean* Ocean = AYSOcean::Find(World);
+		const FVector Location(GetActorLocation().X, GetActorLocation().Y, Ocean ? Ocean->GetSeaLevel() : GetActorLocation().Z);
+		const FTransform Transform(FRotator::ZeroRotator, Location);
+		AYSKrakenTentacle* Tentacle = World->SpawnActorDeferred<AYSKrakenTentacle>(ShieldSummonClass.Get(), Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (Tentacle)
+		{
+			Tentacle->SetEmergeImmediately();
+			Tentacle->FinishSpawning(Transform);
+			Summon = Tentacle;
+		}
+	}
+	else
+	{
+		const FVector Ground = AYSInteractiveObject::FindGround(World, GetActorLocation() + GetActorForwardVector().GetSafeNormal2D() * ShieldSummonDistance, this);
+		const float HalfHeight = ShieldSummonClass->GetDefaultObject<AYSFoeCharacter>()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		Summon = World->SpawnActor<AYSFoeCharacter>(ShieldSummonClass, Ground + FVector(0.0f, 0.0f, HalfHeight + 2.0f), GetActorRotation(), Params);
+	}
+	if (Summon)
+	{
+		Summon->MarkArenaFoe();
+	}
+	ShieldSummon = Summon;
+	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : Shield Action, %s invoqué"), *GetName(), Summon ? *Summon->GetName() : TEXT("ÉCHEC"));
+}
+
+void AYSFoeCharacter::RemoveShieldSummon(const TCHAR* Reason)
+{
+	AYSFoeCharacter* Summon = ShieldSummon.Get();
+	ShieldSummon = nullptr;
+	if (!HasAuthority() || !IsValid(Summon) || Summon->IsDying())
+	{
+		return;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[YSBoss] %s : %s retiré (%s)"), *GetName(), *Summon->GetName(), Reason);
+	if (AYSKrakenPart* Part = Cast<AYSKrakenPart>(Summon))
+	{
+		Part->Vanish(Reason);
+	}
+	else
+	{
+		Summon->Destroy();
+	}
 }
 
 void AYSFoeCharacter::SetShipCaptainBoss()
@@ -2708,6 +2826,10 @@ void AYSFoeCharacter::DebugAddRage(float Amount)
 
 UYSBossBigSlashAbility* AYSFoeCharacter::GetBossAttack() const
 {
+	if (!bBossBigSlash)
+	{
+		return nullptr;
+	}
 	for (const AYSWeapon* Weapon : { GetRightHandWeapon(), GetLeftHandWeapon() })
 	{
 		if (UYSBossBigSlashAbility* Slash = Weapon ? Weapon->FindComponentByClass<UYSBossBigSlashAbility>() : nullptr)

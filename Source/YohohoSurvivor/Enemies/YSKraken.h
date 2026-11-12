@@ -433,9 +433,14 @@ public:
 	/** Serveur, avant FinishSpawning : secondes ajoutées à la première sortie (l'arène décale les tentacules d'une même étape) */
 	void SetEmergeStagger(float Seconds) { EmergeStagger = FMath::Max(Seconds, 0.0f); }
 
+	/** Serveur, avant FinishSpawning : première sortie tout de suite, sans First Emerge Delay (Shield Action de Davy Jones) */
+	void SetEmergeImmediately() { bEmergeImmediately = true; }
+
 protected:
 
 	float EmergeStagger = 0.0f;
+
+	bool bEmergeImmediately = false;
 
 	/** Sous l'eau au début, puis sort après ce délai */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle", meta=(ClampMin="0", Units="s"))

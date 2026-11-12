@@ -8,6 +8,8 @@
 #include "Enemies/YSNavalBattle.h"
 #include "Enemies/YSFoeGalion.h"
 #include "Enemies/YSKrakenArena.h"
+#include "Enemies/YSDavyJonesArena.h"
+#include "Interaction/YSObjectiveTreasureMap.h"
 #include "Map/YSOcean.h"
 #include "TimerManager.h"
 #include "Island/YSIsland.h"
@@ -74,6 +76,7 @@ void AYSFlowMode::BeginPlay()
 		{
 			SpawnZonesOfInterest();
 			SpawnKrakenArena();
+			SpawnDavyJonesArena();
 		}
 		// îles suivantes générées dès maintenant, sous l'eau
 		else if (bNextIslandsEnabled && bPregenerateNextIslands && NextIslandsSubmergedDepth > 0.0f)
@@ -1056,6 +1059,26 @@ void AYSFlowMode::SpawnKrakenArena()
 	Location.Z = Ocean ? Ocean->GetSeaLevel() : 0.0f;
 	KrakenArena = GetWorld()->SpawnActor<AYSKrakenArena>(KrakenArenaClass, Location, FRotator::ZeroRotator);
 	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Zone du Kraken en %s (%.0f m du centre, %.0f°)"), *Location.ToCompactString(), KrakenArenaDistance / 100.0f, FMath::RadiansToDegrees(Angle));
+}
+
+void AYSFlowMode::SpawnDavyJonesArena()
+{
+	if (!DavyJonesArenaClass || DavyJonesArena || !Island)
+	{
+		return;
+	}
+	// à l'opposé de la zone du Kraken par rapport au centre de l'île de départ (même distance), décalée au hasard dans un disque
+	const FVector Center = Island->GetActorLocation() * FVector(1.0f, 1.0f, 0.0f);
+	const FVector KrakenOffset = KrakenArena ? (KrakenArena->GetActorLocation() - Center) * FVector(1.0f, 1.0f, 0.0f)
+		: FRotator(0.0f, FMath::FRandRange(0.0f, 360.0f), 0.0f).Vector() * KrakenArenaDistance;
+	const float JitterAngle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const float JitterRadius = WorldBossRandomOffset * FMath::Sqrt(FMath::FRand());
+	FVector Location = Center - KrakenOffset + FVector(FMath::Cos(JitterAngle), FMath::Sin(JitterAngle), 0.0f) * JitterRadius;
+	const AYSOcean* Ocean = AYSOcean::Find(GetWorld());
+	Location.Z = Ocean ? Ocean->GetSeaLevel() : 0.0f;
+	DavyJonesArena = GetWorld()->SpawnActor<AYSDavyJonesArena>(DavyJonesArenaClass, Location, FRotator::ZeroRotator);
+	UE_LOG(LogTemp, Log, TEXT("[YSFlowMode] Zone du world boss (Davy Jones) en %s : %.0f m du centre, à l'opposé du Kraken décalé de %.0f m"), *Location.ToCompactString(),
+		FVector::Dist2D(Location, Center) / 100.0f, JitterRadius / 100.0f);
 }
 
 void AYSFlowMode::DebugGalionWithCompasses()

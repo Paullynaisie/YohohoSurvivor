@@ -159,6 +159,13 @@ protected:
 	int32 Stage2MeleeTentacles = 2;
 
 	/**
+	 *  Bonus : Davy Jones vaincu (world boss) = tentacules des étapes 1 et 2 x ce multiplicateur, à distance et de mêlée chacune de leur côté,
+	 *  arrondi au-dessus (0.5 : 2 + 2 -> 1 + 1, 6 + 2 -> 3 + 1)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Fight", meta=(ClampMin="0", ClampMax="1"))
+	float DavyJonesTentacleMultiplier = 0.5f;
+
+	/**
 	 *  Première sortie des tentacules d'une étape décalée de ces secondes de l'une à l'autre (0 = toutes ensemble, 10 s après le début) ;
 	 *  choix de Claude : sinon les 6 tentacules à distance de l'étape 2 tiraient ensemble (6 x 1000 sur le sloop de 5000 PV)
 	 */

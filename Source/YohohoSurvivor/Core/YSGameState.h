@@ -183,6 +183,13 @@ protected:
 	UPROPERTY(Replicated)
 	FYSKrakenBossBar KrakenBossBar;
 
+	/** World boss Davy Jones : combat en cours, vaincu */
+	UPROPERTY(Replicated)
+	bool bDavyJonesFight = false;
+
+	UPROPERTY(Replicated)
+	bool bDavyJonesDefeated = false;
+
 	/** Temps serveur (GetServerWorldTimeSeconds) du démarrage de la partie */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Match")
 	double MatchStartServerTime = 0.0;
@@ -392,6 +399,18 @@ public:
 	bool UsesCoreBoatStock() const { return bCoreBoatStock; }
 	int32 GetCoreBoatStock() const { return CoreBoatStock; }
 	int32 GetNextStageCoreBoatCost() const { return NextStageCoreBoatCost; }
+
+	/** World boss : combat contre Davy Jones en cours (objectif « Vaincre Davy Jones »), Davy Jones vaincu (Kraken : moins de tentacules) */
+	bool IsDavyJonesFight() const { return bDavyJonesFight; }
+	bool IsDavyJonesDefeated() const { return bDavyJonesDefeated; }
+
+	/** Serveur uniquement (AYSDavyJonesArena) */
+	void SetDavyJonesState(bool bFight, bool bDefeated)
+	{
+		bDavyJonesFight = bFight;
+		bDavyJonesDefeated = bDefeated;
+		ForceNetUpdate();
+	}
 
 	bool ShowsSeaObjectives() const { return bSeaObjectives; }
 	int32 GetCompassTotal() const { return CompassTotal; }

@@ -141,7 +141,8 @@ void UYSFlowHUDWidget::Refresh(const FYSFlowStatus& InStatus, float PhaseRemaini
 		Status.Objective = EYSFlowObjective::Sea;
 		Status.FinalMatchTime = InStatus.FinalMatchTime;
 		const int32 Remaining = FMath::Max(Sea.CompassesRemaining, 0);
-		Status.ObjectiveText = Sea.bPart3 ? KrakenObjectiveText
+		Status.ObjectiveText = Sea.bDavyJones ? DavyJonesObjectiveText
+			: Sea.bPart3 ? KrakenObjectiveText
 			: Sea.bNavalBattle ? NavalBattleObjectiveText
 			: Remaining == 0 ? CompassDoneText
 			: Remaining == 1 ? CompassLastObjectiveText

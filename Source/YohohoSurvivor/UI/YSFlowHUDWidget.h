@@ -21,6 +21,8 @@ struct FYSFlowSeaObjective
 	int32 CompassTotal = 0;
 	/** Partie 3 : combat contre le Kraken */
 	bool bPart3 = false;
+	/** World boss : combat contre Davy Jones */
+	bool bDavyJones = false;
 };
 
 /**
@@ -157,6 +159,10 @@ public:
 	/** Partie 3 : combat contre le Kraken (pas de timer) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Sea")
 	FText KrakenObjectiveText = NSLOCTEXT("YS", "FlowKraken", "Affrontez le Kraken");
+
+	/** World boss : combat contre Davy Jones (à la place de l'objectif en mer, pour tous les joueurs) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Sea")
+	FText DavyJonesObjectiveText = NSLOCTEXT("YS", "FlowDavyJones", "Vaincre Davy Jones");
 
 	virtual bool Initialize() override;
 

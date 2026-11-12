@@ -67,6 +67,9 @@
 #include "Enemies/YSFoeJollyShip.h"
 #include "Enemies/YSNavalBattle.h"
 #include "Enemies/YSKrakenArena.h"
+#include "Enemies/YSDavyJonesArena.h"
+#include "Interaction/YSObjectiveTreasureMap.h"
+#include "Interaction/YSSuperTreasureMap.h"
 #include "Ship/YSPirateShip.h"
 #include "Ship/YSCombatPost.h"
 #include "Ship/YSShipCore.h"
@@ -1514,6 +1517,87 @@ void AYSPlayerController::YSKrakenKillStage()
 	}
 }
 
+void AYSPlayerController::YSShipToDavyJones(float Distance)
+{
+	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	AYSPirateShip* Ship = YSGameState ? YSGameState->GetGameBoat() : nullptr;
+	const AYSDavyJonesArena* Arena = FlowMode ? FlowMode->GetDavyJonesArena() : nullptr;
+	if (!Ship || !Arena || !GetPawn())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSDavyJones] Debug : pas de bateau des joueurs ou pas de zone de Davy Jones"));
+		return;
+	}
+	const FVector Center = Arena->GetActorLocation();
+	const float Range = Distance > 0.0f ? Distance : 10000.0f;
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const FVector Point = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Range;
+	Ship->SetActorLocationAndRotation(FVector(Point.X, Point.Y, Ship->GetActorLocation().Z), ((Center - Point) * FVector(1.0f, 1.0f, 0.0f)).Rotation());
+	Ship->SyncMotionToActor();
+	GetPawn()->TeleportTo(Ship->GetActorLocation() + FVector(0.0f, 0.0f, 350.0f), GetPawn()->GetActorRotation());
+	UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] Debug : %s posé à %.0f m du centre de la zone de Davy Jones, en %s"), *Ship->GetName(), Range / 100.0f, *Point.ToCompactString());
+}
+
+void AYSPlayerController::YSDavyJonesStart()
+{
+	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
+	if (AYSDavyJonesArena* Arena = FlowMode ? FlowMode->GetDavyJonesArena() : nullptr)
+	{
+		Arena->DebugStartFight();
+	}
+}
+
+void AYSPlayerController::YSDavyJonesSkip()
+{
+	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
+	if (AYSDavyJonesArena* Arena = FlowMode ? FlowMode->GetDavyJonesArena() : nullptr)
+	{
+		Arena->DebugSkip();
+	}
+}
+
+void AYSPlayerController::YSObjectiveMapLeg()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	for (TActorIterator<AYSObjectiveTreasureMap> It(GetWorld()); It; ++It)
+	{
+		if (It->GetCarrier())
+		{
+			It->DebugCompleteLeg();
+			return;
+		}
+	}
+	// aucune portée : le joueur prend la première carte d'objectif posée
+	AYSPlayerCharacter* MyCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	for (TActorIterator<AYSObjectiveTreasureMap> It(GetWorld()); It && MyCharacter; ++It)
+	{
+		MyCharacter->TeleportTo(It->GetActorLocation() + FVector(0.0f, 0.0f, 120.0f), MyCharacter->GetActorRotation());
+		MyCharacter->StartCarrying(*It);
+		UE_LOG(LogTemp, Log, TEXT("[YSObjectiveMap] Debug : %s porte %s"), *MyCharacter->GetName(), *It->GetName());
+		return;
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[YSObjectiveMap] Debug : aucune carte au trésor d'objectif"));
+}
+
+void AYSPlayerController::YSCarrySuperMap()
+{
+	AYSPlayerCharacter* MyCharacter = HasAuthority() ? Cast<AYSPlayerCharacter>(GetPawn()) : nullptr;
+	for (TActorIterator<AYSSuperTreasureMap> It(GetWorld()); It && MyCharacter; ++It)
+	{
+		if (!It->GetCarrier())
+		{
+			MyCharacter->TeleportTo(It->GetActorLocation() + FVector(0.0f, 0.0f, 120.0f), MyCharacter->GetActorRotation());
+			MyCharacter->StartCarrying(*It);
+			UE_LOG(LogTemp, Log, TEXT("[YSSuperTreasureMap] Debug : %s porte %s"), *MyCharacter->GetName(), *It->GetName());
+			return;
+		}
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[YSSuperTreasureMap] Debug : aucune Super Treasure Map libre"));
+}
+
 void AYSPlayerController::YSShipToBeach(int32 Index, float Distance)
 {
 	const AYSFlowMode* FlowMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSFlowMode>() : nullptr;
@@ -1826,6 +1910,12 @@ void AYSPlayerController::UpdateDayNightUI(float DeltaSeconds)
 		{
 			Sea.bShow = true;
 			Sea.bPart3 = true;
+		}
+		// world boss : « Vaincre Davy Jones » partout pendant le combat
+		if (YSGameState->IsDavyJonesFight())
+		{
+			Sea.bShow = true;
+			Sea.bDavyJones = true;
 		}
 		FlowHUD->Refresh(YSGameState->GetFlowStatus(), YSGameState->GetFlowPhaseRemaining(), YSGameState->GetMatchClockTime(), YSGameState->IsMatchStarted(),
 			bPart3 ? -1.0f : YSGameState->GetPart2Elapsed(), YSGameState->GetPart2Duration(), Sea);

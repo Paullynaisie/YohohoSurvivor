@@ -299,6 +299,24 @@ public:
 	/** Debug : premier objet gardé encore sur le pont, ou nullptr */
 	AYSInteractiveObject* GetGuardedItem() const;
 
+	/**
+	 *  Abordage mis en scène (serveur, combat contre Davy Jones) : planches entre son pont et celui de Other, lui-même immobilisé, sans équipage
+	 *  lâché ni second équipage ; il ne s'arrête qu'avec End Scripted Boarding (ou s'il coule). Other n'est pas immobilisé par lui (l'arène s'en charge)
+	 */
+	void StartScriptedBoarding(AYSPirateShip* Other);
+	void EndScriptedBoarding(const TCHAR* Reason);
+	bool IsScriptedBoarding() const { return bScriptedBoarding; }
+
+	/** NME libres sur son pont (serveur) : ils quittent tout de suite l'équipage et attaquent les joueurs ; renvoie ceux qui sont apparus */
+	TArray<AYSFoeCharacter*> SpawnFreeCrew(const TArray<FYSGalionCrewGroup>& Groups);
+
+	/** Plateforme de Davy Jones (composant Platform Component Name, à la place du grand mât) : point au milieu de son dessus ; faux sans elle */
+	bool GetPlatformTop(FVector& OutLocation) const;
+
+	/** Composant du Blueprint sur lequel se tient Davy Jones (nom de variable ; Galion de Davy Jones) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Davy Jones")
+	FName PlatformComponentName = TEXT("DavyPlatform");
+
 	/** Distance entre le capitaine (barre) et chaque objet gardé */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Galion|Guarded Items", meta=(ClampMin="50", Units="Centimeters"))
 	float GuardedItemDistance = 220.0f;
@@ -351,8 +369,11 @@ private:
 	/** Hauteur du pont de Ship sous Point (trace), sinon Fallback */
 	float FindDeckHeight(const AYSPirateShip* Ship, const FVector& Point, float Fallback) const;
 
-	/** Groupes de matelots sur le pont (serveur) ; bFree = NME libres (pas d'équipage : ils vont n'importe où) */
-	void SpawnCrewGroups(const TArray<FYSGalionCrewGroup>& Groups, bool bFree);
+	/** Groupes de matelots sur le pont (serveur) ; bFree = NME libres (pas d'équipage : ils vont n'importe où) ; OutSpawned : ceux qui sont apparus */
+	void SpawnCrewGroups(const TArray<FYSGalionCrewGroup>& Groups, bool bFree, TArray<AYSFoeCharacter*>* OutSpawned = nullptr);
+
+	/** Abordage mis en scène (Davy Jones) */
+	bool bScriptedBoarding = false;
 
 	/** Capitaine, puis matelots (serveur) */
 	UPROPERTY(Transient)

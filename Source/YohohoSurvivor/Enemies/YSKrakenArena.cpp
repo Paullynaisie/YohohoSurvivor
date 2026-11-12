@@ -369,16 +369,27 @@ void AYSKrakenArena::SpawnStageParts(int32 Stage)
 		}
 	};
 	StageMaxHealth = 0.0f;
+	// bonus : Davy Jones vaincu = moins de tentacules (chaque type x Davy Jones Tentacle Multiplier, arrondi au-dessus)
+	const AYSGameState* YSGameState = GetWorld()->GetGameState<AYSGameState>();
+	const bool bDavyJonesBonus = YSGameState && YSGameState->IsDavyJonesDefeated();
+	const auto TentacleCount = [this, bDavyJonesBonus](int32 Base)
+	{
+		return bDavyJonesBonus && Base > 0 ? FMath::Max(0, FMath::CeilToInt(Base * DavyJonesTentacleMultiplier)) : Base;
+	};
+	if (bDavyJonesBonus && (Stage == 1 || Stage == 2))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSKrakenArena] Davy Jones vaincu : tentacules x%.2f"), DavyJonesTentacleMultiplier);
+	}
 	switch (Stage)
 	{
 	case 1:
 		SpawnPart(HeadClass, Center);
-		SpawnTentacles(TentacleRangeClass, Stage1RangeTentacles, 0.0f);
-		SpawnTentacles(TentacleMeleeClass, Stage1MeleeTentacles, 45.0f);
+		SpawnTentacles(TentacleRangeClass, TentacleCount(Stage1RangeTentacles), 0.0f);
+		SpawnTentacles(TentacleMeleeClass, TentacleCount(Stage1MeleeTentacles), 45.0f);
 		break;
 	case 2:
-		SpawnTentacles(TentacleRangeClass, Stage2RangeTentacles, 0.0f);
-		SpawnTentacles(TentacleMeleeClass, Stage2MeleeTentacles, 30.0f);
+		SpawnTentacles(TentacleRangeClass, TentacleCount(Stage2RangeTentacles), 0.0f);
+		SpawnTentacles(TentacleMeleeClass, TentacleCount(Stage2MeleeTentacles), 30.0f);
 		for (const TWeakObjectPtr<AYSKrakenPart>& Part : Parts)
 		{
 			StageMaxHealth += Part.IsValid() ? Part->GetMaxHealth() : 0.0f;

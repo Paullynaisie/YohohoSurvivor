@@ -9,6 +9,7 @@
 class AYSFoeCharacter;
 class AYSInteractiveObject;
 class AYSIslandPier;
+class AYSObjectiveTreasureMap;
 class AYSPlayerCharacter;
 class AYSStartBoat;
 class UProceduralMeshComponent;
@@ -50,6 +51,9 @@ struct FYSIslandObjectiveState
 	bool bDone = false;
 	/** Objet posé sur l'île (au jour Spawn Day) */
 	bool bSpawned = false;
+	/** Boussole d'une île des zones d'intérêt : pas posée, une carte au trésor d'objectif apparaît à l'accostage et la pose à la fin de ses tracés */
+	bool bWaitsObjectiveMap = false;
+	bool bObjectiveMapSpawned = false;
 };
 
 /**
@@ -199,6 +203,18 @@ public:
 	/** La coulaison est finie (serveur : l'île est sous l'eau) */
 	bool HasSunk() const { return bSinkFinished; }
 
+	/**
+	 *  Point au hasard sur le plateau de l'île (serveur, monde, au sol, hors massifs) : avec AwayFrom, dans la moitié de l'île opposée à ce point
+	 *  et à au moins Min Distance de lui ; avec Max Distance From Center > 0, à moins de ça du centre de l'île. Faux si rien trouvé
+	 */
+	bool FindObjectiveMapSpot(const FVector* AwayFrom, float MinDistance, float MaxDistanceFromCenter, FVector& OutWorld);
+
+	/** Fin des tracés d'une carte au trésor d'objectif (serveur) : l'objet de l'objectif (boussole) est posé à Location */
+	void OnObjectiveMapCompleted(AYSObjectiveTreasureMap* Map, int32 ObjectiveIndex, const FVector& Location);
+
+	/** Debug : carte au trésor d'objectif encore en jeu, ou nullptr */
+	AYSObjectiveTreasureMap* GetObjectiveMap() const;
+
 protected:
 
 	UPROPERTY(VisibleAnywhere, Category="Components")
@@ -318,6 +334,15 @@ private:
 
 	/** Îles de la partie 2 : bateau des joueurs échoué devant la plage -> bloqué à quai jusqu'à la fin de l'évacuation (serveur) */
 	void TickDocking();
+
+	/** L'objet de cet objectif est remplacé par une carte au trésor d'objectif (boussole d'une île des zones d'intérêt) */
+	bool UsesObjectiveMap(const FYSIslandObjectiveState& State) const;
+
+	/** Cartes au trésor d'objectif (serveur, une fois par objectif) : sur la plage à côté de Landing (point d'accostage, monde) */
+	void SpawnObjectiveMaps(const FVector& Landing, const TCHAR* Reason);
+
+	UPROPERTY(Transient)
+	TArray<TWeakObjectPtr<AYSObjectiveTreasureMap>> ObjectiveMaps;
 
 public:
 

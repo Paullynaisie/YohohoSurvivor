@@ -169,6 +169,13 @@ public:
 	TSubclassOf<AYSInteractiveObject> SuperTreasureMapClass;
 
 	/**
+	 *  Île des zones d'intérêt dont l'objectif est une boussole : la boussole n'est pas posée sur l'île, cette carte au trésor d'objectif apparaît
+	 *  sur la plage quand le bateau accoste et la pose au bout de ses 3 tracés. Vide = boussole posée sur l'île comme avant
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Zones of Interest", meta=(EditCondition="bZonesOfInterest"))
+	TSubclassOf<class AYSObjectiveTreasureMap> ObjectiveTreasureMapClass;
+
+	/**
 	 *  Zones d'intérêt : un CoreBoat posé dans la zone du core du bateau des joueurs disparaît et part dans le stock (affiché sous les plumes de
 	 *  phoenix) ; le bateau passe à l'étape Index dès que le stock atteint Core Boat Cost Per Stage[Index], qui est consommé
 	 *  (défaut : sloop -> brigantin 2, brigantin -> galion 3 ; 0 = étape qui ne se gagne pas avec des CoreBoats : chaloupe -> sloop sur l'île de départ)
@@ -215,6 +222,17 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|Part 3", meta=(ClampMin="0", Units="Centimeters"))
 	float KrakenArenaDistance = 75000.0f;
+
+	/**
+	 *  World boss (Davy Jones) : zone posée au lancement à l'opposé de la zone du Kraken par rapport au centre de l'île de départ (même distance),
+	 *  décalée au hasard de World Boss Random Offset au plus. La Super Treasure Map la montre ; le bateau des joueurs qui y entre lance le combat.
+	 *  Vide = pas de world boss
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|World Boss")
+	TSubclassOf<class AYSDavyJonesArena> DavyJonesArenaClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow|World Boss", meta=(ClampMin="0", Units="Centimeters"))
+	float WorldBossRandomOffset = 20000.0f;
 
 	AYSFlowMode();
 
@@ -341,6 +359,11 @@ public:
 
 	bool IsCompass(const AYSInteractiveObject* Object) const;
 
+	/** Classe d'objet = boussole des zones d'intérêt (ou un de ses enfants) */
+	bool IsCompassClass(const UClass* Class) const { return Class && CompassItemClass && Class->IsChildOf(CompassItemClass); }
+
+	class AYSDavyJonesArena* GetDavyJonesArena() const { return DavyJonesArena; }
+
 	/** L'objectif en mer (boussoles, Galion à couler) remplace celui de l'île de départ dans le HUD (serveur, une fois) */
 	void StartSeaObjectives(const TCHAR* Reason);
 
@@ -414,6 +437,12 @@ private:
 
 	/** Zone du Kraken (serveur, au lancement) */
 	void SpawnKrakenArena();
+
+	UPROPERTY(Transient)
+	TObjectPtr<class AYSDavyJonesArena> DavyJonesArena;
+
+	/** Zone du world boss (serveur, au lancement, après celle du Kraken) */
+	void SpawnDavyJonesArena();
 
 	/** Nuits commencées sur les îles du flow (séquence de nuits) */
 	int32 FlowNightsStarted = 0;
