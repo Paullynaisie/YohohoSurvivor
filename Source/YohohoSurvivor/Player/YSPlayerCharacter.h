@@ -1241,6 +1241,9 @@ public:
 	/** Damage bonus du type d'action pour tout le set (1 sans bonus) ; ex. minions du Captain : celui de son Ability */
 	float GetSlotDamageMultiplier(EYSActionSlot Slot) const { return DamageMultipliers[GetSlotIndex(Slot)]; }
 
+	/** Multiplicateur de recharge du type d'action pour tout le set (Atk speed / CD reduction ; 1 sans bonus, répliqué) */
+	float GetSlotCooldownMultiplier(EYSActionSlot Slot) const { return CooldownMultipliers[GetSlotIndex(Slot)]; }
+
 	/** Summon system : minions max en plus (serveur, répliqué) */
 	void SetSummonSystemBonus(float Bonus) { SummonSystemBonus = Bonus; ForceNetUpdate(); }
 

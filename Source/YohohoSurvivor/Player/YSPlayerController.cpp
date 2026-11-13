@@ -15,6 +15,7 @@
 #include "Player/YSDanglingChainComponent.h"
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
+#include "Weapons/YSSpinningSword.h"
 #include "Upgrades/YSPassive.h"
 #include "Blueprint/GameViewportSubsystem.h"
 #include "Enemies/YSFoeCharacter.h"
@@ -306,6 +307,14 @@ void AYSPlayerController::SetupInputComponent()
 	InputComponent->BindKey(EKeys::Left, IE_Pressed, this, &AYSPlayerController::YSCheatGodHeal);
 	InputComponent->BindKey(EKeys::Up, IE_Pressed, this, &AYSPlayerController::YSCheatLevelUp);
 	InputComponent->BindKey(EKeys::Down, IE_Pressed, this, &AYSPlayerController::YSCheatPart2);
+	// Spinning Sword : O = Self, P = sous la souris
+	for (const TPair<FKey, int32>& Spin : { TPair<FKey, int32>(EKeys::O, 1), TPair<FKey, int32>(EKeys::P, 0) })
+	{
+		FInputKeyBinding Binding(FInputChord(Spin.Key), IE_Pressed);
+		const int32 Self = Spin.Value;
+		Binding.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [this, Self]() { YSSpinningSword(Self); });
+		InputComponent->KeyBindings.Add(Binding);
+	}
 #endif
 
 	// pavé numérique : apparition manuelle de NME (seulement si le GameMode de la map l'autorise, ex. TestMap)
@@ -385,6 +394,21 @@ void AYSPlayerController::ServerSetBloodRageStacks_Implementation(int32 Stacks)
 	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
 	{
 		PlayerCharacter->DebugSetBloodRageStacks(Stacks);
+	}
+}
+
+void AYSPlayerController::YSSpinningSword(int32 Self)
+{
+	ServerSpinningSword(Self != 0, AimLocation);
+}
+
+void AYSPlayerController::ServerSpinningSword_Implementation(bool bSelf, FVector Location)
+{
+	AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	if (PlayerCharacter)
+	{
+		const AYSSpinningSword* Sword = AYSSpinningSword::GiveLevel(PlayerCharacter, bSelf, Location);
+		UE_LOG(LogTemp, Log, TEXT("[YSCheat] %s : Spinning Sword %s -> level %d"), *GetName(), bSelf ? TEXT("Self") : TEXT("sous la souris"), Sword ? Sword->GetLevel() : 0);
 	}
 }
 

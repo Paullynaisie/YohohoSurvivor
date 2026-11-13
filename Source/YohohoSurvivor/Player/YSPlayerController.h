@@ -811,6 +811,13 @@ public:
 	UFUNCTION(Exec)
 	void YSAddCoreBoats(int32 Count);
 
+	/** Test (builds non Shipping) : 1 level de Spinning Sword ; Self 1 (touche O) = accrochée au joueur, 0 (touche P) = posée sous la souris */
+	UFUNCTION(Exec)
+	void YSSpinningSword(int32 Self);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSpinningSword(bool bSelf, FVector Location);
+
 	/** Triche (flèche droite, builds non Shipping) : 10 bonus Atk speed Silver (CD reduction de l'Auto atk), sans dépasser le maximum */
 	UFUNCTION(Exec)
 	void YSCheatAtkSpeed();
