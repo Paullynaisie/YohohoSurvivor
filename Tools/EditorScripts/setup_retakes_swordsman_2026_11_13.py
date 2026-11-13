@@ -1,6 +1,6 @@
 # Retakes de Paul (2026-11-13) sur les upgrades du Swordsman. Relançable (valeurs absolues) :
 # - Lesser Spinning Blade 1.5x plus rapide (= Spinning Sword x4.5) ;
-# - Blade Throw : pas en arrière 2x plus long sans changer la distance (x4 / vitesse x0.5), aller / retour 0.5 s, Swordsrang 2 s ;
+# - Blade Throw : pas en arrière du Dashing Slash x2 (vitesse normale), puis 0.5 s de visée à 50 % de vitesse ; aller / retour 0.5 s, Swordsrang 2 s ;
 # - Mark for Delete : roulades et visées 2x plus courtes (Rolling shot de BP_Pistolet / 2) ;
 # - Pistolet de The Gun was better : tire tout seul, sans le clic gauche.
 import os
@@ -44,8 +44,10 @@ try:
     _, rolling = component(f"{PLAYER}/Wp_Guns/BP_Pistolet", "RollingShot")
     for path in (f"{PLAYER}/Wp_Melee/BP_BattleSword", f"{PLAYER}/Wp_Melee/BP_GunSword"):
         bp, ability = component(path, "DashingSlash")
-        ability.set_editor_property("blade_throw_step_back_multiplier", 4.0)
-        ability.set_editor_property("blade_throw_step_back_speed_scale", 0.5)
+        ability.set_editor_property("blade_throw_step_back_multiplier", 2.0)
+        ability.set_editor_property("blade_throw_step_back_speed_scale", 1.0)
+        ability.set_editor_property("blade_throw_aim_duration", 0.5)
+        ability.set_editor_property("blade_throw_aim_move_speed_multiplier", 0.5)
         ability.set_editor_property("blade_throw_duration", 0.5)
         ability.set_editor_property("swordsrang_duration", 2.0)
         ability.set_editor_property("roll_duration", rolling.get_editor_property("roll_duration") * 0.5)

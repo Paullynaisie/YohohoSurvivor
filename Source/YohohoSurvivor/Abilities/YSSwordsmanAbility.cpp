@@ -43,7 +43,7 @@ float UYSSwordsmanAbility::GetCooldownDuration() const
 {
 	switch (Mode)
 	{
-	case EYSSwordsmanMode::BladeThrow:		return GetThrowStepBackDuration() + BladeThrowCooldown * GetCooldownMultiplier();
+	case EYSSwordsmanMode::BladeThrow:		return GetThrowTime() + BladeThrowCooldown * GetCooldownMultiplier();
 	case EYSSwordsmanMode::BladeMastery:	return BladeMasteryCooldown * GetCooldownMultiplier();
 	default:								return Super::GetCooldownDuration();
 	}
@@ -63,7 +63,7 @@ float UYSSwordsmanAbility::GetActionDuration() const
 {
 	switch (Mode)
 	{
-	case EYSSwordsmanMode::BladeThrow:		return GetThrowStepBackDuration();
+	case EYSSwordsmanMode::BladeThrow:		return GetThrowTime();
 	case EYSSwordsmanMode::BladeMastery:	return 0.0f;
 	default:								return Super::GetActionDuration();
 	}
@@ -89,7 +89,13 @@ float UYSSwordsmanAbility::GetMoveSpeedMultiplier() const
 		return Super::GetMoveSpeedMultiplier();
 	}
 	float Alpha;
-	return IsInThrowStepBack(Alpha) ? BladeThrowStepBackSpeedScale * FMath::Lerp(StepBackSpeedMultiplier, StepBackEndSpeedMultiplier, FMath::InterpEaseOut(0.0f, 1.0f, Alpha, StepBackDecayExponent)) : 1.0f;
+	if (IsInThrowStepBack(Alpha))
+	{
+		return BladeThrowStepBackSpeedScale * FMath::Lerp(StepBackSpeedMultiplier, StepBackEndSpeedMultiplier, FMath::InterpEaseOut(0.0f, 1.0f, Alpha, StepBackDecayExponent));
+	}
+	// temps de visée après le pas en arrière : déplacement libre ralenti
+	const float Elapsed = GetTimeSinceActivation();
+	return Mode == EYSSwordsmanMode::BladeThrow && IsMovementDriver() && Elapsed >= 0.0f && Elapsed < GetThrowTime() ? BladeThrowAimMoveSpeedMultiplier : 1.0f;
 }
 
 bool UYSSwordsmanAbility::GetForcedMoveDirection(FVector& OutDirection) const
@@ -234,7 +240,7 @@ void UYSSwordsmanAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 
 	// fin du pas en arrière : lancer (serveur), prévisu cachée (toutes les machines)
 	const float Elapsed = GetTimeSinceActivation();
-	if (Elapsed >= GetThrowStepBackDuration())
+	if (Elapsed >= GetThrowTime())
 	{
 		if (bThrowPending && GetOwner()->HasAuthority())
 		{
@@ -366,12 +372,12 @@ void UYSSwordsmanAbility::KickThrowStepBack()
 void UYSSwordsmanAbility::UpdateThrowAim(float DeltaTime)
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	float Alpha;
-	if (!Character || !Character->IsLocallyControlled() || !IsInThrowStepBack(Alpha))
+	const float Elapsed = GetTimeSinceActivation();
+	if (!Character || !Character->IsLocallyControlled() || Mode != EYSSwordsmanMode::BladeThrow || Elapsed < 0.0f || Elapsed >= GetThrowTime())
 	{
 		return;
 	}
-	// joueur qui lance : le point de croisement suit le curseur jusqu'au lancer
+	// joueur qui lance : le point de croisement suit le curseur jusqu'au lancer (pas en arrière puis temps de visée)
 	const FVector Target = ComputeThrowTarget(Character->GetPublicAimLocation());
 	ShowPreview(Target);
 	if (GetOwner()->HasAuthority())

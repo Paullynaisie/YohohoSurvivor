@@ -12,7 +12,7 @@ class AYSFoeCharacter;
  *  du même nom (propriété d'arme MarkForDelete, répliquée par bMarkForDelete) :
  *  1. Shot Count (3) roulades + tir à la suite, comme le Rolling shot (roulade dans la direction des touches, sinon à l'opposé
  *     du curseur ; visée immobile ; tir droit devant avec visée assistée), Shot Damage (100) x Damage bonus de l'Ability.
- *     Chaque tir garde en mémoire le premier NME touché (jamais deux fois le même ; tué : l'endroit de sa mort) ;
+ *     Chaque tir garde en mémoire le premier NME touché (un même NME peut y être plusieurs fois ; tué : l'endroit de sa mort) ;
  *  2. le pas en arrière du Dashing Slash (à l'opposé du regard) ;
  *  3. un dash and slash (Damage, 180) par NME de la liste, dans l'ordre, chacun vers ce NME (sa position au début du dash).
  *  Recharge : Mark For Delete Cooldown (20 s, CD reduction), comptée après la durée maximale de l'enchaînement.

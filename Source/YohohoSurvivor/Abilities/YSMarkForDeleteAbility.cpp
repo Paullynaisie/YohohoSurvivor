@@ -381,14 +381,6 @@ void UYSMarkForDeleteAbility::FireShot(int32 Index)
 	Projectile->SetDamage(ShotDamage * GetDamageMultiplier());
 	Projectile->SetMaxHits(1);
 	Projectile->OnFoeHit.AddUObject(this, &UYSMarkForDeleteAbility::OnShotHitFoe);
-	// les NME déjà dans la liste sont traversés (la balle cherche un autre NME)
-	for (const FTarget& Entry : Targets)
-	{
-		if (AActor* Listed = Entry.Actor.Get())
-		{
-			Projectile->IgnoreTarget(Listed);
-		}
-	}
 	Projectile->FinishSpawning(SpawnTransform);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSMarkForDelete] %s : tir %d à %.2f, %.1f dégâts, vers (%.2f, %.2f)"), *GetOwner()->GetName(), Index + 1, World->GetTimeSeconds(),
 		ShotDamage * GetDamageMultiplier(), Direction.X, Direction.Y);
@@ -396,8 +388,9 @@ void UYSMarkForDeleteAbility::FireShot(int32 Index)
 
 void UYSMarkForDeleteAbility::OnShotHitFoe(AYSProjectile* Projectile, AYSFoeCharacter* Foe, bool bKilled)
 {
-	// liste figée à la fin du pas en arrière ; un NME une seule fois ; tué : l'endroit de sa mort
-	if (!Foe || bStepBackFinished || Targets.Num() >= ShotCount || Targets.ContainsByPredicate([Foe](const FTarget& Entry) { return Entry.Actor.Get() == Foe; }))
+	// liste figée à la fin du pas en arrière ; un même NME peut y être plusieurs fois (un dash par balle qui l'a touché) ;
+	// tué : l'endroit de sa mort ; une seule entrée par balle (elle ne touche qu'un NME)
+	if (!Foe || bStepBackFinished || Targets.Num() >= ShotCount)
 	{
 		return;
 	}

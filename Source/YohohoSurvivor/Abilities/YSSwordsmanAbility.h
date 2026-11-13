@@ -39,16 +39,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0", Units="Seconds"))
 	float BladeThrowCooldown = 12.0f;
 
-	/** Pas en arrière : durée de celui du Dashing Slash x ce multiplicateur (intangible et invulnérable) */
+	/** Pas en arrière : durée de celui du Dashing Slash x ce multiplicateur (intangible et invulnérable ; suivi du temps de visée) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0"))
-	float BladeThrowStepBackMultiplier = 4.0f;
+	float BladeThrowStepBackMultiplier = 2.0f;
 
-	/**
-	 *  Pas en arrière : vitesses de celui du Dashing Slash x ce multiplicateur (0.5 avec une durée x4 = la distance d'avant,
-	 *  durée x2 et vitesse x1 : demande de Paul, durée doublée sans changer la distance)
-	 */
+	/** Pas en arrière : vitesses de celui du Dashing Slash x ce multiplicateur */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0"))
-	float BladeThrowStepBackSpeedScale = 0.5f;
+	float BladeThrowStepBackSpeedScale = 1.0f;
+
+	/** Après le pas en arrière : temps pour viser (la prévisu suit le curseur) avant le lancer, déplacement libre à vitesse x Blade Throw Aim Move Speed Multiplier */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0", Units="Seconds"))
+	float BladeThrowAimDuration = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0", ClampMax="1"))
+	float BladeThrowAimMoveSpeedMultiplier = 0.5f;
 
 	/** Point de croisement : le curseur (suivi jusqu'au lancer), à cette distance au plus du joueur */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="100", Units="Centimeters"))
@@ -135,6 +139,9 @@ private:
 	EYSSwordsmanMode Mode = EYSSwordsmanMode::Dash;
 
 	float GetThrowStepBackDuration() const { return StepBackDuration * BladeThrowStepBackMultiplier; }
+
+	/** Lancer : après le pas en arrière et le temps de visée */
+	float GetThrowTime() const { return GetThrowStepBackDuration() + BladeThrowAimDuration; }
 
 	/** Blade Throw : pas en arrière en cours (alpha 0..1) */
 	bool IsInThrowStepBack(float& OutAlpha) const;
