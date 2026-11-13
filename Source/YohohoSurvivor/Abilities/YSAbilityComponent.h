@@ -204,6 +204,48 @@ public:
 	/** MoveAction : stamina dépensée à l'activation (cran de la barre de stamina) ; 0 pour les autres actions */
 	virtual float GetMoveActionStaminaCost() const { return 0.0f; }
 
+	/**
+	 *  MoveAction : progression de son upgrade (UYSMoveActionUpgrade, serveur, répliquée) : somme des ++ (valeur propre à la MoveAction,
+	 *  ex. Roll : stamina en moins) et variante Golden obtenue (INDEX_NONE = aucune ; l'ordre des variantes de l'asset donne l'effet)
+	 */
+	void SetMoveActionUpgrades(float BonusTotal, int32 GoldenIndex);
+
+	float GetMoveActionBonus() const { return MoveActionBonus; }
+
+	int32 GetMoveActionGolden() const { return MoveActionGolden; }
+
+	/** Carte du ++ : valeur concrète pour une somme de bonus (ex. coût en stamina du Roll) */
+	virtual float GetMoveActionBonusDisplayValue(float BonusTotal) const { return BonusTotal; }
+
+	/**
+	 *  MoveAction active du personnage : il lance une autre action (attaque auto, Ability, action forcée) (serveur, avant son effet ;
+	 *  ex. Run et Camouflage s'arrêtent)
+	 */
+	virtual void OnHolderActionStarted(UYSAbilityComponent* Action) {}
+
+	/** MoveAction active : le porteur vient d'infliger des dégâts à ce NME, encore vivant (serveur) ; vrai = il l'a bumpé (pas de pushback) */
+	virtual bool OnHolderDealtDamage(class AYSFoeCharacter* Foe) { return false; }
+
+	/** MoveAction active : le porteur est caché aux NME (Camouflage) */
+	virtual bool IsHidingHolder() const { return false; }
+
+	/** MoveAction active : utilisable et maintenue en portant un objet (Fenwick, Thief) */
+	virtual bool AllowsCarrying() const { return false; }
+
+	/** MoveAction active : le port d'un objet ne consomme pas de stamina en ce moment (Fenwick pendant la course, Thief camouflé) */
+	virtual bool SuppressesCarryStaminaCost() const { return false; }
+
+	/** Dégâts de base ajoutés à cette attaque (Run and Hit ; serveur ; remis à 0 à chaque activation) : x (1 + bonus / dégâts de base) */
+	void SetAttackBonusBaseDamage(float Bonus) { AttackBonusBaseDamage = Bonus; }
+
+	/** Cette attaque est critique (prochaine attaque auto critique : Stunts artist, Motivé pour tuer ; serveur ; remis à faux à chaque activation) */
+	void SetForcedCriticalAttack(bool bCritical) { bForcedCriticalAttack = bCritical; }
+
+	bool IsForcedCriticalAttack() const { return bForcedCriticalAttack; }
+
+	/** Recharge en cours avancée de Seconds, sans log ni réplication forcée (Motivé pour bombarder : recharge 2x plus rapide ; serveur) */
+	void AdvanceCooldown(float Seconds);
+
 	/** Touche de l'action enfoncée (machine qui contrôle le personnage) : par défaut TryActivate (ex. Run en bascule : arrête la course) */
 	virtual void OnInputPressed(const FVector& TargetLocation) { TryActivate(TargetLocation); }
 
@@ -400,4 +442,26 @@ protected:
 	void ScheduleAutoAttackReset();
 
 	FTimerHandle AutoAttackResetTimer;
+
+	/**
+	 *  Serveur, au départ d'une action (activation, action forcée, attaque auto de mêlée) : bonus de l'attaque remis à zéro, puis le
+	 *  personnage est prévenu (AYSPlayerCharacter::OnActionStarted : prochaine attaque auto critique, MoveAction qui s'arrête)
+	 */
+	void NotifyHolderActionStarted();
+
+	/** MoveAction : changement de progression de l'upgrade (serveur et à la réplication) */
+	virtual void OnMoveActionUpgradesChanged() {}
+
+	UFUNCTION()
+	void OnRep_MoveActionUpgrades() { OnMoveActionUpgradesChanged(); }
+
+	UPROPERTY(ReplicatedUsing=OnRep_MoveActionUpgrades)
+	float MoveActionBonus = 0.0f;
+
+	UPROPERTY(ReplicatedUsing=OnRep_MoveActionUpgrades)
+	int32 MoveActionGolden = INDEX_NONE;
+
+	/** Bonus de cette attaque (serveur) : voir SetAttackBonusBaseDamage / SetForcedCriticalAttack */
+	float AttackBonusBaseDamage = 0.0f;
+	bool bForcedCriticalAttack = false;
 };

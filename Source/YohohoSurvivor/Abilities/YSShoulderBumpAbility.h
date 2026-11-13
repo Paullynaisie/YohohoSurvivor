@@ -60,12 +60,40 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoulder Bump|Anim")
 	float LeanAngle = 25.0f;
 
+	/** Compacteur (Golden) : les NME bumpés atterrissent à cette distance devant le personnage (en fin de dash) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoulder Bump|Golden", meta=(ClampMin="0", Units="Centimeters"))
+	float CompactorFrontDistance = 200.0f;
+
+	/** Buldozer (Golden) : relances du dash au plus (chaque NME touché relance le dash) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoulder Bump|Golden", meta=(ClampMin="0"))
+	int32 BuldozerMaxRestarts = 20;
+
+	/**
+	 *  Golden (ordre des variantes de DA_Up_MoveAction_ShoulderBump) : 0 Buldozer (chaque NME touché relance le dash) ;
+	 *  1 Compacteur (les NME bumpés atterrissent Compactor Front Distance devant le personnage) ; 2 Brutass (la hitbox inflige les
+	 *  dégâts de l'attaque auto) ; 3 Diamond shoulder (invulnérable pendant le dash). Shoulder bump ++ : durée (donc distance) du dash
+	 *  x (1 + Bonus Gold Value 0.2 chacun).
+	 */
+	static constexpr int32 GoldenBuldozer = 0;
+	static constexpr int32 GoldenCompactor = 1;
+	static constexpr int32 GoldenBrutass = 2;
+	static constexpr int32 GoldenDiamond = 3;
+
 	UYSShoulderBumpAbility();
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	/** Jamais invulnérable */
-	virtual bool IsGrantingInvulnerability() const override { return false; }
+	/** Invulnérable seulement avec Diamond shoulder, pendant le dash */
+	virtual bool IsGrantingInvulnerability() const override;
+
+	/** Shoulder bump ++ : dash plus long */
+	virtual float GetRollDuration() const override { return RollDuration * (1.0f + GetMoveActionBonus()); }
+
+	/** Carte du ++ : distance du dash en % de celle de base */
+	virtual float GetMoveActionBonusDisplayValue(float BonusTotal) const override { return 100.0f * (1.0f + BonusTotal); }
+
+	/** ++ et Golden propres (pas ceux du Roll) */
+	virtual bool UsesRollUpgrades() const override { return false; }
 
 	/** Penché vers l'avant au lieu de la roulade */
 	virtual bool GetBodyRoll(float& OutAngle, float& OutHeightOffset) const override;
@@ -87,6 +115,9 @@ private:
 
 	/** NME déjà bumpés pendant ce dash (serveur) */
 	TSet<TWeakObjectPtr<AYSFoeCharacter>> HitFoes;
+
+	/** Buldozer : relances du dash en cours */
+	int32 DashRestarts = 0;
 
 	/** Serveur : bumpe les NME dans la hitbox */
 	void UpdateHitbox();

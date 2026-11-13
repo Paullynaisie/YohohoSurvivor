@@ -848,7 +848,8 @@ void AYSGameMode::StartUpgradeSelection()
 				Offers = PickOffersForKind(Character, Kind, PlayerKind);
 			}
 			PlayerState->SetUpgradeOffers(Offers);
-			PlayerState->SetUpgradeRerollsLeft(MaxUpgradeRerolls);
+			// SilverCoin upgrade (récompense de doublons) : jamais de relance
+			PlayerState->SetUpgradeRerollsLeft(bDoubloonSelection ? 0 : MaxUpgradeRerolls);
 			// pendant la pause rien n'est répliqué sans ForceNetUpdate : personnage (nouveau après un changement de classe), contrôleur
 			Player->ForceNetUpdate();
 			if (APawn* Pawn = Player->GetPawn())
@@ -896,11 +897,12 @@ TArray<FYSUpgradeOffer> AYSGameMode::PickRandomUpgradeOffers(const AYSPlayerChar
 	{
 		Replacements.Add(Replacement);
 	}
-	// récompenses de doublons : les level up ne proposent plus que le Bonus (++) des upgrades d'arme déjà débloquées
+	// SilverCoin upgrades : les level up ne proposent plus que le Bonus (++) des upgrades d'arme et de MoveAction déjà débloquées
 	YSShardUpgrades::FPickOptions Options;
 	if (bDoubloonRewards)
 	{
 		Options.WeaponTierMask = 0b010;
+		Options.MoveActionTierMask = 0b010;
 	}
 	return YSShardUpgrades::PickOffers(Character, CharaUpgradesTable, Replacements, Count, Options);
 }
@@ -917,6 +919,8 @@ TArray<FYSUpgradeOffer> AYSGameMode::PickOffersForKind(const AYSPlayerCharacter*
 	{
 		Replacements.Add(Replacement);
 	}
+	// SilverCoin upgrade (tout sauf le level up) : Silver Coin Choice Count propositions
+	const int32 SilverCoinCount = FMath::Max(1, SilverCoinChoiceCount);
 	TArray<FYSUpgradeOffer> Offers;
 	switch (Kind)
 	{
@@ -924,26 +928,43 @@ TArray<FYSUpgradeOffer> AYSGameMode::PickOffersForKind(const AYSPlayerCharacter*
 		Offers = Character->PickClassOffers();
 		if (Offers.Num() == 0)
 		{
-			// ancien fonctionnement (niveau de classe) : upgrades au hasard ; récompense de doublons : mythique
+			// ancien fonctionnement (niveau de classe) : upgrades au hasard ; SilverCoin upgrade : mythique
 			return PickOffersForKind(Character, bDoubloonRewards ? EYSUpgradeSelectionKind::Mythic : EYSUpgradeSelectionKind::LevelUp, OutKind);
+		}
+		// SilverCoin upgrade : Silver Coin Choice Count classes au hasard parmi celles du personnage
+		if (bDoubloonRewards)
+		{
+			while (Offers.Num() > SilverCoinCount)
+			{
+				Offers.RemoveAt(FMath::RandRange(0, Offers.Num() - 1));
+			}
 		}
 		return Offers;
 
 	case EYSUpgradeSelectionKind::Weapon:
 	case EYSUpgradeSelectionKind::GoldenWeapon:
+	case EYSUpgradeSelectionKind::MoveAction:
+	case EYSUpgradeSelectionKind::GoldenMoveAction:
 	{
+		const bool bMoveAction = Kind == EYSUpgradeSelectionKind::MoveAction || Kind == EYSUpgradeSelectionKind::GoldenMoveAction;
+		const bool bGolden = Kind == EYSUpgradeSelectionKind::GoldenWeapon || Kind == EYSUpgradeSelectionKind::GoldenMoveAction;
 		YSShardUpgrades::FPickOptions Options;
 		Options.bStats = false;
-		Options.WeaponTierMask = Kind == EYSUpgradeSelectionKind::Weapon ? 0b001 : 0b100;
-		if (Kind == EYSUpgradeSelectionKind::GoldenWeapon)
+		const uint8 TierMask = bGolden ? 0b100 : 0b001;
+		Options.WeaponTierMask = bMoveAction ? 0 : TierMask;
+		Options.MoveActionTierMask = bMoveAction ? TierMask : 0;
+		if (bGolden)
 		{
 			Options.ForcedRarity = EYSUpgradeRarity::Gold;
 		}
-		Offers = bShardUpgrades ? YSShardUpgrades::PickOffers(Character, CharaUpgradesTable, Replacements, UpgradeChoiceCount, Options) : TArray<FYSUpgradeOffer>();
+		Offers = bShardUpgrades ? YSShardUpgrades::PickOffers(Character, CharaUpgradesTable, Replacements, SilverCoinCount, Options) : TArray<FYSUpgradeOffer>();
 		if (Offers.Num() == 0)
 		{
-			// pas d'upgrade d'arme à débloquer / à passer en Golden
-			return PickOffersForKind(Character, Kind == EYSUpgradeSelectionKind::GoldenWeapon ? EYSUpgradeSelectionKind::Weapon : EYSUpgradeSelectionKind::Mythic, OutKind);
+			// rien à débloquer / à passer en Golden : Golden -> Déblocage -> mythique
+			const EYSUpgradeSelectionKind Next = Kind == EYSUpgradeSelectionKind::GoldenWeapon ? EYSUpgradeSelectionKind::Weapon
+				: Kind == EYSUpgradeSelectionKind::GoldenMoveAction ? EYSUpgradeSelectionKind::MoveAction
+				: EYSUpgradeSelectionKind::Mythic;
+			return PickOffersForKind(Character, Next, OutKind);
 		}
 		return Offers;
 	}
@@ -952,8 +973,9 @@ TArray<FYSUpgradeOffer> AYSGameMode::PickOffersForKind(const AYSPlayerCharacter*
 	{
 		YSShardUpgrades::FPickOptions Options;
 		Options.WeaponTierMask = 0b010;
+		Options.MoveActionTierMask = 0b010;
 		Options.ForcedRarity = EYSUpgradeRarity::Mythic;
-		Offers = bShardUpgrades ? YSShardUpgrades::PickOffers(Character, CharaUpgradesTable, Replacements, UpgradeChoiceCount, Options) : TArray<FYSUpgradeOffer>();
+		Offers = bShardUpgrades ? YSShardUpgrades::PickOffers(Character, CharaUpgradesTable, Replacements, SilverCoinCount, Options) : TArray<FYSUpgradeOffer>();
 		if (Offers.Num() == 0)
 		{
 			return PickOffersForKind(Character, EYSUpgradeSelectionKind::LevelUp, OutKind);

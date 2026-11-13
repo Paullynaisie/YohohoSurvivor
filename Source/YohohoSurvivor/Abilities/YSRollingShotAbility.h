@@ -75,13 +75,13 @@ public:
 	UYSRollingShotAbility();
 
 	/** Roulade + visée + rafale, puis la recharge (CD reduction : seulement la recharge) */
-	virtual float GetCooldownDuration() const override { return RollDuration + AimDuration + GetBurstTime() + Cooldown * GetCooldownMultiplier(); }
+	virtual float GetCooldownDuration() const override { return GetRollDuration() + AimDuration + GetBurstTime() + Cooldown * GetCooldownMultiplier(); }
 
 	/** Priorités : en cours pendant la roulade, la visée et le recul des balles */
-	virtual float GetActionDuration() const override { return RollDuration + AimDuration + Super::GetActionDuration(); }
+	virtual float GetActionDuration() const override { return GetRollDuration() + AimDuration + Super::GetActionDuration(); }
 
 	/** Bloque les actions moins prioritaires pendant la roulade, la visée et la rafale (pas pendant le recul) */
-	virtual float GetPriorityBlockDuration() const override { return RollDuration + AimDuration + Super::GetPriorityBlockDuration(); }
+	virtual float GetPriorityBlockDuration() const override { return GetRollDuration() + AimDuration + Super::GetPriorityBlockDuration(); }
 
 	virtual bool BlocksAllWeapons() const override { return true; }
 
@@ -95,6 +95,12 @@ public:
 
 	/** Secondes depuis le début de la dernière roulade vue par cette machine */
 	float GetTimeSinceRoll() const;
+
+	/** Durée réelle de la roulade (Roll Duration ; Shoulder bump : x (1 + Shoulder bump ++)) */
+	virtual float GetRollDuration() const { return RollDuration; }
+
+	/** Distance qu'il reste à parcourir jusqu'à la fin de la roulade en cours (courbe de vitesse intégrée ; 0 hors roulade) */
+	float EstimateRemainingRollDistance() const;
 
 protected:
 
@@ -124,6 +130,12 @@ protected:
 
 	/** Direction de la dernière roulade (machine qui la joue : serveur et client qui l'a prédite ; nulle ailleurs) */
 	FVector LastRollDirection = FVector::ZeroVector;
+
+	/** Roulade prolongée : son début est remis à maintenant sur toutes les machines (Buldozer du Shoulder bump ; serveur) */
+	void RestartRollTimer();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRollRestarted();
 
 private:
 

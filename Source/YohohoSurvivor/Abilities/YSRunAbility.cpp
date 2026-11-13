@@ -1,129 +1,101 @@
 #include "Abilities/YSRunAbility.h"
+#include "Components/CapsuleComponent.h"
+#include "Core/YSCombat.h"
 #include "Engine/World.h"
-#include "Net/UnrealNetwork.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Player/YSPlayerCharacter.h"
 
 UYSRunAbility::UYSRunAbility()
 {
 	DisplayName = NSLOCTEXT("YS", "Run", "Run");
 	StaminaCost = 20.0f;
-	PrimaryComponentTick.bCanEverTick = true;
+	StaminaPerSecond = 10.0f;
+	MinDuration = 1.0f;
 }
 
-void UYSRunAbility::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+float UYSRunAbility::GetActivationStaminaCost() const
 {
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	// le client qui contrôle a sa propre prédiction ; une fin imposée par le serveur lui arrive par ClientStopRunning
-	DOREPLIFETIME_CONDITION(UYSRunAbility, bRunning, COND_SkipOwner);
+	return GetMoveActionGolden() == GoldenImpulse ? ImpulseStaminaCost : StaminaCost;
 }
 
-bool UYSRunAbility::CanActivateNow() const
+float UYSRunAbility::GetMinDuration() const
 {
-	return !bRunning && Super::CanActivateNow();
+	// Impulsion : le dash remplace la première seconde
+	return GetMoveActionGolden() == GoldenImpulse ? ImpulseDuration : MinDuration;
+}
+
+bool UYSRunAbility::IsImpulseDashing() const
+{
+	return GetMoveActionGolden() == GoldenImpulse && IsSustained() && GetSustainElapsed() < ImpulseDuration;
 }
 
 float UYSRunAbility::GetMoveSpeedMultiplier() const
 {
-	return bRunning ? RunSpeedMultiplier : 1.0f;
+	if (!IsSustained())
+	{
+		return 1.0f;
+	}
+	return IsImpulseDashing() ? ImpulseSpeedMultiplier : RunSpeedMultiplier + GetMoveActionBonus();
 }
 
-void UYSRunAbility::OnInputPressed(const FVector& TargetLocation)
+bool UYSRunAbility::IsGrantingInvulnerability() const
 {
-	// en bascule : un 2e appui arrête la course
-	if (bRunning)
+	return IsImpulseDashing();
+}
+
+bool UYSRunAbility::WantsPassThrough() const
+{
+	return IsSustained() && (GetMoveActionGolden() == GoldenFreeRunning || IsImpulseDashing());
+}
+
+void UYSRunAbility::OnSustainStarted()
+{
+	// Impulsion : départ du dash tout de suite dans la direction de l'input (sinon du regard), comme une roulade
+	ACharacter* Character = Cast<ACharacter>(GetHolderPawn());
+	if (GetMoveActionGolden() == GoldenImpulse && Character && (Character->HasAuthority() || Character->IsLocallyControlled()))
 	{
-		if (!bHoldToRun)
+		UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+		const FVector Direction = Movement->GetCurrentAcceleration().IsNearlyZero() ? Character->GetActorForwardVector().GetSafeNormal2D() : Movement->GetCurrentAcceleration().GetSafeNormal2D();
+		const float DashSpeed = Movement->MaxWalkSpeed * ImpulseSpeedMultiplier;
+		Movement->Velocity = Direction * DashSpeed + FVector(0.0f, 0.0f, Movement->Velocity.Z);
+		Movement->MaxWalkSpeed = DashSpeed;
+	}
+}
+
+void UYSRunAbility::OnSustainStopped()
+{
+	if (bPassThroughApplied)
+	{
+		if (ACharacter* Character = Cast<ACharacter>(GetHolderPawn()))
 		{
-			RequestStop();
+			YSCombat::SetPassThroughCharacters(Character->GetCapsuleComponent(), false);
 		}
-		return;
+		bPassThroughApplied = false;
 	}
-	TryActivate(TargetLocation);
-}
-
-void UYSRunAbility::OnInputReleased()
-{
-	if (bHoldToRun && bRunning)
-	{
-		RequestStop();
-	}
-}
-
-void UYSRunAbility::OnActivationPredicted(const FVector& TargetLocation)
-{
-	Super::OnActivationPredicted(TargetLocation);
-	bRunning = true;
-}
-
-void UYSRunAbility::ExecuteMoveAction(const FVector& TargetLocation)
-{
-	bRunning = true;
-	GetOwner()->ForceNetUpdate();
-	UE_LOG(LogTemp, Verbose, TEXT("[YSRun] %s court à %.2f"), *GetOwner()->GetName(), GetWorld()->GetTimeSeconds());
-}
-
-void UYSRunAbility::OnActivationRejected()
-{
-	bRunning = false;
-}
-
-void UYSRunAbility::RequestStop()
-{
-	if (GetOwner()->HasAuthority())
-	{
-		StopRunning(false, TEXT("touche"));
-		return;
-	}
-	bRunning = false;
-	ServerStopRunning();
-}
-
-void UYSRunAbility::ServerStopRunning_Implementation()
-{
-	StopRunning(false, TEXT("touche"));
-}
-
-void UYSRunAbility::ClientStopRunning_Implementation()
-{
-	bRunning = false;
-}
-
-void UYSRunAbility::StopRunning(bool bNotifyOwner, const TCHAR* Reason)
-{
-	if (!bRunning)
-	{
-		return;
-	}
-	bRunning = false;
-	GetOwner()->ForceNetUpdate();
-	const APawn* Holder = GetHolderPawn();
-	if (bNotifyOwner && Holder && !Holder->IsLocallyControlled())
-	{
-		ClientStopRunning();
-	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSRun] %s arrête de courir (%s) à %.2f"), *GetOwner()->GetName(), Reason, GetWorld()->GetTimeSeconds());
 }
 
 void UYSRunAbility::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (!bRunning || !GetOwner()->HasAuthority())
+	// Free running (toute la course) / Impulsion (le dash) : traverse les NME et les joueurs, sur chaque machine
+	const bool bWanted = WantsPassThrough();
+	if (bWanted != bPassThroughApplied)
 	{
-		return;
+		if (ACharacter* Character = Cast<ACharacter>(GetHolderPawn()))
+		{
+			YSCombat::SetPassThroughCharacters(Character->GetCapsuleComponent(), bWanted);
+		}
+		bPassThroughApplied = bWanted;
 	}
+}
 
-	// serveur : fin imposée (plus de stamina, objet porté, nage, poste, mort), sinon consommation continue
-	AYSPlayerCharacter* Character = GetCharacter();
-	if (!Character || !Character->IsAlive() || Character->IsDying() || Character->IsCarrying() || Character->IsSwimming() || Character->IsAtStation())
+void UYSRunAbility::OnCancelledByAttack(UYSAbilityComponent* Action, float Consumed)
+{
+	// Run and Hit : la stamina dépensée s'ajoute aux dégâts de base de l'attaque (avant les multiplicateurs)
+	if (GetMoveActionGolden() == GoldenRunAndHit && Action && Consumed > 0.0f)
 	{
-		StopRunning(true, TEXT("mains prises / eau / poste / mort"));
-		return;
+		Action->SetAttackBonusBaseDamage(Consumed);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSRun] %s : Run and Hit, %s +%.0f dégâts de base (%.0f)"), *GetOwner()->GetName(), *Action->GetName(), Consumed, Action->GetBaseDamage());
 	}
-	if (Character->GetStamina() <= 0.0f)
-	{
-		StopRunning(true, TEXT("plus de stamina"));
-		return;
-	}
-	Character->ConsumeStamina(StaminaPerSecond * DeltaTime, false);
 }

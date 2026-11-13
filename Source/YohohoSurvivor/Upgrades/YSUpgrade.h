@@ -812,6 +812,9 @@ public:
 
 	static EYSWeaponUpgradeTier GetTier(int32 Variant) { return static_cast<EYSWeaponUpgradeTier>(FMath::Clamp(Variant, 0, 2)); }
 
+	/** Upgrade de MoveAction (UYSMoveActionUpgrade) : paliers filtrés à part par les SilverCoin upgrades (MoveAction / Golden MoveAction) */
+	virtual bool IsMoveActionUpgrade() const { return false; }
+
 	static int32 MakeVariant(EYSWeaponUpgradeTier Tier) { return static_cast<int32>(Tier); }
 
 	virtual int32 GetVariantCount() const override { return 3; }
@@ -849,6 +852,85 @@ protected:
 
 	/** Actions requises des armes tenues (main principale d'abord) */
 	TArray<UYSAbilityComponent*> GetRequiredActions(const AYSPlayerCharacter* Character) const;
+};
+
+/** Une variante Golden d'une upgrade de MoveAction */
+USTRUCT(BlueprintType)
+struct FYSGoldenMoveAction
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	FText Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(MultiLine="true"))
+	FText Description;
+
+	/** Icône de la carte (vide = celle de l'upgrade) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	TObjectPtr<UTexture2D> Icon;
+};
+
+/**
+ *  Upgrade de MoveAction (demande de Paul du 2026-11-13) : les personnages n'ont plus de MoveAction par défaut.
+ *  Comme une upgrade d'arme du système de shards, variante = palier :
+ *  - 0 Déblocage : donne la MoveAction (composant Move Action Class du personnage) ; SilverCoin upgrade « MoveAction » (2 au hasard
+ *    parmi les 5), jamais si le personnage a déjà une MoveAction ;
+ *  - 1 Bonus « ++ » : Bonus Gold Value par bonus (sens propre à la MoveAction), Max Bonus Stacks 5, aux level up et en mythique ;
+ *  - 2 et suivantes : les variantes Golden (Golden Variants, l'ORDRE donne l'effet : voir la MoveAction), une seule par personnage ;
+ *    SilverCoin upgrade « Golden MoveAction » : 2 au hasard parmi celles de sa MoveAction.
+ *  Gardée au changement de classe (toujours compatible).
+ */
+UCLASS(meta=(DisplayName="Upgrade de MoveAction"))
+class UYSMoveActionUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSMoveActionUpgrade();
+
+	/** MoveAction donnée : composant de cette classe exacte sur le personnage (AYSPlayerCharacter : Roll, Run, Shoulder bump, Booster de moral, Camouflage) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|MoveAction")
+	TSubclassOf<UYSAbilityComponent> MoveActionClass;
+
+	/** Variantes Golden, dans l'ordre des effets de la MoveAction (voir sa classe) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super")
+	TArray<FYSGoldenMoveAction> GoldenVariants;
+
+	virtual bool IsMoveActionUpgrade() const override { return true; }
+
+	/** Variante Golden (0 = la première) d'une variante de l'upgrade ; INDEX_NONE pour le Déblocage et le ++ */
+	static int32 GetGoldenIndex(int32 Variant) { return Variant >= 2 ? Variant - 2 : INDEX_NONE; }
+
+	/** Toujours gardée au changement de classe */
+	virtual bool IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const override { return true; }
+
+	virtual int32 GetVariantCount() const override { return 2 + GoldenVariants.Num(); }
+
+	virtual FText GetVariantName(int32 Variant) const override;
+
+	virtual FText GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const override { return GetVariantName(Variant); }
+
+	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
+	virtual FText GetDescription(const AYSPlayerCharacter* Character, int32 Variant) const override;
+
+	virtual void GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const override;
+
+	/** Donne la MoveAction au personnage avec ses ++ et sa Golden (AYSPlayerCharacter::SetMoveAction) */
+	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
+
+	/** Le personnage a débloqué une MoveAction (n'importe laquelle) */
+	static bool HasAnyMoveAction(const AYSPlayerCharacter* Character);
+
+protected:
+
+	/** Valeur concrète de la MoveAction du personnage (ex. coût en stamina du Roll) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override;
+
+	/** Index de cette upgrade dans le pool du personnage */
+	int32 FindPoolIndex(const AYSPlayerCharacter* Character) const;
 };
 
 /**

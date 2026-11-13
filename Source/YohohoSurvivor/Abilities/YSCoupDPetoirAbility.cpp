@@ -257,10 +257,11 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 	// Pierce : la balle traverse les NME
 	Projectile->SetMaxHits(GetMaxHitsPerBullet());
 	// Aiming (Harquebusier immobile assez longtemps) : toutes ses balles critiques ; Golden aiming : elles traversent tous les NME
-	if (HolderCharacter && HolderCharacter->IsAimingCritical())
+	// prochaine attaque auto critique (Stunts artist, Motivé pour tuer) : toutes les balles de cette attaque
+	if ((HolderCharacter && HolderCharacter->IsAimingCritical()) || IsForcedCriticalAttack())
 	{
 		Projectile->SetAlwaysCritical(true);
-		if (HolderCharacter->HasGoldenAiming())
+		if (HolderCharacter && HolderCharacter->IsAimingCritical() && HolderCharacter->HasGoldenAiming())
 		{
 			Projectile->SetPierceAllTargets(true);
 		}

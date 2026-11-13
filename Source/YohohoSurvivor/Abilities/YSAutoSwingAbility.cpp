@@ -177,11 +177,13 @@ bool UYSAutoSwingAbility::StartAttack()
 		return false;
 	}
 	CancelLowerPriorityActions();
+	// prochaine attaque auto critique (Stunts artist, Motivé pour tuer), MoveAction qui s'arrête (Run, Camouflage)
+	NotifyHolderActionStarted();
 
 	// Golden bloodlust : l'attaque est critique si toutes les BL stacks sont là au moment où elle part ;
 	// BloodRage : rage au maximum -> attaque critique (stacks consommées si la coupe touche)
 	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	bool bCritical = Character && Character->IsBloodlustCritical();
+	bool bCritical = (Character && Character->IsBloodlustCritical()) || IsForcedCriticalAttack();
 	bool bCountsForCritical = false;
 	EYSSwingAnim Anim = EYSSwingAnim::Main;
 	if (IsAutomatic() && MeleeSystem == EYSMeleeSystem::Swing)

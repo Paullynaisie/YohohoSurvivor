@@ -26,7 +26,7 @@ public:
 	bool bPierceAllFoes = true;
 
 	/** Roulade + visée + rafale, puis la recharge */
-	virtual float GetCooldownDuration() const override { return RollDuration + AimDuration + GetBurstTime() + Cooldown * GetCooldownMultiplier(); }
+	virtual float GetCooldownDuration() const override { return GetRollDuration() + AimDuration + GetBurstTime() + Cooldown * GetCooldownMultiplier(); }
 
 	/** Priorités : roulade + visée + recul du tir (comme le Rolling shot) */
 	virtual float GetActionDuration() const override { return UYSRollingShotAbility::GetActionDuration(); }

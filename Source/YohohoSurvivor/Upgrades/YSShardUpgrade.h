@@ -262,6 +262,9 @@ namespace YSShardUpgrades
 		/** Paliers d'upgrade d'arme permis : bit 0 = Déblocage, bit 1 = Bonus (++), bit 2 = Super (Golden) */
 		uint8 WeaponTierMask = 0b111;
 
+		/** Paliers des upgrades de MoveAction (UYSMoveActionUpgrade) permis, mêmes bits (Golden = toutes ses variantes) */
+		uint8 MoveActionTierMask = 0b111;
+
 		/** Rareté imposée à toutes les propositions (sinon tirée selon les chances du personnage) */
 		TOptional<EYSUpgradeRarity> ForcedRarity;
 	};

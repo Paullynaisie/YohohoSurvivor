@@ -195,13 +195,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Doubloon Rewards")
 	bool bDoubloonRewards = true;
 
-	/** Récompenses des premières jauges remplies, dans l'ordre (défaut : classe à 100 doublons, upgrade d'arme à 150, Golden à 200) */
+	/**
+	 *  SilverCoin upgrades (récompenses des premières jauges remplies), dans l'ordre (demande de Paul du 2026-11-13) : MoveAction,
+	 *  classe, upgrade d'arme, Golden MoveAction, Golden d'arme
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Doubloon Rewards", meta=(EditCondition="bDoubloonRewards"))
-	TArray<EYSUpgradeSelectionKind> DoubloonRewardCycle = { EYSUpgradeSelectionKind::Class, EYSUpgradeSelectionKind::Weapon, EYSUpgradeSelectionKind::GoldenWeapon };
+	TArray<EYSUpgradeSelectionKind> DoubloonRewardCycle = { EYSUpgradeSelectionKind::MoveAction, EYSUpgradeSelectionKind::Class, EYSUpgradeSelectionKind::Weapon,
+		EYSUpgradeSelectionKind::GoldenMoveAction, EYSUpgradeSelectionKind::GoldenWeapon };
 
-	/** Récompense de toutes les jauges suivantes (défaut : 3 propositions mythiques, à partir de 250 doublons) */
+	/** SilverCoin upgrade de toutes les jauges suivantes (défaut : propositions mythiques) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Doubloon Rewards", meta=(EditCondition="bDoubloonRewards"))
 	EYSUpgradeSelectionKind DoubloonRewardAfterCycle = EYSUpgradeSelectionKind::Mythic;
+
+	/** Nombre de propositions d'une SilverCoin upgrade (classe et mythique comprises ; tirées au hasard s'il y en a plus) ; jamais de relance */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level|Doubloon Rewards", meta=(ClampMin="1", EditCondition="bDoubloonRewards"))
+	int32 SilverCoinChoiceCount = 2;
 
 	/** À chaque level up, chaque joueur vivant récupère tous ses PV et la recharge de son Ability */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Level")

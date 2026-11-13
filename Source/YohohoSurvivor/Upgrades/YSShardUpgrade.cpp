@@ -603,7 +603,9 @@ TArray<FYSUpgradeOffer> YSShardUpgrades::PickOffers(const AYSPlayerCharacter* Ch
 		const UYSWeaponUpgrade* Weapon = Cast<UYSWeaponUpgrade>(UpgradePool[PoolIndex]);
 		for (int32 Variant = 0; Weapon && Weapon->bShardSystem && Variant < Weapon->GetVariantCount(); ++Variant)
 		{
-			const bool bTierAllowed = (Options.WeaponTierMask & (1u << FMath::Min(Variant, 7))) != 0;
+			// palier de la variante (MoveAction : toutes les variantes Golden sont du palier Super)
+			const uint8 TierMask = Weapon->IsMoveActionUpgrade() ? Options.MoveActionTierMask : Options.WeaponTierMask;
+			const bool bTierAllowed = (TierMask & (1u << static_cast<uint32>(UYSWeaponUpgrade::GetTier(Variant)))) != 0;
 			if (bTierAllowed && Weapon->GetOfferWeight(Variant) > 0.0f && Weapon->CanBeOffered(Character, Variant, Character->GetUpgradeProgress(PoolIndex, Variant)))
 			{
 				Pool.Add({ nullptr, Weapon, PoolIndex, Variant });

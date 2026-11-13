@@ -5,74 +5,85 @@
 #include "YSRunAbility.generated.h"
 
 /**
- *  « Run » : MoveAction de Mouss. Coûte Stamina Cost (cran de la barre) au départ, puis Stamina Per Second tant que la course dure
- *  (pas de regen pendant la course) ; vitesse de déplacement x Run Speed Multiplier.
- *  Hold To Run : la course dure tant qu'Espace est maintenu (sinon : Espace la lance, un 2e appui l'arrête).
- *  S'arrête aussi à 0 de stamina, en portant un objet, dans l'eau, à un poste, à la mort.
- *  N'interrompt et ne bloque aucune action : on peut attaquer en courant (les ralentissements des attaques s'y multiplient).
- *  Réseau : le client qui contrôle lance / arrête sa course tout de suite (prédiction de la vitesse), le serveur fait foi.
+ *  « Run » (MoveAction maintenue, demande de Paul du 2026-11-13) : Stamina Cost (20) = Min Duration (1 s) de course, puis
+ *  Stamina Per Second (10) tant qu'Espace est tenu ; vitesse x (Run Speed Multiplier + bonus des ++). Attaquer ou lancer une
+ *  Ability arrête la course. Run ++ (UYSMoveActionUpgrade) : + Bonus Gold Value (0.05) de vitesse chacun (x1.25 -> x1.5).
+ *  Golden (ordre des variantes de DA_Up_MoveAction_Run) :
+ *  0 Free running : intangible pendant la course (traverse les NME et les joueurs) ;
+ *  1 Fenwick : course possible en portant un objet, et le port ne consomme plus de stamina pendant la course ;
+ *  2 Run and Hit : arrêter la course en attaquant ajoute la stamina dépensée aux dégâts de base de l'attaque ;
+ *  3 Impulsion : la première seconde est remplacée par un dash (Impulse Duration, intangible et invulnérable), coût Impulse Stamina Cost.
  */
 UCLASS(ClassGroup=(YS), meta=(BlueprintSpawnableComponent, DisplayName="Run"))
-class UYSRunAbility : public UYSMoveActionAbility
+class UYSRunAbility : public UYSSustainedMoveActionAbility
 {
 	GENERATED_BODY()
 
 public:
 
-	/** Stamina consommée par seconde de course, après le coût de départ */
+	/** Vitesse de déplacement x ce multiplicateur pendant la course (1.25 = +25 % ; + bonus des Run ++) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Run", meta=(ClampMin="0"))
-	float StaminaPerSecond = 5.0f;
+	float RunSpeedMultiplier = 1.25f;
 
-	/** Vitesse de déplacement x ce multiplicateur pendant la course (1.3 = +30 %) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Run", meta=(ClampMin="0"))
-	float RunSpeedMultiplier = 1.3f;
+	/** Impulsion (Golden) : coût de l'activation */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Run|Golden", meta=(ClampMin="0"))
+	float ImpulseStaminaCost = 40.0f;
 
-	/** Vrai : courir tant qu'Espace est maintenu ; faux : Espace lance la course, un 2e appui l'arrête */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Run")
-	bool bHoldToRun = true;
+	/** Impulsion : durée du dash (remplace la première seconde de course) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Run|Golden", meta=(ClampMin="0.05", Units="Seconds"))
+	float ImpulseDuration = 0.25f;
+
+	/** Impulsion : vitesse x ce multiplicateur pendant le dash */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Run|Golden", meta=(ClampMin="0"))
+	float ImpulseSpeedMultiplier = 3.0f;
+
+	/** Index des variantes Golden (ordre de l'asset DA_Up_MoveAction_Run) */
+	static constexpr int32 GoldenFreeRunning = 0;
+	static constexpr int32 GoldenFenwick = 1;
+	static constexpr int32 GoldenRunAndHit = 2;
+	static constexpr int32 GoldenImpulse = 3;
 
 	UYSRunAbility();
 
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	/** Pendant la course : x Run Speed Multiplier (+ ++) ; Impulsion : x Impulse Speed Multiplier pendant le dash */
+	virtual float GetMoveSpeedMultiplier() const override;
+
+	virtual float GetActivationStaminaCost() const override;
+
+	virtual float GetMoveActionBonusDisplayValue(float BonusTotal) const override { return RunSpeedMultiplier + BonusTotal; }
+
+	/** Impulsion : invulnérable pendant le dash */
+	virtual bool IsGrantingInvulnerability() const override;
+
+	/** Fenwick */
+	virtual bool AllowsCarrying() const override { return GetMoveActionGolden() == GoldenFenwick; }
+
+	virtual bool SuppressesCarryStaminaCost() const override { return AllowsCarrying() && IsSustained(); }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	virtual void OnInputPressed(const FVector& TargetLocation) override;
-
-	virtual void OnInputReleased() override;
-
-	/** Pendant la course : x Run Speed Multiplier */
-	virtual float GetMoveSpeedMultiplier() const override;
-
-	/** Pas de nouvelle course pendant la course */
-	virtual bool CanActivateNow() const override;
-
 	UFUNCTION(BlueprintPure, Category="Run")
-	bool IsRunning() const { return bRunning; }
+	bool IsRunning() const { return IsSustained(); }
 
 protected:
 
-	virtual void OnActivationPredicted(const FVector& TargetLocation) override;
+	virtual float GetMinDuration() const override;
 
-	virtual void ExecuteMoveAction(const FVector& TargetLocation) override;
+	virtual void OnSustainStarted() override;
 
-	virtual void OnActivationRejected() override;
+	virtual void OnSustainStopped() override;
+
+	virtual void OnCancelledByAttack(UYSAbilityComponent* Action, float Consumed) override;
+
+	virtual const TCHAR* GetLogVerb() const override { return TEXT("court"); }
 
 private:
 
-	/** En train de courir (serveur ; client qui contrôle : sa prédiction ; autres machines : répliqué) */
-	UPROPERTY(Replicated)
-	bool bRunning = false;
+	/** Free running / Impulsion : capsule qui traverse les personnages (cette machine) */
+	bool bPassThroughApplied = false;
 
-	/** Machine qui contrôle : arrête la course (et le serveur) */
-	void RequestStop();
+	/** Le personnage traverse les autres en ce moment (Free running : toute la course ; Impulsion : le dash) */
+	bool WantsPassThrough() const;
 
-	/** Serveur : fin de la course ; bNotifyOwner : le client qui contrôle l'arrête aussi (fin imposée par le serveur) */
-	void StopRunning(bool bNotifyOwner, const TCHAR* Reason);
-
-	UFUNCTION(Server, Reliable)
-	void ServerStopRunning();
-
-	UFUNCTION(Client, Reliable)
-	void ClientStopRunning();
+	bool IsImpulseDashing() const;
 };

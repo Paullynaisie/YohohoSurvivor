@@ -1761,7 +1761,7 @@ void AYSPlayerController::YSAddDoubloons(int32 Amount)
 void AYSPlayerController::YSDoubloonReward(int32 Kind)
 {
 	AYSGameMode* GameMode = HasAuthority() ? GetWorld()->GetAuthGameMode<AYSGameMode>() : nullptr;
-	if (GameMode && Kind >= 1 && Kind <= 4)
+	if (GameMode && Kind >= 1 && Kind <= 6)
 	{
 		GameMode->QueueDoubloonReward(static_cast<EYSUpgradeSelectionKind>(Kind), TEXT("debug"));
 	}
@@ -2333,12 +2333,16 @@ void AYSPlayerController::UpdateUpgradeMenu()
 		if (YSGameState->GetUpgradeSelectionKind() != EYSUpgradeSelectionKind::LevelUp && DisplayedUpgradeOffers.Num() > 0)
 		{
 			const FYSUpgradeOffer& First = DisplayedUpgradeOffers[0];
-			const bool bWeaponOffer = !First.UpStats && Cast<UYSWeaponUpgrade>(FirstUpgrade) != nullptr;
-			const FText Format = bClassChoice ? NSLOCTEXT("YS", "ShipClassTitle", "Bateau niveau {0} ! Choisis ta classe")
-				: bWeaponOffer && First.Variant == 0 ? NSLOCTEXT("YS", "ShipWeaponTitle", "Bateau niveau {0} ! Choisis une upgrade d'arme")
-				: bWeaponOffer && First.Variant == 2 ? NSLOCTEXT("YS", "ShipGoldenTitle", "Bateau niveau {0} ! Choisis une upgrade d'arme Golden")
-				: First.Rarity == EYSUpgradeRarity::Mythic ? NSLOCTEXT("YS", "ShipMythicTitle", "Bateau niveau {0} ! Choisis une upgrade mythique")
-				: NSLOCTEXT("YS", "ShipUpgradeTitle", "Bateau niveau {0} ! Choisis une amélioration");
+			const UYSWeaponUpgrade* WeaponUpgrade = First.UpStats ? nullptr : Cast<UYSWeaponUpgrade>(FirstUpgrade);
+			const bool bMoveActionOffer = WeaponUpgrade && WeaponUpgrade->IsMoveActionUpgrade();
+			const EYSWeaponUpgradeTier Tier = UYSWeaponUpgrade::GetTier(First.Variant);
+			const FText Format = bClassChoice ? NSLOCTEXT("YS", "SilverCoinClassTitle", "SilverCoin upgrade (bateau niveau {0}) ! Choisis ta classe")
+				: bMoveActionOffer && Tier == EYSWeaponUpgradeTier::Unlock ? NSLOCTEXT("YS", "SilverCoinMoveActionTitle", "SilverCoin upgrade (bateau niveau {0}) ! Choisis ta MoveAction")
+				: bMoveActionOffer && Tier == EYSWeaponUpgradeTier::Super ? NSLOCTEXT("YS", "SilverCoinGoldenMoveActionTitle", "SilverCoin upgrade (bateau niveau {0}) ! Choisis ta MoveAction Golden")
+				: WeaponUpgrade && Tier == EYSWeaponUpgradeTier::Unlock ? NSLOCTEXT("YS", "SilverCoinWeaponTitle", "SilverCoin upgrade (bateau niveau {0}) ! Choisis une upgrade d'arme")
+				: WeaponUpgrade && Tier == EYSWeaponUpgradeTier::Super ? NSLOCTEXT("YS", "SilverCoinGoldenTitle", "SilverCoin upgrade (bateau niveau {0}) ! Choisis une upgrade d'arme Golden")
+				: First.Rarity == EYSUpgradeRarity::Mythic ? NSLOCTEXT("YS", "SilverCoinMythicTitle", "SilverCoin upgrade (bateau niveau {0}) ! Choisis une upgrade mythique")
+				: NSLOCTEXT("YS", "SilverCoinUpgradeTitle", "SilverCoin upgrade (bateau niveau {0}) ! Choisis une amélioration");
 			Title = FText::Format(Format, YSGameState->GetUpgradeSelectionLevel());
 		}
 		UpgradeMenu->SetTitle(Title);
@@ -2650,11 +2654,11 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 	const AYSShipStation* Station = StationCharacter ? StationCharacter->GetCurrentStation() : nullptr;
 	const bool bAliveCharacter = StationCharacter && StationCharacter->IsAlive();
 
-	// stamina : cachée sans personnage vivant
+	// stamina : cachée sans personnage vivant (sans MoveAction : barre sans cran, le port et la nage la consomment)
 	const UYSAbilityComponent* MoveAbility = bAliveCharacter ? StationCharacter->GetMoveActionAbility() : nullptr;
 	if (StaminaBar)
 	{
-		StaminaBar->Refresh(MoveAbility ? StationCharacter->GetStamina() : 0.0f, MoveAbility ? StationCharacter->GetMaxStamina() : 0.0f, MoveAbility ? MoveAbility->GetMoveActionStaminaCost() : 0.0f);
+		StaminaBar->Refresh(bAliveCharacter ? StationCharacter->GetStamina() : 0.0f, bAliveCharacter ? StationCharacter->GetMaxStamina() : 0.0f, MoveAbility ? MoveAbility->GetMoveActionStaminaCost() : 0.0f);
 	}
 
 	const auto ApplyAction = [](UYSAbilityIconWidget* Widget, const UYSAbilityComponent* Action, const FText& Key)
@@ -3114,6 +3118,29 @@ void AYSPlayerController::YSMoveAction()
 	{
 		PlayerCharacter->TriggerMoveAction();
 	}
+}
+
+void AYSPlayerController::YSMoveActionRelease()
+{
+	if (AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn()))
+	{
+		PlayerCharacter->OnMoveActionReleased();
+	}
+}
+
+void AYSPlayerController::YSMoveState()
+{
+	const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+	if (!PlayerCharacter)
+	{
+		return;
+	}
+	const UYSAbilityComponent* MoveAbility = PlayerCharacter->GetMoveActionAbility();
+	UE_LOG(LogTemp, Log, TEXT("[YSMoveState] %s : vitesse %.0f, stamina %.1f / %.1f, MoveAction %s (++ %.2f, Golden %d, coût %.0f), camouflé %d, invulnérable %d, intangible %d, boost %d, dégâts x%.2f, PV %.0f, en (%.0f, %.0f)"),
+		*PlayerCharacter->GetName(), PlayerCharacter->GetCharacterMovement()->MaxWalkSpeed, PlayerCharacter->GetStamina(), PlayerCharacter->GetMaxStamina(),
+		MoveAbility ? *MoveAbility->GetName() : TEXT("aucune"), MoveAbility ? MoveAbility->GetMoveActionBonus() : 0.0f, MoveAbility ? MoveAbility->GetMoveActionGolden() : -1,
+		MoveAbility ? MoveAbility->GetMoveActionStaminaCost() : 0.0f, PlayerCharacter->IsHiddenFromFoes(), PlayerCharacter->IsInvulnerable(), PlayerCharacter->IsPassingThroughPawns(),
+		PlayerCharacter->IsMoraleBoosted(), PlayerCharacter->GetMoraleBoostDamageMultiplier(), PlayerCharacter->GetHealth(), PlayerCharacter->GetActorLocation().X, PlayerCharacter->GetActorLocation().Y);
 }
 
 void AYSPlayerController::YSSetStamina(float Value)

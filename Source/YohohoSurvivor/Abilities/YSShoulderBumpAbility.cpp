@@ -4,6 +4,8 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Core/YSDamageTypes.h"
+#include "Weapons/YSWeapon.h"
 
 UYSShoulderBumpAbility::UYSShoulderBumpAbility()
 {
@@ -19,8 +21,16 @@ UYSShoulderBumpAbility::UYSShoulderBumpAbility()
 void UYSShoulderBumpAbility::ExecuteAbility(const FVector& TargetLocation)
 {
 	HitFoes.Reset();
+	DashRestarts = 0;
 	Super::ExecuteAbility(TargetLocation);
 	UpdateHitbox();
+}
+
+bool UYSShoulderBumpAbility::IsGrantingInvulnerability() const
+{
+	// Diamond shoulder : invulnérable pendant le dash
+	const float Elapsed = GetTimeSinceRoll();
+	return GetMoveActionGolden() == GoldenDiamond && Elapsed >= 0.0f && Elapsed < GetRollDuration();
 }
 
 void UYSShoulderBumpAbility::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -28,7 +38,7 @@ void UYSShoulderBumpAbility::TickComponent(float DeltaTime, ELevelTick TickType,
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	const float Elapsed = GetTimeSinceRoll();
-	if (GetOwner()->HasAuthority() && Elapsed >= 0.0f && Elapsed < RollDuration + HitboxExtraDuration)
+	if (GetOwner()->HasAuthority() && Elapsed >= 0.0f && Elapsed < GetRollDuration() + HitboxExtraDuration)
 	{
 		UpdateHitbox();
 	}
@@ -36,16 +46,18 @@ void UYSShoulderBumpAbility::TickComponent(float DeltaTime, ELevelTick TickType,
 
 void UYSShoulderBumpAbility::UpdateHitbox()
 {
-	const APawn* Holder = GetHolderPawn();
+	APawn* Holder = GetHolderPawn();
 	const FVector DashDirection = LastRollDirection.GetSafeNormal2D();
 	if (!Holder || DashDirection.IsNearlyZero())
 	{
 		return;
 	}
 
+	const int32 Golden = GetMoveActionGolden();
 	const FVector Center = Holder->GetActorLocation() + DashDirection * HitboxForwardOffset;
 	// perpendiculaire au dash (à plat) : le NME part du côté où il se trouve
 	const FVector Side = FVector(-DashDirection.Y, DashDirection.X, 0.0f);
+	bool bRestartDash = false;
 	for (TActorIterator<AYSFoeCharacter> It(GetWorld()); It; ++It)
 	{
 		AYSFoeCharacter* Foe = *It;
@@ -62,26 +74,63 @@ void UYSShoulderBumpAbility::UpdateHitbox()
 		}
 
 		HitFoes.Add(Foe);
+		// Buldozer : chaque NME touché relance le dash
+		bRestartDash = bRestartDash || Golden == GoldenBuldozer;
+
+		// direction et distance du bump : perpendiculaire (normal) ; Compacteur : vers un point devant le personnage en fin de dash
+		FVector BumpDirection = FVector::DotProduct(Foe->GetActorLocation() - Holder->GetActorLocation(), Side) >= 0.0f ? Side : -Side;
+		float Distance = BumpDistance;
+		if (Golden == GoldenCompactor)
+		{
+			const FVector Landing = Holder->GetActorLocation() + DashDirection * (CompactorFrontDistance + EstimateRemainingRollDistance());
+			const FVector ToLanding = (Landing - Foe->GetActorLocation()) * FVector(1.0f, 1.0f, 0.0f);
+			Distance = ToLanding.Size();
+			BumpDirection = Distance > KINDA_SMALL_NUMBER ? ToLanding / Distance : DashDirection;
+		}
+
+		// Brutass : la hitbox inflige les dégâts de l'attaque auto (le coup bumpe, comme le Bumping Slash)
+		const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Holder);
+		const AYSWeapon* Weapon = Character ? Character->GetMainHandWeapon() : nullptr;
+		const UYSAbilityComponent* AutoAction = Weapon ? Weapon->GetAutoAction() : nullptr;
+		if (Golden == GoldenBrutass && AutoAction && AutoAction->GetBaseDamage() > 0.0f)
+		{
+			const float BrutassDamage = AutoAction->GetBaseDamage() * AutoAction->GetDamageMultiplier();
+			FYSBumpDamageEvent BumpEvent(BrutassDamage, BumpDirection, nullptr);
+			BumpEvent.Distance = Distance;
+			BumpEvent.ApexHeight = BumpApexHeight;
+			BumpEvent.Duration = BumpDuration;
+			BumpEvent.SpinTurns = BumpSpinTurns;
+			BumpEvent.bBumpElites = bBumpElites;
+			Foe->TakeDamage(BrutassDamage, BumpEvent, Holder->GetController(), Holder);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSShoulderBump] %s : Brutass, %s prend %.0f"), *Holder->GetName(), *Foe->GetName(), BrutassDamage);
+			continue;
+		}
+
 		if (!Foe->CanBeBumped(bBumpElites))
 		{
 			UE_LOG(LogTemp, Verbose, TEXT("[YSShoulderBump] %s touche %s : pas bumpable"), *Holder->GetName(), *Foe->GetName());
 			continue;
 		}
-		const FVector ToFoeFromBody = Foe->GetActorLocation() - Holder->GetActorLocation();
-		const FVector BumpDirection = FVector::DotProduct(ToFoeFromBody, Side) >= 0.0f ? Side : -Side;
-		Foe->StartBump(BumpDirection, BumpDistance, BumpApexHeight, BumpDuration, BumpSpinTurns);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSShoulderBump] %s bumpe %s de %.0f cm vers (%.2f, %.2f)"), *Holder->GetName(), *Foe->GetName(), BumpDistance, BumpDirection.X, BumpDirection.Y);
+		Foe->StartBump(BumpDirection, Distance, BumpApexHeight, BumpDuration, BumpSpinTurns);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSShoulderBump] %s bumpe %s de %.0f cm vers (%.2f, %.2f)"), *Holder->GetName(), *Foe->GetName(), Distance, BumpDirection.X, BumpDirection.Y);
+	}
+
+	if (bRestartDash && DashRestarts < BuldozerMaxRestarts && GetTimeSinceRoll() < GetRollDuration())
+	{
+		++DashRestarts;
+		RestartRollTimer();
+		UE_LOG(LogTemp, Verbose, TEXT("[YSShoulderBump] %s : Buldozer, dash relancé (%d)"), *Holder->GetName(), DashRestarts);
 	}
 }
 
 bool UYSShoulderBumpAbility::GetBodyRoll(float& OutAngle, float& OutHeightOffset) const
 {
 	const float Elapsed = GetTimeSinceRoll();
-	if (LeanAngle == 0.0f || Elapsed < 0.0f || Elapsed >= RollDuration)
+	if (LeanAngle == 0.0f || Elapsed < 0.0f || Elapsed >= GetRollDuration())
 	{
 		return false;
 	}
-	OutAngle = LeanAngle * FMath::Sin(PI * Elapsed / RollDuration);
+	OutAngle = LeanAngle * FMath::Sin(PI * Elapsed / GetRollDuration());
 	OutHeightOffset = 0.0f;
 	return true;
 }
@@ -89,7 +138,7 @@ bool UYSShoulderBumpAbility::GetBodyRoll(float& OutAngle, float& OutHeightOffset
 bool UYSShoulderBumpAbility::GetLockedAimDirection(FVector& OutDirection) const
 {
 	const float Elapsed = GetTimeSinceRoll();
-	if (LastRollDirection.IsNearlyZero() || Elapsed < 0.0f || Elapsed >= RollDuration)
+	if (LastRollDirection.IsNearlyZero() || Elapsed < 0.0f || Elapsed >= GetRollDuration())
 	{
 		return false;
 	}

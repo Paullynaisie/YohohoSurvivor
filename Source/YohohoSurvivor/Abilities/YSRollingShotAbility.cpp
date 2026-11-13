@@ -31,7 +31,7 @@ void UYSRollingShotAbility::ExecuteAbility(const FVector& TargetLocation)
 	UE_LOG(LogTemp, Verbose, TEXT("[YSRollingShot] %s roulade à %.2f depuis (%.0f, %.0f)"), *GetOwner()->GetName(), GetWorld()->GetTimeSeconds(), GetHolderPawn() ? GetHolderPawn()->GetActorLocation().X : 0.0f, GetHolderPawn() ? GetHolderPawn()->GetActorLocation().Y : 0.0f);
 
 	// visée puis tir
-	GetWorld()->GetTimerManager().SetTimer(ShootTimer, this, &UYSRollingShotAbility::Shoot, FMath::Max(RollDuration + AimDuration, KINDA_SMALL_NUMBER), false);
+	GetWorld()->GetTimerManager().SetTimer(ShootTimer, this, &UYSRollingShotAbility::Shoot, FMath::Max(GetRollDuration() + AimDuration, KINDA_SMALL_NUMBER), false);
 }
 
 void UYSRollingShotAbility::StartRoll()
@@ -69,7 +69,38 @@ void UYSRollingShotAbility::StartRoll()
 			{
 				YSCombat::SetPassThroughCharacters(WeakCapsule.Get(), false);
 			}
-		}), FMath::Max(RollDuration, KINDA_SMALL_NUMBER), false);
+		}), FMath::Max(GetRollDuration(), KINDA_SMALL_NUMBER), false);
+	}
+}
+
+void UYSRollingShotAbility::RestartRollTimer()
+{
+	LastRollTime = GetWorld()->GetTimeSeconds();
+	// traversée des NME : prolongée aussi
+	if (bRollThroughFoes)
+	{
+		ACharacter* Character = Cast<ACharacter>(GetHolderPawn());
+		if (Character)
+		{
+			TWeakObjectPtr<UCapsuleComponent> WeakCapsule = Character->GetCapsuleComponent();
+			GetWorld()->GetTimerManager().SetTimer(RollCollisionTimer, FTimerDelegate::CreateWeakLambda(this, [WeakCapsule]()
+			{
+				if (WeakCapsule.IsValid())
+				{
+					YSCombat::SetPassThroughCharacters(WeakCapsule.Get(), false);
+				}
+			}), FMath::Max(GetRollDuration(), KINDA_SMALL_NUMBER), false);
+		}
+	}
+	MulticastRollRestarted();
+}
+
+void UYSRollingShotAbility::MulticastRollRestarted_Implementation()
+{
+	// serveur : déjà fait ; client qui contrôle (prédiction) et autres : la roulade repart d'ici
+	if (!GetOwner()->HasAuthority())
+	{
+		LastRollTime = GetWorld()->GetTimeSeconds();
 	}
 }
 
@@ -138,27 +169,50 @@ float UYSRollingShotAbility::GetTimeSinceRoll() const
 	return World ? static_cast<float>(World->GetTimeSeconds() - LastRollTime) : TNumericLimits<float>::Max();
 }
 
+float UYSRollingShotAbility::EstimateRemainingRollDistance() const
+{
+	const ACharacter* Character = Cast<ACharacter>(GetHolderPawn());
+	const float Elapsed = GetTimeSinceRoll();
+	const float Duration = GetRollDuration();
+	if (!Character || Elapsed < 0.0f || Elapsed >= Duration)
+	{
+		return 0.0f;
+	}
+	// vitesse sans le bonus de la roulade (les autres multiplicateurs restent), puis la courbe de GetMoveSpeedMultiplier sur le temps restant
+	const float BaseSpeed = Character->GetCharacterMovement()->MaxWalkSpeed / FMath::Max(GetMoveSpeedMultiplier(), KINDA_SMALL_NUMBER);
+	constexpr int32 Steps = 16;
+	const float Step = (Duration - Elapsed) / Steps;
+	float Distance = 0.0f;
+	for (int32 Index = 0; Index < Steps; ++Index)
+	{
+		const float Time = Elapsed + (Index + 0.5f) * Step;
+		const float Decay = FMath::InterpEaseOut(0.0f, 1.0f, Time / Duration, RollSpeedDecayExponent);
+		Distance += BaseSpeed * FMath::Lerp(RollSpeedMultiplier, AimMoveSpeedMultiplier, Decay) * Step;
+	}
+	return Distance;
+}
+
 bool UYSRollingShotAbility::IsGrantingInvulnerability() const
 {
 	const float Elapsed = GetTimeSinceRoll();
-	return Elapsed >= 0.0f && Elapsed < RollDuration + ExtraInvulnerability;
+	return Elapsed >= 0.0f && Elapsed < GetRollDuration() + ExtraInvulnerability;
 }
 
 float UYSRollingShotAbility::GetMoveSpeedMultiplier() const
 {
 	const float Elapsed = GetTimeSinceRoll();
 	// roulade : bonus de vitesse qui retombe jusqu'à la vitesse de la visée
-	if (Elapsed >= 0.0f && Elapsed < RollDuration)
+	if (Elapsed >= 0.0f && Elapsed < GetRollDuration())
 	{
-		const float Decay = FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / RollDuration, RollSpeedDecayExponent);
+		const float Decay = FMath::InterpEaseOut(0.0f, 1.0f, Elapsed / GetRollDuration(), RollSpeedDecayExponent);
 		return FMath::Lerp(RollSpeedMultiplier, AimMoveSpeedMultiplier, Decay);
 	}
-	return Elapsed >= RollDuration && Elapsed < RollDuration + AimDuration ? AimMoveSpeedMultiplier : 1.0f;
+	return Elapsed >= GetRollDuration() && Elapsed < GetRollDuration() + AimDuration ? AimMoveSpeedMultiplier : 1.0f;
 }
 
 bool UYSRollingShotAbility::GetBodyRoll(float& OutAngle, float& OutHeightOffset) const
 {
-	const float Duration = RollAnimDuration > 0.0f ? RollAnimDuration : RollDuration;
+	const float Duration = RollAnimDuration > 0.0f ? RollAnimDuration : GetRollDuration();
 	const float Elapsed = GetTimeSinceRoll();
 	if (Elapsed < 0.0f || Elapsed >= Duration)
 	{
@@ -174,7 +228,7 @@ bool UYSRollingShotAbility::GetBodyRoll(float& OutAngle, float& OutHeightOffset)
 bool UYSRollingShotAbility::GetForcedMoveDirection(FVector& OutDirection) const
 {
 	const float Elapsed = GetTimeSinceRoll();
-	if (!bForceMoveWithoutInput || Elapsed < 0.0f || Elapsed >= RollDuration || ForcedRollDirection.IsNearlyZero())
+	if (!bForceMoveWithoutInput || Elapsed < 0.0f || Elapsed >= GetRollDuration() || ForcedRollDirection.IsNearlyZero())
 	{
 		return false;
 	}

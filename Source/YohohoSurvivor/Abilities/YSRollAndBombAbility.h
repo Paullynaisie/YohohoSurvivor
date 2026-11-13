@@ -50,12 +50,12 @@ public:
 	virtual float GetCooldownMultiplier() const override;
 
 	/** Roulade (+ pause éventuelle), puis la recharge (CD reduction : seulement la recharge) */
-	virtual float GetCooldownDuration() const override { return RollDuration + AimDuration + Cooldown * GetCooldownMultiplier(); }
+	virtual float GetCooldownDuration() const override { return GetRollDuration() + AimDuration + Cooldown * GetCooldownMultiplier(); }
 
 	/** Priorités : en cours pendant la roulade (+ pause éventuelle), pas de recul */
-	virtual float GetActionDuration() const override { return RollDuration + AimDuration; }
+	virtual float GetActionDuration() const override { return GetRollDuration() + AimDuration; }
 
-	virtual float GetPriorityBlockDuration() const override { return RollDuration + AimDuration; }
+	virtual float GetPriorityBlockDuration() const override { return GetRollDuration() + AimDuration; }
 
 #if WITH_EDITOR
 	virtual void GetUnusedProperties(TArray<FName>& OutNames) const override;

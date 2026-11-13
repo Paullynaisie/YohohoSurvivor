@@ -1,5 +1,6 @@
 #include "Abilities/YSRollAbility.h"
 #include "Engine/World.h"
+#include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerCharacter.h"
 
 UYSRollAbility::UYSRollAbility()
@@ -7,11 +8,34 @@ UYSRollAbility::UYSRollAbility()
 	DisplayName = NSLOCTEXT("YS", "Roll", "Roll");
 	Cooldown = 0.0f;
 	AkimboFireDelay = 0.0f;
+	BombDamage = 50.0f;
+}
+
+void UYSRollAbility::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME_CONDITION(UYSRollAbility, RollCount, COND_OwnerOnly);
+}
+
+float UYSRollAbility::GetMoveActionStaminaCost() const
+{
+	// BunnyHop : la dernière roulade de chaque série est gratuite
+	if (UsesRollUpgrades() && GetMoveActionGolden() == GoldenBunnyHop && BunnyHopInterval > 1 && (RollCount + 1) % BunnyHopInterval == 0)
+	{
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, StaminaCost - (UsesRollUpgrades() ? GetMoveActionBonus() : 0.0f));
 }
 
 bool UYSRollAbility::CanActivateNow() const
 {
-	return CanCharacterUseMoveAction(Cast<AYSPlayerCharacter>(GetHolderPawn()), StaminaCost);
+	// Shoulder bump prolongé (Buldozer) : pas de nouvelle roulade avant la fin de la précédente
+	const float SinceRoll = GetTimeSinceRoll();
+	if (SinceRoll >= 0.0f && SinceRoll < GetRollDuration())
+	{
+		return false;
+	}
+	return CanCharacterUseMoveAction(Cast<AYSPlayerCharacter>(GetHolderPawn()), GetMoveActionStaminaCost());
 }
 
 bool UYSRollAbility::CanCharacterUseMoveAction(const AYSPlayerCharacter* Character, float Cost)
@@ -24,19 +48,46 @@ void UYSRollAbility::OnActivationPredicted(const FVector& TargetLocation)
 	Super::OnActivationPredicted(TargetLocation);
 	if (AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn()))
 	{
-		Character->PredictStaminaCost(StaminaCost);
+		Character->PredictStaminaCost(GetMoveActionStaminaCost());
 	}
 }
 
 void UYSRollAbility::ExecuteAbility(const FVector& TargetLocation)
 {
-	if (AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn()))
+	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	const float Cost = GetMoveActionStaminaCost();
+	if (Character && Cost > 0.0f)
 	{
-		Character->ConsumeStamina(StaminaCost);
+		Character->ConsumeStamina(Cost);
 	}
+	++RollCount;
+
+	// Golden
+	switch (UsesRollUpgrades() ? GetMoveActionGolden() : INDEX_NONE)
+	{
+	case GoldenSleightOfHands:
+		if (Character)
+		{
+			Character->ResetAbilityCooldowns();
+		}
+		break;
+	case GoldenStuntsArtist:
+		if (Character)
+		{
+			Character->SetNextAutoAttackCritical();
+		}
+		break;
+	case GoldenLittleGift:
+		// « Bomb and Roll » : bombe aux pieds, puis la roulade
+		DropBomb();
+		break;
+	default:
+		break;
+	}
+
 	StartRoll();
 	MulticastRollStarted();
-	UE_LOG(LogTemp, Verbose, TEXT("[YSRoll] %s roulade à %.2f"), *GetOwner()->GetName(), GetWorld()->GetTimeSeconds());
+	UE_LOG(LogTemp, Verbose, TEXT("[YSRoll] %s roulade n°%d à %.2f (%.0f de stamina, Golden %d)"), *GetOwner()->GetName(), RollCount, GetWorld()->GetTimeSeconds(), Cost, GetMoveActionGolden());
 }
 
 void UYSRollAbility::OnActionCancelled()
@@ -54,10 +105,8 @@ void UYSRollAbility::OnActionCancelled()
 void UYSRollAbility::GetUnusedProperties(TArray<FName>& OutNames) const
 {
 	Super::GetUnusedProperties(OutNames);
-	// pas de bombe ni d'arme
+	// pas d'arme ; la bombe ne sert qu'au Golden Little Gift (Bomb Class et Bomb Damage restent visibles)
 	OutNames.Append({
-		GET_MEMBER_NAME_CHECKED(UYSRollAbility, BombClass),
-		GET_MEMBER_NAME_CHECKED(UYSRollAbility, BombDamage),
 		GET_MEMBER_NAME_CHECKED(UYSRollAbility, MineClass),
 		GET_MEMBER_NAME_CHECKED(UYSRollAbility, SecondMineRollFraction),
 		GET_MEMBER_NAME_CHECKED(UYSRollAbility, bAlwaysDropSecondBomb),

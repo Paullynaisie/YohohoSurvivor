@@ -575,6 +575,10 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 		{
 			YSMatchStats::RecordKill(EventInstigator, DamageCauser);
 		}
+		if (Attacker)
+		{
+			Attacker->OnDealtDamage(this, true);
+		}
 		PendingDeathImpulse = ComputeDeathImpulse(DamageEvent, EventInstigator);
 		Die();
 		return Damage;
@@ -582,6 +586,12 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 
 	// élite : rage pleine ou PV sous le seuil -> bouclier de boss
 	TryTriggerBossShield();
+
+	// MoveAction de l'attaquant (Sucker Punch : bumpé sur place) et Booster de moral (Motivé pour courir : boost relancé)
+	if (Attacker && Attacker->OnDealtDamage(this, false))
+	{
+		return Damage;
+	}
 
 	// coup qui bumpe (Bumping Slash) : NME lancé en cloche ; un élite seulement si l'Ability le permet (Bump Elites), sinon pushback normal
 	// ; jamais sous bouclier de boss, pendant le Boss Big Slash / Roll360shot ni à bord d'un Jolly Ship
@@ -1997,7 +2007,8 @@ bool AYSFoeCharacter::IsTargetStillValid(bool bIncludeSwimmers) const
 		return CanTargetCore(Core);
 	}
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Target);
-	return !Character || (Character->IsAlive() && !Character->IsDying() && (bIncludeSwimmers || !Character->IsSwimming()) && (!CrewShip || Character->GetShipUnderFeet() == CrewShip));
+	// joueur camouflé : le NME change de cible
+	return !Character || (Character->IsAlive() && !Character->IsDying() && !Character->IsHiddenFromFoes() && (bIncludeSwimmers || !Character->IsSwimming()) && (!CrewShip || Character->GetShipUnderFeet() == CrewShip));
 }
 
 AYSShipCore* AYSFoeCharacter::GetCoreInHitbox() const
@@ -2022,7 +2033,8 @@ APawn* AYSFoeCharacter::FindNearestPlayer(bool bIncludeSwimmers, float* OutScore
 		APawn* Pawn = Player ? Player->GetPawn() : nullptr;
 		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(Pawn);
 		// corps en ragdoll d'un joueur mort, joueur qui nage (sauf pour un NME à distance) : pas une cible
-		if (!Pawn || (PlayerCharacter && (!PlayerCharacter->IsAlive() || (PlayerCharacter->IsSwimming() && !bIncludeSwimmers))))
+		// joueur camouflé : ignoré
+		if (!Pawn || (PlayerCharacter && (!PlayerCharacter->IsAlive() || (PlayerCharacter->IsSwimming() && !bIncludeSwimmers) || PlayerCharacter->IsHiddenFromFoes())))
 		{
 			continue;
 		}

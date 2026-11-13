@@ -42,6 +42,39 @@ void UYSAbilityComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 
 	DOREPLIFETIME(UYSAbilityComponent, Cooldown);
 	DOREPLIFETIME(UYSAbilityComponent, ReadyServerTime);
+	DOREPLIFETIME(UYSAbilityComponent, MoveActionBonus);
+	DOREPLIFETIME(UYSAbilityComponent, MoveActionGolden);
+}
+
+void UYSAbilityComponent::SetMoveActionUpgrades(float BonusTotal, int32 GoldenIndex)
+{
+	MoveActionBonus = BonusTotal;
+	MoveActionGolden = GoldenIndex;
+	GetOwner()->ForceNetUpdate();
+	OnMoveActionUpgradesChanged();
+}
+
+void UYSAbilityComponent::NotifyHolderActionStarted()
+{
+	AttackBonusBaseDamage = 0.0f;
+	bForcedCriticalAttack = false;
+	if (IsMoveAction())
+	{
+		return;
+	}
+	if (AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn()))
+	{
+		Character->OnActionStarted(this);
+	}
+}
+
+void UYSAbilityComponent::AdvanceCooldown(float Seconds)
+{
+	const double Now = GetServerTime();
+	if (Seconds > 0.0f && ReadyServerTime > Now)
+	{
+		ReadyServerTime = FMath::Max(Now, ReadyServerTime - Seconds);
+	}
 }
 
 void UYSAbilityComponent::TryActivate(const FVector& TargetLocation)
@@ -198,6 +231,7 @@ bool UYSAbilityComponent::ActivateOnServer(const FVector& TargetLocation)
 	ReadyServerTime = Now + GetActivationLockDuration();
 	bLastActivationForced = false;
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s activée à %.2f, prête à %.2f"), *GetOwner()->GetName(), *GetName(), Now, ReadyServerTime);
+	NotifyHolderActionStarted();
 	ExecuteAbility(TargetLocation);
 	ScheduleAutoAttackReset();
 	MulticastActivated();
@@ -324,6 +358,7 @@ bool UYSAbilityComponent::ActivateForcedOnServer(const FVector& TargetLocation)
 	ForcedDamageMultiplier = PendingForced.DamageMultiplier;
 	UE_LOG(LogTemp, Verbose, TEXT("[YSAbility] %s.%s FORCÉE à %.2f (dégâts x %.2f%s), prête à %.2f"), *GetOwner()->GetName(), *GetName(), Now,
 		ForcedDamageMultiplier, PendingForced.bResetCooldown ? TEXT(", recharge rendue") : TEXT(""), ReadyTime);
+	NotifyHolderActionStarted();
 	ExecuteAbility(TargetLocation);
 	ScheduleAutoAttackReset();
 	ReadyServerTime = ReadyTime;
@@ -357,7 +392,12 @@ float UYSAbilityComponent::GetDamageMultiplier() const
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
 	// action forcée : You're all my minions ++
 	const float ForcedMultiplier = bLastActivationForced ? ForcedDamageMultiplier : 1.0f;
-	return (Character ? Character->GetWeaponDamageMultiplier(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 1.0f) * ForcedMultiplier;
+	// Run and Hit : dégâts de base de cette attaque + stamina de la course, avant les multiplicateurs ((base + bonus) x multiplicateurs)
+	const float BaseDamage = GetBaseDamage();
+	const float AttackBonusMultiplier = AttackBonusBaseDamage > 0.0f && BaseDamage > 0.0f ? 1.0f + AttackBonusBaseDamage / BaseDamage : 1.0f;
+	// Motivé pour cogner (Booster de moral Golden) : dégâts en plus pendant le boost
+	const float BuffMultiplier = Character ? Character->GetMoraleBoostDamageMultiplier() : 1.0f;
+	return (Character ? Character->GetWeaponDamageMultiplier(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 1.0f) * ForcedMultiplier * AttackBonusMultiplier * BuffMultiplier;
 }
 
 float UYSAbilityComponent::GetCooldownMultiplier() const

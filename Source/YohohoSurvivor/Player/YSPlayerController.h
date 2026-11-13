@@ -380,6 +380,14 @@ public:
 	UFUNCTION(Exec)
 	void YSMoveAction();
 
+	/** Debug (console) : touche Espace relâchée (MoveAction maintenue : Run, Camouflage) */
+	UFUNCTION(Exec)
+	void YSMoveActionRelease();
+
+	/** Debug (console) : log de l'état du personnage (vitesse, stamina, MoveAction, camouflage, invulnérable, intangible, boost) */
+	UFUNCTION(Exec)
+	void YSMoveState();
+
 	/** Debug (console) : comme le bouton Revive du spectateur */
 	UFUNCTION(Exec)
 	void YSPhoenixRevive();
@@ -692,7 +700,7 @@ public:
 	UFUNCTION(Exec)
 	void YSAddDoubloons(int32 Amount);
 
-	/** Debug (hôte) : récompense de doublons tout de suite : 1 classe, 2 upgrade d'arme, 3 Golden, 4 mythique */
+	/** Debug (hôte) : SilverCoin upgrade tout de suite : 1 classe, 2 upgrade d arme, 3 Golden d arme, 4 mythique, 5 MoveAction, 6 Golden MoveAction */
 	UFUNCTION(Exec)
 	void YSDoubloonReward(int32 Kind);
 

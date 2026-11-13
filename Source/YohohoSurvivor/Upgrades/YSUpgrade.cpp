@@ -699,6 +699,133 @@ void UYSWeaponUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const
 	UE_LOG(LogTemp, Log, TEXT("[YSWeaponUpgrade] %s : %s (débloqué %d, bonus %.3f, super %d)"), *Character->GetName(), *GetVariantNameFor(Character, Variant).ToString(), bUnlocked, BonusTotal, bSuper);
 }
 
+UYSMoveActionUpgrade::UYSMoveActionUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "MoveActionUpgradeName", "MoveAction");
+	// tirée avec les upgrades du système de shards ; ++ : 5 au plus, valeur fixe (Bonus Gold Value)
+	bShardSystem = true;
+	MaxBonusStacks = 5;
+	UnlockWeight = 1.0f;
+	BonusWeight = 1.0f;
+	SuperWeight = 1.0f;
+}
+
+int32 UYSMoveActionUpgrade::FindPoolIndex(const AYSPlayerCharacter* Character) const
+{
+	return Character ? Character->GetUpgradePool().IndexOfByKey(this) : INDEX_NONE;
+}
+
+bool UYSMoveActionUpgrade::HasAnyMoveAction(const AYSPlayerCharacter* Character)
+{
+	if (!Character)
+	{
+		return false;
+	}
+	const TArray<TObjectPtr<UYSUpgrade>>& Pool = Character->GetUpgradePool();
+	for (int32 PoolIndex = 0; PoolIndex < Pool.Num(); ++PoolIndex)
+	{
+		const UYSWeaponUpgrade* Upgrade = Cast<UYSWeaponUpgrade>(Pool[PoolIndex]);
+		if (Upgrade && Upgrade->IsMoveActionUpgrade() && Character->GetUpgradeProgress(PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Unlock)).Stacks > 0)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+FText UYSMoveActionUpgrade::GetVariantName(int32 Variant) const
+{
+	const int32 Golden = GetGoldenIndex(Variant);
+	if (Golden != INDEX_NONE)
+	{
+		return GoldenVariants.IsValidIndex(Golden) ? GoldenVariants[Golden].Name : SuperName;
+	}
+	return Super::GetVariantName(Variant);
+}
+
+FText UYSMoveActionUpgrade::GetDescription(const AYSPlayerCharacter* Character, int32 Variant) const
+{
+	const int32 Golden = GetGoldenIndex(Variant);
+	if (Golden != INDEX_NONE)
+	{
+		return GoldenVariants.IsValidIndex(Golden) ? GoldenVariants[Golden].Description : SuperDescription;
+	}
+	return Super::GetDescription(Character, Variant);
+}
+
+bool UYSMoveActionUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	const int32 PoolIndex = FindPoolIndex(Character);
+	if (!Character || PoolIndex == INDEX_NONE || !Character->FindMoveActionComponent(MoveActionClass))
+	{
+		return false;
+	}
+	const bool bUnlocked = Character->GetUpgradeProgress(PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Unlock)).Stacks > 0;
+	switch (GetTier(Variant))
+	{
+	// une seule MoveAction par personnage
+	case EYSWeaponUpgradeTier::Unlock:	return !HasAnyMoveAction(Character);
+	case EYSWeaponUpgradeTier::Bonus:	return bUnlocked && Character->GetUpgradeProgress(PoolIndex, Variant).Stacks < MaxBonusStacks;
+	default:
+	{
+		// une seule Golden : aucune variante Golden déjà prise
+		if (!bUnlocked || !GoldenVariants.IsValidIndex(GetGoldenIndex(Variant)))
+		{
+			return false;
+		}
+		for (int32 Golden = 0; Golden < GoldenVariants.Num(); ++Golden)
+		{
+			if (Character->GetUpgradeProgress(PoolIndex, Golden + 2).Stacks > 0)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+	}
+}
+
+void UYSMoveActionUpgrade::GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const
+{
+	Super::GetOfferCard(Character, Variant, Progress, Rarity, OutCard);
+	const int32 Golden = GetGoldenIndex(Variant);
+	if (GoldenVariants.IsValidIndex(Golden) && GoldenVariants[Golden].Icon)
+	{
+		OutCard.Icon = GoldenVariants[Golden].Icon;
+	}
+}
+
+float UYSMoveActionUpgrade::GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const
+{
+	const UYSAbilityComponent* MoveAction = Character ? Character->FindMoveActionComponent(MoveActionClass) : nullptr;
+	return MoveAction ? MoveAction->GetMoveActionBonusDisplayValue(BonusTotal) : BonusTotal;
+}
+
+void UYSMoveActionUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
+{
+	if (!Character)
+	{
+		return;
+	}
+	const int32 PoolIndex = Progress.PoolIndex;
+	if (Character->GetUpgradeProgress(PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Unlock)).Stacks <= 0)
+	{
+		return;
+	}
+	const float BonusTotal = Character->GetUpgradeProgress(PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Bonus)).TotalValue;
+	int32 GoldenIndex = INDEX_NONE;
+	for (int32 Golden = 0; Golden < GoldenVariants.Num() && GoldenIndex == INDEX_NONE; ++Golden)
+	{
+		if (Character->GetUpgradeProgress(PoolIndex, Golden + 2).Stacks > 0)
+		{
+			GoldenIndex = Golden;
+		}
+	}
+	Character->SetMoveAction(MoveActionClass, BonusTotal, GoldenIndex);
+	UE_LOG(LogTemp, Log, TEXT("[YSMoveAction] %s : %s (++ %.3f, Golden %s)"), *Character->GetName(), *GetVariantName(Variant).ToString(), BonusTotal,
+		GoldenVariants.IsValidIndex(GoldenIndex) ? *GoldenVariants[GoldenIndex].Name.ToString() : TEXT("aucune"));
+}
+
 const FName UYSRicochetUpgrade::RicochetCountStat(TEXT("Ricochets"));
 const FName UYSRicochetUpgrade::RicochetDamageBonusStat(TEXT("RicochetDamageBonus"));
 

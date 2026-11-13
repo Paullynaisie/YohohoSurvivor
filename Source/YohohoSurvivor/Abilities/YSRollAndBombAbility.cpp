@@ -30,7 +30,7 @@ void UYSRollAndBombAbility::DropBombs()
 	const bool bGoldenMine = MineClass && GetWeaponStat(UYSMineUpgrade::MineStat, 0.0f) > 0.0f && GetWeaponStat(UYSMineUpgrade::MineDoubleStat, 0.0f) > 0.0f;
 	if (bGoldenMine || bAlwaysDropSecondBomb)
 	{
-		GetWorld()->GetTimerManager().SetTimer(SecondMineTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { DropBomb(); }), FMath::Max(RollDuration * SecondMineRollFraction, KINDA_SMALL_NUMBER), false);
+		GetWorld()->GetTimerManager().SetTimer(SecondMineTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { DropBomb(); }), FMath::Max(GetRollDuration() * SecondMineRollFraction, KINDA_SMALL_NUMBER), false);
 	}
 }
 

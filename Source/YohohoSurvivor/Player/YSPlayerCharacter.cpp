@@ -20,6 +20,12 @@
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Abilities/YSAutoSwingAbility.h"
 #include "Abilities/YSRollAbility.h"
+#include "Abilities/YSRunAbility.h"
+#include "Abilities/YSShoulderBumpAbility.h"
+#include "Abilities/YSMoraleBoostAbility.h"
+#include "Abilities/YSCamouflageAbility.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Core/YSGameMode.h"
 #include "Abilities/YSSummonCrewAbility.h"
 #include "Summons/YSCaptainMinion.h"
 #include "TimerManager.h"
@@ -94,6 +100,32 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	CorpseClass = AYSPlayerCorpse::StaticClass();
 
 	MoveActionAbility = CreateDefaultSubobject<UYSRollAbility>(TEXT("MoveActionAbility"));
+	RunMoveAction = CreateDefaultSubobject<UYSRunAbility>(TEXT("RunMoveAction"));
+	ShoulderBumpMoveAction = CreateDefaultSubobject<UYSShoulderBumpAbility>(TEXT("ShoulderBumpMoveAction"));
+	MoraleBoostMoveAction = CreateDefaultSubobject<UYSMoraleBoostAbility>(TEXT("MoraleBoostMoveAction"));
+	CamouflageMoveAction = CreateDefaultSubobject<UYSCamouflageAbility>(TEXT("CamouflageMoveAction"));
+
+	// FX du Booster de moral : sphères émissives au-dessus de la tête (cachées sans boost)
+	MoraleBoostFX = CreateDefaultSubobject<USceneComponent>(TEXT("MoraleBoostFX"));
+	MoraleBoostFX->SetupAttachment(GetCapsuleComponent());
+	MoraleBoostFX->SetRelativeLocation(FVector(0.0f, 0.0f, MoraleBoostFXHeight));
+	{
+		static ConstructorHelpers::FObjectFinder<UStaticMesh> FXSphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+		static ConstructorHelpers::FObjectFinder<UMaterialInterface> FXMaterial(TEXT("/Game/Art/Materials/PH_materials/m_PH_emissive_turboYellow.m_PH_emissive_turboYellow"));
+		MoraleBoostFXMaterial = FXMaterial.Object;
+		for (int32 Index = 0; Index < 8; ++Index)
+		{
+			UStaticMeshComponent* Sphere = CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("MoraleBoostFXSphere%d"), Index));
+			Sphere->SetupAttachment(MoraleBoostFX);
+			Sphere->SetStaticMesh(FXSphere.Object);
+			Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Sphere->SetGenerateOverlapEvents(false);
+			Sphere->SetCastShadow(false);
+			Sphere->SetHiddenInGame(true);
+			Sphere->SetVisibility(false);
+			MoraleBoostFXSpheres.Add(Sphere);
+		}
+	}
 
 	GetCapsuleComponent()->InitCapsuleSize(42.0f, 96.0f);
 
@@ -220,6 +252,8 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedBuffMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, MoveSpeedBuffEndServerTime);
+	DOREPLIFETIME(AYSPlayerCharacter, MoraleBoostGolden);
+	DOREPLIFETIME(AYSPlayerCharacter, ActiveMoveAction);
 	DOREPLIFETIME(AYSPlayerCharacter, SummonSystemBonus);
 	DOREPLIFETIME(AYSPlayerCharacter, MeleeRangeMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, Stamina);
@@ -1370,6 +1404,8 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 	// les armes répliquées arrivent après le perso chez les clients : réappliqué tant qu'elles changent (sinon rien)
 	UpdateWeaponColoration();
 	UpdateWeaponRangeScale();
+	UpdateMoraleBoost(DeltaSeconds);
+	UpdateCamouflageVisual();
 	UpdateDayNight(DeltaSeconds);
 	UpdateCursorCamera(DeltaSeconds);
 	UpdateAutoAttackInput();
@@ -1632,7 +1668,8 @@ void AYSPlayerCharacter::UpdateHands(float DeltaSeconds)
 		FQuat PoseRotation = FQuat::Identity;
 		bool bSwinging = false;
 		float PoseActivationAge = 0.0f;
-		for (const UYSAbilityComponent* Action : { Weapon ? Weapon->GetActiveAction() : nullptr, Weapon ? Weapon->GetAutoAction() : nullptr })
+		// MoveAction (Booster de moral : mains levées) : pose des deux mains, même sans arme
+		for (const UYSAbilityComponent* Action : { Weapon ? Weapon->GetActiveAction() : nullptr, Weapon ? Weapon->GetAutoAction() : nullptr, GetMoveActionAbility() })
 		{
 			float ActionIdleWeight = 1.0f;
 			FVector ActionLocation = FVector::ZeroVector;
@@ -2064,7 +2101,141 @@ void AYSPlayerCharacter::OnMoveActionReleased()
 
 UYSAbilityComponent* AYSPlayerCharacter::GetMoveActionAbility() const
 {
-	return ActiveMoveAction ? ActiveMoveAction.Get() : MoveActionAbility.Get();
+	return ActiveMoveAction.Get();
+}
+
+UYSAbilityComponent* AYSPlayerCharacter::FindMoveActionComponent(TSubclassOf<UYSAbilityComponent> Class) const
+{
+	if (!Class)
+	{
+		return nullptr;
+	}
+	// classe exacte (le Shoulder bump est une sous-classe du Roll) ; les composants du C++ d'abord
+	for (UYSAbilityComponent* Action : { static_cast<UYSAbilityComponent*>(MoveActionAbility), static_cast<UYSAbilityComponent*>(RunMoveAction),
+		static_cast<UYSAbilityComponent*>(ShoulderBumpMoveAction), static_cast<UYSAbilityComponent*>(MoraleBoostMoveAction), static_cast<UYSAbilityComponent*>(CamouflageMoveAction) })
+	{
+		if (Action && Action->GetClass() == Class)
+		{
+			return Action;
+		}
+	}
+	TInlineComponentArray<UYSAbilityComponent*> OwnActions(this);
+	for (UYSAbilityComponent* Action : OwnActions)
+	{
+		if (Action->IsMoveAction() && Action->GetClass() == Class)
+		{
+			return Action;
+		}
+	}
+	return nullptr;
+}
+
+void AYSPlayerCharacter::SetMoveAction(TSubclassOf<UYSAbilityComponent> Class, float BonusTotal, int32 GoldenIndex)
+{
+	UYSAbilityComponent* Action = FindMoveActionComponent(Class);
+	if (!HasAuthority() || !Action)
+	{
+		return;
+	}
+	ActiveMoveAction = Action;
+	Action->SetMoveActionUpgrades(BonusTotal, GoldenIndex);
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Log, TEXT("[YSMoveAction] %s : MoveAction %s (++ %.3f, Golden %d)"), *GetName(), *Action->GetName(), BonusTotal, GoldenIndex);
+}
+
+void AYSPlayerCharacter::OnActionStarted(UYSAbilityComponent* Action)
+{
+	if (!HasAuthority() || !Action || Action->IsMoveAction())
+	{
+		return;
+	}
+	// prochaine attaque auto critique (Stunts artist, Motivé pour tuer)
+	if (bNextAutoAttackCritical && Action->IsAutomatic())
+	{
+		bNextAutoAttackCritical = false;
+		Action->SetForcedCriticalAttack(true);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSCritical] %s : %s critique (prochaine attaque auto)"), *GetName(), *Action->GetName());
+	}
+	if (UYSAbilityComponent* ActiveMove = GetMoveActionAbility())
+	{
+		ActiveMove->OnHolderActionStarted(Action);
+	}
+}
+
+void AYSPlayerCharacter::ResetAbilityCooldowns()
+{
+	for (const AYSWeapon* Weapon : GetHeldWeapons())
+	{
+		UYSAbilityComponent* Action = Weapon ? Weapon->GetActiveAction() : nullptr;
+		if (Action && Action->GetActionSlot() == EYSActionSlot::Ability)
+		{
+			Action->ResetCooldown();
+		}
+	}
+}
+
+bool AYSPlayerCharacter::IsHiddenFromFoes() const
+{
+	const UYSAbilityComponent* ActiveMove = GetMoveActionAbility();
+	return ActiveMove && ActiveMove->IsHidingHolder();
+}
+
+bool AYSPlayerCharacter::OnDealtDamage(AYSFoeCharacter* Foe, bool bKilled)
+{
+	if (!HasAuthority() || !Foe)
+	{
+		return false;
+	}
+	// Motivé pour courir : infliger des dégâts relance le boost
+	if (MoraleBoostGolden == UYSMoraleBoostAbility::GoldenRunIndex && IsMoveSpeedBuffActive() && MoraleBoostDuration > 0.0f)
+	{
+		const AGameStateBase* GameState = GetWorld()->GetGameState();
+		const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+		if (Now + MoraleBoostDuration > MoveSpeedBuffEndServerTime + 0.05)
+		{
+			MoveSpeedBuffEndServerTime = Now + MoraleBoostDuration;
+			ForceNetUpdate();
+			UE_LOG(LogTemp, Verbose, TEXT("[YSMoraleBoost] %s : boost relancé (dégâts infligés)"), *GetName());
+		}
+	}
+	UYSAbilityComponent* ActiveMove = bKilled ? nullptr : GetMoveActionAbility();
+	return ActiveMove && ActiveMove->OnHolderDealtDamage(Foe);
+}
+
+void AYSPlayerCharacter::StartShadowStrike(const UYSAbilityComponent* Action, int32 Level, float Duration)
+{
+	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	const AYSWeapon* Weapon = Action ? Cast<AYSWeapon>(Action->GetOwner()) : nullptr;
+	if (!HasAuthority() || !GameMode || !Weapon)
+	{
+		return;
+	}
+	// arme de mêlée : Melee Range (taille de l'arme) ; arme à distance : Shoot system
+	const EYSShardStat Stat = Weapon->IsMeleeWeapon() ? EYSShardStat::MeleeRange : EYSShardStat::ShootSystem;
+	UYSUpShard* Shard = GameMode->FindShard(this, static_cast<uint8>(Stat));
+	if (!Shard)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSCamouflage] %s : Shadow strike sans shard %s"), *GetName(), *UEnum::GetValueAsString(Stat));
+		return;
+	}
+	const int32 CurrentLevel = GetShardLevel(Shard);
+	if (CurrentLevel >= Level)
+	{
+		return;
+	}
+	Shard->Apply(this, Level);
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSCamouflage] %s : Shadow strike, %s %d -> %d pendant %.2f s"), *GetName(), *Shard->GetName(), CurrentLevel, Level, Duration);
+	TWeakObjectPtr<UYSUpShard> WeakShard = Shard;
+	GetWorldTimerManager().SetTimer(ShadowStrikeTimer, FTimerDelegate::CreateWeakLambda(this, [this, WeakShard]()
+	{
+		if (WeakShard.IsValid())
+		{
+			WeakShard->Apply(this, GetShardLevel(WeakShard.Get()));
+			ForceNetUpdate();
+			UE_LOG(LogTemp, Verbose, TEXT("[YSCamouflage] %s : fin du Shadow strike, %s niveau %d"), *GetName(), *WeakShard->GetName(), GetShardLevel(WeakShard.Get()));
+		}
+	}), FMath::Max(Duration, 0.05f), false);
 }
 
 void AYSPlayerCharacter::UpdateAutoAttackInput()
@@ -2181,17 +2352,7 @@ void AYSPlayerCharacter::PostInitializeComponents()
 	Super::PostInitializeComponents();
 	HiredCrewComponent = FindComponentByClass<UYSHiredCrewComponent>();
 
-	// MoveAction : un composant MoveAction ajouté dans le Blueprint remplace le Roll de base
-	ActiveMoveAction = MoveActionAbility;
-	TInlineComponentArray<UYSAbilityComponent*> OwnActions(this);
-	for (UYSAbilityComponent* Action : OwnActions)
-	{
-		if (Action != MoveActionAbility && Action->IsMoveAction())
-		{
-			ActiveMoveAction = Action;
-			break;
-		}
-	}
+	// plus de MoveAction par défaut : donnée par une upgrade de MoveAction (SetMoveAction)
 	if (HiredCrewComponent)
 	{
 		// HiredMouss : pas de cadavre (le corps disparaît, le GameMode le fait revenir au bateau)
@@ -2279,7 +2440,10 @@ void AYSPlayerCharacter::UpdateStamina(float DeltaSeconds)
 
 		// porter / nager : pas de regen, consommation (passif de Mouss : moins) ; à 0 le ralentissement s'applique
 		const bool bSwimDrain = bSwimming && !IsAtStation();
-		const float PassiveCost = (IsValid(CarriedObject) ? CarryStaminaCost : 0.0f) + (bSwimDrain ? SwimStaminaCost : 0.0f);
+		// Fenwick (pendant la course) / Thief (camouflé) : le port ne consomme rien, seule la MoveAction consomme
+		const UYSAbilityComponent* ActiveMove = GetMoveActionAbility();
+		const bool bCarryCost = IsValid(CarriedObject) && !(ActiveMove && ActiveMove->SuppressesCarryStaminaCost());
+		const float PassiveCost = (bCarryCost ? CarryStaminaCost : 0.0f) + (bSwimDrain ? SwimStaminaCost : 0.0f);
 		if (PassiveCost > 0.0f)
 		{
 			LastStaminaUseTime = Now;
@@ -2356,6 +2520,179 @@ void AYSPlayerCharacter::ApplyMoveSpeedBuff(float Multiplier, float Duration)
 	ForceNetUpdate();
 	UpdateMaxWalkSpeed();
 	UE_LOG(LogTemp, Verbose, TEXT("[YSSpeedBuff] %s : vitesse x%.2f jusqu'à %.2f"), *GetName(), MoveSpeedBuffMultiplier, MoveSpeedBuffEndServerTime);
+}
+
+void AYSPlayerCharacter::ApplyMoraleBoost(float SpeedMultiplier, float Duration, int32 Golden, float DamageBonus, float HealPerSecond, float CooldownSpeed, bool bNextAutoCritical)
+{
+	if (!HasAuthority() || Duration <= 0.0f)
+	{
+		return;
+	}
+	// pas cumulable : le plus grand bonus et la fin la plus lointaine ; Golden du dernier Captain qui l'a donné
+	ApplyMoveSpeedBuff(SpeedMultiplier, Duration);
+	MoraleBoostGolden = Golden;
+	MoraleBoostDuration = Duration;
+	MoraleBoostDamageBonus = DamageBonus;
+	MoraleBoostHealPerSecond = HealPerSecond;
+	MoraleBoostCooldownSpeed = CooldownSpeed;
+	if (bNextAutoCritical)
+	{
+		bNextAutoAttackCritical = true;
+	}
+	ForceNetUpdate();
+}
+
+bool AYSPlayerCharacter::IsMoveSpeedBuffActive() const
+{
+	const UWorld* World = GetWorld();
+	if (MoveSpeedBuffEndServerTime <= 0.0 || !World)
+	{
+		return false;
+	}
+	const AGameStateBase* GameState = World->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+	return Now < MoveSpeedBuffEndServerTime;
+}
+
+float AYSPlayerCharacter::GetMoraleBoostDamageMultiplier() const
+{
+	return MoraleBoostGolden == UYSMoraleBoostAbility::GoldenDamageIndex && MoraleBoostDamageBonus > 0.0f && IsMoveSpeedBuffActive() ? 1.0f + MoraleBoostDamageBonus : 1.0f;
+}
+
+void AYSPlayerCharacter::UpdateMoraleBoost(float DeltaSeconds)
+{
+	const bool bBoosted = IsMoveSpeedBuffActive() && IsAlive();
+
+	// FX : sphères qui tournent au-dessus de la tête (chaque machine)
+	if (MoraleBoostFX)
+	{
+		MoraleBoostFX->SetRelativeLocation(FVector(0.0f, 0.0f, MoraleBoostFXHeight));
+		const float Angle = static_cast<float>(FMath::Fmod(GetWorld()->GetTimeSeconds() * MoraleBoostFXSpinSpeed, 360.0));
+		const int32 Count = FMath::Clamp(MoraleBoostFXSphereCount, 0, MoraleBoostFXSpheres.Num());
+		for (int32 Index = 0; Index < MoraleBoostFXSpheres.Num(); ++Index)
+		{
+			UStaticMeshComponent* Sphere = MoraleBoostFXSpheres[Index];
+			if (!Sphere)
+			{
+				continue;
+			}
+			const bool bVisible = bBoosted && Index < Count;
+			if (Sphere->IsVisible() != bVisible)
+			{
+				Sphere->SetVisibility(bVisible);
+				Sphere->SetHiddenInGame(!bVisible);
+				if (bVisible && MoraleBoostFXMaterial)
+				{
+					Sphere->SetMaterial(0, MoraleBoostFXMaterial);
+				}
+			}
+			if (bVisible)
+			{
+				const float SphereAngle = FMath::DegreesToRadians(Angle + 360.0f * Index / FMath::Max(Count, 1));
+				Sphere->SetRelativeLocation(FVector(FMath::Cos(SphereAngle), FMath::Sin(SphereAngle), 0.0f) * MoraleBoostFXRadius);
+				Sphere->SetRelativeScale3D(FVector(MoraleBoostFXSphereScale));
+			}
+		}
+	}
+
+	if (!HasAuthority() || !bBoosted)
+	{
+		return;
+	}
+	// Motivé pour survivre : soin (part des PV max) par seconde
+	if (MoraleBoostGolden == UYSMoraleBoostAbility::GoldenHealIndex && MoraleBoostHealPerSecond > 0.0f && Health < GetMaxHealth())
+	{
+		Health = FMath::Min(GetMaxHealth(), Health + GetMaxHealth() * MoraleBoostHealPerSecond * DeltaSeconds);
+	}
+	// Motivé pour bombarder : la recharge des Abilities s'écoule Cooldown Speed fois plus vite
+	if (MoraleBoostGolden == UYSMoraleBoostAbility::GoldenCooldownIndex && MoraleBoostCooldownSpeed > 1.0f)
+	{
+		for (const AYSWeapon* Weapon : GetHeldWeapons())
+		{
+			UYSAbilityComponent* Action = Weapon ? Weapon->GetActiveAction() : nullptr;
+			if (Action && Action->GetActionSlot() == EYSActionSlot::Ability)
+			{
+				Action->AdvanceCooldown(DeltaSeconds * (MoraleBoostCooldownSpeed - 1.0f));
+			}
+		}
+	}
+}
+
+void AYSPlayerCharacter::UpdateCamouflageVisual()
+{
+	const bool bCamouflaged = IsHiddenFromFoes() && IsAlive();
+	if (bCamouflaged == bCamouflageVisualApplied)
+	{
+		return;
+	}
+	bCamouflageVisualApplied = bCamouflaged;
+
+	if (!bCamouflaged)
+	{
+		// matériaux d'origine rendus
+		for (const TPair<TWeakObjectPtr<UMeshComponent>, TArray<TObjectPtr<UMaterialInterface>>>& Entry : CamouflageSavedMaterials)
+		{
+			if (UMeshComponent* MeshComponent = Entry.Key.Get())
+			{
+				for (int32 Slot = 0; Slot < Entry.Value.Num(); ++Slot)
+				{
+					MeshComponent->SetMaterial(Slot, Entry.Value[Slot]);
+				}
+			}
+		}
+		CamouflageSavedMaterials.Reset();
+		CamouflageMaterialRefs.Reset();
+		if (FaceDecal)
+		{
+			FaceDecal->SetVisibility(true, true);
+		}
+		UE_LOG(LogTemp, Verbose, TEXT("[YSCamouflage] %s : visible"), *GetName());
+		return;
+	}
+
+	UMaterialInterface* Material = CamouflageMaterial.LoadSynchronous();
+	if (!Material)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSCamouflage] %s : pas de matériau de camouflage (%s)"), *GetName(), *CamouflageMaterial.ToString());
+		return;
+	}
+	// couleur du joueur (sinon blanc), opacité Camouflage Opacity
+	const FYSCustomizationColor* PlayerColor = YSPlayerColor::Find(this);
+	const FLinearColor Color = PlayerColor ? PlayerColor->EmissiveColor : FLinearColor::White;
+	UMaterialInstanceDynamic* Instance = UMaterialInstanceDynamic::Create(Material, this);
+	Instance->SetVectorParameterValue(TEXT("Color"), Color);
+	Instance->SetScalarParameterValue(TEXT("Opacity"), CamouflageOpacity);
+	CamouflageMaterialRefs.Add(Instance);
+
+	TArray<AActor*> Actors = { this };
+	for (AYSWeapon* Weapon : GetHeldWeapons())
+	{
+		Actors.Add(Weapon);
+	}
+	for (AActor* Actor : Actors)
+	{
+		TInlineComponentArray<UMeshComponent*> MeshComponents(Actor);
+		for (UMeshComponent* MeshComponent : MeshComponents)
+		{
+			if (!MeshComponent || !MeshComponent->IsVisible() || MoraleBoostFXSpheres.Contains(Cast<UStaticMeshComponent>(MeshComponent)) || MeshComponent->GetNumMaterials() == 0)
+			{
+				continue;
+			}
+			TArray<TObjectPtr<UMaterialInterface>>& Saved = CamouflageSavedMaterials.FindOrAdd(MeshComponent);
+			for (int32 Slot = 0; Slot < MeshComponent->GetNumMaterials(); ++Slot)
+			{
+				UMaterialInterface* Original = MeshComponent->GetMaterial(Slot);
+				Saved.Add(Original);
+				CamouflageMaterialRefs.Add(Original);
+				MeshComponent->SetMaterial(Slot, Instance);
+			}
+		}
+	}
+	if (FaceDecal)
+	{
+		FaceDecal->SetVisibility(false, true);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSCamouflage] %s : camouflé (%d meshes translucides)"), *GetName(), CamouflageSavedMaterials.Num());
 }
 
 float AYSPlayerCharacter::GetMoveSpeedBuffMultiplier() const
@@ -3051,6 +3388,11 @@ void AYSPlayerCharacter::RestoreOnLevelUp()
 bool AYSPlayerCharacter::AreWeaponsStowedFor(const UYSAbilityComponent* Ability) const
 {
 	if (!AreWeaponsStowed())
+	{
+		return false;
+	}
+	// MoveAction permise en portant (Fenwick, Thief) : seulement si l'objet porté est la seule raison
+	if (Ability && Ability->IsMoveAction() && Ability->AllowsCarrying() && IsCarrying() && !bSwimming && !IsAtStation() && !IsRepairingShip())
 	{
 		return false;
 	}

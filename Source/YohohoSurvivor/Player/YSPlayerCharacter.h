@@ -17,6 +17,12 @@ class UYSFaceDecalComponent;
 class UBlendSpace;
 class UInputAction;
 class UYSRollAbility;
+class UYSRunAbility;
+class UYSShoulderBumpAbility;
+class UYSMoraleBoostAbility;
+class UYSCamouflageAbility;
+class AYSFoeCharacter;
+class UMaterialInterface;
 class UYSAbilityComponent;
 class UInputMappingContext;
 class ULocalPlayer;
@@ -121,14 +127,30 @@ private:
 	TObjectPtr<UInputAction> MoveActionInput;
 
 	/**
-	 *  MoveAction de base du personnage (Roll) ; coût et réglages sur le composant. Un autre composant MoveAction ajouté dans le
-	 *  Blueprint (Run, Shoulder bump, Morale boost...) la remplace (ActiveMoveAction) : ce Roll reste alors sans effet.
+	 *  MoveActions du personnage (une seule utilisée, aucune au départ : donnée par une SilverCoin upgrade, UYSMoveActionUpgrade) ;
+	 *  réglages sur chaque composant. Move Action Ability = « Roll ».
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UYSRollAbility> MoveActionAbility;
 
-	/** MoveAction utilisée : le premier composant MoveAction du Blueprint autre que le Roll de base, sinon le Roll (PostInitializeComponents) */
-	UPROPERTY(Transient)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UYSRunAbility> RunMoveAction;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UYSShoulderBumpAbility> ShoulderBumpMoveAction;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UYSMoraleBoostAbility> MoraleBoostMoveAction;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UYSCamouflageAbility> CamouflageMoveAction;
+
+	/** Booster de moral reçu : petites sphères qui tournent au-dessus de la tête (Morale Boost FX, catégorie 3C|Morale Boost) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> MoraleBoostFX;
+
+	/** MoveAction utilisée (aucune tant qu'aucune upgrade de MoveAction n'est débloquée ; SetMoveAction, répliquée) */
+	UPROPERTY(Replicated, Transient)
 	TObjectPtr<UYSAbilityComponent> ActiveMoveAction;
 
 	/** Contexte d'input clavier/souris par défaut, créé à l'exécution */
@@ -672,6 +694,72 @@ protected:
 
 	UPROPERTY(Replicated, Transient)
 	double MoveSpeedBuffEndServerTime = 0.0;
+
+	/** Booster de moral reçu : Golden du Captain qui l'a donné (INDEX_NONE = aucune ; répliqué) et ses valeurs (serveur) */
+	UPROPERTY(Replicated, Transient)
+	int32 MoraleBoostGolden = INDEX_NONE;
+
+	float MoraleBoostDuration = 0.0f;
+	float MoraleBoostDamageBonus = 0.0f;
+	float MoraleBoostHealPerSecond = 0.0f;
+	float MoraleBoostCooldownSpeed = 1.0f;
+
+	/** Prochaine attaque auto critique (Stunts artist, Motivé pour tuer ; serveur) */
+	bool bNextAutoAttackCritical = false;
+
+	/** Shadow strike : niveaux de shards remis après l'attaque (serveur) */
+	FTimerHandle ShadowStrikeTimer;
+
+	/** Camouflage : matériaux d'origine des meshes du personnage et de ses armes (chaque machine, pendant le camouflage) */
+	TMap<TWeakObjectPtr<UMeshComponent>, TArray<TObjectPtr<UMaterialInterface>>> CamouflageSavedMaterials;
+	bool bCamouflageVisualApplied = false;
+
+	/** Mêmes matériaux, gardés en vie pour le GC (matériaux dynamiques de la personnalisation) */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInterface>> CamouflageMaterialRefs;
+
+	/** Sphères du FX du Booster de moral */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> MoraleBoostFXSpheres;
+
+	/** Booster de moral reçu : FX (chaque machine) ; serveur : soin et recharge accélérée des Golden */
+	void UpdateMoraleBoost(float DeltaSeconds);
+
+	/** Camouflage : personnage translucide (chaque machine) */
+	void UpdateCamouflageVisual();
+
+public:
+
+	/** Camouflage : matériau translucide posé sur tous les meshes (paramètres « Color » et « Opacity ») */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camouflage")
+	TSoftObjectPtr<UMaterialInterface> CamouflageMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Art/Materials/M_YSCamouflage.M_YSCamouflage")));
+
+	/** Camouflage : opacité du personnage (0.2 = 20 %) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Camouflage", meta=(ClampMin="0", ClampMax="1"))
+	float CamouflageOpacity = 0.2f;
+
+	/** Booster de moral reçu : FX = sphères qui tournent au-dessus de la tête */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Morale Boost", meta=(ClampMin="0", ClampMax="8"))
+	int32 MoraleBoostFXSphereCount = 3;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Morale Boost", meta=(Units="Centimeters"))
+	float MoraleBoostFXHeight = 140.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Morale Boost", meta=(ClampMin="0", Units="Centimeters"))
+	float MoraleBoostFXRadius = 45.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Morale Boost", meta=(ClampMin="0"))
+	float MoraleBoostFXSphereScale = 0.15f;
+
+	/** Tours par seconde (degrés / s) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Morale Boost")
+	float MoraleBoostFXSpinSpeed = 240.0f;
+
+	/** Matériau des sphères (vide = émissif du joueur, sinon le matériau du mesh) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="3C|Morale Boost")
+	TObjectPtr<UMaterialInterface> MoraleBoostFXMaterial;
+
+protected:
 
 	/** Multiplicateur des PV max (Hps bonus) */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
@@ -1520,6 +1608,50 @@ public:
 
 	/** Multiplicateur du bonus de vitesse temporaire en ce moment (1 sans bonus) */
 	float GetMoveSpeedBuffMultiplier() const;
+
+	/**
+	 *  Booster de moral reçu (serveur) : bonus de vitesse (ApplyMoveSpeedBuff, pas cumulable) + Golden du Captain (Golden : index de la
+	 *  variante, voir UYSMoraleBoostAbility ; ses valeurs : DamageBonus, HealPerSecond (part des PV max), CooldownSpeed)
+	 */
+	void ApplyMoraleBoost(float SpeedMultiplier, float Duration, int32 Golden, float DamageBonus, float HealPerSecond, float CooldownSpeed, bool bNextAutoCritical);
+
+	/** Booster de moral actif en ce moment (chaque machine) */
+	bool IsMoraleBoosted() const { return IsMoveSpeedBuffActive(); }
+
+	bool IsMoveSpeedBuffActive() const;
+
+	/** Motivé pour cogner : dégâts x (1 + bonus) pendant le boost (1 sinon) */
+	float GetMoraleBoostDamageMultiplier() const;
+
+	/** MoveAction de cette classe exacte parmi les composants du personnage (Roll, Run, Shoulder bump, Booster de moral, Camouflage) */
+	UYSAbilityComponent* FindMoveActionComponent(TSubclassOf<UYSAbilityComponent> Class) const;
+
+	/** Donne la MoveAction (serveur, UYSMoveActionUpgrade) avec la somme de ses ++ et sa Golden (INDEX_NONE = aucune) */
+	void SetMoveAction(TSubclassOf<UYSAbilityComponent> Class, float BonusTotal, int32 GoldenIndex);
+
+	/**
+	 *  Une action du personnage démarre (serveur, avant son effet ; pas la MoveAction) : prochaine attaque auto critique consommée
+	 *  par une attaque auto, MoveAction prévenue (Run / Camouflage annulés)
+	 */
+	void OnActionStarted(UYSAbilityComponent* Action);
+
+	/** La prochaine attaque auto est critique (serveur ; Stunts artist, Motivé pour tuer) */
+	void SetNextAutoAttackCritical() { bNextAutoAttackCritical = true; }
+
+	/** Recharge des Abilities (clic) des armes tenues rendue (serveur ; Sleight of hands) */
+	void ResetAbilityCooldowns();
+
+	/** Caché aux NME (Camouflage) : ils ne le ciblent plus */
+	bool IsHiddenFromFoes() const;
+
+	/** Ce personnage vient d'infliger des dégâts à ce NME encore vivant (serveur) ; vrai = le NME a été bumpé (pas de pushback) */
+	bool OnDealtDamage(AYSFoeCharacter* Foe, bool bKilled);
+
+	/**
+	 *  Shadow strike (serveur) : pendant Duration, la shard Shoot system (arme à distance) ou Melee Range (arme de mêlée) de l'action
+	 *  passe au moins au niveau Level, puis reprend son niveau
+	 */
+	void StartShadowStrike(const UYSAbilityComponent* Action, int32 Level, float Duration);
 
 	/** Fixe la stamina (serveur, debug) */
 	void SetStamina(float Value);
