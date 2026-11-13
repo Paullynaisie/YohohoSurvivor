@@ -228,14 +228,16 @@ void AYSSpinningSword::RebuildSwords()
 		Sword.Hitbox = Visual->FindComponentByClass<UBoxComponent>();
 	}
 	ApplyColors();
-	// orientation de la lame (axe Z de l'arme) par rapport au sens de rotation : 1 = dans le sens, -1 = à l'envers
+	// orientation (axes de l'arme) : lame (Z) vers l'extérieur = 1 ; axe X dans le sens de la rotation = 1
 	float BladeDot = 0.0f;
+	float EdgeDot = 0.0f;
 	if (const AYSWeapon* First = Swords.Num() > 0 ? Swords[0].Visual.Get() : nullptr)
 	{
 		const FVector Radial = (First->GetActorLocation() - Pivot->GetComponentLocation()).GetSafeNormal2D();
-		BladeDot = FVector::DotProduct(First->GetActorUpVector(), FVector::UpVector ^ Radial) * FMath::Sign(RotationSpeed);
+		BladeDot = FVector::DotProduct(First->GetActorUpVector(), Radial);
+		EdgeDot = FVector::DotProduct(First->GetActorForwardVector(), FVector::UpVector ^ Radial) * FMath::Sign(RotationSpeed);
 	}
-	UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s : %d épée(s), échelle %.2f, %.0f°/s, lame / sens de rotation %.2f"), *GetName(), Swords.Num(), Scale, GetCurrentRotationSpeed(), BladeDot);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s : %d épée(s), échelle %.2f, %.0f°/s, lame vers l'extérieur %.2f, axe X / sens de rotation %.2f"), *GetName(), Swords.Num(), Scale, GetCurrentRotationSpeed(), BladeDot, EdgeDot);
 }
 
 void AYSSpinningSword::ApplyColors()

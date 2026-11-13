@@ -83,11 +83,11 @@ protected:
 	FVector SwordLocation = FVector(100.0f, 0.0f, 0.0f);
 
 	/**
-	 *  Rotation de l'arme pour l'épée à l'angle 0 (X / Y / Z = Roll / Pitch / Yaw). Défaut Roll 90 : la lame (axe Z de l'arme)
-	 *  couchée à plat, pointée dans le sens de la rotation (tangente au cercle).
+	 *  Rotation de l'arme pour l'épée à l'angle 0 (X / Y / Z = Roll / Pitch / Yaw). Défaut Roll -90, Yaw 90 : la lame (axe Z de l'arme)
+	 *  couchée à plat, pointée vers l'extérieur du cercle, son axe X (tranchant) dans le sens de la rotation.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpinningSword|Pose")
-	FRotator SwordRotation = FRotator(0.0f, 0.0f, 90.0f);
+	FRotator SwordRotation = FRotator(0.0f, 90.0f, -90.0f);
 
 	/** Échelle des épées sans Melee Range (multipliée par le Melee Range du propriétaire) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpinningSword|Pose", meta=(ClampMin="0.01"))
