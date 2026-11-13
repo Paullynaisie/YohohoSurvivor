@@ -8,7 +8,7 @@ class AYSFoeCharacter;
 
 /**
  *  « Shoulder bump » : MoveAction du Quartermaster. Dash (réglages de la roulade : Rolling Shot|Roll, durée, vitesse) dans la
- *  direction de l'input, sinon vers le curseur, coût Stamina Cost (75) ; NI intangible NI invulnérable (Roll Through Foes faux).
+ *  direction de l'input, sinon vers le curseur, coût Stamina Cost (75) ; intangible (traverse NME et joueurs, Roll Through Foes forcé) mais PAS invulnérable.
  *  Pendant le dash, une hitbox devant le personnage (Hitbox Radius / Forward Offset / Half Height) ne fait AUCUN dégât mais
  *  bumpe chaque NME touché (une fois par dash) PERPENDICULAIREMENT au dash, du côté où il se trouve, à Bump Distance (400).
  *  Corps penché vers l'avant (Lean Angle) au lieu de la roulade, regard figé dans la direction du dash.
@@ -80,6 +80,9 @@ public:
 	static constexpr int32 GoldenDiamond = 3;
 
 	UYSShoulderBumpAbility();
+
+	/** Intangible pendant le dash, quelle que soit la valeur de Roll Through Foes du Blueprint */
+	virtual void BeginPlay() override;
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 

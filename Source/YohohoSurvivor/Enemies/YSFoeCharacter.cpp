@@ -2414,12 +2414,16 @@ void AYSFoeCharacter::TriggerMeleeAttack()
 	}
 
 	// un joueur vivant (sa hurtbox, pas sa capsule) touche la hitbox de contact : déclencheur de l'attaque
-	// (le plus proche s'il y en a plusieurs : c'est vers lui que part le coup)
+	// (le plus proche s'il y en a plusieurs : c'est vers lui que part le coup ; un joueur camouflé ne déclenche rien)
 	TArray<AYSPlayerCharacter*> Touching;
 	GetPlayersInHitbox(Touching);
 	AActor* Victim = nullptr;
 	for (AYSPlayerCharacter* Player : Touching)
 	{
+		if (Player->IsHiddenFromFoes())
+		{
+			continue;
+		}
 		if (!Victim || FVector::DistSquared2D(Player->GetActorLocation(), GetActorLocation()) < FVector::DistSquared2D(Victim->GetActorLocation(), GetActorLocation()))
 		{
 			Victim = Player;

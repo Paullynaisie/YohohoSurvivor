@@ -11,11 +11,18 @@ UYSShoulderBumpAbility::UYSShoulderBumpAbility()
 {
 	DisplayName = NSLOCTEXT("YS", "ShoulderBump", "Shoulder bump");
 	StaminaCost = 75.0f;
-	// ni intangible ni invulnérable
-	bRollThroughFoes = false;
+	// intangible (traverse les NME : dash fluide) mais pas invulnérable (sauf Diamond shoulder)
+	bRollThroughFoes = true;
 	ExtraInvulnerability = 0.0f;
 	AimDuration = 0.0f;
 	PrimaryComponentTick.bCanEverTick = true;
+}
+
+void UYSShoulderBumpAbility::BeginPlay()
+{
+	Super::BeginPlay();
+	// les Blueprints gardent la valeur copiée de l'ancien Shoulder bump (faux) : forcé ici, sur chaque machine (prédiction du client)
+	bRollThroughFoes = true;
 }
 
 void UYSShoulderBumpAbility::ExecuteAbility(const FVector& TargetLocation)
@@ -150,8 +157,9 @@ bool UYSShoulderBumpAbility::GetLockedAimDirection(FVector& OutDirection) const
 void UYSShoulderBumpAbility::GetUnusedProperties(TArray<FName>& OutNames) const
 {
 	Super::GetUnusedProperties(OutNames);
-	// pas de roulade (corps penché), pas d'invulnérabilité ni de visée
+	// pas de roulade (corps penché), pas d'invulnérabilité ni de visée ; toujours intangible
 	OutNames.Append({
+		GET_MEMBER_NAME_CHECKED(UYSShoulderBumpAbility, bRollThroughFoes),
 		GET_MEMBER_NAME_CHECKED(UYSShoulderBumpAbility, ExtraInvulnerability),
 		GET_MEMBER_NAME_CHECKED(UYSShoulderBumpAbility, AimDuration),
 		GET_MEMBER_NAME_CHECKED(UYSShoulderBumpAbility, AimMoveSpeedMultiplier),

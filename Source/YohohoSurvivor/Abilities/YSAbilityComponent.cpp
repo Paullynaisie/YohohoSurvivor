@@ -397,7 +397,14 @@ float UYSAbilityComponent::GetDamageMultiplier() const
 	const float AttackBonusMultiplier = AttackBonusBaseDamage > 0.0f && BaseDamage > 0.0f ? 1.0f + AttackBonusBaseDamage / BaseDamage : 1.0f;
 	// Motivé pour cogner (Booster de moral Golden) : dégâts en plus pendant le boost
 	const float BuffMultiplier = Character ? Character->GetMoraleBoostDamageMultiplier() : 1.0f;
-	return (Character ? Character->GetWeaponDamageMultiplier(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 1.0f) * ForcedMultiplier * AttackBonusMultiplier * BuffMultiplier;
+	// MoveAction (composant du personnage, pas d'une arme : bombe du Little Gift) : shards Ability damage
+	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
+	float SlotMultiplier = 1.0f;
+	if (Character)
+	{
+		SlotMultiplier = !Weapon && IsMoveAction() ? Character->GetSlotDamageMultiplier(EYSActionSlot::Ability) : Character->GetWeaponDamageMultiplier(Weapon, GetActionSlot());
+	}
+	return SlotMultiplier * ForcedMultiplier * AttackBonusMultiplier * BuffMultiplier;
 }
 
 float UYSAbilityComponent::GetCooldownMultiplier() const
