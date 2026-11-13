@@ -5,6 +5,7 @@
 #include "Abilities/YSCoupDPetoirAbility.h"
 #include "Abilities/YSDashingSlashAbility.h"
 #include "Abilities/YSGoMinionsAbility.h"
+#include "Abilities/YSPewPewPewAbility.h"
 #include "Abilities/YSRollAndBombAbility.h"
 #include "Abilities/YSRollingShotAbility.h"
 #include "Abilities/YSSummonCrewAbility.h"
@@ -987,6 +988,93 @@ void UYSSwordWasBetterUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, 
 		UE_LOG(LogTemp, Log, TEXT("[YSWeaponUpgrade] %s : The Sword was Better -> set %s"), *Character->GetName(), *UnlockWeaponSet->GetName());
 		Character->ChangeWeaponSet(UnlockWeaponSet);
 	}
+}
+
+const FName UYSBeamShotUpgrade::BeamShotStat(TEXT("BeamShot"));
+const FName UYSBeamShotUpgrade::SolarShotStat(TEXT("SolarShot"));
+
+UYSBeamShotUpgrade::UYSBeamShotUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "BeamShotName", "BeamShot");
+	RequiredActionClass = UYSRollingShotAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::Ability;
+	bShardSystem = true;
+	MaxBonusStacks = 5;
+	BonusSilverValue = 0.1f;
+	BonusGoldValue = 0.1f;
+	UnlockName = NSLOCTEXT("YS", "BeamShotUnlockName", "BeamShot");
+	UnlockDescription = NSLOCTEXT("YS", "BeamShotUnlockDesc", "L'Auto atk et l'Ability tirent un rayon de 5 m\nqui touche tous les NME (shoot system Explosif)");
+	BonusName = NSLOCTEXT("YS", "BeamShotBonusName", "BeamShot ++");
+	BonusDescription = NSLOCTEXT("YS", "BeamShotBonusDesc", "+10 % au minimum des dégâts\ndes attaques multi-cibles");
+	BonusStatLabel = NSLOCTEXT("YS", "BeamShotBonusStat", "Dégâts multi-cibles minimum (%)");
+	SuperName = NSLOCTEXT("YS", "BeamShotSuperName", "Solar Shot");
+}
+
+float UYSBeamShotUpgrade::GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const
+{
+	const float Base = Character ? Character->GetBaseMultiHitMinDamageMultiplier() : 0.5f;
+	return FMath::Min(1.0f, Base + BonusTotal) * 100.0f;
+}
+
+void UYSBeamShotUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const
+{
+	const bool bWasBeamShot = Character->GetCharacterWeaponStat(BeamShotStat) > 0.0f;
+	Character->SetWeaponStat(BeamShotStat, bUnlocked ? 1.0f : 0.0f);
+	Character->SetWeaponStat(SolarShotStat, bUnlocked && GoldenIndex == 0 ? 1.0f : 0.0f);
+	Character->SetMultiHitMinDamageBonus(bUnlocked ? BonusTotal : 0.0f);
+	Character->SetOverheat(bUnlocked && GoldenIndex == 1, HeatPerShot, HeatCooldownDelay, HeatDecayPerSecond, HeatCriticalThreshold, OverheatMoveSpeedMultiplier);
+	// le shoot system de l'arme devient Explosif : shard Shoot system recalculée (bonus de rayon)
+	if (bWasBeamShot != bUnlocked)
+	{
+		Character->ReapplyShardLevels();
+	}
+}
+
+const FName UYSPewPewPewUpgrade::PewPewPewStat(TEXT("PewPewPew"));
+const FName UYSPewPewPewUpgrade::ExtraCyclesStat(TEXT("PewPewPewCycles"));
+const FName UYSPewPewPewUpgrade::BulletEaterHealthStat(TEXT("BulletEaterHealth"));
+const FName UYSPewPewPewUpgrade::BulletEaterStaminaStat(TEXT("BulletEaterStamina"));
+const FName UYSPewPewPewUpgrade::DeathBlossomStat(TEXT("DeathBlossom"));
+
+UYSPewPewPewUpgrade::UYSPewPewPewUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "PewPewPewName", "Pew Pew Pew");
+	RequiredActionClass = UYSRollingShotAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::Ability;
+	bShardSystem = true;
+	MaxBonusStacks = 5;
+	BonusSilverValue = 1.0f;
+	BonusGoldValue = 1.0f;
+	UnlockName = NSLOCTEXT("YS", "PewPewPewUnlockName", "Pew Pew Pew");
+	UnlockDescription = NSLOCTEXT("YS", "PewPewPewUnlockDesc", "L'Ability devient Pew pew pew : des cycles de tirs\nnord, sud, est, ouest en CircleBullet level 1");
+	BonusName = NSLOCTEXT("YS", "PewPewPewBonusName", "Pew Pew Pew ++");
+	BonusDescription = NSLOCTEXT("YS", "PewPewPewBonusDesc", "+1 cycle gratuit");
+	BonusStatLabel = NSLOCTEXT("YS", "PewPewPewBonusStat", "Cycles gratuits");
+	SuperName = NSLOCTEXT("YS", "PewPewPewSuperName", "Bullet Eater");
+}
+
+float UYSPewPewPewUpgrade::GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const
+{
+	// cycles gratuits de base : ceux du Pew pew pew des armes tenues
+	int32 BaseCycles = 0;
+	for (const AYSWeapon* Weapon : Character ? Character->GetHeldWeapons() : TArray<AYSWeapon*>())
+	{
+		TInlineComponentArray<UYSPewPewPewAbility*> PewPews(Weapon);
+		for (const UYSPewPewPewAbility* PewPew : PewPews)
+		{
+			BaseCycles = FMath::Max(BaseCycles, PewPew->FreeCycles);
+		}
+	}
+	return BaseCycles + FMath::RoundToInt(BonusTotal);
+}
+
+void UYSPewPewPewUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const
+{
+	Character->SetWeaponStat(PewPewPewStat, bUnlocked ? 1.0f : 0.0f);
+	Character->SetWeaponStat(ExtraCyclesStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(BulletEaterHealthStat, bUnlocked && GoldenIndex == 0 ? BulletEaterHealth : 0.0f);
+	Character->SetWeaponStat(BulletEaterStaminaStat, bUnlocked && GoldenIndex == 0 ? BulletEaterStamina : 0.0f);
+	Character->SetWeaponStat(DeathBlossomStat, bUnlocked && GoldenIndex == 1 ? 1.0f : 0.0f);
 }
 
 const FName UYSBladeThrowUpgrade::BladeThrowStat(TEXT("BladeThrow"));

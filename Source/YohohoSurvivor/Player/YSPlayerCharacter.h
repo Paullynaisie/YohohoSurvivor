@@ -573,6 +573,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|CircleBullet", meta=(ClampMin="1"))
 	int32 LesserCircleBulletPierceMaxHits = 1;
 
+	/**
+	 *  BeamShot (upgrade d'arme du Gunslinger) : AMMO tirée à la place des balles de l'Auto atk et de l'Ability des pistolets
+	 *  (cylindre immobile depuis le canon ; longueur, largeur et durée : réglages du Blueprint)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|BeamShot")
+	TSoftClassPtr<AYSProjectile> BeamShotClass;
+
 	/** Attaque qui touche plusieurs NME (swing, balle qui traverse, explosion) : chaque NME au-delà du premier prend cette part
 	 *  de dégâts en moins (cumulé : 2e x 0.95, 3e x 0.9...), le plus proche en premier */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Combat", meta=(ClampMin="0", ClampMax="1"))
@@ -661,6 +668,40 @@ protected:
 	/** Temps serveur où les stacks sont perdues */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
 	double BloodlustExpireServerTime = 0.0;
+
+	/**
+	 *  Overheat (Golden du BeamShot ; serveur, répliqué pour l'UI, la recharge prédite et la vitesse) : chaleur 0..1 gagnée à chaque
+	 *  tir des pistolets ; réglages donnés par l'upgrade (SetOverheat). Overheat Enabled faux = pas la Golden.
+	 */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Overheat")
+	bool bOverheatEnabled = false;
+
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Overheat")
+	float Heat = 0.0f;
+
+	/** Surchauffe (chaleur montée à 100 %) : jusqu'à ce que la chaleur retombe à 0 */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Overheat")
+	bool bOverheated = false;
+
+	/** Chaleur à partir de laquelle tous les tirs sont critiques (jusqu'à la surchauffe) */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Overheat")
+	float HeatCriticalThreshold = 0.5f;
+
+	/** Vitesse de déplacement pendant la surchauffe */
+	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Overheat")
+	float OverheatMoveSpeedMultiplier = 0.35f;
+
+	/** Serveur : chaleur par tir, délai sans tirer avant le refroidissement, refroidissement par seconde */
+	float HeatPerShot = 0.05f;
+	float HeatCooldownDelay = 1.0f;
+	float HeatDecayPerSecond = 0.2f;
+	double LastHeatShotTime = -1.0e6;
+
+	/** Solar Shot (serveur) : NME touchés par le dernier BeamShot de la main principale */
+	int32 SolarBeamHits = 0;
+
+	/** BeamShot ++ (serveur) : ajouté au multiplicateur minimal des dégâts multi-cibles (Multi Hit Min Damage Multiplier) */
+	float MultiHitMinDamageBonus = 0.0f;
 
 	/** Aiming (upgrade d'arme du Harquebusier ; serveur, répliqué pour la pose) : immobile depuis ce temps = balles critiques ; 0 = pas débloqué */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Aiming")
@@ -1369,6 +1410,50 @@ public:
 	 */
 	int32 SpawnCircleBullet(const FVector& Location, const FVector& Direction, int32 Level, AActor* IgnoredActor);
 
+	int32 GetCircleBulletMaxLevel() const { return CircleBulletMaxLevel; }
+
+	/** BeamShot : AMMO du rayon (Beam Shot Class, chargée si besoin ; nul si absente) */
+	UClass* LoadBeamShotClass() const;
+
+	/** Solar Shot (serveur) : nouveau BeamShot de la main principale (compte remis à 0), NME touché par lui */
+	void ResetSolarBeamHits() { SolarBeamHits = 0; }
+	void OnSolarBeamFoeHit(AYSProjectile* Projectile, AYSFoeCharacter* Foe, bool bKilled) { ++SolarBeamHits; }
+	int32 GetSolarBeamHits() const { return SolarBeamHits; }
+
+	/** BeamShot ++ (serveur) : minimum des dégâts multi-cibles relevé (0.1 par ++ : 0.5 -> 1 à 5 ++) */
+	void SetMultiHitMinDamageBonus(float Bonus) { MultiHitMinDamageBonus = FMath::Max(0.0f, Bonus); }
+
+	/** Minimum des dégâts multi-cibles sans le BeamShot ++ */
+	float GetBaseMultiHitMinDamageMultiplier() const { return MultiHitMinDamageMultiplier; }
+
+	/**
+	 *  Overheat (Golden du BeamShot, serveur) : débloqué ?, chaleur par tir, délai avant refroidissement, refroidissement par seconde,
+	 *  seuil des critiques, vitesse en surchauffe. Désactivé : chaleur remise à 0.
+	 */
+	void SetOverheat(bool bEnabled, float PerShot, float CooldownDelay, float DecayPerSecond, float CriticalThreshold, float SlowMultiplier);
+
+	/** Overheat : un tir des pistolets (serveur) : +Heat Per Shot ; à 100 % : surchauffe (stamina à 0) */
+	void AddHeatShot();
+
+	bool IsOverheatEnabled() const { return bOverheatEnabled; }
+	float GetHeat() const { return Heat; }
+	bool IsOverheated() const { return bOverheatEnabled && bOverheated; }
+
+	/** Overheat : tous les tirs critiques (chaleur entre le seuil et la surchauffe) */
+	bool IsHeatCritical() const { return bOverheatEnabled && !bOverheated && Heat >= HeatCriticalThreshold; }
+
+	/** Overheat : recharge de l'Auto atk des pistolets x ce facteur (25 % de chaleur = +25 % de vitesse d'atk : / 1.25) */
+	float GetOverheatCooldownFactor() const { return bOverheatEnabled ? 1.0f / (1.0f + FMath::Max(0.0f, Heat)) : 1.0f; }
+
+	/** Rend de la stamina (serveur ; Bullet Eater), jusqu'au maximum */
+	void AddStamina(float Amount);
+
+	/** Réapplique toutes les shards (serveur ; ex. BeamShot : le shoot system de l'arme change) */
+	void ReapplyShardLevels();
+
+	/** Orientation de la caméra hors bateau (nord de l'écran ; Pew pew pew) */
+	float GetDefaultCameraYaw() const { return DefaultCameraYaw; }
+
 	/** Aiming (serveur, upgrade) : délai immobile avant les critiques (0 = pas débloqué), Golden aiming */
 	void SetAiming(float Delay, bool bGolden);
 
@@ -1418,7 +1503,12 @@ public:
 
 	/** Dégâts des coups critiques : (Critical Damage Multiplier + Dégât critique) x (1 + bonus critiques des upgrades Atk speed / Shoot system) */
 	/** Multiplicateur de dégâts du HitIndex-ième NME touché par une même attaque (0 = le premier : x1) */
-	float GetMultiHitDamageMultiplier(int32 HitIndex) const { return FMath::Max(MultiHitMinDamageMultiplier, 1.0f - MultiHitDamageFalloff * FMath::Max(0, HitIndex)); }
+	float GetMultiHitDamageMultiplier(int32 HitIndex) const
+	{
+		// BeamShot ++ : minimum relevé (1 = plus aucune perte)
+		const float MinMultiplier = FMath::Min(1.0f, MultiHitMinDamageMultiplier + MultiHitMinDamageBonus);
+		return FMath::Max(MinMultiplier, 1.0f - MultiHitDamageFalloff * FMath::Max(0, HitIndex));
+	}
 
 	virtual float GetCriticalDamageMultiplier() const { return (GetBaseCriticalDamageMultiplier() + CriticalDamageAdd) * (1.0f + CriticalDamageBonus); }
 

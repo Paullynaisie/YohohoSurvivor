@@ -8,6 +8,7 @@
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSProjectile.h"
 #include "Upgrades/YSShardUpgrade.h"
+#include "Weapons/YSBeamShot.h"
 
 namespace YSGun
 {
@@ -111,6 +112,14 @@ void UYSCoupDPetoirAbility::FireShotgun(const FVector& TargetLocation)
 
 void UYSCoupDPetoirAbility::FireNextBullet()
 {
+	// Overheat : la surchauffe arrête la rafale en cours (et le tir différé de l'autre pistolet de l'akimbo)
+	const AYSPlayerCharacter* Holder = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	if (Holder && Holder->IsOverheated())
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSOverheat] %s : rafale arrêtée par la surchauffe (%d balle(s) tirée(s))"), *GetOwner()->GetName(), BulletsFired);
+		PlayReloadAnims();
+		return;
+	}
 	const int32 BulletCount = FMath::Max(1, BurstBulletCount);
 	if (UYSCoupDPetoirAbility* Shooter = GetBulletShooter(BulletsFired))
 	{
@@ -235,11 +244,51 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 {
 	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
 	APawn* Shooter = Weapon ? Weapon->GetHolder() : Cast<APawn>(GetOwner());
-	const FTransform SpawnTransform(Direction.Rotation(), Muzzle);
-	AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(ProjectileClass, SpawnTransform, Shooter, Shooter, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	AYSPlayerCharacter* ShooterCharacter = Cast<AYSPlayerCharacter>(Shooter);
+
+	// BeamShot : un rayon à la place de la balle ; Solar Shot : l'arme de l'autre main de l'akimbo garde une balle, qui fait une
+	// CircleBullet à l'impact du level du nombre de NME touchés par le dernier rayon de la main principale
+	const bool bBeamShot = IsBeamShot();
+	const bool bSolarBullet = bBeamShot && ShooterCharacter && GetWeaponStat(UYSBeamShotUpgrade::SolarShotStat, 0.0f) > 0.0f && ShooterCharacter->IsAkimbo()
+		&& ShooterCharacter->GetOffHandWeapon() == Weapon;
+	TSubclassOf<AYSProjectile> SpawnClass = ProjectileClass;
+	if (bBeamShot && !bSolarBullet && ShooterCharacter)
+	{
+		if (UClass* BeamClass = ShooterCharacter->LoadBeamShotClass())
+		{
+			SpawnClass = BeamClass;
+		}
+	}
+	const FVector FlatDirection = SpawnClass != ProjectileClass ? Direction.GetSafeNormal2D() : Direction;
+	const FTransform SpawnTransform(FlatDirection.Rotation(), Muzzle);
+	AYSProjectile* Projectile = GetWorld()->SpawnActorDeferred<AYSProjectile>(SpawnClass, SpawnTransform, Shooter, Shooter, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (!Projectile)
 	{
 		return;
+	}
+	if (AYSBeamShot* Beam = Cast<AYSBeamShot>(Projectile))
+	{
+		// taille : shoot system Explosif de l'arme (bonus de rayon de l'Auto atk : shards)
+		const UYSAbilityComponent* AutoAction = Weapon ? Weapon->GetAutoAction() : nullptr;
+		Beam->SetSizeMultiplier(AutoAction ? AutoAction->GetExplosiveRadiusMultiplier() : GetExplosiveRadiusMultiplier());
+		if (ShooterCharacter && ShooterCharacter->GetOffHandWeapon() != Weapon)
+		{
+			ShooterCharacter->ResetSolarBeamHits();
+			Beam->OnFoeHit.AddUObject(ShooterCharacter, &AYSPlayerCharacter::OnSolarBeamFoeHit);
+		}
+	}
+	int32 SolarCircleLevel = 0;
+	if (bSolarBullet)
+	{
+		SolarCircleLevel = FMath::Min(ShooterCharacter->GetSolarBeamHits(), ShooterCharacter->GetCircleBulletMaxLevel());
+		UE_LOG(LogTemp, Verbose, TEXT("[YSBeamShot] %s : Solar Shot, balle de l'autre main, CircleBullet level %d à l'impact (%d NME touchés par le rayon)"),
+			*ShooterCharacter->GetName(), SolarCircleLevel, ShooterCharacter->GetSolarBeamHits());
+	}
+	// Overheat : chaque tir chauffe (le critique se décide avant ce tir)
+	const bool bHeatCritical = ShooterCharacter && ShooterCharacter->IsHeatCritical();
+	if (ShooterCharacter)
+	{
+		ShooterCharacter->AddHeatShot();
 	}
 
 	const float DamageMultiplier = GetDamageMultiplier();
@@ -258,7 +307,7 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 	const AYSPlayerCharacter* HolderCharacter = Cast<AYSPlayerCharacter>(Shooter);
 	if (IsAutomatic() && HolderCharacter)
 	{
-		switch (ShootSystem)
+		switch (GetEffectiveShootSystem())
 		{
 		case EYSShootSystem::Pierce:	Projectile->SetCriticalOnBumped(true); break;
 		default:						Projectile->SetCriticalBulletInterval(HolderCharacter->GetCriticalBulletInterval()); break;
@@ -268,7 +317,8 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 	Projectile->SetMaxHits(GetMaxHitsPerBullet());
 	// Aiming (Harquebusier immobile assez longtemps) : toutes ses balles critiques ; Golden aiming : elles traversent tous les NME
 	// prochaine attaque auto critique (Stunts artist, Motivé pour tuer) : toutes les balles de cette attaque
-	if ((HolderCharacter && HolderCharacter->IsAimingCritical()) || IsForcedCriticalAttack())
+	// Overheat : tous les tirs critiques entre le seuil de chaleur et la surchauffe
+	if ((HolderCharacter && HolderCharacter->IsAimingCritical()) || IsForcedCriticalAttack() || bHeatCritical)
 	{
 		Projectile->SetAlwaysCritical(true);
 		if (HolderCharacter && HolderCharacter->IsAimingCritical() && HolderCharacter->HasGoldenAiming())
@@ -282,6 +332,7 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 		Projectile->SetVolley(CurrentVolley);
 	}
 	// Explosif : explosion à l'impact (dégâts et rayon : Damage bonus, Shoot system) ; MineShooter : mine collée au NME
+	// (BeamShot : le shoot system Explosif ne change que la taille du rayon)
 	if (ShootSystem == EYSShootSystem::Explosive && (ExplosionClass || StickyMineClass))
 	{
 		FYSProjectileExplosion ProjectileExplosion;
@@ -303,6 +354,12 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 		Projectile->SetRicochets(FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::RicochetCountStat, 0.0f)), 1.0f + GetWeaponStat(UYSRicochetUpgrade::RicochetDamageBonusStat, 0.0f));
 		// Bullet Hell (Golden du Ricochet) : CircleBullet à chaque NME touché
 		Projectile->SetCircleOnImpact(FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::BulletHellStat, 0.0f)));
+	}
+	// Pew pew pew, Solar Shot : CircleBullet à chaque NME touché (le plus grand level l'emporte)
+	const int32 ImpactCircle = FMath::Max3(!IsAutomatic() ? FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::BulletHellStat, 0.0f)) : 0, ExtraCircleOnImpactLevel, SolarCircleLevel);
+	if (ImpactCircle > 0)
+	{
+		Projectile->SetCircleOnImpact(ImpactCircle);
 	}
 	// ShootPost du bateau : balles de l'attaque auto qui vivent plus longtemps (portée x3)
 	if (HolderCharacter && IsAutomatic())
@@ -340,6 +397,38 @@ void UYSCoupDPetoirAbility::PlayFireAnimationOnly()
 		MulticastReloadStarted();
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s : animation de tir sans balle à %.2f"), *GetOwner()->GetName(), *GetName(), GetWorld()->GetTimeSeconds());
+}
+
+void UYSCoupDPetoirAbility::FireInDirection(const FVector& Direction, int32 CircleOnImpactLevel)
+{
+	const AYSWeapon* Weapon = Cast<AYSWeapon>(GetOwner());
+	if (!ProjectileClass || !Weapon)
+	{
+		return;
+	}
+	const FVector Flat = Direction.GetSafeNormal2D();
+	ExtraCircleOnImpactLevel = CircleOnImpactLevel;
+	SpawnProjectile(Weapon->GetMuzzleLocation(), Flat.IsNearlyZero() ? Weapon->GetActorForwardVector().GetSafeNormal2D() : Flat);
+	ExtraCircleOnImpactLevel = 0;
+	MulticastBulletFired(0, 0.0f, 0.0f);
+}
+
+bool UYSCoupDPetoirAbility::IsBeamShot() const
+{
+	return GetWeaponStat(UYSBeamShotUpgrade::BeamShotStat, 0.0f) > 0.0f;
+}
+
+float UYSCoupDPetoirAbility::GetCooldownMultiplier() const
+{
+	// Overheat : 25 % de chaleur = +25 % de vitesse d'atk pour l'Auto atk (chaleur répliquée : même recharge prédite chez le client)
+	const AYSPlayerCharacter* Character = IsAutomatic() ? Cast<AYSPlayerCharacter>(GetHolderPawn()) : nullptr;
+	return Super::GetCooldownMultiplier() * (Character ? Character->GetOverheatCooldownFactor() : 1.0f);
+}
+
+bool UYSCoupDPetoirAbility::CanActivateNow() const
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	return Super::CanActivateNow() && !(Character && Character->IsOverheated());
 }
 
 bool UYSCoupDPetoirAbility::IsBurstInProgressLocally() const
@@ -426,13 +515,13 @@ int32 UYSCoupDPetoirAbility::GetBulletsPerBurst() const
 	}
 	// rafale : le Shoot system n'ajoute des balles qu'en PewPew (Pierce : NME traversés ; Explosif : rayon)
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	const float Bonus = Character && ShootSystem == EYSShootSystem::PewPew ? Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 0.0f;
+	const float Bonus = Character && GetEffectiveShootSystem() == EYSShootSystem::PewPew ? Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 0.0f;
 	return FMath::Max(1, BulletsPerBurst + FMath::RoundToInt(Bonus));
 }
 
 int32 UYSCoupDPetoirAbility::GetMaxHitsPerBullet() const
 {
-	if (ShootSystem != EYSShootSystem::Pierce)
+	if (GetEffectiveShootSystem() != EYSShootSystem::Pierce)
 	{
 		return 1;
 	}
@@ -469,6 +558,6 @@ bool UYSCoupDPetoirAbility::GetShootSystem(EYSShootSystem& OutSystem) const
 	{
 		return false;
 	}
-	OutSystem = ShootSystem;
+	OutSystem = GetEffectiveShootSystem();
 	return true;
 }

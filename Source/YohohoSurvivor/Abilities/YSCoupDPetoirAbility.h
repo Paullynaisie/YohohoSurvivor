@@ -260,7 +260,28 @@ public:
 	/** Serveur : recul et rechargement d'un tir sur toutes les machines, sans balle (Bullet Hell : l'autre pistolet de l'akimbo) */
 	void PlayFireAnimationOnly();
 
+	/**
+	 *  Serveur : une balle depuis la bouche de cette arme dans Direction (à plat), recul compris, avec une CircleBullet de
+	 *  CircleOnImpactLevel à chaque NME touché (0 = non) ; Pew pew pew
+	 */
+	void FireInDirection(const FVector& Direction, int32 CircleOnImpactLevel);
+
+	/** BeamShot (upgrade d'arme) débloqué pour cette arme : les tirs sont des rayons (serveur) */
+	bool IsBeamShot() const;
+
+	/** Shoot system en vigueur : Explosif avec le BeamShot, sinon Shoot System */
+	EYSShootSystem GetEffectiveShootSystem() const { return IsBeamShot() ? EYSShootSystem::Explosive : ShootSystem; }
+
+	/** Overheat : Auto atk plus rapide avec la chaleur */
+	virtual float GetCooldownMultiplier() const override;
+
+	/** Overheat : ni Auto atk ni Ability pendant la surchauffe */
+	virtual bool CanActivateNow() const override;
+
 protected:
+
+	/** CircleBullet à chaque NME touché en plus de Bullet Hell, pour la prochaine balle (Pew pew pew ; serveur) */
+	int32 ExtraCircleOnImpactLevel = 0;
 
 	/** Démarre la rafale (serveur) */
 	virtual void ExecuteAbility(const FVector& TargetLocation) override;
@@ -307,11 +328,15 @@ private:
 	 */
 	bool ComputeShot(const FVector& TargetLocation, FVector& OutMuzzle, FVector& OutDirection) const;
 
+	/** Animation de rechargement des armes qui ont tiré (fin de rafale / tir) */
+	void PlayReloadAnims();
+
+protected:
+
 	/** Lance un projectile depuis Muzzle dans Direction, avec les dégâts et les upgrades de l'action (serveur) */
 	void SpawnProjectile(const FVector& Muzzle, const FVector& Direction);
 
-	/** Animation de rechargement des armes qui ont tiré (fin de rafale / tir) */
-	void PlayReloadAnims();
+private:
 
 	/** Délai entre la balle BulletIndex et la suivante tirée par la même arme dans une rafale de BulletCount balles (0 = aucune) */
 	float GetTimeToNextShot(int32 BulletIndex, int32 BulletCount) const;

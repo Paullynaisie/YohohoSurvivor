@@ -225,8 +225,6 @@ private:
 	/** Explosion (ou mine collée) à la position de la balle : sur Target (NME touché) ou le décor (Target nul) ; serveur */
 	void SpawnExplosion(AActor* Target, bool bCritical);
 
-	/** Dégâts à une cible touchée (chevauchement, ou NME bumpé survolé ; serveur) */
-	void HitTarget(AActor* OtherActor, const FHitResult& SweepResult);
 
 	/** NME bumpés (en vol, au-dessus de la balle) sur le segment parcouru depuis la dernière image : touchés (serveur) */
 	void CheckBumpedFoeHits();
@@ -367,6 +365,9 @@ public:
 	/** Bullet Hell (Golden du Ricochet, avant FinishSpawning) : à chaque NME touché, CircleBullet de ce level au point d'impact (0 = non) */
 	void SetCircleOnImpact(int32 Level) { CircleOnImpactLevel = Level; }
 
+	/** Bullet Eater (Golden du Pew pew pew, avant FinishSpawning) : la balle peut toucher son tireur, qui récupère ces PV et cette stamina */
+	void SetShooterPickup(float Health, float Stamina) { ShooterPickupHealth = Health; ShooterPickupStamina = Stamina; }
+
 	/** Serveur : appelé à chaque NME touché (Mark for Delete : NME touchés par ses tirs) */
 	FYSProjectileFoeHit OnFoeHit;
 
@@ -382,8 +383,12 @@ private:
 	/** Bullet Hell : level du cercle à chaque NME touché (serveur ; 0 = non) */
 	int32 CircleOnImpactLevel = 0;
 
-	/** Cercle de LesserCircleBullets de Level ici, sans toucher IgnoredActor (serveur) */
-	void SpawnCircle(int32 Level, AActor* IgnoredActor) const;
+	/** Cercle de LesserCircleBullets de Level à Location, sans toucher IgnoredActor (serveur) */
+	void SpawnCircle(int32 Level, AActor* IgnoredActor, const FVector& Location) const;
+
+	/** Bullet Eater : rendu au tireur qui touche cette balle (serveur ; 0 = la balle traverse son tireur) */
+	float ShooterPickupHealth = 0.0f;
+	float ShooterPickupStamina = 0.0f;
 
 public:
 
@@ -415,6 +420,20 @@ public:
 	bool CanHit(const AActor* Target) const;
 
 protected:
+
+	/** Dégâts à une cible touchée (chevauchement, ou NME bumpé survolé, BeamShot ; serveur) */
+	void HitTarget(AActor* OtherActor, const FHitResult& SweepResult);
+
+	/** Point d'impact sur Target (CircleBullet à l'impact) : la balle ; BeamShot : le point du rayon le plus proche du NME */
+	virtual FVector GetImpactLocation(const AActor* Target) const { return GetActorLocation(); }
+
+	/** Départ du cercle d'une CircleBullet qui disparaît : la balle ; BeamShot : le bout du rayon */
+	virtual FVector GetDisappearLocation() const { return GetActorLocation(); }
+
+	UStaticMeshComponent* GetMeshComponent() const { return Mesh; }
+
+	/** Bullet Eater : le tireur touché récupère PV et stamina, la balle disparaît (serveur) ; faux sinon */
+	bool TryShooterPickup(AActor* OtherActor);
 
 	/** Ricochet vers le NME le plus proche pas encore touché (après l'arrêt RicochetPauseDuration) ; faux si aucun à portée */
 	bool Ricochet();

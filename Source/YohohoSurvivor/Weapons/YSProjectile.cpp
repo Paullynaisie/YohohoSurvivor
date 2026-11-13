@@ -409,12 +409,12 @@ void AYSProjectile::Destroyed()
 	if (HasAuthority() && CircleBulletLevel > 0 && !bCircleBulletSpawned && World && !World->bIsTearingDown)
 	{
 		bCircleBulletSpawned = true;
-		SpawnCircle(CircleBulletLevel, LastHitFoe.Get());
+		SpawnCircle(CircleBulletLevel, LastHitFoe.Get(), GetDisappearLocation());
 	}
 	Super::Destroyed();
 }
 
-void AYSProjectile::SpawnCircle(int32 Level, AActor* IgnoredActor) const
+void AYSProjectile::SpawnCircle(int32 Level, AActor* IgnoredActor, const FVector& Location) const
 {
 	AYSPlayerCharacter* Shooter = Cast<AYSPlayerCharacter>(GetInstigator());
 	if (!Shooter)
@@ -423,8 +423,24 @@ void AYSProjectile::SpawnCircle(int32 Level, AActor* IgnoredActor) const
 	}
 	// première LesserCircleBullet dans le sens de vol (arrêtée sur un ricochet : son regard)
 	const FVector Direction = GetVelocity().IsNearlyZero() ? GetActorForwardVector() : GetVelocity();
-	Shooter->SpawnCircleBullet(GetActorLocation(), Direction, Level, IgnoredActor);
-	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s : CircleBullet level %d en (%.0f, %.0f)"), *GetName(), Level, GetActorLocation().X, GetActorLocation().Y);
+	Shooter->SpawnCircleBullet(Location, Direction, Level, IgnoredActor);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s : CircleBullet level %d en (%.0f, %.0f)"), *GetName(), Level, Location.X, Location.Y);
+}
+
+bool AYSProjectile::TryShooterPickup(AActor* OtherActor)
+{
+	AYSPlayerCharacter* Shooter = Cast<AYSPlayerCharacter>(GetInstigator());
+	if (!HasAuthority() || bHasHit || !Shooter || OtherActor != Shooter || (ShooterPickupHealth <= 0.0f && ShooterPickupStamina <= 0.0f) || !Shooter->IsAlive())
+	{
+		return false;
+	}
+	// Bullet Eater : la balle est « mangée » par son tireur
+	bHasHit = true;
+	Shooter->AddHealth(ShooterPickupHealth);
+	Shooter->AddStamina(ShooterPickupStamina);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBulletEater] %s : %s mange la balle, +%.0f PV, +%.0f stamina"), *GetName(), *Shooter->GetName(), ShooterPickupHealth, ShooterPickupStamina);
+	Destroy();
+	return true;
 }
 
 void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
@@ -523,6 +539,11 @@ void AYSProjectile::CheckDisabledShipHits()
 
 void AYSProjectile::HitTarget(AActor* OtherActor, const FHitResult& SweepResult)
 {
+	// Bullet Eater : LesserCircleBullet qui touche son tireur
+	if (TryShooterPickup(OtherActor))
+	{
+		return;
+	}
 	// serveur autoritaire : la destruction est répliquée aux clients
 	if (!HasAuthority() || bHasHit || bRicochetPaused || !OtherActor || OtherActor == GetInstigator() || !CanHit(OtherActor) || HitActors.Contains(OtherActor))
 	{
@@ -619,7 +640,7 @@ void AYSProjectile::HitTarget(AActor* OtherActor, const FHitResult& SweepResult)
 		LastHitFoe = TargetFoe;
 		if (CircleOnImpactLevel > 0)
 		{
-			SpawnCircle(CircleOnImpactLevel, TargetFoe);
+			SpawnCircle(CircleOnImpactLevel, TargetFoe, GetImpactLocation(TargetFoe));
 		}
 	}
 

@@ -1117,6 +1117,92 @@ protected:
 };
 
 /**
+ *  « BeamShot » (upgrade d'arme du Gunslinger, 2026-11-13) : l'Auto atk et l'Ability des pistolets tirent un rayon (AYSBeamShot,
+ *  Beam Shot Class du personnage) à la place de leur balle ; le shoot system de l'arme devient Explosif (taille du rayon).
+ *  ++ : +Bonus Gold Value (0.1) au minimum des dégâts multi-cibles du personnage (0.5 -> 1 avec 5 ++ : plus aucune perte).
+ *  Golden : 0 « Solar Shot » = en akimbo, l'arme de l'autre main garde une balle, qui fait à l'impact une CircleBullet du level du
+ *  nombre de NME touchés par le dernier rayon (max 5) ; 1 « Overheat » = jauge de chaleur (AYSPlayerCharacter::SetOverheat).
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : BeamShot"))
+class UYSBeamShotUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSBeamShotUpgrade();
+
+	/** Overheat : chaleur par tir (0.05 = 5 %) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Overheat", meta=(ClampMin="0", ClampMax="1"))
+	float HeatPerShot = 0.05f;
+
+	/** Overheat : délai sans tirer avant que la chaleur redescende */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Overheat", meta=(ClampMin="0", Units="Seconds"))
+	float HeatCooldownDelay = 1.0f;
+
+	/** Overheat : chaleur perdue par seconde (0.2 = 20 %) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Overheat", meta=(ClampMin="0.01"))
+	float HeatDecayPerSecond = 0.2f;
+
+	/** Overheat : chaleur à partir de laquelle tous les tirs sont critiques (jusqu'à 99 %) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Overheat", meta=(ClampMin="0", ClampMax="1"))
+	float HeatCriticalThreshold = 0.5f;
+
+	/** Overheat : vitesse de déplacement pendant la surchauffe (0.35 = 35 %) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Overheat", meta=(ClampMin="0"))
+	float OverheatMoveSpeedMultiplier = 0.35f;
+
+	/** Propriétés d'arme posées sur le personnage (lues par le Coup d'Petoir) */
+	static const FName BeamShotStat;
+	static const FName SolarShotStat;
+
+protected:
+
+	/** Minimum des dégâts multi-cibles, en % */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override;
+
+	virtual void ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const override;
+};
+
+/**
+ *  « Pew Pew Pew » (upgrade d'arme du Gunslinger, 2026-11-13) : l'Ability des pistolets devient Pew pew pew (UYSPewPewPewAbility,
+ *  en sommeil sur les pistolets ; le Rolling shot s'endort). ++ : +Bonus Gold Value (1) cycle gratuit.
+ *  Golden : 0 « Bullet Eater » = les LesserCircleBullets du joueur peuvent le toucher : +Bullet Eater Health PV et
+ *  +Bullet Eater Stamina ; 1 « Death Blossom » = plus de cycle payé en stamina, level des CircleBullets = numéro du cycle.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : Pew Pew Pew"))
+class UYSPewPewPewUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSPewPewPewUpgrade();
+
+	/** Bullet Eater : PV rendus par LesserCircleBullet touchée */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
+	float BulletEaterHealth = 5.0f;
+
+	/** Bullet Eater : stamina rendue par LesserCircleBullet touchée */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
+	float BulletEaterStamina = 5.0f;
+
+	/** Propriétés d'arme posées sur le personnage */
+	static const FName PewPewPewStat;
+	static const FName ExtraCyclesStat;
+	static const FName BulletEaterHealthStat;
+	static const FName BulletEaterStaminaStat;
+	static const FName DeathBlossomStat;
+
+protected:
+
+	/** Cycles gratuits */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override;
+
+	virtual void ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const override;
+};
+
+/**
  *  « Blade Throw » (upgrade d'arme du Swordsman, 2026-11-13) : l'Ability de l'épée (UYSSwordsmanAbility) devient Blade Throw
  *  (pas en arrière 2x plus long, puis 2 Lesser Spinning Blades en courbes qui se croisent au point visé, critiques dans la zone).
  *  ++ : +Bonus Gold Value (0.2) au multiplicateur de critique de base du personnage (1.5 -> 2.5 avec 5 ++).

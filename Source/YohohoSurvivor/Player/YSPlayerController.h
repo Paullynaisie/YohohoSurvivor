@@ -153,6 +153,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSBloodlustStacksWidget> BloodlustWidgetClass;
 
+	/** Jauge de chaleur de l'Overheat (même place que les BL stacks ; Widget Blueprint réglable WBP_OverheatGauge) */
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<class UYSOverheatWidget> OverheatWidgetClass;
+
 	/** Aperçu d'un personnage sans set d'arme (sinon : Showcase du set) : distance et hauteur de la caméra */
 	UPROPERTY(EditAnywhere, Category="UI|Preview", meta=(ClampMin="50", Units="cm"))
 	float PreviewCameraDistance = 450.0f;
@@ -188,6 +192,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UYSBloodlustStacksWidget> BloodlustStacks;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UYSOverheatWidget> OverheatGauge;
 
 	/** Menu de sélection du personnage, affiché tant que le joueur n'a pas de personnage */
 	UPROPERTY(Transient)

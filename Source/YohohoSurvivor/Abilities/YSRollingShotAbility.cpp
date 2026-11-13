@@ -1,5 +1,6 @@
 #include "Abilities/YSRollingShotAbility.h"
 #include "Abilities/YSMarkForDeleteAbility.h"
+#include "Abilities/YSPewPewPewAbility.h"
 #include "Upgrades/YSUpgrade.h"
 #include "Core/YSCombat.h"
 #include "Engine/World.h"
@@ -23,6 +24,14 @@ UYSRollingShotAbility::UYSRollingShotAbility()
 
 bool UYSRollingShotAbility::IsActionAvailable() const
 {
+	// Pew Pew Pew (upgrade d'arme) : le Pew pew pew de la même arme prend la place du Rolling shot
+	if (const UYSPewPewPewAbility* PewPewPew = GetOwner() ? GetOwner()->FindComponentByClass<UYSPewPewPewAbility>() : nullptr)
+	{
+		if (PewPewPew->IsPewPewPewActive())
+		{
+			return false;
+		}
+	}
 	const AYSPlayerCharacter* Character = bReplacedByMarkForDelete ? Cast<AYSPlayerCharacter>(GetHolderPawn()) : nullptr;
 	if (!Character)
 	{

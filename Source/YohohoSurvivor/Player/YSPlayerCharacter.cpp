@@ -101,6 +101,7 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	CorpseClass = AYSPlayerCorpse::StaticClass();
 	// CircleBullet : AMMO créée par Tools/EditorScripts/setup_circle_bullet.py (chargée au premier cercle)
 	LesserCircleBulletClass = TSoftClassPtr<AYSProjectile>(FSoftObjectPath(TEXT("/Game/Placeable/AMMO/LesserCircleBulletAMMO.LesserCircleBulletAMMO_C")));
+	BeamShotClass = TSoftClassPtr<AYSProjectile>(FSoftObjectPath(TEXT("/Game/Placeable/AMMO/BeamAMMO.BeamAMMO_C")));
 
 	MoveActionAbility = CreateDefaultSubobject<UYSRollAbility>(TEXT("MoveActionAbility"));
 	RunMoveAction = CreateDefaultSubobject<UYSRunAbility>(TEXT("RunMoveAction"));
@@ -280,6 +281,11 @@ void AYSPlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustDuration);
 	DOREPLIFETIME(AYSPlayerCharacter, BloodlustAtkSpeedPerStack);
 	DOREPLIFETIME(AYSPlayerCharacter, bGoldenBloodlust);
+	DOREPLIFETIME(AYSPlayerCharacter, bOverheatEnabled);
+	DOREPLIFETIME(AYSPlayerCharacter, Heat);
+	DOREPLIFETIME(AYSPlayerCharacter, bOverheated);
+	DOREPLIFETIME(AYSPlayerCharacter, HeatCriticalThreshold);
+	DOREPLIFETIME(AYSPlayerCharacter, OverheatMoveSpeedMultiplier);
 	DOREPLIFETIME(AYSPlayerCharacter, AimingDelay);
 	DOREPLIFETIME(AYSPlayerCharacter, bGoldenAiming);
 	DOREPLIFETIME(AYSPlayerCharacter, CriticalDamageBonus);
@@ -1492,6 +1498,21 @@ void AYSPlayerCharacter::Tick(float DeltaSeconds)
 			ForceNetUpdate();
 		}
 
+		// Overheat : refroidissement après Heat Cooldown Delay sans tirer ; surchauffe : stamina gardée à 0 jusqu'à la fin
+		if (bOverheatEnabled && Heat > 0.0f && GetWorld()->GetTimeSeconds() - LastHeatShotTime >= HeatCooldownDelay)
+		{
+			Heat = FMath::Max(0.0f, Heat - HeatDecayPerSecond * DeltaSeconds);
+			if (Heat <= 0.0f && bOverheated)
+			{
+				bOverheated = false;
+				UE_LOG(LogTemp, Log, TEXT("[YSOverheat] %s : refroidi, fin de la surchauffe"), *GetName());
+			}
+		}
+		if (bOverheatEnabled && bOverheated && Stamina > 0.0f)
+		{
+			ConsumeStamina(Stamina, false);
+		}
+
 		// BloodRage : toutes les stacks perdues après BloodRageDuration sans subir de coup (jamais avec Golden BloodRage)
 		if (BloodRageStacks > 0 && !bGoldenBloodRage && GameState && GameState->GetServerWorldTimeSeconds() >= BloodRageExpireServerTime)
 		{
@@ -2514,6 +2535,74 @@ void AYSPlayerCharacter::ConsumeStamina(float Amount, bool bLog)
 	{
 		UE_LOG(LogTemp, Verbose, TEXT("[YSStamina] %s -%.1f : %.1f / %.1f"), *GetName(), Amount, Stamina, GetMaxStamina());
 	}
+}
+
+UClass* AYSPlayerCharacter::LoadBeamShotClass() const
+{
+	return BeamShotClass.LoadSynchronous();
+}
+
+void AYSPlayerCharacter::AddStamina(float Amount)
+{
+	if (!HasAuthority() || Amount <= 0.0f || !IsAlive())
+	{
+		return;
+	}
+	Stamina = FMath::Min(GetMaxStamina(), Stamina + Amount);
+	ForceNetUpdate();
+	UE_LOG(LogTemp, Verbose, TEXT("[YSStamina] %s +%.1f : %.1f / %.1f"), *GetName(), Amount, Stamina, GetMaxStamina());
+}
+
+void AYSPlayerCharacter::ReapplyShardLevels()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	for (const FYSShardLevel& Entry : ShardLevels)
+	{
+		if (Entry.Shard)
+		{
+			Entry.Shard->Apply(this, Entry.Level);
+		}
+	}
+	ForceNetUpdate();
+}
+
+void AYSPlayerCharacter::SetOverheat(bool bEnabled, float PerShot, float CooldownDelay, float DecayPerSecond, float CriticalThreshold, float SlowMultiplier)
+{
+	bOverheatEnabled = bEnabled;
+	HeatPerShot = PerShot;
+	HeatCooldownDelay = CooldownDelay;
+	HeatDecayPerSecond = DecayPerSecond;
+	HeatCriticalThreshold = CriticalThreshold;
+	OverheatMoveSpeedMultiplier = SlowMultiplier;
+	if (!bEnabled)
+	{
+		Heat = 0.0f;
+		bOverheated = false;
+	}
+	ForceNetUpdate();
+}
+
+void AYSPlayerCharacter::AddHeatShot()
+{
+	if (!HasAuthority() || !bOverheatEnabled || bOverheated)
+	{
+		return;
+	}
+	LastHeatShotTime = GetWorld()->GetTimeSeconds();
+	Heat = FMath::Min(1.0f, Heat + HeatPerShot);
+	// 100 % : surchauffe, plus de stamina, ni Auto atk ni Ability jusqu'au refroidissement complet
+	if (Heat >= 1.0f - KINDA_SMALL_NUMBER)
+	{
+		Heat = 1.0f;
+		bOverheated = true;
+		ConsumeStamina(Stamina);
+		UE_LOG(LogTemp, Log, TEXT("[YSOverheat] %s : SURCHAUFFE (stamina à 0, vitesse x%.2f)"), *GetName(), OverheatMoveSpeedMultiplier);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSOverheat] %s : tir, chaleur %.0f %%%s"), *GetName(), Heat * 100.0f, IsHeatCritical() ? TEXT(" (critiques)") : TEXT(""));
+	ForceNetUpdate();
 }
 
 void AYSPlayerCharacter::ApplyMoveSpeedBuff(float Multiplier, float Duration)
@@ -3599,7 +3688,7 @@ int32 AYSPlayerCharacter::SpawnCircleBullet(const FVector& Location, const FVect
 	for (const AYSWeapon* Weapon : Weapons)
 	{
 		const UYSCoupDPetoirAbility* AutoGun = Cast<UYSCoupDPetoirAbility>(Weapon->GetAutoAction());
-		if (AutoGun && AutoGun->ShootSystem == EYSShootSystem::Pierce)
+		if (AutoGun && AutoGun->GetEffectiveShootSystem() == EYSShootSystem::Pierce)
 		{
 			MaxHits = FMath::Max(MaxHits, AutoGun->GetMaxHitsPerBullet());
 		}
@@ -3628,6 +3717,8 @@ int32 AYSPlayerCharacter::SpawnCircleBullet(const FVector& Location, const FVect
 		{
 			Lesser->IgnoreTarget(IgnoredActor);
 		}
+		// Bullet Eater (Golden du Pew pew pew) : le joueur peut les toucher pour récupérer PV et stamina
+		Lesser->SetShooterPickup(GetCharacterWeaponStat(UYSPewPewPewUpgrade::BulletEaterHealthStat), GetCharacterWeaponStat(UYSPewPewPewUpgrade::BulletEaterStaminaStat));
 		Lesser->FinishSpawning(SpawnTransform);
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSCircleBullet] %s : CircleBullet level %d en (%.0f, %.0f, %.0f) : %d LesserCircleBullets, %.1f dégâts, %d NME max%s"), *GetName(), ClampedLevel,
@@ -3875,9 +3966,24 @@ void AYSPlayerCharacter::UpdateMaxWalkSpeed()
 	}
 	// bonus temporaire (Booster de moral)
 	ActionMultiplier *= GetMoveSpeedBuffMultiplier();
+	// Overheat : surchauffe
+	if (IsOverheated())
+	{
+		ActionMultiplier *= OverheatMoveSpeedMultiplier;
+	}
 	// nage : Swim Speed Multiplier seulement quand la stamina est vide
 	const float SwimMultiplier = bSwimming && !IgnoresPassiveSlowdown() ? SwimSpeedMultiplier : 1.0f;
-	GetCharacterMovement()->MaxWalkSpeed = GetUnmodifiedWalkSpeed() * ActionMultiplier * SwimMultiplier;
+	float WalkSpeed = GetUnmodifiedWalkSpeed() * ActionMultiplier * SwimMultiplier;
+	// vitesse minimale imposée par une action (Pew pew pew : au moins 100 %, les bonus restent)
+	ForEachHeldAction([this, &WalkSpeed](const UYSAbilityComponent* Action)
+	{
+		float MinRatio = 0.0f;
+		if (Action->GetMinMoveSpeedRatio(MinRatio))
+		{
+			WalkSpeed = FMath::Max(WalkSpeed, MoveSpeed * MinRatio);
+		}
+	});
+	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
 }
 
 bool AYSPlayerCharacter::IsMoveInputOverridden() const

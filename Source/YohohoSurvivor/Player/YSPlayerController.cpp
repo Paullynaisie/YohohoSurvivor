@@ -33,6 +33,7 @@
 #include "Ship/YSShipBoarding.h"
 #include "Ship/YSShipStation.h"
 #include "UI/YSBloodlustStacksWidget.h"
+#include "UI/YSOverheatWidget.h"
 #include "UI/YSCharacterSelectWidget.h"
 #include "UI/YSUpgradeMenuWidget.h"
 #include "UI/YSPlayerHUDWidget.h"
@@ -156,6 +157,17 @@ void AYSPlayerController::BeginPlay()
 			BloodlustSlot.Alignment = FVector2D(0.0f, 1.0f);
 			BloodlustSlot.Offsets = FMargin(BloodlustStacks->ScreenOffset.X, -BloodlustStacks->ScreenOffset.Y, 0.0f, 0.0f);
 			ViewportSubsystem->AddWidgetForPlayer(BloodlustStacks, GetLocalPlayer(), BloodlustSlot);
+		}
+
+		// chaleur de l'Overheat : même place que les BL stacks (placement réglé dans le Widget Blueprint)
+		if (ViewportSubsystem)
+		{
+			OverheatGauge = CreateWidget<UYSOverheatWidget>(this, OverheatWidgetClass ? OverheatWidgetClass.Get() : UYSOverheatWidget::StaticClass());
+			FGameViewportWidgetSlot OverheatSlot;
+			OverheatSlot.Anchors = FAnchors(0.5f, 1.0f);
+			OverheatSlot.Alignment = FVector2D(0.0f, 1.0f);
+			OverheatSlot.Offsets = FMargin(OverheatGauge->ScreenOffset.X, -OverheatGauge->ScreenOffset.Y, 0.0f, 0.0f);
+			ViewportSubsystem->AddWidgetForPlayer(OverheatGauge, GetLocalPlayer(), OverheatSlot);
 		}
 
 		// menu de sélection plein écran, au-dessus du reste de l'UI
@@ -2756,6 +2768,13 @@ void AYSPlayerController::PlayerTick(float DeltaTime)
 			BloodlustStacks->Refresh(PlayerCharacter ? PlayerCharacter->GetBloodlustStacks() : 0, PlayerCharacter ? PlayerCharacter->GetBloodlustMaxStacks() : 0,
 				PlayerCharacter ? PlayerCharacter->GetBloodlustTimeRatio() : 0.0f, PlayerCharacter && PlayerCharacter->IsBloodlustCritical());
 		}
+	}
+
+	if (OverheatGauge)
+	{
+		const AYSPlayerCharacter* PlayerCharacter = Cast<AYSPlayerCharacter>(GetPawn());
+		OverheatGauge->Refresh(PlayerCharacter && PlayerCharacter->IsOverheatEnabled(), PlayerCharacter ? PlayerCharacter->GetHeat() : 0.0f,
+			PlayerCharacter && PlayerCharacter->IsHeatCritical(), PlayerCharacter && PlayerCharacter->IsOverheated());
 	}
 }
 

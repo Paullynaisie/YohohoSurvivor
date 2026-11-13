@@ -313,6 +313,9 @@ public:
 	 */
 	virtual bool GetFixedMoveSpeedRatio(float& OutRatio) const { return false; }
 
+	/** Vitesse minimale en ce moment (ex. Pew pew pew : 100 %) : MaxWalkSpeed >= Move Speed du personnage x OutRatio, les bonus restent */
+	virtual bool GetMinMoveSpeedRatio(float& OutRatio) const { return false; }
+
 	/** Caméra recentrée sur le personnage pendant l'action (comme Camera Lock ; ex. TOURBILOL !), décentrée à nouveau ensuite */
 	virtual bool CentersCamera() const { return false; }
 
