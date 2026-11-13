@@ -446,6 +446,11 @@ void UYSAutoSwingAbility::ApplySwingHits(float SwingElapsed, bool bMainHit)
 		// direction du coup (pushback) = du porteur vers la cible : le NME recule, il n'est pas balayé sur le côté par la lame
 		const FVector ShotDirection = Holder ? (Target->GetActorLocation() - Holder->GetActorLocation()).GetSafeNormal2D() : FVector::ZeroVector;
 		DealSwingDamage(Target, FinalDamage, ShotDirection, Holder ? Holder->GetController() : nullptr, bCritical);
+		// Stylish Sequence : marque de l'attaque auto de l'épée, ou de l'Ability (Dashing Slash, Mark for Delete)
+		if (Character)
+		{
+			Character->RegisterStylishMark(Target, IsAutomatic() ? YSStylish::SwordAuto : YSStylish::Ability);
+		}
 
 		// Captain Sword : le NME touché (encore en vie) devient le NME marqué du porteur
 		AYSFoeCharacter* HitFoe = bMarksTarget && Character ? Cast<AYSFoeCharacter>(Target) : nullptr;

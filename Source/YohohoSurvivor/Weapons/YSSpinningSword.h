@@ -33,10 +33,10 @@ public:
 	 *  Serveur : un level de Spinning Sword pour Character. Self : celle accrochée au joueur (créée au besoin) ; sinon celle du
 	 *  joueur posée à moins de Merge Radius de Location, sinon une nouvelle posée au sol sous Location.
 	 */
-	static AYSSpinningSword* GiveLevel(AYSPlayerCharacter* Character, bool bSelf, const FVector& Location);
+	static AYSSpinningSword* GiveLevel(AYSPlayerCharacter* Character, bool bSelf, const FVector& Location, int32 Levels = 1, bool bAllowMerge = true);
 
-	/** Serveur : +1 level (sans dépasser Max Level) et délai de perte de level relancé */
-	void AddLevel();
+	/** Serveur : +Count levels (sans dépasser Max Level) et délai de perte de level relancé */
+	void AddLevel(int32 Count = 1);
 
 	int32 GetLevel() const { return Level; }
 

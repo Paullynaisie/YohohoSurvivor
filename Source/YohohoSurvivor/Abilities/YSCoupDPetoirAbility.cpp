@@ -7,6 +7,7 @@
 #include "Weapons/YSWeapon.h"
 #include "Player/YSPlayerCharacter.h"
 #include "Weapons/YSProjectile.h"
+#include "Upgrades/YSShardUpgrade.h"
 
 namespace YSGun
 {
@@ -242,7 +243,13 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 	}
 
 	const float DamageMultiplier = GetDamageMultiplier();
-	Projectile->SetDamage(Damage * DamageMultiplier);
+	// The Gun was better ++ : dégâts de base x (1 + bonus), avant les multiplicateurs
+	Projectile->SetDamage(Damage * GetBaseDamageBonusMultiplier() * DamageMultiplier);
+	// Stylish Sequence : une balle d'attaque auto marque les NME qu'elle touche (lu par le tireur s'il a la Golden)
+	if (IsAutomatic())
+	{
+		Projectile->SetStylishMark(YSStylish::GunAuto);
+	}
 	// critiques des attaques auto : PewPew / Explosif = les balles comptent sur chaque NME, une sur N est critique ;
 	// Pierce = critique sur un NME en train d'être bumpé
 	const AYSPlayerCharacter* HolderCharacter = Cast<AYSPlayerCharacter>(Shooter);
@@ -415,13 +422,35 @@ int32 UYSCoupDPetoirAbility::GetMaxHitsPerBullet() const
 		return 1;
 	}
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	// Pistolet de The Gun was better : NME traversés en plus d'après le niveau de la shard Melee Range
+	if (bPierceFromMeleeRange)
+	{
+		int32 MeleeRangeLevel = 0;
+		if (Character)
+		{
+			for (const FYSShardLevel& Entry : Character->GetShardLevels())
+			{
+				if (Entry.Shard && Entry.Shard->Stat == EYSShardStat::MeleeRange)
+				{
+					MeleeRangeLevel = Entry.Level;
+				}
+			}
+		}
+		return FMath::Max(1, PierceMaxHits + FMath::FloorToInt(MeleeRangeLevel * MeleeRangePiercePerLevel + KINDA_SMALL_NUMBER));
+	}
 	const float Bonus = Character ? Character->GetWeaponShootSystemBonus(Cast<AYSWeapon>(GetOwner()), GetActionSlot()) : 0.0f;
 	return FMath::Max(1, PierceMaxHits + FMath::RoundToInt(Bonus));
 }
 
+float UYSCoupDPetoirAbility::GetBaseDamageBonusMultiplier() const
+{
+	return BaseDamageBonusStat.IsNone() ? 1.0f : 1.0f + GetWeaponStat(BaseDamageBonusStat, 0.0f);
+}
+
 bool UYSCoupDPetoirAbility::GetShootSystem(EYSShootSystem& OutSystem) const
 {
-	if (WeaponType != EYSWeaponType::Gun || !IsAutomatic())
+	// Pierce piloté par la Melee Range : pas de shard Shoot system pour cette arme
+	if (WeaponType != EYSWeaponType::Gun || !IsAutomatic() || bPierceFromMeleeRange)
 	{
 		return false;
 	}

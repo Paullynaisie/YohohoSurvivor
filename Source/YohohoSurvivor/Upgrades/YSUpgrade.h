@@ -707,10 +707,31 @@ enum class EYSWeaponUpgradeTier : uint8
 };
 
 /**
- *  Upgrade d'arme pour tout le set, en 3 paliers (variante = palier : 0 Déblocage, 1 Bonus, 2 Super) :
+ *  Une variante Golden d'une upgrade d'arme ou de MoveAction (2026-11-13, demande de Paul : 2 Golden par upgrade d'arme pour
+ *  laisser le choix au joueur ; nom historique FYSGoldenMoveAction gardé pour les assets des MoveActions)
+ */
+USTRUCT(BlueprintType)
+struct FYSGoldenMoveAction
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	FText Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(MultiLine="true"))
+	FText Description;
+
+	/** Icône de la carte (vide = celle de l'upgrade) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
+	TObjectPtr<UTexture2D> Icon;
+};
+
+/**
+ *  Upgrade d'arme pour tout le set, en 3 paliers (variante = palier : 0 Déblocage, 1 Bonus, 2+ Golden) :
  *  - Déblocage (Silver uniquement, une fois) : donne la propriété aux armes concernées ; débloque les 2 autres paliers ;
  *  - Bonus (Silver / Gold, MaxBonusStacks fois) : améliore la propriété, comme une upgrade de stat ;
- *  - Super (Gold uniquement, une fois) : comportement prédéfini.
+ *  - Super / Golden (Gold uniquement, une fois) : comportement prédéfini. Plusieurs Golden possibles (Golden Variants : variantes
+ *    2, 3...), une seule par personnage ; Golden Variants vide = une seule Golden (Super Name / Super Description).
  *  Proposée seulement si une arme tenue a une action RequiredActionClass du type RequiredSlot (ex. Coup d'Petoir en Ability).
  *  Nouvelle upgrade d'arme = sous-classe qui surcharge ApplyWeaponProperty (et GetBonusBaseValue pour l'affichage).
  */
@@ -787,6 +808,22 @@ public:
 	float SuperWeight = 10.0f;
 
 	/**
+	 *  Variantes Golden, dans l'ORDRE des effets C++ de l'upgrade (index 0 = variante 2, 1 = variante 3...) ; une seule par
+	 *  personnage. Vide = une seule Golden (Super Name / Super Description).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super")
+	TArray<FYSGoldenMoveAction> GoldenVariants;
+
+	/** Variante Golden (0 = la première) d'une variante de l'upgrade ; INDEX_NONE pour le Déblocage et le Bonus */
+	static int32 GetGoldenIndex(int32 Variant) { return Variant >= 2 ? Variant - 2 : INDEX_NONE; }
+
+	/** Nombre de variantes Golden (au moins 1) */
+	int32 GetGoldenCount() const { return FMath::Max(1, GoldenVariants.Num()); }
+
+	/** Golden prise par le personnage (index dans Golden Variants ; INDEX_NONE : aucune) */
+	int32 FindTakenGolden(const AYSPlayerCharacter* Character, int32 PoolIndex) const;
+
+	/**
 	 *  Système de shards : proposée avec les DA_Up_Stats (pool du personnage) ; Déblocage et Bonus en Silver, Gold ou Mythique,
 	 *  Super en Gold seulement ; chaque Bonus vaut Bonus Gold Value quelle que soit sa rareté (Max Bonus Stacks : 5)
 	 */
@@ -817,7 +854,7 @@ public:
 
 	static int32 MakeVariant(EYSWeaponUpgradeTier Tier) { return static_cast<int32>(Tier); }
 
-	virtual int32 GetVariantCount() const override { return 3; }
+	virtual int32 GetVariantCount() const override { return 2 + GetGoldenCount(); }
 
 	virtual FText GetVariantName(int32 Variant) const override;
 
@@ -850,25 +887,17 @@ protected:
 	/** Applique la propriété aux armes : débloquée ?, somme des bonus, super obtenu ? (serveur) */
 	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const {}
 
+	/**
+	 *  Comme Apply Weapon Property, avec la Golden prise (index dans Golden Variants ; INDEX_NONE : aucune). Par défaut :
+	 *  Apply Weapon Property avec Super = la première Golden ; à surcharger par les upgrades à plusieurs Golden.
+	 */
+	virtual void ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const
+	{
+		ApplyWeaponProperty(Character, bUnlocked, BonusTotal, GoldenIndex == 0);
+	}
+
 	/** Actions requises des armes tenues (main principale d'abord) */
 	TArray<UYSAbilityComponent*> GetRequiredActions(const AYSPlayerCharacter* Character) const;
-};
-
-/** Une variante Golden d'une upgrade de MoveAction */
-USTRUCT(BlueprintType)
-struct FYSGoldenMoveAction
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
-	FText Name;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade", meta=(MultiLine="true"))
-	FText Description;
-
-	/** Icône de la carte (vide = celle de l'upgrade) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade")
-	TObjectPtr<UTexture2D> Icon;
 };
 
 /**
@@ -894,29 +923,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|MoveAction")
 	TSubclassOf<UYSAbilityComponent> MoveActionClass;
 
-	/** Variantes Golden, dans l'ordre des effets de la MoveAction (voir sa classe) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super")
-	TArray<FYSGoldenMoveAction> GoldenVariants;
-
 	virtual bool IsMoveActionUpgrade() const override { return true; }
-
-	/** Variante Golden (0 = la première) d'une variante de l'upgrade ; INDEX_NONE pour le Déblocage et le ++ */
-	static int32 GetGoldenIndex(int32 Variant) { return Variant >= 2 ? Variant - 2 : INDEX_NONE; }
 
 	/** Toujours gardée au changement de classe */
 	virtual bool IsCompatibleWith(const AYSPlayerCharacter* Character, int32 Variant) const override { return true; }
 
 	virtual int32 GetVariantCount() const override { return 2 + GoldenVariants.Num(); }
 
-	virtual FText GetVariantName(int32 Variant) const override;
-
 	virtual FText GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const override { return GetVariantName(Variant); }
 
 	virtual bool CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
-
-	virtual FText GetDescription(const AYSPlayerCharacter* Character, int32 Variant) const override;
-
-	virtual void GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const override;
 
 	/** Donne la MoveAction au personnage avec ses ++ et sa Golden (AYSPlayerCharacter::SetMoveAction) */
 	virtual void Apply(AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const override;
@@ -1005,6 +1021,52 @@ protected:
 	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override { return (AtkSpeedPerStack + BonusTotal) * 100.0f; }
 
 	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+
+	/**
+	 *  Golden (2026-11-13) : 0 « Critical Blood » = Auto swing critiques au maximum de stacks (l'ancien Golden bloodlust) ;
+	 *  1 « Blood Swords » = à la fin du pas en arrière de l'Ability (Dashing Slash, Mark for Delete), toutes les BL stacks
+	 *  sont consommées pour autant de levels de Self Spinning Sword.
+	 */
+	virtual void ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const override;
+};
+
+/**
+ *  « The Gun was better » (upgrade d'arme du Swordsman, 2026-11-13) : le Déblocage change le set d'arme (Unlock Weapon Set :
+ *  Sword en main principale, Auto atk 80 et Dashing Slash à une épée 180 ; Pistolet en main secondaire, Auto shot automatique).
+ *  ++ : dégâts de base de la partie Gun +Bonus Gold Value (0.2) chacun, avant les multiplicateurs (propriété d'arme
+ *  Gun Damage Bonus Stat, lue par les actions de tir dont Base Damage Bonus Stat la nomme).
+ *  Golden : 0 « Stylish Sequence » = un NME touché par l'Auto atk de la Sword, l'Auto atk du pistolet et l'Ability (3 marques)
+ *  fait apparaître une Spinning Sword de Stylish Sword Level levels sur lui ; 1 « Mark for Delete » = l'Ability de la Sword
+ *  devient Mark for Delete (UYSMarkForDeleteAbility).
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : The Gun was better"))
+class UYSGunWasBetterUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSGunWasBetterUpgrade();
+
+	/** Set d'arme donné par le Déblocage (Sword + Pistolet) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock")
+	TObjectPtr<UYSWeaponSet> UnlockWeaponSet;
+
+	/** Stylish Sequence : levels de la Spinning Sword qui apparaît sur le NME aux 3 marques */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="1"))
+	int32 StylishSwordLevel = 3;
+
+	/** Propriétés d'arme posées sur le personnage */
+	static const FName GunDamageBonusStat;
+	static const FName StylishSequenceStat;
+	static const FName MarkForDeleteStat;
+
+protected:
+
+	/** Dégâts de base de la partie Gun (sans le bonus), 0 sans arme concernée */
+	virtual float GetBonusBaseValue(const AYSPlayerCharacter* Character) const override;
+
+	virtual void ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const override;
 };
 
 /**

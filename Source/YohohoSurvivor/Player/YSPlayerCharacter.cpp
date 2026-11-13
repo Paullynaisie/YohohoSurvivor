@@ -50,6 +50,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Player/YSPlayerController.h"
 #include "Upgrades/YSUpgrade.h"
+#include "Weapons/YSSpinningSword.h"
 #include "Abilities/YSAbilityComponent.h"
 #include "EngineUtils.h"
 #include "Interaction/YSInteractiveObject.h"
@@ -3128,6 +3129,11 @@ void AYSPlayerCharacter::RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& O
 		}
 
 		Entry.PoolIndex = TwinIndex;
+		// Golden qui n'existe pas chez la jumelle (2e Golden -> jumelle à une seule Golden) : sa première Golden
+		if (Entry.Variant >= Twin->GetVariantCount())
+		{
+			Entry.Variant = 2;
+		}
 		Entry.BonusRarities = Rarities;
 		Entry.BonusValues.Reset();
 		Entry.TotalValue = 0.0f;
@@ -3526,6 +3532,36 @@ void AYSPlayerCharacter::SetBloodlust(int32 MaxStacks, float Duration, float Atk
 	bGoldenBloodlust = bGolden;
 	BloodlustStacks = FMath::Min(BloodlustStacks, BloodlustMaxStacks);
 	ForceNetUpdate();
+}
+
+void AYSPlayerCharacter::OnAbilityStepBackFinished()
+{
+	if (!HasAuthority() || !bBloodSwords || BloodlustStacks <= 0)
+	{
+		return;
+	}
+	// Blood Swords : toutes les BL stacks -> autant de levels de Self Spinning Sword
+	const int32 Levels = BloodlustStacks;
+	BloodlustStacks = 0;
+	ForceNetUpdate();
+	const AYSSpinningSword* Sword = AYSSpinningSword::GiveLevel(this, true, GetActorLocation(), Levels);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSBloodlust] %s : Blood Swords, %d BL stack(s) -> Self Spinning Sword level %d"), *GetName(), Levels, Sword ? Sword->GetLevel() : 0);
+}
+
+void AYSPlayerCharacter::RegisterStylishMark(AActor* Target, uint8 Mark)
+{
+	AYSFoeCharacter* Foe = Cast<AYSFoeCharacter>(Target);
+	const float* Levels = HasAuthority() && Foe ? WeaponStats.Find(UYSGunWasBetterUpgrade::StylishSequenceStat) : nullptr;
+	if (!Levels || *Levels <= 0.0f)
+	{
+		return;
+	}
+	// 3 marques (Auto atk de la Sword, Auto atk du pistolet, Ability) : Spinning Sword sur le NME, sans fusion avec une autre
+	if (Foe->AddStylishMark(this, Mark, YSStylish::All))
+	{
+		const AYSSpinningSword* Sword = AYSSpinningSword::GiveLevel(this, false, Foe->GetActorLocation(), FMath::RoundToInt(*Levels), false);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSStylish] %s : 3 marques sur %s -> Spinning Sword level %d"), *GetName(), *Foe->GetName(), Sword ? Sword->GetLevel() : 0);
+	}
 }
 
 void AYSPlayerCharacter::SetAiming(float Delay, bool bGolden)

@@ -43,6 +43,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Coup d'Petoir", meta=(ClampMin="0"))
 	float Damage = 5.0f;
 
+	/**
+	 *  Propriété d'arme (posée par une upgrade d'arme) ajoutée aux dégâts de base : Damage x (1 + valeur), avant les multiplicateurs
+	 *  (ex. GunWasBetterDamage : The Gun was better ++ sur le Pistolet). Vide = aucune.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'Petoir")
+	FName BaseDamageBonusStat;
+
 	/** Visée assistée : portée max (depuis le tireur) d'une cible pour être prise automatiquement (0 = désactivée) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'Petoir|Assist Aim", meta=(ClampMin="0", Units="Centimeters"))
 	float AssistAimDistance = 1000.0f;
@@ -96,6 +103,16 @@ public:
 	/** Pierce : NME touchés par chaque balle avant qu'elle disparaisse (2 = traverse une fois ; + upgrade Shoot system) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="1", EditCondition="ShootSystem==EYSShootSystem::Pierce", EditConditionHides))
 	int32 PierceMaxHits = 2;
+
+	/**
+	 *  Pierce piloté par la Melee Range (Pistolet de The Gun was better) : NME traversés en plus = niveau de la shard Melee Range
+	 *  x Melee Range Pierce Per Level (tronqué) ; la shard Shoot system ne concerne alors pas cette arme.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(EditCondition="ShootSystem==EYSShootSystem::Pierce", EditConditionHides))
+	bool bPierceFromMeleeRange = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System", meta=(ClampMin="0", EditCondition="bPierceFromMeleeRange", EditConditionHides))
+	float MeleeRangePiercePerLevel = 0.5f;
 
 	/** Explosif : explosion à l'impact de la balle (BP enfant de BP_CannoneerBomb : rayon, effet ; elle explose tout de suite) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Shoot System|Explosive", meta=(EditCondition="ShootSystem==EYSShootSystem::Explosive", EditConditionHides))
@@ -187,7 +204,10 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	virtual float GetBaseDamage() const override { return Damage; }
+	virtual float GetBaseDamage() const override { return Damage * GetBaseDamageBonusMultiplier(); }
+
+	/** 1 + Base Damage Bonus Stat (propriété d'arme du porteur) */
+	float GetBaseDamageBonusMultiplier() const;
 
 	/** Indisponible pendant la rafale puis pendant la recharge (CD reduction : seulement la recharge) */
 	virtual float GetCooldownDuration() const override { return GetBurstTime() + Cooldown * GetCooldownMultiplier(); }

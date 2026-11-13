@@ -3,6 +3,7 @@
 #include "Abilities/YSAutoShotAbility.h"
 #include "Abilities/YSAutoSwingAbility.h"
 #include "Abilities/YSCoupDPetoirAbility.h"
+#include "Abilities/YSDashingSlashAbility.h"
 #include "Abilities/YSGoMinionsAbility.h"
 #include "Abilities/YSRollAndBombAbility.h"
 #include "Abilities/YSSummonCrewAbility.h"
@@ -556,8 +557,24 @@ FText UYSWeaponUpgrade::GetVariantName(int32 Variant) const
 	{
 	case EYSWeaponUpgradeTier::Unlock:	return UnlockName;
 	case EYSWeaponUpgradeTier::Bonus:	return BonusName;
-	default:							return SuperName;
+	default:
+	{
+		const int32 Golden = GetGoldenIndex(Variant);
+		return GoldenVariants.IsValidIndex(Golden) ? GoldenVariants[Golden].Name : SuperName;
 	}
+	}
+}
+
+int32 UYSWeaponUpgrade::FindTakenGolden(const AYSPlayerCharacter* Character, int32 PoolIndex) const
+{
+	for (int32 Golden = 0; Character && Golden < GetGoldenCount(); ++Golden)
+	{
+		if (Character->GetUpgradeProgress(PoolIndex, Golden + 2).Stacks > 0)
+		{
+			return Golden;
+		}
+	}
+	return INDEX_NONE;
 }
 
 FText UYSWeaponUpgrade::GetVariantNameFor(const AYSPlayerCharacter* Character, int32 Variant) const
@@ -615,7 +632,8 @@ bool UYSWeaponUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 V
 	{
 	case EYSWeaponUpgradeTier::Unlock:	return !bUnlocked;
 	case EYSWeaponUpgradeTier::Bonus:	return bUnlocked && Progress.Stacks < MaxBonusStacks;
-	default:							return bUnlocked && Progress.Stacks == 0;
+	// une seule Golden par personnage : aucune déjà prise
+	default:							return bUnlocked && GetGoldenIndex(Variant) < GetGoldenCount() && FindTakenGolden(Character, Progress.PoolIndex) == INDEX_NONE;
 	}
 }
 
@@ -665,13 +683,22 @@ FText UYSWeaponUpgrade::GetDescription(const AYSPlayerCharacter* Character, int3
 	{
 	case EYSWeaponUpgradeTier::Unlock:	return UnlockDescription;
 	case EYSWeaponUpgradeTier::Bonus:	return BonusDescription.IsEmpty() ? Description : BonusDescription;
-	default:							return SuperDescription;
+	default:
+	{
+		const int32 Golden = GetGoldenIndex(Variant);
+		return GoldenVariants.IsValidIndex(Golden) ? GoldenVariants[Golden].Description : SuperDescription;
+	}
 	}
 }
 
 void UYSWeaponUpgrade::GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const
 {
 	Super::GetOfferCard(Character, Variant, Progress, Rarity, OutCard);
+	const int32 Golden = GetGoldenIndex(Variant);
+	if (GoldenVariants.IsValidIndex(Golden) && GoldenVariants[Golden].Icon)
+	{
+		OutCard.Icon = GoldenVariants[Golden].Icon;
+	}
 	if (GetTier(Variant) != EYSWeaponUpgradeTier::Bonus)
 	{
 		return;
@@ -694,9 +721,10 @@ void UYSWeaponUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, const
 
 	const bool bUnlocked = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Unlock)).Stacks > 0;
 	const float BonusTotal = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Bonus)).TotalValue;
-	const bool bSuper = Character->GetUpgradeProgress(Progress.PoolIndex, MakeVariant(EYSWeaponUpgradeTier::Super)).Stacks > 0;
-	ApplyWeaponProperty(Character, bUnlocked, BonusTotal, bSuper);
-	UE_LOG(LogTemp, Log, TEXT("[YSWeaponUpgrade] %s : %s (débloqué %d, bonus %.3f, super %d)"), *Character->GetName(), *GetVariantNameFor(Character, Variant).ToString(), bUnlocked, BonusTotal, bSuper);
+	const int32 Golden = FindTakenGolden(Character, Progress.PoolIndex);
+	ApplyWeaponGolden(Character, bUnlocked, BonusTotal, Golden);
+	UE_LOG(LogTemp, Log, TEXT("[YSWeaponUpgrade] %s : %s (débloqué %d, bonus %.3f, Golden %s)"), *Character->GetName(), *GetVariantNameFor(Character, Variant).ToString(), bUnlocked, BonusTotal,
+		Golden == INDEX_NONE ? TEXT("aucune") : *GetVariantName(Golden + 2).ToString());
 }
 
 UYSMoveActionUpgrade::UYSMoveActionUpgrade()
@@ -733,26 +761,6 @@ bool UYSMoveActionUpgrade::HasAnyMoveAction(const AYSPlayerCharacter* Character)
 	return false;
 }
 
-FText UYSMoveActionUpgrade::GetVariantName(int32 Variant) const
-{
-	const int32 Golden = GetGoldenIndex(Variant);
-	if (Golden != INDEX_NONE)
-	{
-		return GoldenVariants.IsValidIndex(Golden) ? GoldenVariants[Golden].Name : SuperName;
-	}
-	return Super::GetVariantName(Variant);
-}
-
-FText UYSMoveActionUpgrade::GetDescription(const AYSPlayerCharacter* Character, int32 Variant) const
-{
-	const int32 Golden = GetGoldenIndex(Variant);
-	if (Golden != INDEX_NONE)
-	{
-		return GoldenVariants.IsValidIndex(Golden) ? GoldenVariants[Golden].Description : SuperDescription;
-	}
-	return Super::GetDescription(Character, Variant);
-}
-
 bool UYSMoveActionUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress) const
 {
 	const int32 PoolIndex = FindPoolIndex(Character);
@@ -782,16 +790,6 @@ bool UYSMoveActionUpgrade::CanBeOffered(const AYSPlayerCharacter* Character, int
 		}
 		return true;
 	}
-	}
-}
-
-void UYSMoveActionUpgrade::GetOfferCard(const AYSPlayerCharacter* Character, int32 Variant, const FYSUpgradeProgress& Progress, EYSUpgradeRarity Rarity, FYSUpgradeCard& OutCard) const
-{
-	Super::GetOfferCard(Character, Variant, Progress, Rarity, OutCard);
-	const int32 Golden = GetGoldenIndex(Variant);
-	if (GoldenVariants.IsValidIndex(Golden) && GoldenVariants[Golden].Icon)
-	{
-		OutCard.Icon = GoldenVariants[Golden].Icon;
 	}
 }
 
@@ -876,6 +874,68 @@ UYSBloodlustUpgrade::UYSBloodlustUpgrade()
 void UYSBloodlustUpgrade::ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const
 {
 	Character->SetBloodlust(bUnlocked ? MaxStacks : 0, StackDuration, AtkSpeedPerStack + BonusTotal, bUnlocked && bSuper);
+}
+
+void UYSBloodlustUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const
+{
+	// 0 Critical Blood (Auto swing critiques au maximum de stacks), 1 Blood Swords (stacks -> Self Spinning Sword)
+	ApplyWeaponProperty(Character, bUnlocked, BonusTotal, GoldenIndex == 0);
+	Character->SetBloodSwords(bUnlocked && GoldenIndex == 1);
+}
+
+const FName UYSGunWasBetterUpgrade::GunDamageBonusStat(TEXT("GunWasBetterDamage"));
+const FName UYSGunWasBetterUpgrade::StylishSequenceStat(TEXT("StylishSequence"));
+const FName UYSGunWasBetterUpgrade::MarkForDeleteStat(TEXT("MarkForDelete"));
+
+UYSGunWasBetterUpgrade::UYSGunWasBetterUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "GunWasBetterName", "The Gun was better");
+	RequiredActionClass = UYSDashingSlashAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::Ability;
+	bShardSystem = true;
+	MaxBonusStacks = 5;
+	BonusSilverValue = 0.2f;
+	BonusGoldValue = 0.2f;
+	UnlockName = NSLOCTEXT("YS", "GunWasBetterUnlockName", "The Gun was better");
+	UnlockDescription = NSLOCTEXT("YS", "GunWasBetterUnlockDesc", "Une Sword en main principale\net un Pistolet qui tire tout seul");
+	BonusName = NSLOCTEXT("YS", "GunWasBetterBonusName", "The Gun was better ++");
+	BonusDescription = NSLOCTEXT("YS", "GunWasBetterBonusDesc", "+20 % de dégâts de base pour le Pistolet");
+	BonusStatLabel = NSLOCTEXT("YS", "GunWasBetterBonusStat", "Dégâts de base du Pistolet");
+	SuperName = NSLOCTEXT("YS", "GunWasBetterSuperName", "Stylish Sequence");
+}
+
+float UYSGunWasBetterUpgrade::GetBonusBaseValue(const AYSPlayerCharacter* Character) const
+{
+	// Damage de l'action de tir qui lit le bonus (Auto shot du Pistolet)
+	for (const AYSWeapon* Weapon : { Character ? Character->GetMainHandWeapon() : nullptr, Character ? Character->GetOffHandWeapon() : nullptr })
+	{
+		if (!Weapon)
+		{
+			continue;
+		}
+		TInlineComponentArray<UYSCoupDPetoirAbility*> Guns(Weapon);
+		for (const UYSCoupDPetoirAbility* Gun : Guns)
+		{
+			if (Gun->BaseDamageBonusStat == GunDamageBonusStat)
+			{
+				return Gun->Damage;
+			}
+		}
+	}
+	return 0.0f;
+}
+
+void UYSGunWasBetterUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const
+{
+	Character->SetWeaponStat(GunDamageBonusStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(StylishSequenceStat, bUnlocked && GoldenIndex == 0 ? StylishSwordLevel : 0.0f);
+	Character->SetWeaponStat(MarkForDeleteStat, bUnlocked && GoldenIndex == 1 ? 1.0f : 0.0f);
+	// Déblocage : Sword + Pistolet (changement de set = nouveau personnage, qui réapplique ses upgrades : rien de plus alors)
+	if (bUnlocked && UnlockWeaponSet && Character->GetWeaponSet() != UnlockWeaponSet)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSWeaponUpgrade] %s : The Gun was better -> set %s"), *Character->GetName(), *UnlockWeaponSet->GetName());
+		Character->ChangeWeaponSet(UnlockWeaponSet);
+	}
 }
 
 UYSBloodRageUpgrade::UYSBloodRageUpgrade()

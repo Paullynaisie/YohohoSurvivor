@@ -127,6 +127,14 @@ void UYSDashingSlashAbility::TickComponent(float DeltaTime, ELevelTick TickType,
 	{
 		bDashKickApplied = true;
 		ApplyPhaseKick(1);
+		// fin du pas en arrière (serveur) : Blood Swords
+		if (GetOwner()->HasAuthority())
+		{
+			if (AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn()))
+			{
+				Character->OnAbilityStepBackFinished();
+			}
+		}
 	}
 	SetPassThroughPawns(PassesThroughPawns(Phase));
 }

@@ -47,6 +47,12 @@ struct FYSProjectileExplosion
 	FGameplayTagContainer BlastHitTags;
 };
 
+class AYSProjectile;
+class AYSFoeCharacter;
+
+/** Serveur : un NME vient de prendre les dégâts de la balle (tué ou non) */
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FYSProjectileFoeHit, AYSProjectile* /*Projectile*/, AYSFoeCharacter* /*Foe*/, bool /*bKilled*/);
+
 /**
  *  Projectile en ligne droite (à hauteur constante au-dessus du relief si bFollowGround). Touche uniquement les acteurs portant un des HitTags
  *  (via IGameplayTagAssetInterface), traverse les autres pawns, est détruit contre le décor.
@@ -342,6 +348,18 @@ public:
 
 	/** Sniper : la balle traverse les NME et en touche Count avant de disparaître (1 = s'arrête au premier) */
 	void SetMaxHits(int32 Count) { MaxHits = FMath::Max(1, Count); }
+
+	/** Stylish Sequence : marque (YSStylish) posée sur chaque NME touché, si le tireur a la Golden */
+	void SetStylishMark(uint8 Mark) { StylishMark = Mark; }
+
+	/** Serveur : appelé à chaque NME touché (Mark for Delete : NME touchés par ses tirs) */
+	FYSProjectileFoeHit OnFoeHit;
+
+private:
+
+	uint8 StylishMark = 0;
+
+public:
 
 	/** « Roll, bomb and shot » : la balle fait exploser (critique) les bombes de son tireur qu'elle touche */
 	void SetDetonatesBombs(bool bDetonates) { bDetonatesBombs = bDetonates; }

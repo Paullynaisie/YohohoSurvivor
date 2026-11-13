@@ -38,6 +38,15 @@ class UTexture2D;
 class UWidgetComponent;
 class UMaterialInterface;
 class AYSFoeCharacter;
+
+/** Stylish Sequence (Golden de The Gun was better) : marques posées sur un NME par les attaques du joueur */
+namespace YSStylish
+{
+	constexpr uint8 SwordAuto = 1 << 0;
+	constexpr uint8 GunAuto = 1 << 1;
+	constexpr uint8 Ability = 1 << 2;
+	constexpr uint8 All = SwordAuto | GunAuto | Ability;
+}
 struct FInputActionValue;
 
 /**
@@ -618,6 +627,10 @@ protected:
 	/** Golden bloodlust : Auto swing critiques au maximum de stacks */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
 	bool bGoldenBloodlust = false;
+
+	/** Blood Swords (serveur) : BL stacks consommées en Self Spinning Sword à la fin du pas en arrière de l'Ability */
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
+	bool bBloodSwords = false;
 
 	/** Temps serveur où les stacks sont perdues */
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Bloodlust")
@@ -1307,6 +1320,18 @@ public:
 
 	/** Bloodlust réglé par l'upgrade (serveur) : MaxStacks 0 = désactivé (stacks remises à 0) */
 	void SetBloodlust(int32 MaxStacks, float Duration, float AtkSpeedPerStack, bool bGolden);
+
+	/** Blood Swords (Golden du Bloodlust, serveur) : à la fin du pas en arrière de l'Ability, BL stacks -> Self Spinning Sword */
+	void SetBloodSwords(bool bEnabled) { bBloodSwords = bEnabled; }
+
+	/** Serveur : fin du pas en arrière de l'Ability (Dashing Slash, Mark for Delete) ; Blood Swords */
+	void OnAbilityStepBackFinished();
+
+	/**
+	 *  Serveur, Stylish Sequence : une attaque du joueur (Mark : YSStylish) a touché Target ; aux 3 marques, elles disparaissent
+	 *  et une Spinning Sword (levels : propriété d'arme StylishSequence) apparaît sur le NME. Sans la Golden : rien.
+	 */
+	void RegisterStylishMark(AActor* Target, uint8 Mark);
 
 	/** Aiming (serveur, upgrade) : délai immobile avant les critiques (0 = pas débloqué), Golden aiming */
 	void SetAiming(float Delay, bool bGolden);

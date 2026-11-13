@@ -49,10 +49,10 @@ void AYSSpinningSword::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME_CONDITION(AYSSpinningSword, SpawnServerTime, COND_InitialOnly);
 }
 
-AYSSpinningSword* AYSSpinningSword::GiveLevel(AYSPlayerCharacter* Character, bool bInSelf, const FVector& Location)
+AYSSpinningSword* AYSSpinningSword::GiveLevel(AYSPlayerCharacter* Character, bool bInSelf, const FVector& Location, int32 Levels, bool bAllowMerge)
 {
 	UWorld* World = Character ? Character->GetWorld() : nullptr;
-	if (!World || !Character->HasAuthority())
+	if (!World || !Character->HasAuthority() || Levels <= 0)
 	{
 		return nullptr;
 	}
@@ -63,7 +63,7 @@ AYSSpinningSword* AYSSpinningSword::GiveLevel(AYSPlayerCharacter* Character, boo
 		SpawnClass = AYSSpinningSword::StaticClass();
 	}
 
-	// déjà là : un level de plus
+	// déjà là : des levels en plus (Self toujours ; posée : seulement si la fusion est permise)
 	for (TActorIterator<AYSSpinningSword> It(World); It; ++It)
 	{
 		AYSSpinningSword* Existing = *It;
@@ -71,9 +71,9 @@ AYSSpinningSword* AYSSpinningSword::GiveLevel(AYSPlayerCharacter* Character, boo
 		{
 			continue;
 		}
-		if (bInSelf || FVector::Dist2D(Existing->GetActorLocation(), Location) <= Existing->MergeRadius)
+		if (bInSelf || (bAllowMerge && FVector::Dist2D(Existing->GetActorLocation(), Location) <= Existing->MergeRadius))
 		{
-			Existing->AddLevel();
+			Existing->AddLevel(Levels);
 			return Existing;
 		}
 	}
@@ -112,17 +112,17 @@ AYSSpinningSword* AYSSpinningSword::GiveLevel(AYSPlayerCharacter* Character, boo
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s : nouvelle %s (%s) en (%.0f, %.0f, %.0f)"), *Character->GetName(), *Sword->GetName(),
 		bInSelf ? TEXT("Self") : TEXT("posée"), Ground.X, Ground.Y, Ground.Z);
-	Sword->AddLevel();
+	Sword->AddLevel(Levels);
 	return Sword;
 }
 
-void AYSSpinningSword::AddLevel()
+void AYSSpinningSword::AddLevel(int32 Count)
 {
-	if (!HasAuthority())
+	if (!HasAuthority() || Count <= 0)
 	{
 		return;
 	}
-	Level = FMath::Min(Level + 1, FMath::Max(MaxLevel, 1));
+	Level = FMath::Min(Level + Count, FMath::Max(MaxLevel, 1));
 	GetWorldTimerManager().SetTimer(LevelTimer, this, &AYSSpinningSword::LoseLevel, LevelDuration, true);
 	ForceNetUpdate();
 	UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s : level %d (délai relancé, %.1f s)"), *GetName(), Level, LevelDuration);
@@ -276,7 +276,8 @@ void AYSSpinningSword::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	if (HasAuthority() && !GetOwnerCharacter())
+	// propriétaire détruit (mort, changement de classe ou de set = nouveau personnage) : la Spinning Sword disparaît
+	if (HasAuthority() && !IsValid(GetOwnerCharacter()))
 	{
 		Destroy();
 		return;

@@ -881,6 +881,12 @@ public:
 	/** Atk critique : compte une balle d'attaque auto reçue de Shooter ; vrai si c'est la N-ième (critique ; serveur) */
 	bool RegisterCriticalBullet(const AActor* Shooter, int32 Interval);
 
+	/**
+	 *  Stylish Sequence (serveur) : ajoute la marque Mark de Player ; vrai (et marques de ce joueur effacées) quand toutes celles
+	 *  d'AllMarks sont réunies
+	 */
+	bool AddStylishMark(const AActor* Player, uint8 Mark, uint8 AllMarks);
+
 	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override { TagContainer.AppendTags(GameplayTags); }
 
 	UFUNCTION(BlueprintPure, Category="Foe|Health")
@@ -1553,6 +1559,9 @@ private:
 
 	/** Atk critique : balles d'attaque auto reçues de chaque tireur (serveur) */
 	TMap<TWeakObjectPtr<const AActor>, int32> CriticalBulletCounts;
+
+	/** Stylish Sequence : marques posées par chaque joueur (serveur) */
+	TMap<TWeakObjectPtr<const AActor>, uint8> StylishMarks;
 
 	/** Prochain instant (temps du monde) où chaque joueur touché peut reprendre des dégâts de contact */
 	TMap<TWeakObjectPtr<AActor>, double> NextContactDamageTime;

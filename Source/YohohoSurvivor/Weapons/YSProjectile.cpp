@@ -582,6 +582,16 @@ void AYSProjectile::HitTarget(AActor* OtherActor, const FHitResult& SweepResult)
 		OtherActor->TakeDamage(HitDamage, DamageEvent, GetInstigatorController(), this);
 	}
 
+	if (TargetFoe)
+	{
+		// Mark for Delete : NME touché (ou tué) par un de ses tirs ; Stylish Sequence : marque de l'attaque auto du pistolet
+		OnFoeHit.Broadcast(this, TargetFoe, TargetFoe->GetHealth() <= 0.0f || TargetFoe->IsActorBeingDestroyed());
+		if (AYSPlayerCharacter* StylishShooter = StylishMark != 0 ? Cast<AYSPlayerCharacter>(GetInstigator()) : nullptr)
+		{
+			StylishShooter->RegisterStylishMark(TargetFoe, StylishMark);
+		}
+	}
+
 	// shoot system Explosif : explosion à l'impact (critique si l'impact l'est), ou mine collée au NME (MineShooter)
 	if (TargetFoe && (Explosion.ExplosionClass || Explosion.StickyMineClass))
 	{

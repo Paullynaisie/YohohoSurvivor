@@ -3501,6 +3501,23 @@ void AYSFoeCharacter::MulticastRangedAttack_Implementation(bool bLeftWeapon, int
 	}
 }
 
+bool AYSFoeCharacter::AddStylishMark(const AActor* Player, uint8 Mark, uint8 AllMarks)
+{
+	if (!Player || Mark == 0)
+	{
+		return false;
+	}
+	uint8& Marks = StylishMarks.FindOrAdd(Player);
+	Marks |= Mark;
+	UE_LOG(LogTemp, Verbose, TEXT("[YSStylish] %s : marque %d de %s (marques %d / %d)"), *GetName(), Mark, *Player->GetName(), Marks, AllMarks);
+	if ((Marks & AllMarks) != AllMarks)
+	{
+		return false;
+	}
+	StylishMarks.Remove(Player);
+	return true;
+}
+
 bool AYSFoeCharacter::RegisterCriticalBullet(const AActor* Shooter, int32 Interval)
 {
 	if (!Shooter || Interval <= 0)
