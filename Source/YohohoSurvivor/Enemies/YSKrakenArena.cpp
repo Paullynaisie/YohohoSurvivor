@@ -27,6 +27,7 @@ AYSKrakenArena::AYSKrakenArena()
 	if (PreviewMaterial.Succeeded())
 	{
 		WaterMaterial = PreviewMaterial.Object;
+		CurrentVfxMaterial = PreviewMaterial.Object;
 	}
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	if (CubeMesh.Succeeded())
@@ -44,6 +45,7 @@ void AYSKrakenArena::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AYSKrakenArena, CurrentStage);
+	DOREPLIFETIME(AYSKrakenArena, FightStartServerTime);
 }
 
 AYSKrakenArena* AYSKrakenArena::Find(const UWorld* World)
@@ -86,6 +88,15 @@ void AYSKrakenArena::BeginPlay()
 	}
 	GuideDashes->SetVisibility(false);
 
+	// VFX permanent du courant pendant le combat (local, toutes machines)
+	CurrentVfx = NewObject<UProceduralMeshComponent>(this, TEXT("CurrentVfx"));
+	CurrentVfx->SetupAttachment(GetRootComponent());
+	CurrentVfx->SetUsingAbsoluteRotation(true);
+	CurrentVfx->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	CurrentVfx->SetCastShadow(false);
+	CurrentVfx->RegisterComponent();
+	CurrentVfx->SetVisibility(false);
+
 	UE_LOG(LogTemp, Log, TEXT("[YSKrakenArena] Boss fight final en %s (rayon %.0f m)"), *GetActorLocation().ToCompactString(), Radius / 100.0f);
 }
 
@@ -96,6 +107,13 @@ void AYSKrakenArena::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		if (AYSPirateShip* Boat = GetGameBoat())
 		{
 			Boat->SetGrappled(false);
+		}
+	}
+	if (HasAuthority() && bCurrentApplied)
+	{
+		if (AYSPirateShip* Boat = GetGameBoat())
+		{
+			Boat->SetCurrent(FYSShipCurrent());
 		}
 	}
 	Super::EndPlay(EndPlayReason);
@@ -164,7 +182,74 @@ void AYSKrakenArena::Tick(float DeltaSeconds)
 	if (HasAuthority())
 	{
 		TickFight();
+		UpdateBoatCurrent();
 	}
+	UpdateCurrentVfx();
+}
+
+void AYSKrakenArena::UpdateBoatCurrent()
+{
+	// étapes 1 à 3 : le courant tire le bateau des joueurs vers le centre (posé une fois, simulé par le bateau sur chaque machine)
+	const bool bWanted = bArenaCurrent && CurrentStage >= 1 && CurrentStage <= 3;
+	if (bWanted == bCurrentApplied)
+	{
+		return;
+	}
+	AYSPirateShip* Boat = GetGameBoat();
+	if (!Boat)
+	{
+		return;
+	}
+	bCurrentApplied = bWanted;
+	FYSShipCurrent NewCurrent;
+	if (bWanted)
+	{
+		NewCurrent.bActive = true;
+		NewCurrent.Center = GetActorLocation();
+		NewCurrent.Radius = Radius;
+		NewCurrent.CalmRadiusRatio = CurrentCalmRadiusRatio;
+		NewCurrent.CalmSpeedRatio = CurrentCalmSpeedRatio;
+		NewCurrent.EdgeSpeedRatio = CurrentEdgeSpeedRatio;
+		NewCurrent.OutsideSpeedRatio = CurrentOutsideSpeedRatio;
+		NewCurrent.Exponent = CurrentExponent;
+	}
+	Boat->SetCurrent(NewCurrent);
+	UE_LOG(LogTemp, Log, TEXT("[YSKrakenArena] Courant %s (calme jusqu'à %.0f %% du rayon : %.2f, bord : %.2f de la vitesse max)"), bWanted ? TEXT("posé") : TEXT("retiré"),
+		CurrentCalmRadiusRatio * 100.0f, CurrentCalmSpeedRatio, CurrentEdgeSpeedRatio);
+}
+
+void AYSKrakenArena::UpdateCurrentVfx()
+{
+	const bool bActive = CurrentVfx && bArenaCurrent && CurrentStage >= 1 && CurrentStage <= 3;
+	if (!bActive)
+	{
+		if (bCurrentVfxVisible && CurrentVfx)
+		{
+			bCurrentVfxVisible = false;
+			CurrentVfx->SetVisibility(false);
+			CurrentVfx->ClearAllMeshSections();
+		}
+		return;
+	}
+	if (!bCurrentVfxVisible)
+	{
+		bCurrentVfxVisible = true;
+		CurrentVfx->SetVisibility(true);
+	}
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	YSKraken::FSuctionVfxSettings Settings;
+	Settings.InnerRadius = CurrentVfxInnerRadius;
+	Settings.OuterRadius = CurrentVfxOuterRadius > 0.0f ? CurrentVfxOuterRadius : Radius;
+	Settings.RingCount = CurrentVfxRingCount;
+	Settings.RingPeriod = CurrentVfxRingPeriod;
+	Settings.RingWidth = CurrentVfxRingWidth;
+	Settings.SpiralArms = CurrentVfxSpiralArms;
+	Settings.SpinSpeed = CurrentVfxSpinSpeed;
+	Settings.Color = CurrentVfxColor;
+	// au niveau de la mer (l'arène est posée dessus), au-dessus du disque d'eau sombre
+	Settings.HeightAboveSea = CurrentVfxHeightAboveSea;
+	YSKraken::BuildSuctionVfx(CurrentVfx, static_cast<float>(Now - FightStartServerTime), Settings, CurrentVfxMaterial);
 }
 
 AYSPirateShip* AYSKrakenArena::GetGameBoat() const
@@ -294,6 +379,8 @@ void AYSKrakenArena::StartStage(int32 Stage, const TCHAR* Reason)
 	const int32 Previous = CurrentStage;
 	if (Previous == 0)
 	{
+		const AGameStateBase* GameState = GetWorld()->GetGameState();
+		FightStartServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
 		// partie 3 : toutes les îles coulent, « Affrontez le Kraken »
 		if (AYSFlowMode* FlowMode = GetWorld()->GetAuthGameMode<AYSFlowMode>())
 		{
@@ -331,7 +418,7 @@ void AYSKrakenArena::StartStage(int32 Stage, const TCHAR* Reason)
 	UpdateBossBar();
 }
 
-AYSKrakenPart* AYSKrakenArena::SpawnPart(UClass* Class, const FVector& Location, float EmergeStagger)
+AYSKrakenPart* AYSKrakenArena::SpawnPart(UClass* Class, const FVector& Location, float EmergeStagger, bool bEmergeNow)
 {
 	if (!Class)
 	{
@@ -347,6 +434,10 @@ AYSKrakenPart* AYSKrakenArena::SpawnPart(UClass* Class, const FVector& Location,
 	if (AYSKrakenTentacle* Tentacle = Cast<AYSKrakenTentacle>(Part))
 	{
 		Tentacle->SetEmergeStagger(EmergeStagger);
+		if (bEmergeNow)
+		{
+			Tentacle->SetEmergeImmediately();
+		}
 	}
 	Part->FinishSpawning(Transform);
 	Parts.Add(Part);
@@ -360,12 +451,14 @@ void AYSKrakenArena::SpawnStageParts(int32 Stage)
 	// tentacules : sous l'eau autour du centre (elles sortent près du bateau après leur délai)
 	// (première sortie décalée de Tentacle Stagger de l'une à l'autre : elles ne tirent pas toutes en même temps)
 	int32 TentacleIndex = 0;
-	const auto SpawnTentacles = [this, &Center, &TentacleIndex](UClass* Class, int32 Count, float AngleOffset)
+	// étape 2 (2026-11-13, demande de Paul) : toutes les tentacules sortent tout de suite, sans décalage
+	const bool bEmergeNow = Stage == 2 && bStage2EmergeImmediately;
+	const auto SpawnTentacles = [this, &Center, &TentacleIndex, bEmergeNow](UClass* Class, int32 Count, float AngleOffset)
 	{
 		for (int32 Index = 0; Index < Count; ++Index)
 		{
 			const float Angle = FMath::DegreesToRadians(AngleOffset + 360.0f * Index / FMath::Max(Count, 1));
-			SpawnPart(Class, Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * 4000.0f, TentacleStagger * TentacleIndex++);
+			SpawnPart(Class, Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * 4000.0f, bEmergeNow ? 0.0f : TentacleStagger * TentacleIndex++, bEmergeNow);
 		}
 	};
 	StageMaxHealth = 0.0f;
@@ -501,7 +594,8 @@ void AYSKrakenArena::DebugKillStage()
 	{
 		if (Part.IsValid() && (CurrentStage != 1 || Part->IsA<AYSKrakenHead>()))
 		{
-			Part->TakeDamage(Part->GetHealth() + 1.0f, FDamageEvent(), nullptr, this);
+			// PV mis à 0 directement (un coup serait réduit par la Kraken Boss Armor)
+			Part->DebugSetHealth(0.0f);
 		}
 	}
 }

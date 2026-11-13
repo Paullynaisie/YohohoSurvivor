@@ -7,7 +7,7 @@
 /**
  *  « Booster de moral » (MoveAction) : coûte Stamina Cost (65) ; le personnage se fige Raise Hands Duration (0.5 s) en levant les
  *  mains ; tous les joueurs ET minions vivants (HiredMouss compris, lui aussi si Include Self) à moins de Radius (15 m, à plat) gagnent
- *  x Speed Multiplier de vitesse pendant Duration (3 s, + 1 s par Booster de moral ++) : AYSPlayerCharacter::ApplyMoraleBoost, pas
+ *  x Speed Multiplier de vitesse pendant Duration (5 s, + 1 s par Booster de moral ++) : AYSPlayerCharacter::ApplyMoraleBoost, pas
  *  cumulable (un boost actif garde le plus grand bonus et la fin la plus lointaine), FX au-dessus des personnages boostés.
  *  Golden (ordre des variantes de DA_Up_MoveAction_MoraleBoost), pour tous les boostés :
  *  0 Motivé pour cogner : dégâts x (1 + Golden Damage Bonus) ;  1 Motivé pour tuer : leur prochaine attaque auto est critique ;
@@ -32,7 +32,7 @@ public:
 
 	/** Durée du bonus (+ bonus des Booster de moral ++) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Morale Boost", meta=(ClampMin="0", Units="Seconds"))
-	float Duration = 3.0f;
+	float Duration = 5.0f;
 
 	/** Le personnage profite aussi du bonus */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Morale Boost")

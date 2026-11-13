@@ -192,6 +192,34 @@ float AYSIsland::GetRadius() const
 	return Data ? Data->Generation.Radius : 0.0f;
 }
 
+FVector AYSIsland::GetCenterLocation() const
+{
+	return Data ? LocalToWorld(Plan.CenterSpot, Data->Generation.PlateauHeight) : GetActorLocation();
+}
+
+bool AYSIsland::FindFreeCenterGround(FVector& OutGround) const
+{
+	const AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
+	if (!GameMode || !Data)
+	{
+		return false;
+	}
+	for (int32 Ring = 0; Ring <= YSIslandActor::CenterRingCount; ++Ring)
+	{
+		const int32 Spots = Ring == 0 ? 1 : YSIslandActor::CenterRingSpots;
+		for (int32 Index = 0; Index < Spots; ++Index)
+		{
+			const float Angle = 2.0f * PI * Index / Spots;
+			const FVector2f Spot = Plan.CenterSpot + FVector2f(FMath::Cos(Angle), FMath::Sin(Angle)) * (Ring * YSIslandActor::CenterRingStep);
+			if (IsSpotFree(Spot, YSIslandActor::SpotMargin) && GameMode->FindIslandGround(LocalToWorld(Spot, Data->Generation.PlateauHeight), OutGround))
+			{
+				return true;
+			}
+		}
+	}
+	return GameMode->FindIslandGround(GetCenterLocation(), OutGround);
+}
+
 void AYSIsland::BeginPlay()
 {
 	Super::BeginPlay();

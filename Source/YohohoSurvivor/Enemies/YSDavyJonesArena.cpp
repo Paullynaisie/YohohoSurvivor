@@ -112,6 +112,13 @@ void AYSDavyJonesArena::TickFight()
 		return;
 	}
 
+	// mise en scène du début (pas encore de Davy Jones)
+	if (State == EYSDavyJonesState::Intro)
+	{
+		TickIntro(GetWorld()->GetTimeSeconds() - StateStartTime);
+		return;
+	}
+
 	// Davy Jones mort : victoire
 	if (!IsDavyAlive())
 	{
@@ -206,16 +213,60 @@ void AYSDavyJonesArena::StartFight(const TCHAR* Reason)
 	// tout le combat : invulnérable, ignoré par les NME, postes de combat bloqués
 	PlayerBoat->SetBossFightLocked(true);
 
-	SpawnGalions();
+	// mise en scène (TickIntro) : bateau arrêté, Galions qui sortent de l'eau, planches, puis Davy Jones et le combat
 	Phase = 0;
-	SpawnDavy();
+	IntroStep = 0;
 	if (AYSGameState* MutableState = GetWorld()->GetGameState<AYSGameState>())
 	{
 		MutableState->SetDavyJonesState(true, false);
 	}
-	if (IsDavyAlive())
+	SetState(EYSDavyJonesState::Intro);
+	UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] Mise en scène : Galions dans %.1f s (sortie de l'eau en %.1f s), Davy Jones %.1f s après les planches"),
+		IntroGalionDelay, IntroGalionRiseDuration, IntroDavyDelay);
+}
+
+void AYSDavyJonesArena::TickIntro(double Elapsed)
+{
+	// 1) le bateau est arrêté ; Intro Galion Delay plus tard, les Galions sortent de l'eau (Intro Galion Rise Duration)
+	if (IntroStep == 0 && Elapsed >= IntroGalionDelay)
 	{
-		BeginSummon();
+		IntroStep = 1;
+		SpawnGalions();
+		if (Galions.Num() == 0)
+		{
+			// pas de Galion : Davy Jones tout de suite sur le bateau des joueurs
+			IntroStep = 3;
+		}
+	}
+	// 2) tous sortis de l'eau : planches d'abordage
+	const double RiseEnd = IntroGalionDelay + IntroGalionRiseDuration;
+	if (IntroStep == 1 && Elapsed >= RiseEnd && !Galions.ContainsByPredicate([](const AYSFoeGalion* Galion) { return IsValid(Galion) && Galion->IsRising(); }))
+	{
+		IntroStep = 2;
+		for (AYSFoeGalion* Galion : Galions)
+		{
+			if (IsValid(Galion))
+			{
+				Galion->StartScriptedBoarding(PlayerBoat);
+			}
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] Galions sortis de l'eau : planches d'abordage"));
+	}
+	// 3) Intro Davy Delay après les planches : Davy Jones sur la plateforme du Galion du milieu (proue), puis le combat
+	if ((IntroStep == 2 && Elapsed >= RiseEnd + IntroDavyDelay) || IntroStep == 3)
+	{
+		IntroStep = 4;
+		// Galion du milieu = celui de la proue, en travers (dernier posé par SpawnGalions)
+		SpawnDavy(Galions.Num() >= 3 ? 2 : INDEX_NONE);
+		if (IsDavyAlive())
+		{
+			BeginSummon();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[YSDavyJones] Davy Jones n'a pas pu apparaître"));
+			SetState(EYSDavyJonesState::Fighting);
+		}
 	}
 }
 
@@ -279,17 +330,21 @@ bool AYSDavyJonesArena::SpawnGalions()
 		}
 		Galion->FinishSpawning(Transform);
 		Galion->SyncMotionToActor();
-		Galion->StartScriptedBoarding(PlayerBoat);
+		// mise en scène : immobile, sort de l'eau ; les planches sont posées une fois tous sortis (TickIntro)
+		Galion->SetGrappled(true);
+		Galion->StartRiseFromSea(IntroGalionRiseDuration, IntroGalionRiseDepth);
 		Galions.Add(Galion);
 		UE_LOG(LogTemp, Log, TEXT("[YSDavyJones] %s en %s (yaw %.0f)"), *Galion->GetName(), *Location.ToCompactString(), Transform.Rotator().Yaw);
 	}
 	return Galions.Num() > 0;
 }
 
-void AYSDavyJonesArena::SpawnDavy()
+void AYSDavyJonesArena::SpawnDavy(int32 GalionIndex)
 {
 	const TArray<AYSFoeGalion*> Live = GetLiveGalions();
-	DavyGalion = Live.Num() > 0 ? Live[FMath::RandRange(0, Live.Num() - 1)] : nullptr;
+	// Galion voulu (début du combat : celui du milieu) s'il est à flot, sinon un Galion au hasard
+	AYSFoeGalion* Wanted = Galions.IsValidIndex(GalionIndex) && Live.Contains(Galions[GalionIndex].Get()) ? Galions[GalionIndex].Get() : nullptr;
+	DavyGalion = Wanted ? Wanted : Live.Num() > 0 ? Live[FMath::RandRange(0, Live.Num() - 1)] : nullptr;
 	FVector Feet = FindDescendPoint();
 	if (DavyGalion && !DavyGalion->GetPlatformTop(Feet))
 	{

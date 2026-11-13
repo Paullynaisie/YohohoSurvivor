@@ -7,7 +7,7 @@
 /**
  *  « Run » (MoveAction maintenue, demande de Paul du 2026-11-13) : Stamina Cost (20) = Min Duration (1 s) de course, puis
  *  Stamina Per Second (10) tant qu'Espace est tenu ; vitesse x (Run Speed Multiplier + bonus des ++). Attaquer ou lancer une
- *  Ability arrête la course. Run ++ (UYSMoveActionUpgrade) : + Bonus Gold Value (0.05) de vitesse chacun (x1.25 -> x1.5).
+ *  Ability arrête la course. Run ++ (UYSMoveActionUpgrade) : + Bonus Gold Value (0.1) de vitesse chacun (x1.5 -> x2).
  *  Golden (ordre des variantes de DA_Up_MoveAction_Run) :
  *  0 Free running : intangible pendant la course (traverse les NME et les joueurs) ;
  *  1 Fenwick : course possible en portant un objet, et le port ne consomme plus de stamina pendant la course ;
@@ -21,9 +21,9 @@ class UYSRunAbility : public UYSSustainedMoveActionAbility
 
 public:
 
-	/** Vitesse de déplacement x ce multiplicateur pendant la course (1.25 = +25 % ; + bonus des Run ++) */
+	/** Vitesse de déplacement x ce multiplicateur pendant la course (1.5 = +50 % ; + bonus des Run ++) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Run", meta=(ClampMin="0"))
-	float RunSpeedMultiplier = 1.25f;
+	float RunSpeedMultiplier = 1.5f;
 
 	/** Impulsion (Golden) : coût de l'activation */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Run|Golden", meta=(ClampMin="0"))

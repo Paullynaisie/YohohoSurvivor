@@ -1,6 +1,7 @@
 #include "Enemies/YSFoeCharacter.h"
 #include "Enemies/YSFoeGalion.h"
 #include "Ship/YSPirateShip.h"
+#include "Island/YSIsland.h"
 #include "Ship/YSShipCore.h"
 #include "Ship/YSShipStation.h"
 #include "AIController.h"
@@ -1680,6 +1681,17 @@ void AYSFoeCharacter::Tick(float DeltaSeconds)
 		UpdateFarTicking();
 	}
 
+	// élite / boss éjecté de son île ou coincé dans des props : téléporté au centre de l'île (serveur, 2 fois par seconde)
+	if (bIsElite && bEliteRescue && HasAuthority())
+	{
+		RescueCheckTimer -= DeltaSeconds;
+		if (RescueCheckTimer <= 0.0f)
+		{
+			RescueCheckTimer = 0.5f;
+			UpdateEliteRescue();
+		}
+	}
+
 	// mains : visuel local sur toutes les machines
 	UpdateHands(DeltaSeconds);
 
@@ -2230,6 +2242,10 @@ namespace YSFoeCrowd
 void AYSFoeCharacter::MoveBlockedBy(const FHitResult& Impact)
 {
 	Super::MoveBlockedBy(Impact);
+	if (bIsElite && bEliteRescue && HasAuthority())
+	{
+		NoteRescueBlock(Impact);
+	}
 	if (!bClimbWhenBlocked || !HasAuthority())
 	{
 		return;
@@ -2247,6 +2263,119 @@ void AYSFoeCharacter::MoveBlockedBy(const FHitResult& Impact)
 	}
 	LastClimbBlockTime = GetWorld()->GetTimeSeconds();
 	bLastClimbBlockOnShipSwimming = bSwimmerFullClimbOnShips && bFoeSwimming && AYSPirateShip::GetShipOf(Impact.GetActor()) != nullptr;
+}
+
+void AYSFoeCharacter::NoteRescueBlock(const FHitResult& Impact)
+{
+	// props (rochers, massifs, décor) : pas les personnages ni les bateaux
+	const AActor* HitActor = Impact.GetActor();
+	const UPrimitiveComponent* HitComponent = Impact.GetComponent();
+	const ECollisionChannel HitType = HitComponent ? HitComponent->GetCollisionObjectType() : ECC_WorldStatic;
+	if (!HitActor || HitType == ECC_Pawn || HitType == ECC_YSFoe || Cast<APawn>(HitActor) || AYSPirateShip::GetShipOf(HitActor))
+	{
+		return;
+	}
+	const double Now = GetWorld()->GetTimeSeconds();
+	// plus bloqué depuis 1 s : nouveau blocage, compté d'ici
+	if (RescueStuckSince < 0.0 || Now - RescueLastBlockedTime > 1.0)
+	{
+		RescueStuckSince = Now;
+		RescueStuckLocation = GetActorLocation();
+		RescueStuckActors.Reset();
+	}
+	RescueLastBlockedTime = Now;
+	RescueStuckActors.Add(const_cast<AActor*>(HitActor));
+}
+
+void AYSFoeCharacter::UpdateEliteRescue()
+{
+	// pas pendant une mise en scène, un équipage de Galion, à bord d'un Jolly Ship, mort ou en vol (bump, dash, apparition)
+	if (bArenaFoe || bScriptedHold || CrewShip || bLocalShipRide || Health <= 0.0f || IsDying() || IsImmovable()
+		|| bLocalBumpActive || bLocalBossDashActive || bLocalRiseActive)
+	{
+		RescueOffIslandSince = -1.0;
+		RescueStuckSince = -1.0;
+		return;
+	}
+
+	// île de départ : celle qui le contient la première fois (une seule fois)
+	if (!bRescueHomeChecked)
+	{
+		bRescueHomeChecked = true;
+		for (TActorIterator<AYSIsland> It(GetWorld()); It; ++It)
+		{
+			if (It->GetRadius() > 0.0f && FVector::Dist2D(It->GetCenterLocation(), GetActorLocation()) <= It->GetRadius() * EliteOffIslandRadiusRatio)
+			{
+				RescueHomeIsland = *It;
+				UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : île de départ %s (sauvetage après %.0f s hors de l'île ou coincé)"), *GetName(), *It->GetName(), EliteRescueDelay);
+				break;
+			}
+		}
+	}
+	AYSIsland* Island = RescueHomeIsland.Get();
+	if (!Island || Island->IsSinking() || !Island->IsEmerged())
+	{
+		RescueOffIslandSince = -1.0;
+		RescueStuckSince = -1.0;
+		return;
+	}
+
+	const double Now = GetWorld()->GetTimeSeconds();
+	// hors de l'île (éjecté, tombé à la mer...) depuis Elite Rescue Delay
+	const bool bOffIsland = FVector::Dist2D(Island->GetCenterLocation(), GetActorLocation()) > Island->GetRadius() * EliteOffIslandRadiusRatio;
+	if (!bOffIsland)
+	{
+		RescueOffIslandSince = -1.0;
+	}
+	else if (RescueOffIslandSince < 0.0)
+	{
+		RescueOffIslandSince = Now;
+		UE_LOG(LogTemp, Log, TEXT("[YSFoe] %s hors de son île %s (%.0f m du centre) : téléporté au centre dans %.0f s s'il n'y revient pas"), *GetName(), *Island->GetName(),
+			FVector::Dist2D(Island->GetCenterLocation(), GetActorLocation()) / 100.0f, EliteRescueDelay);
+	}
+	else if (Now - RescueOffIslandSince >= EliteRescueDelay)
+	{
+		TeleportToIslandCenter(TEXT("hors de son île"));
+		return;
+	}
+
+	// coincé : arrêté par des props sans s'éloigner de Elite Stuck Radius depuis Elite Rescue Delay
+	if (RescueStuckSince >= 0.0)
+	{
+		if (Now - RescueLastBlockedTime > 1.0 || FVector::Dist2D(GetActorLocation(), RescueStuckLocation) > EliteStuckRadius)
+		{
+			RescueStuckSince = -1.0;
+		}
+		else if (Now - RescueStuckSince >= EliteRescueDelay)
+		{
+			FString Props;
+			for (const TWeakObjectPtr<AActor>& Prop : RescueStuckActors)
+			{
+				Props += (Props.IsEmpty() ? TEXT("") : TEXT(", ")) + GetNameSafe(Prop.Get());
+			}
+			UE_LOG(LogTemp, Log, TEXT("[YSFoe] %s coincé contre %s depuis %.0f s"), *GetName(), *Props, Now - RescueStuckSince);
+			TeleportToIslandCenter(TEXT("coincé dans des props"));
+		}
+	}
+}
+
+void AYSFoeCharacter::TeleportToIslandCenter(const TCHAR* Reason)
+{
+	RescueOffIslandSince = -1.0;
+	RescueStuckSince = -1.0;
+	AYSIsland* Island = RescueHomeIsland.Get();
+	FVector Ground;
+	if (!Island || !Island->FindFreeCenterGround(Ground))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSFoe] %s (%s) : pas de sol au centre de %s, pas de téléportation"), *GetName(), Reason, *GetNameSafe(Island));
+		return;
+	}
+	const FVector From = GetActorLocation();
+	const float HalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	TeleportTo(Ground + FVector(0.0f, 0.0f, HalfHeight + 5.0f), GetActorRotation(), false, true);
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	UE_LOG(LogTemp, Log, TEXT("[YSFoe] %s %s : téléporté au centre de %s (%s -> %s)"), *GetName(), Reason, *Island->GetName(), *From.ToCompactString(), *GetActorLocation().ToCompactString());
 }
 
 void AYSFoeCharacter::UpdateClimb()

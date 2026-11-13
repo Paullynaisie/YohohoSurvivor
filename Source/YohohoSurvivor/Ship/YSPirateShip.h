@@ -14,6 +14,42 @@ class AYSShipStation;
 class AYSShipPath;
 class AYSShipBoarding;
 
+/** Courant qui tire le bateau vers un centre (combat du Kraken), vitesses en part de la vitesse max avant du bateau */
+USTRUCT()
+struct FYSShipCurrent
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	bool bActive = false;
+
+	UPROPERTY()
+	FVector Center = FVector::ZeroVector;
+
+	UPROPERTY()
+	float Radius = 1.0f;
+
+	/** Zone calme (part du rayon) et courant à son bord */
+	UPROPERTY()
+	float CalmRadiusRatio = 0.35f;
+
+	UPROPERTY()
+	float CalmSpeedRatio = 0.08f;
+
+	/** Au bord (Radius) puis au-delà (Radius x 1.1) */
+	UPROPERTY()
+	float EdgeSpeedRatio = 0.95f;
+
+	UPROPERTY()
+	float OutsideSpeedRatio = 1.3f;
+
+	UPROPERTY()
+	float Exponent = 2.0f;
+
+	/** Vitesse du courant (cm/s, monde) à cet endroit, pour un bateau de vitesse max MaxSpeed */
+	FVector GetVelocity(const FVector& Location, float MaxSpeed) const;
+};
+
 /** État du déplacement d'un bateau pilotable, répliqué par le serveur (les clients l'extrapolent) */
 USTRUCT()
 struct FYSShipMotion
@@ -329,6 +365,23 @@ protected:
 	UPROPERTY(Replicated)
 	float SinkStartYaw = 0.0f;
 
+	/** Sortie de l'eau en cours (mise en scène : Galions de Davy Jones) : chaque machine fait monter le bateau depuis l'heure serveur */
+	UPROPERTY(Replicated)
+	double RiseStartServerTime = 0.0;
+
+	UPROPERTY(Replicated)
+	float RiseDuration = 0.0f;
+
+	UPROPERTY(Replicated)
+	float RiseDepth = 0.0f;
+
+	/** Hauteur d'arrivée (flottaison) */
+	UPROPERTY(Replicated)
+	float RiseEndZ = 0.0f;
+
+	/** Sortie de l'eau : hauteur du moment (toutes machines) */
+	void UpdateRise();
+
 	/** Coulaison : position du moment, collision coupée sous Sink Collision Off Depth, disparition à la fin (serveur) */
 	void UpdateSink();
 
@@ -344,6 +397,10 @@ protected:
 	/** Déplacement du bateau pilotable (serveur -> clients) */
 	UPROPERTY(ReplicatedUsing=OnRep_Motion)
 	FYSShipMotion Motion;
+
+	/** Courant de l'arène du Kraken (répliqué, appliqué par StepMotion sur chaque machine) */
+	UPROPERTY(Replicated)
+	FYSShipCurrent ArenaCurrent;
 
 	UFUNCTION()
 	void OnRep_Motion();
@@ -545,6 +602,11 @@ public:
 	/** Serveur : poussée (cm/s, monde) ajoutée à celle en cours, amortie ensuite ; coup du Kraken */
 	void ApplyKnockback(const FVector& Velocity);
 
+	/** Serveur : courant vers un centre (arène du Kraken) ; bActive faux = aucun. Simulé sur chaque machine d'après la position */
+	void SetCurrent(const FYSShipCurrent& InCurrent);
+
+	const FYSShipCurrent& GetCurrent() const { return ArenaCurrent; }
+
 	/** Vitesse max avant du Blueprint (sans multiplicateurs) */
 	float GetBaseMaxForwardSpeed() const { return MaxForwardSpeed; }
 
@@ -683,6 +745,12 @@ public:
 
 	/** En train de couler (hors d'usage, plus de déplacement) */
 	bool IsSinking() const { return SinkStartServerTime > 0.0; }
+
+	/** Serveur : le bateau part de Depth sous sa flottaison et remonte en Duration (mise en scène ; immobilisé à part) */
+	void StartRiseFromSea(float Duration, float Depth);
+
+	/** Encore en train de sortir de l'eau */
+	bool IsRising() const;
 
 	/** Centre de la coque (milieu du rectangle des Hull Probe Points, monde, hauteur de l'acteur) ; caméra du pilote */
 	FVector GetHullCenter() const;

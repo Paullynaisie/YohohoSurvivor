@@ -17,6 +17,24 @@ namespace YSKraken
 	 *  distance de leur centre, les signes passaient parfois sous le disque de 200 m) */
 	constexpr int32 WaterSortPriority = -10;
 	constexpr int32 MarkerSortPriority = 10;
+
+	/** Réglages du VFX d'aspiration (anneaux qui se resserrent et bras en spirale vers le centre) */
+	struct FSuctionVfxSettings
+	{
+		float InnerRadius = 2000.0f;
+		float OuterRadius = 18000.0f;
+		int32 RingCount = 4;
+		float RingPeriod = 2.0f;
+		float RingWidth = 250.0f;
+		int32 SpiralArms = 6;
+		float SpinSpeed = 60.0f;
+		FLinearColor Color = FLinearColor(0.35f, 0.75f, 1.0f, 0.55f);
+		float HeightAboveSea = 15.0f;
+	};
+
+	/** Maillage du VFX d'aspiration à l'instant Time (secondes depuis son début), centré sur le composant (aspiration de la tête,
+	 *  courant permanent de l'arène) */
+	void BuildSuctionVfx(UProceduralMeshComponent* Mesh, float Time, const FSuctionVfxSettings& Settings, UMaterialInterface* Material);
 }
 
 /**
@@ -450,6 +468,23 @@ protected:
 
 	bool bEmergeImmediately = false;
 
+	/**
+	 *  Taille de la tentacule : visuel, hurtbox, profondeur sous l'eau, haut (départ des tirs) et, pour la mêlée, zone frappée
+	 *  (Slam Length / Width) x ceci (2026-11-13 : 1.5 sur les tentacules du Kraken, 1 sur celle de Davy Jones)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle", meta=(ClampMin="0.1"))
+	float TentacleScale = 1.0f;
+
+	/** Sortie : au moins à cette distance (x Tentacle Scale) des autres tentacules sorties (toutes sortent ensemble à l'étape 2) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle", meta=(ClampMin="0", Units="Centimeters"))
+	float TentacleSpacing = 900.0f;
+
+	/** Taille totale du visuel et de la hurtbox (Tentacle Scale, x Visual Scale pour la mêlée) */
+	virtual float GetVisualScale() const { return TentacleScale; }
+
+	/** Rayon de la hurtbox en plus (mêlée posée sur le bateau) */
+	virtual float GetHurtboxRadiusMultiplier() const { return 1.0f; }
+
 	/** Ne replonge jamais : après Recover Duration, attend Attack Delay Range et attaque de nouveau (tentacule de Davy Jones) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Tentacle")
 	bool bStayEmerged = false;
@@ -548,8 +583,16 @@ private:
 
 	EYSKrakenTentaclePhase AppliedPhase = EYSKrakenTentaclePhase::Submerged;
 
+	/** Hurtbox du Blueprint (avant Tentacle Scale) */
+	FVector BaseHurtboxLocation = FVector::ZeroVector;
+	FVector BaseHurtboxScale = FVector::OneVector;
+	bool bHurtboxBaseSaved = false;
+
 	/** Position locale d'après l'état (toutes machines) */
 	void ApplyStateLocally();
+
+	/** Visuel et hurtbox à la taille voulue (toutes machines) */
+	void ApplyScaleLocally();
 };
 
 /** Attaque d'une tentacule à distance : petit motif de tirs en cloche (comme l'étape 3) ou, avant le 2026-11-11, boules dispersées */
@@ -755,6 +798,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam", meta=(ClampMin="1"))
 	float GrabHurtboxRadiusMultiplier = 1.6f;
 
+	/** Zone frappée x Tentacle Scale */
+	float GetSlamLength() const { return SlamLength * TentacleScale; }
+	float GetSlamWidth() const { return SlamWidth * TentacleScale; }
+
+	/** Visuel : Tentacle Scale x Visual Scale */
+	virtual float GetVisualScale() const override { return TentacleScale * VisualScale; }
+
+	/** Posée sur le bateau : hurtbox plus épaisse */
+	virtual float GetHurtboxRadiusMultiplier() const override;
+
 	/** Couleur du corps : le matériau From du prop (rouge, commun avec la tentacule à distance) est remplacé par To sur cette tentacule (local,
 	 *  chaque machine) ; vide = inchangé */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Slam|Look")
@@ -796,9 +849,6 @@ private:
 	bool bHoldingBoat = false;
 	bool bWarningShown = false;
 	bool bRecolored = false;
-	FVector BaseHurtboxLocation = FVector::ZeroVector;
-	FVector BaseHurtboxScale = FVector::OneVector;
-	bool bHurtboxBaseSaved = false;
 	bool bGrabHurtboxLogged = false;
 
 	/** Bande frappée : premier point dans la coque du bateau (faux s'il est raté) */

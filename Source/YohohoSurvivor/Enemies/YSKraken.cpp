@@ -57,6 +57,59 @@ namespace YSKraken
 			Triangles.Append({ A, A + 2, A + 1, A + 1, A + 2, A + 3 });
 		}
 	}
+
+	void BuildSuctionVfx(UProceduralMeshComponent* Mesh, float Time, const FSuctionVfxSettings& Settings, UMaterialInterface* Material)
+	{
+		if (!Mesh)
+		{
+			return;
+		}
+		const FVector Center(0.0f, 0.0f, Settings.HeightAboveSea);
+		const float Inner = Settings.InnerRadius;
+		const float Outer = FMath::Max(Settings.OuterRadius, Inner + 100.0f);
+		TArray<FVector> Vertices;
+		TArray<int32> Triangles;
+		TArray<FLinearColor> Colors;
+
+		// anneaux qui se resserrent vers le centre, plus visibles au milieu de leur course
+		for (int32 Ring = 0; Ring < Settings.RingCount; ++Ring)
+		{
+			const float Phase = FMath::Frac(Time / FMath::Max(Settings.RingPeriod, 0.1f) + static_cast<float>(Ring) / Settings.RingCount);
+			const float RingRadius = FMath::Lerp(Outer, Inner, Phase);
+			FLinearColor Color = Settings.Color;
+			Color.A = Settings.Color.A * FMath::Sin(PI * Phase);
+			AddRing(Vertices, Triangles, Colors, Center, RingRadius, RingRadius + Settings.RingWidth, Color, Color, 96);
+		}
+
+		// bras en spirale qui tournent et s'enroulent vers le centre
+		constexpr int32 ArmSteps = 24;
+		for (int32 Arm = 0; Arm < Settings.SpiralArms; ++Arm)
+		{
+			const int32 Base = Vertices.Num();
+			for (int32 Step = 0; Step <= ArmSteps; ++Step)
+			{
+				const float T = static_cast<float>(Step) / ArmSteps;
+				const float R = FMath::Lerp(Outer, Inner, T);
+				const float Angle = FMath::DegreesToRadians(360.0f * Arm / FMath::Max(Settings.SpiralArms, 1) + Settings.SpinSpeed * Time + 240.0f * T);
+				const FVector Dir(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f);
+				const FVector Side(-Dir.Y, Dir.X, 0.0f);
+				const float Width = FMath::Lerp(Settings.RingWidth * 1.2f, Settings.RingWidth * 0.4f, T);
+				FLinearColor Color = Settings.Color;
+				Color.A = Settings.Color.A * 0.7f * FMath::Sin(PI * T);
+				Vertices.Add(Center + Dir * R - Side * Width * 0.5f);
+				Vertices.Add(Center + Dir * R + Side * Width * 0.5f);
+				Colors.Add(Color);
+				Colors.Add(Color);
+			}
+			for (int32 Step = 0; Step < ArmSteps; ++Step)
+			{
+				const int32 A = Base + Step * 2;
+				Triangles.Append({ A, A + 2, A + 1, A + 1, A + 2, A + 3 });
+			}
+		}
+		Mesh->CreateMeshSection_LinearColor(0, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
+		Mesh->SetMaterial(0, Material);
+	}
 }
 
 // ==================================================================== AYSKrakenPart
@@ -443,52 +496,17 @@ void AYSKrakenHead::UpdateSuctionVfx()
 		SuctionVfx->SetMaterial(0, VfxMaterial);
 	}
 
-	const float Time = static_cast<float>(GetServerTime() - SuctionStartServerTime);
-	const FVector Center(0.0f, 0.0f, VfxHeightAboveSea);
-	const float Inner = ContactRadius;
-	const float Outer = FMath::Max(VfxOuterRadius, Inner + 100.0f);
-	TArray<FVector> Vertices;
-	TArray<int32> Triangles;
-	TArray<FLinearColor> Colors;
-
-	// anneaux qui se resserrent vers la tête, plus visibles au milieu de leur course
-	for (int32 Ring = 0; Ring < VfxRingCount; ++Ring)
-	{
-		const float Phase = FMath::Frac(Time / VfxRingPeriod + static_cast<float>(Ring) / VfxRingCount);
-		const float RingRadius = FMath::Lerp(Outer, Inner, Phase);
-		FLinearColor Color = VfxColor;
-		Color.A = VfxColor.A * FMath::Sin(PI * Phase);
-		YSKraken::AddRing(Vertices, Triangles, Colors, Center, RingRadius, RingRadius + VfxRingWidth, Color, Color, 96);
-	}
-
-	// bras en spirale qui tournent et s'enroulent vers la tête
-	constexpr int32 ArmSteps = 24;
-	for (int32 Arm = 0; Arm < VfxSpiralArms; ++Arm)
-	{
-		const int32 Base = Vertices.Num();
-		for (int32 Step = 0; Step <= ArmSteps; ++Step)
-		{
-			const float T = static_cast<float>(Step) / ArmSteps;
-			const float R = FMath::Lerp(Outer, Inner, T);
-			const float Angle = FMath::DegreesToRadians(360.0f * Arm / FMath::Max(VfxSpiralArms, 1) + VfxSpinSpeed * Time + 240.0f * T);
-			const FVector Dir(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f);
-			const FVector Side(-Dir.Y, Dir.X, 0.0f);
-			const float Width = FMath::Lerp(VfxRingWidth * 1.2f, VfxRingWidth * 0.4f, T);
-			FLinearColor Color = VfxColor;
-			Color.A = VfxColor.A * 0.7f * FMath::Sin(PI * T);
-			Vertices.Add(Center + Dir * R - Side * Width * 0.5f);
-			Vertices.Add(Center + Dir * R + Side * Width * 0.5f);
-			Colors.Add(Color);
-			Colors.Add(Color);
-		}
-		for (int32 Step = 0; Step < ArmSteps; ++Step)
-		{
-			const int32 A = Base + Step * 2;
-			Triangles.Append({ A, A + 2, A + 1, A + 1, A + 2, A + 3 });
-		}
-	}
-	SuctionVfx->CreateMeshSection_LinearColor(0, Vertices, Triangles, TArray<FVector>(), TArray<FVector2D>(), Colors, TArray<FProcMeshTangent>(), false);
-	SuctionVfx->SetMaterial(0, VfxMaterial);
+	YSKraken::FSuctionVfxSettings Settings;
+	Settings.InnerRadius = ContactRadius;
+	Settings.OuterRadius = VfxOuterRadius;
+	Settings.RingCount = VfxRingCount;
+	Settings.RingPeriod = VfxRingPeriod;
+	Settings.RingWidth = VfxRingWidth;
+	Settings.SpiralArms = VfxSpiralArms;
+	Settings.SpinSpeed = VfxSpinSpeed;
+	Settings.Color = VfxColor;
+	Settings.HeightAboveSea = VfxHeightAboveSea;
+	YSKraken::BuildSuctionVfx(SuctionVfx, static_cast<float>(GetServerTime() - SuctionStartServerTime), Settings, VfxMaterial);
 }
 
 // ==================================================================== AYSKrakenHeadFinal
@@ -849,7 +867,7 @@ void AYSKrakenTentacle::ApplyStateLocally()
 	default:
 		break;
 	}
-	const FVector Wanted = State.Location - FVector(0.0f, 0.0f, SubmergedDepth * Depth);
+	const FVector Wanted = State.Location - FVector(0.0f, 0.0f, SubmergedDepth * TentacleScale * Depth);
 	if (!GetActorLocation().Equals(Wanted, 0.5f))
 	{
 		SetActorLocation(Wanted, false, nullptr, ETeleportType::TeleportPhysics);
@@ -864,6 +882,31 @@ void AYSKrakenTentacle::ApplyStateLocally()
 	const float Sway = State.Phase == EYSKrakenTentaclePhase::Waiting || State.Phase == EYSKrakenTentaclePhase::Recover
 		? FMath::Sin(GetWorld()->GetTimeSeconds() * SwaySpeed + static_cast<float>(GetUniqueID() % 97)) * SwayAngle : 0.0f;
 	VisualPivot->SetRelativeRotation(FRotator(-GetVisualPitch(), State.Yaw + Sway, 0.0f));
+	ApplyScaleLocally();
+}
+
+void AYSKrakenTentacle::ApplyScaleLocally()
+{
+	// visuel x Tentacle Scale (x Visual Scale pour la mêlée)
+	const float Scale = GetVisualScale();
+	if (!Visual->GetRelativeScale3D().Equals(FVector(Scale), 0.001f))
+	{
+		Visual->SetRelativeScale3D(FVector(Scale));
+	}
+	// hurtbox du Blueprint à la même taille ; rayon en plus (mêlée posée sur le bateau) ; même forme sur toutes les machines
+	if (!bHurtboxBaseSaved)
+	{
+		bHurtboxBaseSaved = true;
+		BaseHurtboxLocation = GetHurtbox()->GetRelativeLocation();
+		BaseHurtboxScale = GetHurtbox()->GetRelativeScale3D();
+	}
+	const float RadiusScale = Scale * GetHurtboxRadiusMultiplier();
+	const FVector WantedScale(BaseHurtboxScale.X * RadiusScale, BaseHurtboxScale.Y * RadiusScale, BaseHurtboxScale.Z * Scale);
+	if (!GetHurtbox()->GetRelativeScale3D().Equals(WantedScale, 0.001f))
+	{
+		GetHurtbox()->SetRelativeLocation(BaseHurtboxLocation * Scale);
+		GetHurtbox()->SetRelativeScale3D(WantedScale);
+	}
 }
 
 FVector AYSKrakenTentacle::GetHullEdgePoint(const AYSPirateShip* Boat, const FVector& Direction)
@@ -891,17 +934,31 @@ bool AYSKrakenTentacle::PickEmergeLocation(FVector& OutLocation, float& OutYaw) 
 	const AYSKrakenArena* KrakenArena = Arena.Get();
 	const FVector ArenaCenter = KrakenArena ? KrakenArena->GetActorLocation() : BoatCenter;
 	const float Sea = GetSeaLevel();
+	// autres tentacules sorties (ou qui sortent) : pas l'une dans l'autre
+	TArray<FVector, TInlineAllocator<16>> Others;
+	for (TActorIterator<AYSKrakenTentacle> It(GetWorld()); It; ++It)
+	{
+		if (*It != this && It->State.Phase != EYSKrakenTentaclePhase::Submerged && !It->IsActorBeingDestroyed())
+		{
+			Others.Add(It->State.Location);
+		}
+	}
+	const float Spacing = TentacleSpacing * TentacleScale;
 	FVector Best = FVector::ZeroVector;
 	float BestScore = TNumericLimits<float>::Max();
-	for (int32 Attempt = 0; Attempt < 24; ++Attempt)
+	for (int32 Attempt = 0; Attempt < 32; ++Attempt)
 	{
 		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
 		const FVector Dir(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f);
 		const FVector Candidate = GetHullEdgePoint(Boat, Dir) + Dir * EmergeDistance;
-		// dans l'arène, pas dans la tête : sinon le moins mauvais
+		// dans l'arène, pas dans la tête, loin des autres tentacules : sinon le moins mauvais
 		const float FromCenter = FVector::Dist2D(Candidate, ArenaCenter);
-		const float Score = !KrakenArena ? 0.0f
+		float Score = !KrakenArena ? 0.0f
 			: FMath::Max(FromCenter - MaxDistanceFromArenaCenter, 0.0f) + FMath::Max(MinDistanceFromArenaCenter - FromCenter, 0.0f);
+		for (const FVector& Other : Others)
+		{
+			Score += FMath::Max(Spacing - static_cast<float>(FVector::Dist2D(Candidate, Other)), 0.0f);
+		}
 		if (Score < BestScore)
 		{
 			BestScore = Score;
@@ -919,7 +976,7 @@ bool AYSKrakenTentacle::PickEmergeLocation(FVector& OutLocation, float& OutYaw) 
 
 FVector AYSKrakenTentacle::GetTipLocation() const
 {
-	return State.Location + FRotator(0.0f, State.Yaw, 0.0f).RotateVector(YSKraken::TentacleTip);
+	return State.Location + FRotator(0.0f, State.Yaw, 0.0f).RotateVector(YSKraken::TentacleTip * TentacleScale);
 }
 
 // ==================================================================== AYSKrakenTentacleRange
@@ -1156,27 +1213,9 @@ void AYSKrakenTentacleMelee::TickKraken(float DeltaSeconds)
 {
 	Super::TickKraken(DeltaSeconds);
 
-	// visuel plus grand que la zone frappée (la hurtbox suit le pivot, pas le visuel)
-	if (!Visual->GetRelativeScale3D().Equals(FVector(VisualScale), 0.001f))
-	{
-		Visual->SetRelativeScale3D(FVector(VisualScale));
-	}
-
-	// hurtbox à la taille du visuel ; posée sur le bateau : plus épaisse (toutes machines : même forme pour les coups du client)
-	if (!bHurtboxBaseSaved)
-	{
-		bHurtboxBaseSaved = true;
-		BaseHurtboxLocation = GetHurtbox()->GetRelativeLocation();
-		BaseHurtboxScale = GetHurtbox()->GetRelativeScale3D();
-	}
+	// visuel et hurtbox (posée sur le bateau : plus épaisse) : AYSKrakenTentacle::ApplyScaleLocally
 	const bool bOnBoat = State.Phase == EYSKrakenTentaclePhase::Grabbing || (State.bGrabbed && State.Phase == EYSKrakenTentaclePhase::Sinking);
-	const float RadiusMultiplier = VisualScale * (bOnBoat ? GrabHurtboxRadiusMultiplier : 1.0f);
-	const FVector WantedScale(BaseHurtboxScale.X * RadiusMultiplier, BaseHurtboxScale.Y * RadiusMultiplier, BaseHurtboxScale.Z * VisualScale);
-	if (!GetHurtbox()->GetRelativeScale3D().Equals(WantedScale, 0.001f))
-	{
-		GetHurtbox()->SetRelativeLocation(BaseHurtboxLocation * VisualScale);
-		GetHurtbox()->SetRelativeScale3D(WantedScale);
-	}
+	const float RadiusMultiplier = GetVisualScale() * GetHurtboxRadiusMultiplier();
 	// contrôle (serveur, une fois par prise) : points du pont sous la tentacule, à 1 m au-dessus du pont, dans la hurtbox ?
 	if (HasAuthority() && bOnBoat && !bGrabHurtboxLogged && GrabSpawnPoints.Num() > 0)
 	{
@@ -1227,7 +1266,7 @@ void AYSKrakenTentacleMelee::TickKraken(float DeltaSeconds)
 	{
 		bWarningShown = true;
 		SlamWarning->SetWorldLocation(State.Location);
-		SlamWarning->BuildStrip(FRotator(0.0f, State.Yaw, 0.0f).Vector(), SlamLength, SlamWidth, YSKraken::ZoneHeight);
+		SlamWarning->BuildStrip(FRotator(0.0f, State.Yaw, 0.0f).Vector(), GetSlamLength(), GetSlamWidth(), YSKraken::ZoneHeight);
 		if (WarningMaterial)
 		{
 			UMaterialInstanceDynamic* Material = SlamWarning->CreateDynamicMaterialInstance(0, WarningMaterial);
@@ -1235,7 +1274,7 @@ void AYSKrakenTentacleMelee::TickKraken(float DeltaSeconds)
 			Material->SetScalarParameterValue(TEXT("Glow"), 0.4f);
 			Material->SetScalarParameterValue(TEXT("FillOpacity"), WarningOpacity);
 			Material->SetScalarParameterValue(TEXT("EdgeOpacity"), FMath::Min(WarningOpacity * 2.0f, 1.0f));
-			Material->SetScalarParameterValue(TEXT("Radius"), SlamLength);
+			Material->SetScalarParameterValue(TEXT("Radius"), GetSlamLength());
 			Material->SetScalarParameterValue(TEXT("EdgeWidth"), 40.0f);
 		}
 		SlamWarning->SetVisibility(true);
@@ -1245,6 +1284,13 @@ void AYSKrakenTentacleMelee::TickKraken(float DeltaSeconds)
 		bWarningShown = false;
 		SlamWarning->SetVisibility(false);
 	}
+}
+
+float AYSKrakenTentacleMelee::GetHurtboxRadiusMultiplier() const
+{
+	// posée sur le bateau (prise, puis la replongée qui suit) : les coups de mêlée sur le pont la ratent sinon
+	const bool bOnBoat = State.Phase == EYSKrakenTentaclePhase::Grabbing || (State.bGrabbed && State.Phase == EYSKrakenTentaclePhase::Sinking);
+	return bOnBoat ? GrabHurtboxRadiusMultiplier : 1.0f;
 }
 
 void AYSKrakenTentacleMelee::OnWindupFinished()
@@ -1267,7 +1313,7 @@ void AYSKrakenTentacleMelee::TickTentacleServer(float DeltaSeconds)
 			const FVector Forward = FRotator(0.0f, State.Yaw, 0.0f).Vector();
 			FCollisionQueryParams Params(SCENE_QUERY_STAT(KrakenGrab), false, this);
 			GrabSpawnPoints.Reset();
-			for (float Distance = 0.0f; Distance <= SlamLength * VisualScale; Distance += 100.0f)
+			for (float Distance = 0.0f; Distance <= GetSlamLength() * VisualScale; Distance += 100.0f)
 			{
 				const FVector Point = State.Location + Forward * Distance;
 				FHitResult Hit;
@@ -1326,15 +1372,20 @@ bool AYSKrakenTentacleMelee::FindSlamHit(FVector& OutPoint) const
 	}
 	const FVector Forward = FRotator(0.0f, State.Yaw, 0.0f).Vector();
 	const FVector Right(-Forward.Y, Forward.X, 0.0f);
-	for (float Distance = 0.0f; Distance <= SlamLength; Distance += 100.0f)
+	for (float Distance = 0.0f; Distance <= GetSlamLength(); Distance += 100.0f)
 	{
-		for (const float Side : { 0.0f, -0.5f, 0.5f })
+		// toute la largeur, tous les mètres, depuis l'axe (la bande agrandie est plus large qu'une chaloupe : 3 points ne suffisaient plus)
+		const float HalfWidth = GetSlamWidth() * 0.5f;
+		for (float Offset = 0.0f; Offset <= HalfWidth; Offset += 100.0f)
 		{
-			const FVector Point = State.Location + Forward * Distance + Right * (Side * SlamWidth);
-			if (Boat->IsInsideHull(Point))
+			for (const float Side : { 1.0f, -1.0f })
 			{
-				OutPoint = Point;
-				return true;
+				const FVector Point = State.Location + Forward * Distance + Right * (Side * Offset);
+				if (Boat->IsInsideHull(Point))
+				{
+					OutPoint = Point;
+					return true;
+				}
 			}
 		}
 	}

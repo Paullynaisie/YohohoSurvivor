@@ -24,6 +24,8 @@ enum class EYSDavyJonesState : uint8
 {
 	/** Le bateau des joueurs n'est pas encore arrivé */
 	Waiting,
+	/** Mise en scène du début : Galions qui sortent de l'eau, planches, apparition de Davy Jones */
+	Intro,
 	/** Davy Jones sur la plateforme d'un Galion : geste du crochet, puis équipage */
 	Summoning,
 	/** Équipage invoqué : Davy Jones attend sur sa plateforme qu'il soit tué */
@@ -130,6 +132,22 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight", meta=(ClampMin="0", Units="s"))
 	float SummonAnimDuration = 1.5f;
 
+	/** Mise en scène du début : bateau arrêté, puis les Galions sortent de l'eau après ce délai... */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Intro", meta=(ClampMin="0", Units="s"))
+	float IntroGalionDelay = 1.0f;
+
+	/** ... en ce temps, depuis cette profondeur sous la flottaison... */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Intro", meta=(ClampMin="0.05", Units="s"))
+	float IntroGalionRiseDuration = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Intro", meta=(ClampMin="0", Units="Centimeters"))
+	float IntroGalionRiseDepth = 2500.0f;
+
+	/** ... tous sortis : les planches apparaissent, puis Davy Jones apparaît ce délai plus tard sur la plateforme du Galion du milieu
+	 *  (celui de la proue, en travers) et le combat commence */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Intro", meta=(ClampMin="0", Units="s"))
+	float IntroDavyDelay = 1.0f;
+
 	/** Sauts de Davy Jones (plateforme <-> pont) : durée du vol */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="World Boss|Fight", meta=(ClampMin="0.2", Units="s"))
 	float JumpDuration = 1.2f;
@@ -214,7 +232,12 @@ private:
 	void StartFight(const TCHAR* Reason);
 	void RemoveSuperTreasureMaps();
 	bool SpawnGalions();
-	void SpawnDavy();
+	/** Davy Jones sur la plateforme du Galion Galion Index (INDEX_NONE = au hasard) */
+	void SpawnDavy(int32 GalionIndex = INDEX_NONE);
+
+	/** Mise en scène du début (serveur) : Galions qui sortent de l'eau, planches, Davy Jones */
+	void TickIntro(double Elapsed);
+	int32 IntroStep = 0;
 
 	/** Geste du crochet puis équipage de la phase (sur la plateforme) */
 	void BeginSummon();

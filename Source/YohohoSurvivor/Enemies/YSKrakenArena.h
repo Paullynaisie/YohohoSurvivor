@@ -172,6 +172,74 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Fight", meta=(ClampMin="0", Units="s"))
 	float TentacleStagger = 1.5f;
 
+	/** Étape 2 : toutes les tentacules sortent de l'eau dès le début de l'étape (sans First Emerge Delay ni Tentacle Stagger) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Fight")
+	bool bStage2EmergeImmediately = true;
+
+	// ---------------------------------------------------------------- courant (étapes 1 à 3)
+
+	/**
+	 *  Pendant tout le combat (étapes 1 à 3), le courant tire le bateau des joueurs vers le centre de l'arène, d'autant plus fort
+	 *  qu'il est loin du centre. Vitesses en part de la vitesse max avant du bateau (avec ses bonus) : sortir de l'arène est
+	 *  quasiment impossible, le centre reste calme
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current")
+	bool bArenaCurrent = true;
+
+	/** Zone calme : jusqu'à cette part du rayon, le courant monte doucement de 0 à Calm Speed Ratio */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current", meta=(ClampMin="0", ClampMax="0.95"))
+	float CurrentCalmRadiusRatio = 0.35f;
+
+	/** Courant au bord de la zone calme (x vitesse max du bateau) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current", meta=(ClampMin="0"))
+	float CurrentCalmSpeedRatio = 0.08f;
+
+	/** Courant au bord de l'arène (x vitesse max du bateau ; 1 = impossible d'en sortir) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current", meta=(ClampMin="0"))
+	float CurrentEdgeSpeedRatio = 0.95f;
+
+	/** Au-delà du bord : courant encore plus fort (x vitesse max du bateau, atteint à Radius x 1.1) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current", meta=(ClampMin="0"))
+	float CurrentOutsideSpeedRatio = 1.3f;
+
+	/** Courbe entre la zone calme et le bord (1 = linéaire ; plus grand = faible longtemps puis très fort près du bord) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current", meta=(ClampMin="0.1"))
+	float CurrentExponent = 2.0f;
+
+	/** VFX permanent du courant (comme l'aspiration de la tête, en très léger) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current|VFX")
+	FLinearColor CurrentVfxColor = FLinearColor(0.35f, 0.75f, 1.0f, 0.12f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current|VFX", meta=(ClampMin="0", Units="Centimeters"))
+	float CurrentVfxInnerRadius = 2000.0f;
+
+	/** 0 = rayon de l'arène */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current|VFX", meta=(ClampMin="0", Units="Centimeters"))
+	float CurrentVfxOuterRadius = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current|VFX", meta=(ClampMin="1"))
+	int32 CurrentVfxRingCount = 5;
+
+	/** Temps pour qu'un anneau aille du bord au centre */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current|VFX", meta=(ClampMin="0.1", Units="s"))
+	float CurrentVfxRingPeriod = 6.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current|VFX", meta=(ClampMin="1", Units="Centimeters"))
+	float CurrentVfxRingWidth = 300.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current|VFX", meta=(ClampMin="0"))
+	int32 CurrentVfxSpiralArms = 6;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current|VFX", meta=(Units="DegreesPerSecond"))
+	float CurrentVfxSpinSpeed = 20.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current|VFX", meta=(Units="Centimeters"))
+	float CurrentVfxHeightAboveSea = 12.0f;
+
+	/** Défaut : /Game/Core/Ship/M_ShipPreview (comme l'aspiration) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Current|VFX")
+	TObjectPtr<UMaterialInterface> CurrentVfxMaterial;
+
 	/** Noms des barres du boss */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Kraken|Fight")
 	FText HeadBarName = NSLOCTEXT("YS", "KrakenHeadBar", "Kraken");
@@ -207,6 +275,21 @@ private:
 	TObjectPtr<UInstancedStaticMeshComponent> GuideDashes;
 
 	UPROPERTY(Transient)
+	TObjectPtr<UProceduralMeshComponent> CurrentVfx;
+
+	/** Heure serveur du début du combat (VFX du courant, toutes machines) */
+	UPROPERTY(Replicated)
+	double FightStartServerTime = 0.0;
+
+	bool bCurrentVfxVisible = false;
+	bool bCurrentApplied = false;
+
+	void UpdateCurrentVfx();
+
+	/** Serveur : courant posé sur le bateau des joueurs pendant le combat, retiré sinon */
+	void UpdateBoatCurrent();
+
+	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> DashMaterialInstance;
 
 	/** Morceaux de l'étape en cours (serveur) */
@@ -226,7 +309,7 @@ private:
 	void TickFight();
 	void StartStage(int32 Stage, const TCHAR* Reason);
 	void SpawnStageParts(int32 Stage);
-	AYSKrakenPart* SpawnPart(UClass* Class, const FVector& Location, float EmergeStagger = 0.0f);
+	AYSKrakenPart* SpawnPart(UClass* Class, const FVector& Location, float EmergeStagger = 0.0f, bool bEmergeNow = false);
 	void UpdateBossBar();
 	void ForceLevelUpAndRepair();
 	AYSPirateShip* GetGameBoat() const;

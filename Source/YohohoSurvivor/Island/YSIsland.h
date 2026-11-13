@@ -132,6 +132,12 @@ public:
 	/** Rayon moyen de l'île (règles du Data Asset) */
 	float GetRadius() const;
 
+	/** Centre de l'île (là où apparaissent les élites), au niveau du plateau */
+	FVector GetCenterLocation() const;
+
+	/** Serveur : sol libre au centre de l'île (le centre, sinon les places en anneaux autour, comme l'apparition des élites) */
+	bool FindFreeCenterGround(FVector& OutGround) const;
+
 	/** Coordonnées de l'île <-> monde */
 	FVector LocalToWorld(const FVector2f& Local, float LocalZ) const;
 

@@ -139,6 +139,7 @@ void AYSPirateShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AYSPirateShip, Motion);
+	DOREPLIFETIME(AYSPirateShip, ArenaCurrent);
 	DOREPLIFETIME(AYSPirateShip, Health);
 	DOREPLIFETIME(AYSPirateShip, bDisabled);
 	DOREPLIFETIME(AYSPirateShip, bPlaytestMode);
@@ -146,6 +147,10 @@ void AYSPirateShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AYSPirateShip, SinkStartServerTime);
 	DOREPLIFETIME(AYSPirateShip, SinkStartLocation);
 	DOREPLIFETIME(AYSPirateShip, SinkStartYaw);
+	DOREPLIFETIME(AYSPirateShip, RiseStartServerTime);
+	DOREPLIFETIME(AYSPirateShip, RiseDuration);
+	DOREPLIFETIME(AYSPirateShip, RiseDepth);
+	DOREPLIFETIME(AYSPirateShip, RiseEndZ);
 	DOREPLIFETIME(AYSPirateShip, bSailsDeployed);
 	DOREPLIFETIME(AYSPirateShip, ScaledMaxHealth);
 }
@@ -897,6 +902,49 @@ void AYSPirateShip::SinkAtSea(const TCHAR* Reason)
 	ForceNetUpdate();
 }
 
+void AYSPirateShip::StartRiseFromSea(float Duration, float Depth)
+{
+	if (!HasAuthority() || IsSinking())
+	{
+		return;
+	}
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	RiseStartServerTime = FMath::Max(GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds(), UE_KINDA_SMALL_NUMBER);
+	RiseDuration = FMath::Max(Duration, 0.05f);
+	RiseDepth = FMath::Max(Depth, 0.0f);
+	RiseEndZ = GetActorLocation().Z;
+	ForceNetUpdate();
+	UpdateRise();
+	UE_LOG(LogTemp, Log, TEXT("[YSShip] %s sort de l'eau (%.0f cm en %.1f s)"), *GetName(), RiseDepth, RiseDuration);
+}
+
+bool AYSPirateShip::IsRising() const
+{
+	if (RiseStartServerTime <= 0.0)
+	{
+		return false;
+	}
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	return Now - RiseStartServerTime < RiseDuration;
+}
+
+void AYSPirateShip::UpdateRise()
+{
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double Now = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const float Alpha = FMath::Clamp(static_cast<float>(Now - RiseStartServerTime) / FMath::Max(RiseDuration, 0.05f), 0.0f, 1.0f);
+	// monte vite puis ralentit en arrivant à la flottaison
+	const float Eased = FMath::InterpEaseOut(0.0f, 1.0f, Alpha, 2.0f);
+	FVector Location = GetActorLocation();
+	Location.Z = RiseEndZ - RiseDepth * (1.0f - Eased);
+	// (arrivé : la hauteur ne bouge plus ; l'heure reste répliquée pour un client qui arrive en cours de route)
+	if (!FMath::IsNearlyEqual(GetActorLocation().Z, Location.Z, 0.1f))
+	{
+		SetActorLocation(Location);
+	}
+}
+
 void AYSPirateShip::UpdateSink()
 {
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
@@ -1106,6 +1154,11 @@ void AYSPirateShip::Tick(float DeltaSeconds)
 		UpdateSink();
 		return;
 	}
+	// sortie de l'eau mise en scène : il monte (le pilotage ne touche pas la hauteur)
+	if (RiseStartServerTime > 0.0)
+	{
+		UpdateRise();
+	}
 
 	if (bDrivable && !IsHidden())
 	{
@@ -1181,8 +1234,9 @@ void AYSPirateShip::StepMotion(FYSShipMotion& State, float DeltaSeconds) const
 	State.Yaw = FRotator::NormalizeAxis(State.Yaw + State.YawRate * DeltaSeconds);
 	State.Location += FRotator(0.0f, State.Yaw, 0.0f).Vector() * State.Speed * DeltaSeconds;
 
-	// forces extérieures (Kraken) : dérive tant qu'elle est posée, poussée amortie
-	State.Location += (State.Drift + State.Knockback) * FVector(1.0f, 1.0f, 0.0f) * DeltaSeconds;
+	// forces extérieures (Kraken) : dérive tant qu'elle est posée, poussée amortie, courant de l'arène (selon la position)
+	const FVector CurrentVelocity = ArenaCurrent.bActive ? ArenaCurrent.GetVelocity(State.Location, MaxForward) : FVector::ZeroVector;
+	State.Location += (State.Drift + State.Knockback + CurrentVelocity) * FVector(1.0f, 1.0f, 0.0f) * DeltaSeconds;
 	if (!State.Knockback.IsNearlyZero(1.0f))
 	{
 		State.Knockback *= FMath::Exp(-KnockbackDamping * DeltaSeconds);
@@ -1201,6 +1255,48 @@ void AYSPirateShip::SetExternalDrift(const FVector& Velocity)
 	}
 	Motion.Drift = Velocity * FVector(1.0f, 1.0f, 0.0f);
 	ForceNetUpdate();
+}
+
+FVector FYSShipCurrent::GetVelocity(const FVector& Location, float MaxSpeed) const
+{
+	const FVector ToCenter = (Center - Location) * FVector(1.0f, 1.0f, 0.0f);
+	const float Distance = ToCenter.Size();
+	if (Radius <= 1.0f || Distance < KINDA_SMALL_NUMBER)
+	{
+		return FVector::ZeroVector;
+	}
+	// zone calme : monte doucement jusqu'à Calm Speed Ratio ; puis courbe jusqu'au bord ; au-delà : encore plus fort (atteint à Radius x 1.1)
+	const float Ratio = Distance / Radius;
+	const float Calm = FMath::Clamp(CalmRadiusRatio, 0.0f, 0.95f);
+	float SpeedRatio = 0.0f;
+	if (Ratio <= Calm)
+	{
+		SpeedRatio = Calm > 0.0f ? CalmSpeedRatio * Ratio / Calm : CalmSpeedRatio;
+	}
+	else if (Ratio <= 1.0f)
+	{
+		SpeedRatio = FMath::Lerp(CalmSpeedRatio, EdgeSpeedRatio, FMath::Pow((Ratio - Calm) / (1.0f - Calm), FMath::Max(Exponent, 0.1f)));
+	}
+	else
+	{
+		SpeedRatio = FMath::Lerp(EdgeSpeedRatio, OutsideSpeedRatio, FMath::Clamp((Ratio - 1.0f) / 0.1f, 0.0f, 1.0f));
+	}
+	return ToCenter / Distance * SpeedRatio * MaxSpeed;
+}
+
+void AYSPirateShip::SetCurrent(const FYSShipCurrent& InCurrent)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	const bool bChanged = ArenaCurrent.bActive != InCurrent.bActive;
+	ArenaCurrent = InCurrent;
+	ForceNetUpdate();
+	if (bChanged)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSShip] %s : courant %s"), *GetName(), ArenaCurrent.bActive ? *FString::Printf(TEXT("vers %s (rayon %.0f m)"), *ArenaCurrent.Center.ToCompactString(), ArenaCurrent.Radius / 100.0f) : TEXT("retiré"));
+	}
 }
 
 void AYSPirateShip::ApplyKnockback(const FVector& Velocity)

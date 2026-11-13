@@ -620,6 +620,25 @@ protected:
 	float EliteWadeDepth = 200.0f;
 
 	/**
+	 *  Élite / boss sauvé (serveur) : téléporté au centre de son île de départ s'il en est sorti (éjecté par la physique...) depuis
+	 *  Elite Rescue Delay, ou s'il est collé aux mêmes props (bloqué sans bouger de Elite Stuck Radius) depuis ce temps.
+	 *  Pas les NME d'un combat de boss scripté, d'un équipage de Galion ou à bord d'un Jolly Ship
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite|Rescue", meta=(EditCondition="bIsElite"))
+	bool bEliteRescue = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite|Rescue", meta=(ClampMin="1", Units="s", EditCondition="bIsElite && bEliteRescue"))
+	float EliteRescueDelay = 15.0f;
+
+	/** Hors de l'île : à plus de Rayon de l'île x ceci de son centre (la plage et l'eau peu profonde où il entre restent sur l'île) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite|Rescue", meta=(ClampMin="1", EditCondition="bIsElite && bEliteRescue"))
+	float EliteOffIslandRadiusRatio = 1.2f;
+
+	/** Bloqué : son déplacement est arrêté par des props sans qu'il s'éloigne de plus de ça de l'endroit où ça a commencé */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Foe|Elite|Rescue", meta=(ClampMin="0", Units="Centimeters", EditCondition="bIsElite && bEliteRescue"))
+	float EliteStuckRadius = 600.0f;
+
+	/**
 	 *  Les capsules des NME se bloquent entre elles (ancien comportement : foule compacte, mais chaque NME bute sur ses voisins,
 	 *  coûteux). Décoché : elles se traversent (canal Foe ignoré entre NME) et une séparation douce les écarte.
 	 */
@@ -1235,6 +1254,24 @@ protected:
 	bool bScriptedInvulnerable = false;
 	float ScriptedHealthFloor = 0.0f;
 	bool bArenaFoe = false;
+
+	/** Élite / boss sauvé (serveur) : île de départ, temps hors de l'île, blocage contre des props */
+	TWeakObjectPtr<class AYSIsland> RescueHomeIsland;
+	bool bRescueHomeChecked = false;
+	float RescueCheckTimer = 0.0f;
+	double RescueOffIslandSince = -1.0;
+	double RescueStuckSince = -1.0;
+	double RescueLastBlockedTime = -1.0;
+	FVector RescueStuckLocation = FVector::ZeroVector;
+	TSet<TWeakObjectPtr<AActor>> RescueStuckActors;
+
+	/** Serveur : île de départ, sortie de l'île, blocage -> téléporté au centre de l'île */
+	void UpdateEliteRescue();
+
+	/** Serveur : bloqué par ce prop (MoveBlockedBy) */
+	void NoteRescueBlock(const FHitResult& Impact);
+
+	void TeleportToIslandCenter(const TCHAR* Reason);
 
 	/** Main levée jusqu'à cette heure (monde, locale) : gauche, droite */
 	double RaisedLeftHandUntil = -1.0;

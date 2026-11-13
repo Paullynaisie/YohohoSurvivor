@@ -5,7 +5,7 @@ SilverCoin upgrades et MoveActions en upgrades (demande de Paul du 2026-11-13) :
     de chaque personnage joueur (pas les minions) ;
   - MoveActions : composants C++ du personnage (MoveActionAbility = Roll, RunMoveAction, ShoulderBumpMoveAction,
     MoraleBoostMoveAction, CamouflageMoveAction) : réglages du Shoulder bump du Quartermaster et du Booster de moral du Captain
-    copiés sur tous les personnages, valeurs de Paul imposées (Run 20 / 10 par s / x1.25, Booster 3 s, Camouflage 60 / 10 par s),
+    copiés sur tous les personnages, valeurs de Paul imposées (Run 20 / 10 par s / x1.5, Booster 5 s (2026-11-13), Camouflage 60 / 10 par s),
     bombe du Little Gift sur le Roll ; les anciens composants MoveAction ajoutés dans les Blueprints (Run, ShoulderBump,
     MoraleBoost) sont supprimés ;
   - /Game/Art/Materials/M_YSCamouflage : matériau translucide (paramètres Color, Opacity) du Camouflage ;
@@ -44,8 +44,8 @@ MOVE_ACTIONS = {
                  ("BunnyHop", "Une roulade sur 3 est gratuite en stamina"),
              ]),
     "Run": (unreal.YSRunAbility, "Run",
-            "MoveAction (Espace, à maintenir) : +25 % de vitesse\n(20 de stamina pour 1 s, puis 10 par seconde)\nAttaquer ou lancer une Ability arrête la course",
-            "Run ++", "Vitesse de course (x)", "+5 % de vitesse de course", 0.05, [
+            "MoveAction (Espace, à maintenir) : +50 % de vitesse\n(20 de stamina pour 1 s, puis 10 par seconde)\nAttaquer ou lancer une Ability arrête la course",
+            "Run ++", "Vitesse de course (x)", "+10 % de vitesse de course", 0.1, [
                 ("Free running", "Pendant la course, tu traverses les NME et les joueurs"),
                 ("Fenwick", "Tu peux courir en portant un objet ;\npendant la course, porter ne consomme plus de stamina"),
                 ("Run and Hit", "Arrêter la course en attaquant ajoute la stamina dépensée\naux dégâts de base de l'attaque"),
@@ -60,7 +60,7 @@ MOVE_ACTIONS = {
                          ("Diamond shoulder", "Invincible pendant le dash"),
                      ]),
     "MoraleBoost": (unreal.YSMoraleBoostAbility, "Booster de moral",
-                    "MoveAction (Espace) : tu lèves les mains 0.5 s ; toi et les alliés à 15 m\ngagnez +35 % de vitesse pendant 3 s (65 de stamina, pas cumulable)",
+                    "MoveAction (Espace) : tu lèves les mains 0.5 s ; toi et les alliés à 15 m\ngagnez +35 % de vitesse pendant 5 s (65 de stamina, pas cumulable)",
                     "Booster de moral ++", "Durée du boost (s)", "+1 s de boost", 1.0, [
                         ("Motivé pour cogner", "Le boost donne aussi +35 % de dégâts"),
                         ("Motivé pour tuer", "La prochaine attaque auto des boostés est critique"),
@@ -89,9 +89,9 @@ COMPONENTS = {
 
 # valeurs de Paul imposées sur chaque personnage
 OVERRIDES = {
-    "Run": {"stamina_cost": 20.0, "stamina_per_second": 10.0, "min_duration": 1.0, "run_speed_multiplier": 1.25, "hold_to_sustain": True},
+    "Run": {"stamina_cost": 20.0, "stamina_per_second": 10.0, "min_duration": 1.0, "run_speed_multiplier": 1.5, "hold_to_sustain": True},
     "Camouflage": {"stamina_cost": 60.0, "stamina_per_second": 10.0, "min_duration": 1.0, "hold_to_sustain": True},
-    "MoraleBoost": {"duration": 3.0, "raise_hands_duration": 0.5},
+    "MoraleBoost": {"duration": 5.0, "raise_hands_duration": 0.5},
 }
 
 assets = unreal.EditorAssetLibrary
