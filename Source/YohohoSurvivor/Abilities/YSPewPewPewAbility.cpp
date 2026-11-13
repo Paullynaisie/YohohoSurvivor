@@ -140,7 +140,8 @@ void UYSPewPewPewAbility::FireNextPewShot()
 	}
 
 	// direction du tir (haut de l'écran hors bateau = nord), visée assistée autour
-	const float Yaw = Character->GetDefaultCameraYaw() + YSPewPewPew::CardinalYaws[ShotInCycle];
+	// chaque cycle tourne de Cycle Yaw Offset par rapport au précédent (rotation progressive)
+	const float Yaw = Character->GetDefaultCameraYaw() + YSPewPewPew::CardinalYaws[ShotInCycle] + CycleYawOffset * CycleIndex;
 	FVector Direction = FRotator(0.0f, Yaw, 0.0f).Vector();
 	const AYSProjectile* ProjectileCDO = ProjectileClass ? ProjectileClass->GetDefaultObject<AYSProjectile>() : nullptr;
 	if (const AActor* Target = ProjectileCDO ? FindTargetInCone(GetWorld(), Character->GetActorLocation(), Direction, AssistAimDistance, CardinalAssistAngle, ProjectileCDO->GetHitTags(), Character) : nullptr)

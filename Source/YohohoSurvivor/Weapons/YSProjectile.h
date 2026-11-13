@@ -366,7 +366,7 @@ public:
 	void SetCircleOnImpact(int32 Level) { CircleOnImpactLevel = Level; }
 
 	/** Bullet Eater (Golden du Pew pew pew, avant FinishSpawning) : la balle peut toucher son tireur, qui récupère ces PV et cette stamina */
-	void SetShooterPickup(float Health, float Stamina) { ShooterPickupHealth = Health; ShooterPickupStamina = Stamina; }
+	void SetShooterPickup(float Health, float Stamina, float Radius) { ShooterPickupHealth = Health; ShooterPickupStamina = Stamina; ShooterPickupRadius = Radius; }
 
 	/** Serveur : appelé à chaque NME touché (Mark for Delete : NME touchés par ses tirs) */
 	FYSProjectileFoeHit OnFoeHit;
@@ -389,6 +389,9 @@ private:
 	/** Bullet Eater : rendu au tireur qui touche cette balle (serveur ; 0 = la balle traverse son tireur) */
 	float ShooterPickupHealth = 0.0f;
 	float ShooterPickupStamina = 0.0f;
+
+	/** Bullet Eater : distance (à plat) entre la balle et son tireur pour qu'il la mange (grande détection ; 0 = contact seulement) */
+	float ShooterPickupRadius = 0.0f;
 
 public:
 

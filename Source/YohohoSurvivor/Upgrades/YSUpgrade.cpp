@@ -1034,6 +1034,7 @@ const FName UYSPewPewPewUpgrade::PewPewPewStat(TEXT("PewPewPew"));
 const FName UYSPewPewPewUpgrade::ExtraCyclesStat(TEXT("PewPewPewCycles"));
 const FName UYSPewPewPewUpgrade::BulletEaterHealthStat(TEXT("BulletEaterHealth"));
 const FName UYSPewPewPewUpgrade::BulletEaterStaminaStat(TEXT("BulletEaterStamina"));
+const FName UYSPewPewPewUpgrade::BulletEaterRadiusStat(TEXT("BulletEaterRadius"));
 const FName UYSPewPewPewUpgrade::DeathBlossomStat(TEXT("DeathBlossom"));
 
 UYSPewPewPewUpgrade::UYSPewPewPewUpgrade()
@@ -1074,6 +1075,7 @@ void UYSPewPewPewUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, bool 
 	Character->SetWeaponStat(ExtraCyclesStat, bUnlocked ? BonusTotal : 0.0f);
 	Character->SetWeaponStat(BulletEaterHealthStat, bUnlocked && GoldenIndex == 0 ? BulletEaterHealth : 0.0f);
 	Character->SetWeaponStat(BulletEaterStaminaStat, bUnlocked && GoldenIndex == 0 ? BulletEaterStamina : 0.0f);
+	Character->SetWeaponStat(BulletEaterRadiusStat, bUnlocked && GoldenIndex == 0 ? BulletEaterRadius : 0.0f);
 	Character->SetWeaponStat(DeathBlossomStat, bUnlocked && GoldenIndex == 1 ? 1.0f : 0.0f);
 }
 

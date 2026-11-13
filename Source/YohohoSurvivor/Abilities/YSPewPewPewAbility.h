@@ -49,6 +49,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Pew pew pew", meta=(ClampMin="0", ClampMax="90", Units="Degrees"))
 	float CardinalAssistAngle = 45.0f;
 
+	/** Rotation de chaque cycle par rapport au précédent (rotation progressive des 4 directions ; 0 = toujours nord, sud, est, ouest) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Pew pew pew", meta=(Units="Degrees"))
+	float CycleYawOffset = 15.0f;
+
 	/** Vitesse minimale pendant le Pew pew pew (1 = 100 % de la vitesse de base ; les bonus restent) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Pew pew pew", meta=(ClampMin="0"))
 	float MinMoveSpeedRatio = 1.0f;

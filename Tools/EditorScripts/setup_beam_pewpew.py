@@ -137,6 +137,7 @@ try:
         pew.set_editor_property("extra_cycle_stamina_cost", 10.0)
         pew.set_editor_property("circle_bullet_on_impact", 1)
         pew.set_editor_property("cardinal_assist_angle", 45.0)
+        pew.set_editor_property("cycle_yaw_offset", 15.0)
         pew.set_editor_property("min_move_speed_ratio", 1.0)
         pew.set_editor_property("center_camera", True)
         save_bp(bp, path)
@@ -171,6 +172,7 @@ try:
     upgrade.set_editor_property("max_bonus_stacks", 5)
     upgrade.set_editor_property("bullet_eater_health", 5.0)
     upgrade.set_editor_property("bullet_eater_stamina", 5.0)
+    upgrade.set_editor_property("bullet_eater_radius", 150.0)
     upgrade.set_editor_property("golden_variants", [
         golden("Bullet Eater", "Les balles des CircleBullet peuvent te toucher :\n+5 PV et +5 stamina par balle"),
         golden("Death Blossom", "Plus de cycle payé en stamina,\nmais le level des CircleBullet = numéro du cycle"),

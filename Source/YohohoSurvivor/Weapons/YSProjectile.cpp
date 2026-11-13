@@ -314,6 +314,17 @@ void AYSProjectile::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	// Bullet Eater : grosse détection du tireur (à plat), en plus du contact
+	if (ShooterPickupRadius > 0.0f && HasAuthority() && !bHasHit)
+	{
+		const AActor* Shooter = GetInstigator();
+		if (Shooter && FVector::DistSquared2D(Shooter->GetActorLocation(), GetActorLocation()) <= FMath::Square(ShooterPickupRadius)
+			&& TryShooterPickup(GetInstigator()))
+		{
+			return;
+		}
+	}
+
 	SweepPawnHits();
 	if (bHasHit || IsActorBeingDestroyed())
 	{

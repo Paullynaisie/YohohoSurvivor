@@ -1187,11 +1187,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
 	float BulletEaterStamina = 5.0f;
 
+	/** Bullet Eater : distance (à plat) à laquelle une LesserCircleBullet est mangée par le joueur (grosse détection) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0", Units="Centimeters"))
+	float BulletEaterRadius = 150.0f;
+
 	/** Propriétés d'arme posées sur le personnage */
 	static const FName PewPewPewStat;
 	static const FName ExtraCyclesStat;
 	static const FName BulletEaterHealthStat;
 	static const FName BulletEaterStaminaStat;
+	static const FName BulletEaterRadiusStat;
 	static const FName DeathBlossomStat;
 
 protected:
