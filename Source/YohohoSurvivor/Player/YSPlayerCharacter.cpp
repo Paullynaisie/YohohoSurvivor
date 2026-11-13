@@ -3718,7 +3718,8 @@ float AYSPlayerCharacter::GetBaseMaxHealth() const
 float AYSPlayerCharacter::GetBaseCriticalDamageMultiplier() const
 {
 	const float Override = Passive ? Passive->GetCriticalDamageMultiplierOverride() : 0.0f;
-	return Override > 0.0f ? Override : CriticalDamageMultiplier;
+	// Blade Throw ++ : +0.2 par bonus au multiplicateur de base (propriété d'arme, serveur)
+	return (Override > 0.0f ? Override : CriticalDamageMultiplier) + GetCharacterWeaponStat(UYSBladeThrowUpgrade::CriticalBonusStat);
 }
 
 float AYSPlayerCharacter::GetArmorPercent() const

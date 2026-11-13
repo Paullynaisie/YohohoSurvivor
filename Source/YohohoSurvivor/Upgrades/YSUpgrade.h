@@ -1070,6 +1070,67 @@ protected:
 };
 
 /**
+ *  « Blade Throw » (upgrade d'arme du Swordsman, 2026-11-13) : l'Ability de l'épée (UYSSwordsmanAbility) devient Blade Throw
+ *  (pas en arrière 2x plus long, puis 2 Lesser Spinning Blades en courbes qui se croisent au point visé, critiques dans la zone).
+ *  ++ : +Bonus Gold Value (0.2) au multiplicateur de critique de base du personnage (1.5 -> 2.5 avec 5 ++).
+ *  Golden : 0 « Critical Mass » = chaque critique du personnage donne une stack au NME (5 max) ; à sa mort, Spinning Sword du
+ *  level de ses stacks ; 1 « Swordsrang » = lames 2x plus lentes qui, une fois au point de croisement, reviennent vers le joueur.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : Blade Throw"))
+class UYSBladeThrowUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSBladeThrowUpgrade();
+
+	/** Critical Mass : stacks max par NME */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="1"))
+	int32 CriticalMassMaxStacks = 5;
+
+	static const FName BladeThrowStat;
+	static const FName CriticalBonusStat;
+	static const FName CriticalMassStat;
+	static const FName SwordsrangStat;
+
+protected:
+
+	/** Multiplicateur de critique de base du personnage (x100, en %) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override;
+
+	virtual void ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const override;
+};
+
+/**
+ *  « BladeMaster » (upgrade d'arme du Swordsman, 2026-11-13) : l'Ability de l'épée devient Blade Mastery (1 level de Self
+ *  Spinning Sword à chaque utilisation). ++ : +Bonus Gold Value (0.5 s) à la durée de chaque level des Spinning Swords du joueur.
+ *  Golden : 0 « Bladeguedon » = Blade Mastery avec une Self Spinning Sword au level max : elle disparaît et 5 Lesser Spinning
+ *  Blades partent en parallèle devant le joueur ; 1 « Bladékinésis » = les Self Spinning Swords suivent le curseur à la vitesse du joueur.
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : BladeMaster"))
+class UYSBladeMasterUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSBladeMasterUpgrade();
+
+	static const FName BladeMasteryStat;
+	static const FName SpinningDurationStat;
+	static const FName BladeguedonStat;
+	static const FName BladekinesisStat;
+
+protected:
+
+	/** Durée d'un level de Spinning Sword (s) */
+	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override;
+
+	virtual void ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const override;
+};
+
+/**
  *  BloodRage (Auto swing de la GreatAxe, à la place du Bloodlust) : chaque coup REÇU donne une stack de rage (une par coup),
  *  jusqu'à MaxStacks ; au maximum, la prochaine attaque du joueur (Auto swing ou Bumping Slash) est critique et consomme les
  *  stacks ; toutes perdues après StackDuration sans subir de coup (délai relancé à chaque coup reçu).

@@ -40,7 +40,15 @@ public:
 
 	int32 GetLevel() const { return Level; }
 
+	int32 GetMaxLevel() const { return MaxLevel; }
+
 	bool IsSelf() const { return bSelf; }
+
+	/** Self Spinning Sword du joueur (nullptr : aucune) */
+	static AYSSpinningSword* FindSelf(const AYSPlayerCharacter* Character);
+
+	/** Level Duration de la classe utilisée (BP_SpinningSword, sinon C++) : affichage de BladeMaster ++ */
+	static float GetDefaultLevelDuration();
 
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -51,6 +59,29 @@ protected:
 	virtual void BeginPlay() override;
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/** Coup critique sur un NME à cet endroit (Lesser Spinning Blade : dans la zone de croisement) */
+	virtual bool IsCriticalAt(const FVector& TargetLocation) const { return false; }
+
+	/** Perd un level toutes les Level Duration (faux : Lesser Spinning Blade, qui disparaît en fin de trajet) */
+	bool bLevelDecay = true;
+
+	UPROPERTY(Replicated)
+	bool bSelf = false;
+
+	/** Heure serveur de création : angle de départ (et trajet des Lesser Spinning Blades) identiques sur toutes les machines */
+	UPROPERTY(Replicated)
+	double SpawnServerTime = 0.0;
+
+	/** Classe Blueprint à charger (sinon cette classe C++) */
+	static UClass* LoadSpawnClass(const TCHAR* BlueprintPath, UClass* Fallback);
+
+	AYSPlayerCharacter* GetOwnerCharacter() const;
+
+	double GetServerTime() const;
+
+	/** Hauteur du sol sous Location (rien dessous : Fallback Z) */
+	float FindGroundZ(const FVector& Location, float FallbackZ) const;
 
 	/** Visuel de chaque épée (ses capacités sont retirées ; sa première box sert de hitbox) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpinningSword")
@@ -117,15 +148,23 @@ private:
 	UPROPERTY(ReplicatedUsing=OnRep_Level)
 	int32 Level = 0;
 
-	UPROPERTY(Replicated)
-	bool bSelf = false;
-
-	/** Heure serveur de création : angle de départ identique sur toutes les machines */
-	UPROPERTY(Replicated)
-	double SpawnServerTime = 0.0;
-
 	UFUNCTION()
 	void OnRep_Level();
+
+	/** Bladékinésis (Golden de BladeMaster) : la Self Spinning Sword suit le curseur à la vitesse du joueur (serveur, répliqué) */
+	UPROPERTY(Replicated)
+	bool bKinesis = false;
+
+	/** Point visé par le joueur (serveur ; client : envoyé par ServerSetKinesisTarget) */
+	FVector KinesisTarget = FVector::ZeroVector;
+	bool bHasKinesisTarget = false;
+	float KinesisSendTimer = 0.0f;
+
+	UFUNCTION(Server, Unreliable)
+	void ServerSetKinesisTarget(FVector_NetQuantize Target);
+
+	/** Self : accrochée au joueur, ou qui suit le curseur (Bladékinésis) */
+	void UpdateSelfMovement(float DeltaSeconds);
 
 	/** Serveur : -1 level (détruite sous 1) */
 	void LoseLevel();
@@ -141,11 +180,7 @@ private:
 	/** Serveur : dégâts des hitbox balayées de PreviousAngle à CurrentAngle */
 	void ApplyHits(float PreviousAngle, float CurrentAngle);
 
-	AYSPlayerCharacter* GetOwnerCharacter() const;
-
 	float GetCurrentRotationSpeed() const;
-
-	double GetServerTime() const;
 
 	struct FSword
 	{

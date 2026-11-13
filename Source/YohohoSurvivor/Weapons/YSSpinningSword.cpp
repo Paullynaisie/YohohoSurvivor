@@ -4,6 +4,9 @@
 #include "Core/YSCustomization.h"
 #include "Core/YSGameplayTags.h"
 #include "Player/YSPlayerCharacter.h"
+#include "Core/YSDamageTypes.h"
+#include "Upgrades/YSUpgrade.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/MeshComponent.h"
@@ -47,6 +50,7 @@ void AYSSpinningSword::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(AYSSpinningSword, Level);
 	DOREPLIFETIME_CONDITION(AYSSpinningSword, bSelf, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AYSSpinningSword, SpawnServerTime, COND_InitialOnly);
+	DOREPLIFETIME(AYSSpinningSword, bKinesis);
 }
 
 AYSSpinningSword* AYSSpinningSword::GiveLevel(AYSPlayerCharacter* Character, bool bInSelf, const FVector& Location, int32 Levels, bool bAllowMerge)
@@ -57,17 +61,13 @@ AYSSpinningSword* AYSSpinningSword::GiveLevel(AYSPlayerCharacter* Character, boo
 		return nullptr;
 	}
 
-	UClass* SpawnClass = TSoftClassPtr<AYSSpinningSword>(FSoftObjectPath(YSSpinningSwordHelpers::BlueprintClassPath)).LoadSynchronous();
-	if (!SpawnClass)
-	{
-		SpawnClass = AYSSpinningSword::StaticClass();
-	}
+	UClass* SpawnClass = LoadSpawnClass(YSSpinningSwordHelpers::BlueprintClassPath, AYSSpinningSword::StaticClass());
 
-	// déjà là : des levels en plus (Self toujours ; posée : seulement si la fusion est permise)
+	// déjà là : des levels en plus (Self toujours ; posée : seulement si la fusion est permise ; jamais une Lesser Spinning Blade)
 	for (TActorIterator<AYSSpinningSword> It(World); It; ++It)
 	{
 		AYSSpinningSword* Existing = *It;
-		if (!IsValid(Existing) || Existing->GetOwner() != Character || Existing->bSelf != bInSelf)
+		if (!IsValid(Existing) || !Existing->bLevelDecay || Existing->GetOwner() != Character || Existing->bSelf != bInSelf)
 		{
 			continue;
 		}
@@ -105,7 +105,8 @@ AYSSpinningSword* AYSSpinningSword::GiveLevel(AYSPlayerCharacter* Character, boo
 	const AGameStateBase* GameState = World->GetGameState();
 	Sword->SpawnServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
 	Sword->FinishSpawning(FTransform(Ground));
-	if (bInSelf)
+	// Bladékinésis : la Self Spinning Sword n'est pas accrochée (elle suit le curseur)
+	if (bInSelf && Character->GetCharacterWeaponStat(UYSBladeMasterUpgrade::BladekinesisStat) <= 0.0f)
 	{
 		Sword->AttachToComponent(Character->GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
 		Sword->SetActorRelativeLocation(FVector(0.0f, 0.0f, -HalfHeight));
@@ -123,10 +124,129 @@ void AYSSpinningSword::AddLevel(int32 Count)
 		return;
 	}
 	Level = FMath::Min(Level + Count, FMath::Max(MaxLevel, 1));
-	GetWorldTimerManager().SetTimer(LevelTimer, this, &AYSSpinningSword::LoseLevel, LevelDuration, true);
+	// BladeMaster ++ : chaque level dure plus longtemps
+	const AYSPlayerCharacter* Character = GetOwnerCharacter();
+	const float Duration = LevelDuration + (Character ? Character->GetCharacterWeaponStat(UYSBladeMasterUpgrade::SpinningDurationStat) : 0.0f);
+	if (bLevelDecay)
+	{
+		GetWorldTimerManager().SetTimer(LevelTimer, this, &AYSSpinningSword::LoseLevel, Duration, true);
+	}
 	ForceNetUpdate();
-	UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s : level %d (délai relancé, %.1f s)"), *GetName(), Level, LevelDuration);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s : level %d (délai relancé, %.1f s)"), *GetName(), Level, Duration);
 	OnRep_Level();
+}
+
+UClass* AYSSpinningSword::LoadSpawnClass(const TCHAR* BlueprintPath, UClass* Fallback)
+{
+	UClass* Class = TSoftClassPtr<AYSSpinningSword>(FSoftObjectPath(BlueprintPath)).LoadSynchronous();
+	return Class ? Class : Fallback;
+}
+
+float AYSSpinningSword::GetDefaultLevelDuration()
+{
+	return GetDefault<AYSSpinningSword>(LoadSpawnClass(YSSpinningSwordHelpers::BlueprintClassPath, AYSSpinningSword::StaticClass()))->LevelDuration;
+}
+
+AYSSpinningSword* AYSSpinningSword::FindSelf(const AYSPlayerCharacter* Character)
+{
+	UWorld* World = Character ? Character->GetWorld() : nullptr;
+	for (TActorIterator<AYSSpinningSword> It(World); World && It; ++It)
+	{
+		if (IsValid(*It) && It->bSelf && It->bLevelDecay && It->GetOwner() == Character)
+		{
+			return *It;
+		}
+	}
+	return nullptr;
+}
+
+float AYSSpinningSword::FindGroundZ(const FVector& Location, float FallbackZ) const
+{
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(SpinningSwordGround), false, GetOwner());
+	Params.AddIgnoredActor(this);
+	FHitResult Hit;
+	if (GetWorld() && GetWorld()->LineTraceSingleByObjectType(Hit, FVector(Location.X, Location.Y, Location.Z + 500.0f), FVector(Location.X, Location.Y, Location.Z - 3000.0f),
+		FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+	{
+		return Hit.ImpactPoint.Z;
+	}
+	return FallbackZ;
+}
+
+void AYSSpinningSword::ServerSetKinesisTarget_Implementation(FVector_NetQuantize Target)
+{
+	KinesisTarget = Target;
+	bHasKinesisTarget = true;
+}
+
+void AYSSpinningSword::UpdateSelfMovement(float DeltaSeconds)
+{
+	AYSPlayerCharacter* Character = GetOwnerCharacter();
+	if (!bSelf || !bLevelDecay || !IsValid(Character))
+	{
+		return;
+	}
+	if (HasAuthority())
+	{
+		bKinesis = Character->GetCharacterWeaponStat(UYSBladeMasterUpgrade::BladekinesisStat) > 0.0f;
+	}
+	// client qui contrôle le joueur : envoie le point visé (20 fois par seconde)
+	if (bKinesis && !HasAuthority() && Character->IsLocallyControlled())
+	{
+		KinesisSendTimer -= DeltaSeconds;
+		if (KinesisSendTimer <= 0.0f)
+		{
+			KinesisSendTimer = 0.05f;
+			ServerSetKinesisTarget(Character->GetPublicAimLocation());
+		}
+	}
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (!bKinesis)
+	{
+		// accrochée aux pieds du joueur (ex. Golden prise ou perdue)
+		if (GetAttachParentActor() != Character)
+		{
+			const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+			AttachToComponent(Character->GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
+			SetActorRelativeLocation(FVector(0.0f, 0.0f, Capsule ? -Capsule->GetScaledCapsuleHalfHeight() : -90.0f));
+		}
+		return;
+	}
+
+	// Bladékinésis : vers le curseur, à la vitesse actuelle du joueur (ralentissements et accélérations compris)
+	if (GetAttachParentActor())
+	{
+		DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s : Bladékinésis, suit le curseur"), *GetName());
+	}
+	if (Character->IsLocallyControlled())
+	{
+		KinesisTarget = Character->GetPublicAimLocation();
+		bHasKinesisTarget = true;
+	}
+	if (!bHasKinesisTarget)
+	{
+		return;
+	}
+	const UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	const float Speed = Movement ? Movement->GetMaxSpeed() : 600.0f;
+	const FVector Current = GetActorLocation();
+	FVector Delta = KinesisTarget - Current;
+	Delta.Z = 0.0f;
+	const float Step = Speed * DeltaSeconds;
+	FVector Next = Delta.SizeSquared() <= FMath::Square(Step) ? FVector(KinesisTarget.X, KinesisTarget.Y, Current.Z) : Current + Delta.GetSafeNormal() * Step;
+	Next.Z = FindGroundZ(Next, Current.Z);
+	SetActorLocation(Next);
+	KinesisSendTimer -= DeltaSeconds;
+	if (KinesisSendTimer <= 0.0f)
+	{
+		KinesisSendTimer = 1.0f;
+		UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s : Bladékinésis en (%.0f, %.0f) vers (%.0f, %.0f) à %.0f cm/s"), *GetName(), Next.X, Next.Y, KinesisTarget.X, KinesisTarget.Y, Speed);
+	}
 }
 
 void AYSSpinningSword::LoseLevel()
@@ -283,6 +403,7 @@ void AYSSpinningSword::Tick(float DeltaSeconds)
 		return;
 	}
 
+	UpdateSelfMovement(DeltaSeconds);
 	ApplyColors();
 
 	// taille : Melee Range du propriétaire (répliqué)
@@ -369,10 +490,13 @@ void AYSSpinningSword::ApplyHits(float PreviousAngle, float CurrentAngle)
 			Sword.LastHitTimes.Add(WeakTarget, Now);
 			// pushback : du centre de rotation vers le NME
 			const FVector ShotDirection = (Target->GetActorLocation() - PivotTransform.GetLocation()).GetSafeNormal2D();
-			const FPointDamageEvent DamageEvent(FinalDamage, FHitResult(), ShotDirection, nullptr);
-			UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s touche %s : %.1f dégâts (%.0f x Auto atk %.2f x Ability %.2f)"), *GetName(), *Target->GetName(), FinalDamage,
-				Damage, Character->GetSlotDamageMultiplier(EYSActionSlot::AutoAtk), Character->GetSlotDamageMultiplier(EYSActionSlot::Ability));
-			Target->TakeDamage(FinalDamage, DamageEvent, Character->GetController(), nullptr);
+			// Lesser Spinning Blade de Blade Throw : critique dans la zone de croisement
+			const bool bCritical = IsCriticalAt(Target->GetActorLocation());
+			const float HitDamage = bCritical ? FinalDamage * Character->GetCriticalDamageMultiplier() : FinalDamage;
+			const FPointDamageEvent DamageEvent(HitDamage, FHitResult(), ShotDirection, bCritical ? UYSCriticalDamageType::StaticClass() : nullptr);
+			UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s touche %s : %.1f dégâts (%.0f x Auto atk %.2f x Ability %.2f%s)"), *GetName(), *Target->GetName(), HitDamage,
+				Damage, Character->GetSlotDamageMultiplier(EYSActionSlot::AutoAtk), Character->GetSlotDamageMultiplier(EYSActionSlot::Ability), bCritical ? TEXT(", CRITIQUE") : TEXT(""));
+			Target->TakeDamage(HitDamage, DamageEvent, Character->GetController(), nullptr);
 		}
 		Sword.Overlapping = MoveTemp(NowOverlapping);
 

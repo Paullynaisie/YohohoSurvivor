@@ -47,6 +47,7 @@
 #include "Enemies/YSFoeRangedAction.h"
 #include "Enemies/YSFoeRoll360ShotAction.h"
 #include "Upgrades/YSUpgrade.h"
+#include "Weapons/YSSpinningSword.h"
 
 namespace YSFoe
 {
@@ -568,8 +569,28 @@ float AYSFoeCharacter::TakeDamage(float DamageAmount, const FDamageEvent& Damage
 	// OnRep n'est pas appelé sur le serveur : mise à jour directe pour le joueur hôte
 	UpdateHealthBar();
 
+	// Critical Mass (Golden de Blade Throw) : chaque critique de ce joueur donne une stack au NME
+	const float CriticalMassMax = Attacker && UYSCriticalDamageType::IsCritical(DamageEvent) ? Attacker->GetCharacterWeaponStat(UYSBladeThrowUpgrade::CriticalMassStat) : 0.0f;
+	if (CriticalMassMax > 0.0f)
+	{
+		int32& Stacks = CriticalMassStacks.FindOrAdd(Attacker);
+		Stacks = FMath::Min(Stacks + 1, FMath::RoundToInt(CriticalMassMax));
+		UE_LOG(LogTemp, Verbose, TEXT("[YSCriticalMass] %s : critique de %s -> %d stack(s)"), *GetName(), *Attacker->GetName(), Stacks);
+	}
+
 	if (Health <= 0.0f)
 	{
+		// Critical Mass : à la mort, une Spinning Sword du level des stacks de chaque joueur
+		for (const TPair<TWeakObjectPtr<AYSPlayerCharacter>, int32>& Entry : CriticalMassStacks)
+		{
+			if (AYSPlayerCharacter* MassOwner = Entry.Key.Get(); IsValid(MassOwner) && Entry.Value > 0)
+			{
+				AYSSpinningSword::GiveLevel(MassOwner, false, GetActorLocation(), Entry.Value, false);
+				UE_LOG(LogTemp, Verbose, TEXT("[YSCriticalMass] %s meurt : Spinning Sword level %d pour %s"), *GetName(), Entry.Value, *MassOwner->GetName());
+			}
+		}
+		CriticalMassStacks.Reset();
+
 		// écran des scores : NME tué par ce joueur (ou son minion, sa bombe, son poste)
 		const AYSGameState* KillGameState = GetWorld()->GetGameState<AYSGameState>();
 		if (KillGameState && !KillGameState->IsMatchEnded())

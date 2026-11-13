@@ -1563,6 +1563,9 @@ private:
 	/** Stylish Sequence : marques posées par chaque joueur (serveur) */
 	TMap<TWeakObjectPtr<const AActor>, uint8> StylishMarks;
 
+	/** Critical Mass : stacks posées par les critiques de chaque joueur (serveur) */
+	TMap<TWeakObjectPtr<AYSPlayerCharacter>, int32> CriticalMassStacks;
+
 	/** Prochain instant (temps du monde) où chaque joueur touché peut reprendre des dégâts de contact */
 	TMap<TWeakObjectPtr<AActor>, double> NextContactDamageTime;
 };

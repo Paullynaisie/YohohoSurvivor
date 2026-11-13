@@ -1306,11 +1306,14 @@ public:
 	/** Propriété des armes tenues (upgrades d'arme ; serveur) */
 	void SetWeaponStat(FName Stat, float Value) { WeaponStats.Add(Stat, Value); }
 
+	/** Point visé (souris du joueur local ; minion, HiredMouss : sa cible), accessible hors du personnage (Bladékinésis) */
+	FVector GetPublicAimLocation() const { return GetAimLocation(); }
+
 	/** Propriété d'arme de Weapon (Default si absente ou arme pas tenue) */
 	float GetWeaponStat(const AYSWeapon* Weapon, FName Stat, float Default) const;
 
 	/** Propriété d'arme posée sur ce personnage, sans condition d'arme (Default si absente ; serveur) */
-	float GetCharacterWeaponStat(FName Stat, float Default) const { const float* Value = WeaponStats.Find(Stat); return Value ? *Value : Default; }
+	float GetCharacterWeaponStat(FName Stat, float Default = 0.0f) const { const float* Value = WeaponStats.Find(Stat); return Value ? *Value : Default; }
 
 	/** Retire Seconds à la recharge des Abilities (actions de clic) des armes tenues (serveur ; Golden Marquage) */
 	void ReduceAbilityCooldown(float Seconds);

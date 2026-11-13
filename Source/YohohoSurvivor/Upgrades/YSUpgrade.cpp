@@ -12,6 +12,7 @@
 #include "Upgrades/YSShardUpgrade.h"
 #include "Weapons/YSWeapon.h"
 #include "Weapons/YSWeaponSet.h"
+#include "Weapons/YSSpinningSword.h"
 
 namespace YSUpgradeText
 {
@@ -923,6 +924,78 @@ float UYSGunWasBetterUpgrade::GetBonusBaseValue(const AYSPlayerCharacter* Charac
 		}
 	}
 	return 0.0f;
+}
+
+const FName UYSBladeThrowUpgrade::BladeThrowStat(TEXT("BladeThrow"));
+const FName UYSBladeThrowUpgrade::CriticalBonusStat(TEXT("BladeThrowCritical"));
+const FName UYSBladeThrowUpgrade::CriticalMassStat(TEXT("CriticalMass"));
+const FName UYSBladeThrowUpgrade::SwordsrangStat(TEXT("Swordsrang"));
+
+UYSBladeThrowUpgrade::UYSBladeThrowUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "BladeThrowName", "Blade Throw");
+	RequiredActionClass = UYSDashingSlashAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::Ability;
+	bShardSystem = true;
+	MaxBonusStacks = 5;
+	BonusSilverValue = 0.2f;
+	BonusGoldValue = 0.2f;
+	UnlockName = NSLOCTEXT("YS", "BladeThrowUnlockName", "Blade Throw");
+	UnlockDescription = NSLOCTEXT("YS", "BladeThrowUnlockDesc", "L'Ability devient Blade Throw (recharge 12 s) :\n2 lames qui se croisent au point visé,\ncritiques dans la zone");
+	BonusName = NSLOCTEXT("YS", "BladeThrowBonusName", "Blade Throw ++");
+	BonusDescription = NSLOCTEXT("YS", "BladeThrowBonusDesc", "+0.2 au multiplicateur de critique");
+	BonusStatLabel = NSLOCTEXT("YS", "BladeThrowBonusStat", "Critique de base (%)");
+	SuperName = NSLOCTEXT("YS", "BladeThrowSuperName", "Critical Mass");
+}
+
+float UYSBladeThrowUpgrade::GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const
+{
+	// base du personnage sans le bonus déjà compté (propriété d'arme), + la somme affichée
+	const float Current = Character ? Character->GetBaseCriticalDamageMultiplier() - Character->GetCharacterWeaponStat(CriticalBonusStat) : 1.5f;
+	return (Current + BonusTotal) * 100.0f;
+}
+
+void UYSBladeThrowUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const
+{
+	Character->SetWeaponStat(BladeThrowStat, bUnlocked ? 1.0f : 0.0f);
+	Character->SetWeaponStat(CriticalBonusStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(CriticalMassStat, bUnlocked && GoldenIndex == 0 ? CriticalMassMaxStacks : 0.0f);
+	Character->SetWeaponStat(SwordsrangStat, bUnlocked && GoldenIndex == 1 ? 1.0f : 0.0f);
+}
+
+const FName UYSBladeMasterUpgrade::BladeMasteryStat(TEXT("BladeMastery"));
+const FName UYSBladeMasterUpgrade::SpinningDurationStat(TEXT("SpinningSwordDuration"));
+const FName UYSBladeMasterUpgrade::BladeguedonStat(TEXT("Bladeguedon"));
+const FName UYSBladeMasterUpgrade::BladekinesisStat(TEXT("Bladekinesis"));
+
+UYSBladeMasterUpgrade::UYSBladeMasterUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "BladeMasterName", "BladeMaster");
+	RequiredActionClass = UYSDashingSlashAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::Ability;
+	bShardSystem = true;
+	MaxBonusStacks = 5;
+	BonusSilverValue = 0.5f;
+	BonusGoldValue = 0.5f;
+	UnlockName = NSLOCTEXT("YS", "BladeMasterUnlockName", "BladeMaster");
+	UnlockDescription = NSLOCTEXT("YS", "BladeMasterUnlockDesc", "L'Ability devient Blade Mastery (recharge 5 s) :\n1 level de Self Spinning Sword");
+	BonusName = NSLOCTEXT("YS", "BladeMasterBonusName", "BladeMaster ++");
+	BonusDescription = NSLOCTEXT("YS", "BladeMasterBonusDesc", "Chaque level de Spinning Sword dure 0.5 s de plus");
+	BonusStatLabel = NSLOCTEXT("YS", "BladeMasterBonusStat", "Durée d'un level de Spinning Sword (s)");
+	SuperName = NSLOCTEXT("YS", "BladeMasterSuperName", "Bladeguedon");
+}
+
+float UYSBladeMasterUpgrade::GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const
+{
+	return AYSSpinningSword::GetDefaultLevelDuration() + BonusTotal;
+}
+
+void UYSBladeMasterUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const
+{
+	Character->SetWeaponStat(BladeMasteryStat, bUnlocked ? 1.0f : 0.0f);
+	Character->SetWeaponStat(SpinningDurationStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(BladeguedonStat, bUnlocked && GoldenIndex == 0 ? 1.0f : 0.0f);
+	Character->SetWeaponStat(BladekinesisStat, bUnlocked && GoldenIndex == 1 ? 1.0f : 0.0f);
 }
 
 void UYSGunWasBetterUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const
