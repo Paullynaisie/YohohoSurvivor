@@ -1548,7 +1548,8 @@ void AYSFoeCharacter::RecomputeStats()
 	const float PlayerHealthMultiplier = UsesEliteHealthScaling() ? PlayerScaling.EliteHealthMultiplier : PlayerScaling.HealthMultiplier;
 	PlayerCountHealthMultiplier = PlayerHealthMultiplier;
 	ScaledMaxRage = FMath::RoundToFloat(MaxRage * (bScaleRageWithPlayerCount ? PlayerCountHealthMultiplier : 1.0f));
-	MaxHealth = FMath::RoundToFloat((BaseHealth + HealthPerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * HealthMultiplier * PlayerHealthMultiplier);
+	MaxHealth = FMath::RoundToFloat((BaseHealth + HealthPerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * HealthMultiplier * PlayerHealthMultiplier
+		* AYSGameMode::GetPlayModeFoeHealthMultiplier(GetWorld()));
 	UE_LOG(LogTemp, Verbose, TEXT("[YSFoe] %s : niveau %d, %.0f PV (x%.2f pour %d joueur(s)), %.1f XP"), *GetName(), Level, MaxHealth, PlayerHealthMultiplier,
 		YSGameMode ? YSGameMode->GetPlayersInMatchCount() : 0, GetExperienceReward());
 	ContactDamage = (BaseContactDamage + ContactDamagePerLevel * AYSGameMode::GetFoeLevelGainMultiplier(GetWorld()) * Level) * DamageMultiplier;

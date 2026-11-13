@@ -431,6 +431,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Play Mode", meta=(ClampMin="1"))
 	int32 HardcoreFoeDayMultiplier = 2;
 
+	/** Normal (et Peaceful) : PV max des NME x ceci (le mode Hard garde les réglages de base) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Play Mode", meta=(ClampMin="0.01"))
+	float EasyFoeHealthMultiplier = 0.5f;
+
+	/** Normal (et Peaceful) : plumes de phoenix en plus pour chaque coffre qui en donne (Elite Chest, Boss Chest), rachat par un Brooker ou livraison */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Play Mode", meta=(ClampMin="0"))
+	int32 EasyBonusPhoenixFeathersPerChest = 1;
+
 	/** Peaceful : les vagues répétées des îles (Repeat Interval > 0, hors écran) continuent tant que dure le jour (sinon : Repeat Count fois) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Play Mode")
 	bool bPeacefulEndlessWaves = true;
@@ -713,6 +721,12 @@ public:
 
 	/** Gains de stats des NME par niveau x ce multiplicateur (1 sans GameMode du jeu, ex. client) */
 	static float GetFoeLevelGainMultiplier(const UWorld* World);
+
+	/** Serveur : PV des NME selon le mode de jeu (Easy Foe Health Multiplier en Peaceful / Normal, sinon 1) */
+	static float GetPlayModeFoeHealthMultiplier(const UWorld* World);
+
+	/** Serveur : plumes d'un coffre (Phoenix Feather Value) + bonus du mode de jeu ; rien si le coffre n'en donne pas */
+	void AddChestPhoenixFeathers(int32 ChestFeathers);
 
 	/** Nombre de NME pour 1 joueur -> pour les joueurs de la partie (arrondi, au moins 1 si BaseCount > 0) */
 	int32 ScaleEnemyCount(int32 BaseCount) const;

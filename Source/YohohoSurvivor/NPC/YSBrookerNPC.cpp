@@ -121,10 +121,7 @@ void AYSBrookerNPC::ReceiveObject(AYSInteractiveObject* Object)
 	}
 	UE_LOG(LogTemp, Log, TEXT("[YSBrooker] %s rachète %s : +%d doublons"), *GetName(), *Object->GetName(), Object->GetDoubloonValue());
 	GameMode->AddDoubloons(Object->GetDoubloonValue());
-	if (Object->GetPhoenixFeatherValue() > 0)
-	{
-		GameMode->AddPhoenixFeathers(Object->GetPhoenixFeatherValue());
-	}
+	GameMode->AddChestPhoenixFeathers(Object->GetPhoenixFeatherValue());
 	Object->Destroy();
 }
 

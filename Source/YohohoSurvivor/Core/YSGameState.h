@@ -19,7 +19,10 @@ enum class EYSPlayMode : uint8
 {
 	/** Pas de timer de jour (la nuit tombe quand l'objectif de l'île est atteint), seulement les vagues répétées des îles, pas de 20 min en partie 2 */
 	Peaceful,
+	/** PV des NME x Easy Foe Health Multiplier (0.5), +Easy Bonus Phoenix Feathers Per Chest (1) par coffre à plumes (AYSGameMode, Play Mode) ; aussi en Peaceful */
 	Normal,
+	/** Réglages de base (l'ancien Normal, avant le 2026-11-13) */
+	Hard,
 	/** Jour des NME doublé (niveau), plumes de phoenix inutilisables */
 	Hardcore
 };
@@ -494,6 +497,9 @@ public:
 	EYSPlayMode GetPlayMode() const { return PlayMode; }
 	bool IsPeaceful() const { return PlayMode == EYSPlayMode::Peaceful; }
 	bool IsHardcore() const { return PlayMode == EYSPlayMode::Hardcore; }
+
+	/** Peaceful ou Normal : PV des NME réduits et plumes en plus dans les coffres (AYSGameMode, Play Mode) */
+	bool IsEasyMode() const { return PlayMode == EYSPlayMode::Peaceful || PlayMode == EYSPlayMode::Normal; }
 
 	/** Serveur uniquement (AYSGameMode::SetPlayMode) */
 	void SetPlayMode(EYSPlayMode Mode, int32 FoeDayMultiplier) { PlayMode = Mode; HardcoreFoeDayMultiplier = FoeDayMultiplier; ForceNetUpdate(); }

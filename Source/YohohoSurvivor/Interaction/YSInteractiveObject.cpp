@@ -267,10 +267,7 @@ void AYSInteractiveObject::OnDelivered()
 	if (GameMode && DoubloonValue > 0)
 	{
 		GameMode->AddDoubloons(DoubloonValue);
-		if (PhoenixFeatherValue > 0)
-		{
-			GameMode->AddPhoenixFeathers(PhoenixFeatherValue);
-		}
+		GameMode->AddChestPhoenixFeathers(PhoenixFeatherValue);
 		Destroy();
 		return;
 	}

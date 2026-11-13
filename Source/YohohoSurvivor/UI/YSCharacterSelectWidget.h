@@ -211,9 +211,9 @@ public:
 
 	// ---- mode de jeu (hôte seulement, au-dessus de « Choisis ta classe ») ----
 
-	/** Noms des modes, dans l'ordre de EYSPlayMode (Peaceful, Normal, Hardcore) */
+	/** Noms des modes, dans l'ordre de EYSPlayMode (Peaceful, Normal, Hard, Hardcore) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
-	TArray<FText> PlayModeNames = { NSLOCTEXT("YS", "PlayModePeaceful", "Peaceful"), NSLOCTEXT("YS", "PlayModeNormal", "Normal"), NSLOCTEXT("YS", "PlayModeHardcore", "Hardcore") };
+	TArray<FText> PlayModeNames = { NSLOCTEXT("YS", "PlayModePeaceful", "Peaceful"), NSLOCTEXT("YS", "PlayModeNormal", "Normal"), NSLOCTEXT("YS", "PlayModeHard", "Hard"), NSLOCTEXT("YS", "PlayModeHardcore", "Hardcore") };
 
 	/** « Mode de jeu » */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
@@ -226,9 +226,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
 	float PlayModeNameWidth = 220.0f;
 
-	/** Couleur du nom de chaque mode (Peaceful, Normal, Hardcore) */
+	/** Couleur du nom de chaque mode (Peaceful, Normal, Hard, Hardcore) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")
-	TArray<FLinearColor> PlayModeColors = { FLinearColor(0.45f, 1.0f, 0.55f), FLinearColor::White, FLinearColor(1.0f, 0.3f, 0.25f) };
+	TArray<FLinearColor> PlayModeColors = { FLinearColor(0.45f, 1.0f, 0.55f), FLinearColor::White, FLinearColor(1.0f, 0.65f, 0.2f), FLinearColor(1.0f, 0.3f, 0.25f) };
 
 	/** Flèches de chaque côté */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Layout|Play Mode")

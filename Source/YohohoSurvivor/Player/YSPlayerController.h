@@ -762,7 +762,7 @@ public:
 	UFUNCTION(Exec)
 	void YSInviteFriends();
 
-	/** Hôte, avant le début de la partie : mode de jeu (0 = Peaceful, 1 = Normal, 2 = Hardcore ; aussi les flèches du menu de sélection) */
+	/** Hôte, avant le début de la partie : mode de jeu (0 = Peaceful, 1 = Normal, 2 = Hard, 3 = Hardcore ; aussi les flèches du menu de sélection) */
 	UFUNCTION(Exec)
 	void YSPlayMode(int32 Mode);
 

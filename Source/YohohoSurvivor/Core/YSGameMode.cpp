@@ -1676,6 +1676,23 @@ float AYSGameMode::GetFoeLevelGainMultiplier(const UWorld* World)
 	return GameMode ? GameMode->FoeLevelGainMultiplier : 1.0f;
 }
 
+float AYSGameMode::GetPlayModeFoeHealthMultiplier(const UWorld* World)
+{
+	const AYSGameMode* GameMode = World ? World->GetAuthGameMode<AYSGameMode>() : nullptr;
+	const AYSGameState* YSGameState = World ? World->GetGameState<AYSGameState>() : nullptr;
+	return GameMode && YSGameState && YSGameState->IsEasyMode() ? GameMode->EasyFoeHealthMultiplier : 1.0f;
+}
+
+void AYSGameMode::AddChestPhoenixFeathers(int32 ChestFeathers)
+{
+	if (ChestFeathers <= 0)
+	{
+		return;
+	}
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	AddPhoenixFeathers(ChestFeathers + (YSGameState && YSGameState->IsEasyMode() ? EasyBonusPhoenixFeathersPerChest : 0));
+}
+
 FYSPlayerCountScaling AYSGameMode::GetPlayerCountScaling() const
 {
 	if (PlayerCountScaling.Num() == 0)
