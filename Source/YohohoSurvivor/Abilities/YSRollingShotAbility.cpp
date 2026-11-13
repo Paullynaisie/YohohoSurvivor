@@ -1,4 +1,6 @@
 #include "Abilities/YSRollingShotAbility.h"
+#include "Abilities/YSMarkForDeleteAbility.h"
+#include "Upgrades/YSUpgrade.h"
 #include "Core/YSCombat.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
@@ -17,6 +19,27 @@ namespace YSRollingShot
 UYSRollingShotAbility::UYSRollingShotAbility()
 {
 	DisplayName = NSLOCTEXT("YS", "RollingShot", "Rolling shot");
+}
+
+bool UYSRollingShotAbility::IsActionAvailable() const
+{
+	const AYSPlayerCharacter* Character = bReplacedByMarkForDelete ? Cast<AYSPlayerCharacter>(GetHolderPawn()) : nullptr;
+	if (!Character)
+	{
+		return true;
+	}
+	for (const AYSWeapon* Weapon : Character->GetHeldWeapons())
+	{
+		TInlineComponentArray<UYSMarkForDeleteAbility*> MarkForDeletes(Weapon);
+		for (const UYSMarkForDeleteAbility* MarkForDelete : MarkForDeletes)
+		{
+			if (MarkForDelete->IsMarkForDelete())
+			{
+				return false;
+			}
+		}
+	}
+	return true;
 }
 
 void UYSRollingShotAbility::OnActivationPredicted(const FVector& TargetLocation)
@@ -121,8 +144,14 @@ void UYSRollingShotAbility::Shoot()
 	}
 	StartBurst(GetBurstTargetLocation(0));
 
-	// akimbo : l'autre pistolet tire après le délai akimbo (une seule roulade)
-	if (UYSRollingShotAbility* Partner = GetAkimboPartner())
+	// akimbo : l'autre pistolet tire après le délai akimbo (une seule roulade) ; Bullet Hell (Golden du Ricochet) : une seule balle,
+	// l'autre pistolet joue l'animation de tir en même temps
+	UYSRollingShotAbility* Partner = GetAkimboPartner();
+	if (Partner && GetWeaponStat(UYSRicochetUpgrade::BulletHellStat, 0.0f) > 0.0f)
+	{
+		Partner->PlayFireAnimationOnly();
+	}
+	else if (Partner)
 	{
 		TWeakObjectPtr<UYSRollingShotAbility> WeakPartner = Partner;
 		GetWorld()->GetTimerManager().SetTimer(PartnerTimer, FTimerDelegate::CreateWeakLambda(this, [WeakPartner]()

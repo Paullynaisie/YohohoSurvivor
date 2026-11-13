@@ -245,10 +245,13 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 	const float DamageMultiplier = GetDamageMultiplier();
 	// The Gun was better ++ : dégâts de base x (1 + bonus), avant les multiplicateurs
 	Projectile->SetDamage(Damage * GetBaseDamageBonusMultiplier() * DamageMultiplier);
-	// Stylish Sequence : une balle d'attaque auto marque les NME qu'elle touche (lu par le tireur s'il a la Golden)
-	if (IsAutomatic())
+	// Stylish Sequence : une balle marque les NME qu'elle touche (lu par le tireur s'il a la Golden) : attaque auto du pistolet,
+	// ou Ability (Rolling shot de The Sword was Better)
+	Projectile->SetStylishMark(IsAutomatic() ? YSStylish::GunAuto : YSStylish::Ability);
+	// CircleBullet : la balle se sépare en LesserCircleBullets quand elle disparaît
+	if (CircleBulletLevel > 0)
 	{
-		Projectile->SetStylishMark(YSStylish::GunAuto);
+		Projectile->SetCircleBullet(CircleBulletLevel);
 	}
 	// critiques des attaques auto : PewPew / Explosif = les balles comptent sur chaque NME, une sur N est critique ;
 	// Pierce = critique sur un NME en train d'être bumpé
@@ -298,6 +301,8 @@ void UYSCoupDPetoirAbility::SpawnProjectile(const FVector& Muzzle, const FVector
 	if (!IsAutomatic())
 	{
 		Projectile->SetRicochets(FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::RicochetCountStat, 0.0f)), 1.0f + GetWeaponStat(UYSRicochetUpgrade::RicochetDamageBonusStat, 0.0f));
+		// Bullet Hell (Golden du Ricochet) : CircleBullet à chaque NME touché
+		Projectile->SetCircleOnImpact(FMath::RoundToInt(GetWeaponStat(UYSRicochetUpgrade::BulletHellStat, 0.0f)));
 	}
 	// ShootPost du bateau : balles de l'attaque auto qui vivent plus longtemps (portée x3)
 	if (HolderCharacter && IsAutomatic())
@@ -325,6 +330,16 @@ void UYSCoupDPetoirAbility::FireBullet(const FVector& TargetLocation, int32 Bull
 	SpawnProjectile(Muzzle, Direction);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s balle %d à %.2f"), *GetOwner()->GetName(), *GetName(), BulletIndex + 1, GetWorld()->GetTimeSeconds());
 	MulticastBulletFired(BulletIndex, TimeToNextShot, BurstRemaining);
+}
+
+void UYSCoupDPetoirAbility::PlayFireAnimationOnly()
+{
+	MulticastBulletFired(0, 0.0f, 0.0f);
+	if (bPlayReloadAnim)
+	{
+		MulticastReloadStarted();
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSGun] %s.%s : animation de tir sans balle à %.2f"), *GetOwner()->GetName(), *GetName(), GetWorld()->GetTimeSeconds());
 }
 
 bool UYSCoupDPetoirAbility::IsBurstInProgressLocally() const

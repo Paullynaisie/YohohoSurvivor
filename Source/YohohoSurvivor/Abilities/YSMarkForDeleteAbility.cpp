@@ -361,9 +361,9 @@ void UYSMarkForDeleteAbility::FireShot(int32 Index)
 		UE_LOG(LogTemp, Warning, TEXT("[YSMarkForDelete] %s : tir %d impossible (Shot Projectile Class vide ?)"), *GetOwner()->GetName(), Index + 1);
 		return;
 	}
-	// depuis la bouche de l'arme de l'autre main (le Pistolet), droit devant avec visée assistée
-	const AYSWeapon* OffHand = Character->GetOffHandWeapon();
-	const FVector Muzzle = OffHand && OffHand != GetOwner() ? OffHand->GetMuzzleLocation() : Character->GetActorLocation();
+	// depuis la bouche de l'arme de l'autre main (le Pistolet / Petoir), droit devant avec visée assistée
+	const AYSWeapon* OtherHand = Character->GetMainHandWeapon() != GetOwner() ? Character->GetMainHandWeapon() : Character->GetOffHandWeapon();
+	const FVector Muzzle = OtherHand && OtherHand != GetOwner() ? OtherHand->GetMuzzleLocation() : Character->GetActorLocation();
 	const FVector Forward = Character->GetActorForwardVector().GetSafeNormal2D();
 	FVector Direction = Forward;
 	if (const AActor* Target = FindTargetInCone(World, Character->GetActorLocation(), Forward, ShotAssistAimDistance, ShotAssistAimAngle, HitTags, Character))

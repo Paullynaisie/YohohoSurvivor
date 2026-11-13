@@ -951,8 +951,10 @@ protected:
 
 /**
  *  Ricochet (Coup d'Petoir) : la balle repart vers le NME le plus proche pas encore touché après chaque dégât.
- *  Déblocage : UnlockRicochets ricochet(s) ; Bonus « Ricochet ++ » : + Bonus Value ricochet(s) chacun (somme arrondie à l'entier
- *  inférieur) ; Super « Golden ricochet » : dégâts x (1 + SuperDamageBonus) à chaque ricochet (cumulatif) et SuperExtraRicochets en plus.
+ *  Déblocage : UnlockRicochets ricochet(s) (3) ; Bonus « Ricochet ++ » : + Bonus Value ricochet(s) chacun (2 ; somme arrondie à
+ *  l'entier inférieur). Golden (2026-11-13) : 0 « Prise de vitesse » = dégâts x (1 + SuperDamageBonus) à chaque ricochet
+ *  (cumulatif) et SuperExtraRicochets en plus ; 1 « Bullet Hell » = le Rolling shot akimbo ne tire plus qu'une balle (l'autre
+ *  pistolet joue l'animation en même temps), qui déclenche une CircleBullet de Bullet Hell Circle Level à chaque NME touché.
  */
 UCLASS(meta=(DisplayName="Upgrade d'arme : Ricochet"))
 class UYSRicochetUpgrade : public UYSWeaponUpgrade
@@ -965,7 +967,7 @@ public:
 
 	/** Ricochets donnés par le déblocage */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock", meta=(ClampMin="0"))
-	int32 UnlockRicochets = 1;
+	int32 UnlockRicochets = 3;
 
 	/** Ricochets ajoutés par le Golden ricochet */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
@@ -975,9 +977,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="0"))
 	float SuperDamageBonus = 0.25f;
 
+	/** Bullet Hell : level de la CircleBullet déclenchée à chaque NME touché */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="1", ClampMax="5"))
+	int32 BulletHellCircleLevel = 1;
+
 	/** Noms des propriétés d'arme posées sur le personnage (lues par le Coup d'Petoir) */
 	static const FName RicochetCountStat;
 	static const FName RicochetDamageBonusStat;
+	static const FName BulletHellStat;
 
 protected:
 
@@ -985,6 +992,9 @@ protected:
 	virtual float GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const override;
 
 	virtual void ApplyWeaponProperty(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, bool bSuper) const override;
+
+	/** Golden : 0 Prise de vitesse (l'ancien Golden ricochet), 1 Bullet Hell */
+	virtual void ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const override;
 };
 
 /**
@@ -1064,6 +1074,43 @@ public:
 protected:
 
 	/** Dégâts de base de la partie Gun (sans le bonus), 0 sans arme concernée */
+	virtual float GetBonusBaseValue(const AYSPlayerCharacter* Character) const override;
+
+	virtual void ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const override;
+};
+
+/**
+ *  « The Sword was Better » (upgrade d'arme du Gunslinger, 2026-11-13, pendant de The Gun was better) : le Déblocage change le set
+ *  (Unlock Weapon Set : Petoir en main principale, Auto atk 100 et Rolling shot 150 en CircleBullet level 3 ; Sword en main
+ *  secondaire, Auto swing 50). ++ : dégâts de base de la Sword +Bonus Gold Value (0.2) chacun, avant les multiplicateurs
+ *  (propriété d'arme Sword Damage Bonus Stat, lue par l'Auto swing dont Base Damage Bonus Stat la nomme).
+ *  Golden : 0 « Stylish Sequence » = 3 marques (Auto atk du Petoir, Auto atk de la Sword, Ability) sur un NME -> CircleBullet
+ *  de Stylish Circle Level ; 1 « Mark for Delete » = l'Ability devient Mark for Delete (celui de la Sword, Only As Mark For Delete).
+ */
+UCLASS(meta=(DisplayName="Upgrade d'arme : The Sword was Better"))
+class UYSSwordWasBetterUpgrade : public UYSWeaponUpgrade
+{
+	GENERATED_BODY()
+
+public:
+
+	UYSSwordWasBetterUpgrade();
+
+	/** Set d'arme donné par le Déblocage (Petoir + Sword) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Unlock")
+	TObjectPtr<UYSWeaponSet> UnlockWeaponSet;
+
+	/** Stylish Sequence : level de la CircleBullet déclenchée aux 3 marques */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Upgrade|Super", meta=(ClampMin="1", ClampMax="5"))
+	int32 StylishCircleLevel = 3;
+
+	/** Propriétés d'arme posées sur le personnage (Mark for Delete : celle de The Gun was better) */
+	static const FName SwordDamageBonusStat;
+	static const FName StylishCircleStat;
+
+protected:
+
+	/** Dégâts de base de la Sword (sans le bonus), 0 sans arme concernée */
 	virtual float GetBonusBaseValue(const AYSPlayerCharacter* Character) const override;
 
 	virtual void ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const override;

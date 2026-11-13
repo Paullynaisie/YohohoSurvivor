@@ -317,6 +317,9 @@ public:
 
 	virtual void LifeSpanExpired() override;
 
+	/** CircleBullet : le cercle part de l'endroit où la balle disparaît (serveur) */
+	virtual void Destroyed() override;
+
 	/** Avant FinishSpawning : acteur traversé (et ce qui y est accroché), hauteur au-dessus du sol imposée (négatif = prise au tir) */
 	void SetFlightOverrides(AActor* IgnoredActor, float HeightAboveGroundOverride) { FlightIgnoredActor = IgnoredActor; ForcedHeightAboveGround = HeightAboveGroundOverride; }
 
@@ -355,12 +358,32 @@ public:
 	/** La balle traverse cet acteur sans le toucher (Mark for Delete : NME déjà dans la liste) ; avant FinishSpawning */
 	void IgnoreTarget(AActor* Target) { HitActors.AddUnique(Target); }
 
+	/**
+	 *  CircleBullet (avant FinishSpawning) : quand la balle disparaît (bout de course, dernier NME touché, mur), cercle de
+	 *  LesserCircleBullets de ce level depuis l'endroit où elle disparaît (AYSPlayerCharacter::SpawnCircleBullet ; 0 = non)
+	 */
+	void SetCircleBullet(int32 Level) { CircleBulletLevel = Level; }
+
+	/** Bullet Hell (Golden du Ricochet, avant FinishSpawning) : à chaque NME touché, CircleBullet de ce level au point d'impact (0 = non) */
+	void SetCircleOnImpact(int32 Level) { CircleOnImpactLevel = Level; }
+
 	/** Serveur : appelé à chaque NME touché (Mark for Delete : NME touchés par ses tirs) */
 	FYSProjectileFoeHit OnFoeHit;
 
 private:
 
 	uint8 StylishMark = 0;
+
+	/** CircleBullet : level du cercle à la disparition (serveur ; 0 = non), déjà déclenché ?, dernier NME touché (pas touché par le cercle) */
+	int32 CircleBulletLevel = 0;
+	bool bCircleBulletSpawned = false;
+	TWeakObjectPtr<AActor> LastHitFoe;
+
+	/** Bullet Hell : level du cercle à chaque NME touché (serveur ; 0 = non) */
+	int32 CircleOnImpactLevel = 0;
+
+	/** Cercle de LesserCircleBullets de Level ici, sans toucher IgnoredActor (serveur) */
+	void SpawnCircle(int32 Level, AActor* IgnoredActor) const;
 
 public:
 

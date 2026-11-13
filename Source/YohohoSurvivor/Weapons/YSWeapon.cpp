@@ -152,7 +152,8 @@ UYSAbilityComponent* AYSWeapon::GetActiveAction() const
 	TInlineComponentArray<UYSAbilityComponent*> Actions(this);
 	for (UYSAbilityComponent* Action : Actions)
 	{
-		if (!Action->IsAutomatic())
+		// (action en sommeil : ignorée)
+		if (!Action->IsAutomatic() && Action->IsActionAvailable())
 		{
 			return Action;
 		}

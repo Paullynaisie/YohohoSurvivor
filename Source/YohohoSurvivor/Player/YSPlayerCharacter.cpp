@@ -99,6 +99,8 @@ AYSPlayerCharacter::AYSPlayerCharacter()
 	PrimaryActorTick.bCanEverTick = true;
 
 	CorpseClass = AYSPlayerCorpse::StaticClass();
+	// CircleBullet : AMMO créée par Tools/EditorScripts/setup_circle_bullet.py (chargée au premier cercle)
+	LesserCircleBulletClass = TSoftClassPtr<AYSProjectile>(FSoftObjectPath(TEXT("/Game/Placeable/AMMO/LesserCircleBulletAMMO.LesserCircleBulletAMMO_C")));
 
 	MoveActionAbility = CreateDefaultSubobject<UYSRollAbility>(TEXT("MoveActionAbility"));
 	RunMoveAction = CreateDefaultSubobject<UYSRunAbility>(TEXT("RunMoveAction"));
@@ -3551,17 +3553,86 @@ void AYSPlayerCharacter::OnAbilityStepBackFinished()
 void AYSPlayerCharacter::RegisterStylishMark(AActor* Target, uint8 Mark)
 {
 	AYSFoeCharacter* Foe = Cast<AYSFoeCharacter>(Target);
-	const float* Levels = HasAuthority() && Foe ? WeaponStats.Find(UYSGunWasBetterUpgrade::StylishSequenceStat) : nullptr;
-	if (!Levels || *Levels <= 0.0f)
+	// The Gun was better (Swordsman) : Spinning Sword ; The Sword was Better (Gunslinger) : CircleBullet
+	const int32 SwordLevels = HasAuthority() && Foe ? FMath::RoundToInt(GetCharacterWeaponStat(UYSGunWasBetterUpgrade::StylishSequenceStat)) : 0;
+	const int32 CircleLevel = HasAuthority() && Foe ? FMath::RoundToInt(GetCharacterWeaponStat(UYSSwordWasBetterUpgrade::StylishCircleStat)) : 0;
+	if (SwordLevels <= 0 && CircleLevel <= 0)
 	{
 		return;
 	}
-	// 3 marques (Auto atk de la Sword, Auto atk du pistolet, Ability) : Spinning Sword sur le NME, sans fusion avec une autre
-	if (Foe->AddStylishMark(this, Mark, YSStylish::All))
+	// 3 marques (Auto atk de la Sword, Auto atk du pistolet, Ability)
+	if (!Foe->AddStylishMark(this, Mark, YSStylish::All))
 	{
-		const AYSSpinningSword* Sword = AYSSpinningSword::GiveLevel(this, false, Foe->GetActorLocation(), FMath::RoundToInt(*Levels), false);
-		UE_LOG(LogTemp, Verbose, TEXT("[YSStylish] %s : 3 marques sur %s -> Spinning Sword level %d"), *GetName(), *Foe->GetName(), Sword ? Sword->GetLevel() : 0);
+		return;
 	}
+	if (CircleLevel > 0)
+	{
+		// cercle de LesserCircleBullets depuis le NME, qui ne le touchent pas (choix de Claude : sinon toutes le touchent au départ)
+		const int32 Count = SpawnCircleBullet(Foe->GetActorLocation(), GetActorForwardVector(), CircleLevel, Foe);
+		UE_LOG(LogTemp, Verbose, TEXT("[YSStylish] %s : 3 marques sur %s -> CircleBullet level %d (%d balles)"), *GetName(), *Foe->GetName(), CircleLevel, Count);
+		return;
+	}
+	// Spinning Sword sur le NME, sans fusion avec une autre
+	const AYSSpinningSword* Sword = AYSSpinningSword::GiveLevel(this, false, Foe->GetActorLocation(), SwordLevels, false);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSStylish] %s : 3 marques sur %s -> Spinning Sword level %d"), *GetName(), *Foe->GetName(), Sword ? Sword->GetLevel() : 0);
+}
+
+int32 AYSPlayerCharacter::SpawnCircleBullet(const FVector& Location, const FVector& Direction, int32 Level, AActor* IgnoredActor)
+{
+	UWorld* World = GetWorld();
+	if (!HasAuthority() || !World || Level <= 0)
+	{
+		return 0;
+	}
+	const TSubclassOf<AYSProjectile> LesserClass = LesserCircleBulletClass.LoadSynchronous();
+	if (!LesserClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[YSCircleBullet] %s : Lesser Circle Bullet Class introuvable (%s)"), *GetName(), *LesserCircleBulletClass.ToString());
+		return 0;
+	}
+
+	// dégâts : comme la Spinning Sword, x Damage bonus de l'Auto atk et de l'Ability
+	const float LesserDamage = LesserCircleBulletDamage * GetSlotDamageMultiplier(EYSActionSlot::AutoAtk) * GetSlotDamageMultiplier(EYSActionSlot::Ability);
+	// Pierce : celui de l'Auto atk de Gun du joueur si elle est en Pierce, sinon la valeur de base + le bonus Shoot system de l'Auto atk
+	int32 MaxHits = 0;
+	const TArray<AYSWeapon*> Weapons = GetHeldWeapons();
+	for (const AYSWeapon* Weapon : Weapons)
+	{
+		const UYSCoupDPetoirAbility* AutoGun = Cast<UYSCoupDPetoirAbility>(Weapon->GetAutoAction());
+		if (AutoGun && AutoGun->ShootSystem == EYSShootSystem::Pierce)
+		{
+			MaxHits = FMath::Max(MaxHits, AutoGun->GetMaxHitsPerBullet());
+		}
+	}
+	if (MaxHits <= 0)
+	{
+		const float Bonus = Weapons.Num() > 0 ? GetWeaponShootSystemBonus(Weapons[0], EYSActionSlot::AutoAtk) : 0.0f;
+		MaxHits = LesserCircleBulletPierceMaxHits + FMath::RoundToInt(Bonus);
+	}
+
+	const int32 ClampedLevel = FMath::Clamp(Level, 1, CircleBulletMaxLevel);
+	const int32 Count = ClampedLevel * LesserCircleBulletsPerLevel;
+	const FVector Flat = Direction.GetSafeNormal2D().IsNearlyZero() ? FVector::ForwardVector : Direction.GetSafeNormal2D();
+	const float BaseYaw = Flat.Rotation().Yaw;
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const FTransform SpawnTransform(FRotator(0.0f, BaseYaw + 360.0f * Index / Count, 0.0f), Location);
+		AYSProjectile* Lesser = World->SpawnActorDeferred<AYSProjectile>(LesserClass, SpawnTransform, this, this, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (!Lesser)
+		{
+			continue;
+		}
+		Lesser->SetDamage(LesserDamage);
+		Lesser->SetMaxHits(MaxHits);
+		if (IgnoredActor)
+		{
+			Lesser->IgnoreTarget(IgnoredActor);
+		}
+		Lesser->FinishSpawning(SpawnTransform);
+	}
+	UE_LOG(LogTemp, Verbose, TEXT("[YSCircleBullet] %s : CircleBullet level %d en (%.0f, %.0f, %.0f) : %d LesserCircleBullets, %.1f dégâts, %d NME max%s"), *GetName(), ClampedLevel,
+		Location.X, Location.Y, Location.Z, Count, LesserDamage, MaxHits, IgnoredActor ? *FString::Printf(TEXT(", sans toucher %s"), *IgnoredActor->GetName()) : TEXT(""));
+	return Count;
 }
 
 void AYSPlayerCharacter::SetAiming(float Delay, bool bGolden)

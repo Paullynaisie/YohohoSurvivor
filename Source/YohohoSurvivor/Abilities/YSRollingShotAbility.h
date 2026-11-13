@@ -70,9 +70,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rolling Shot|Roll Anim", meta=(Units="Centimeters"))
 	float RollAnimTuckHeight = 40.0f;
 
+	/**
+	 *  The Sword was Better : ce Rolling shot laisse la place au Mark for Delete d'une autre arme tenue quand celui-ci est actif
+	 *  (Golden Mark for Delete) : il n'est plus l'Ability du clic
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rolling Shot")
+	bool bReplacedByMarkForDelete = false;
+
 public:
 
 	UYSRollingShotAbility();
+
+	/** En sommeil quand un Mark for Delete actif le remplace (Replaced By Mark For Delete) */
+	virtual bool IsActionAvailable() const override;
 
 	/** Roulade + visée + rafale, puis la recharge (CD reduction : seulement la recharge) */
 	virtual float GetCooldownDuration() const override { return GetRollDuration() + AimDuration + GetBurstTime() + Cooldown * GetCooldownMultiplier(); }

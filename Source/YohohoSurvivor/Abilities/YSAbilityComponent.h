@@ -147,6 +147,12 @@ public:
 	/** Vrai pour une attaque automatique (déclenchée par le serveur, pas par une touche) */
 	virtual bool IsAutomatic() const { return false; }
 
+	/**
+	 *  Faux = action en sommeil, ignorée par AYSWeapon::GetActiveAction (clic, icône, priorités) : ex. The Sword was Better,
+	 *  le Rolling shot du Petoir laisse la place au Mark for Delete de la Sword quand la Golden est prise
+	 */
+	virtual bool IsActionAvailable() const { return true; }
+
 	/** Type d'action pour les upgrades : Ability (déclenchée par le joueur) ou Auto atk (automatique) */
 	EYSActionSlot GetActionSlot() const { return IsAutomatic() ? EYSActionSlot::AutoAtk : EYSActionSlot::Ability; }
 

@@ -402,6 +402,31 @@ void AYSProjectile::LifeSpanExpired()
 	Super::LifeSpanExpired();
 }
 
+void AYSProjectile::Destroyed()
+{
+	// CircleBullet : bout de course, dernier NME touché, mur... le cercle part d'ici (pas à la fermeture du niveau)
+	const UWorld* World = GetWorld();
+	if (HasAuthority() && CircleBulletLevel > 0 && !bCircleBulletSpawned && World && !World->bIsTearingDown)
+	{
+		bCircleBulletSpawned = true;
+		SpawnCircle(CircleBulletLevel, LastHitFoe.Get());
+	}
+	Super::Destroyed();
+}
+
+void AYSProjectile::SpawnCircle(int32 Level, AActor* IgnoredActor) const
+{
+	AYSPlayerCharacter* Shooter = Cast<AYSPlayerCharacter>(GetInstigator());
+	if (!Shooter)
+	{
+		return;
+	}
+	// première LesserCircleBullet dans le sens de vol (arrêtée sur un ricochet : son regard)
+	const FVector Direction = GetVelocity().IsNearlyZero() ? GetActorForwardVector() : GetVelocity();
+	Shooter->SpawnCircleBullet(GetActorLocation(), Direction, Level, IgnoredActor);
+	UE_LOG(LogTemp, Verbose, TEXT("[YSProjectile] %s : CircleBullet level %d en (%.0f, %.0f)"), *GetName(), Level, GetActorLocation().X, GetActorLocation().Y);
+}
+
 void AYSProjectile::OnCollisionOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	HitTarget(OtherActor, SweepResult);
@@ -589,6 +614,12 @@ void AYSProjectile::HitTarget(AActor* OtherActor, const FHitResult& SweepResult)
 		if (AYSPlayerCharacter* StylishShooter = StylishMark != 0 ? Cast<AYSPlayerCharacter>(GetInstigator()) : nullptr)
 		{
 			StylishShooter->RegisterStylishMark(TargetFoe, StylishMark);
+		}
+		// CircleBullet : le cercle de la disparition ne touche pas le dernier NME touché ; Bullet Hell : cercle à chaque impact
+		LastHitFoe = TargetFoe;
+		if (CircleOnImpactLevel > 0)
+		{
+			SpawnCircle(CircleOnImpactLevel, TargetFoe);
 		}
 	}
 

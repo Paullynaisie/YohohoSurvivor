@@ -6,6 +6,7 @@
 #include "Abilities/YSDashingSlashAbility.h"
 #include "Abilities/YSGoMinionsAbility.h"
 #include "Abilities/YSRollAndBombAbility.h"
+#include "Abilities/YSRollingShotAbility.h"
 #include "Abilities/YSSummonCrewAbility.h"
 #include "Abilities/YSTourbilolAbility.h"
 #include "Player/YSPlayerCharacter.h"
@@ -827,6 +828,7 @@ void UYSMoveActionUpgrade::Apply(AYSPlayerCharacter* Character, int32 Variant, c
 
 const FName UYSRicochetUpgrade::RicochetCountStat(TEXT("Ricochets"));
 const FName UYSRicochetUpgrade::RicochetDamageBonusStat(TEXT("RicochetDamageBonus"));
+const FName UYSRicochetUpgrade::BulletHellStat(TEXT("BulletHell"));
 
 UYSRicochetUpgrade::UYSRicochetUpgrade()
 {
@@ -835,13 +837,19 @@ UYSRicochetUpgrade::UYSRicochetUpgrade()
 	ExcludedActionClasses.Add(UYSRollAndBombAbility::StaticClass());
 	UnlockName = NSLOCTEXT("YS", "RicochetUnlockName", "Ricochet");
 	UnlockDescription = NSLOCTEXT("YS", "RicochetUnlockDesc", "Après avoir touché, la balle ricoche\nvers le NME le plus proche");
-	BonusDescription = NSLOCTEXT("YS", "RicochetBonusDesc", "La balle ricoche une fois de plus");
+	BonusDescription = NSLOCTEXT("YS", "RicochetBonusDesc", "La balle ricoche 2 fois de plus");
 	BonusName = NSLOCTEXT("YS", "RicochetBonusName", "Ricochet ++");
 	BonusStatLabel = NSLOCTEXT("YS", "RicochetBonusStat", "Ricochets");
-	BonusSilverValue = 1.0f;
-	BonusGoldValue = 1.0f;
-	SuperName = NSLOCTEXT("YS", "RicochetSuperName", "Golden ricochet");
+	BonusSilverValue = 2.0f;
+	BonusGoldValue = 2.0f;
+	SuperName = NSLOCTEXT("YS", "RicochetSuperName", "Prise de vitesse");
 	SuperDescription = NSLOCTEXT("YS", "RicochetSuperDesc", "+25 % de dégâts à chaque ricochet");
+}
+
+void UYSRicochetUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const
+{
+	ApplyWeaponProperty(Character, bUnlocked, BonusTotal, GoldenIndex == 0);
+	Character->SetWeaponStat(BulletHellStat, bUnlocked && GoldenIndex == 1 ? BulletHellCircleLevel : 0.0f);
 }
 
 float UYSRicochetUpgrade::GetBonusDisplayValue(const AYSPlayerCharacter* Character, float BonusTotal) const
@@ -924,6 +932,61 @@ float UYSGunWasBetterUpgrade::GetBonusBaseValue(const AYSPlayerCharacter* Charac
 		}
 	}
 	return 0.0f;
+}
+
+const FName UYSSwordWasBetterUpgrade::SwordDamageBonusStat(TEXT("SwordWasBetterDamage"));
+const FName UYSSwordWasBetterUpgrade::StylishCircleStat(TEXT("StylishCircle"));
+
+UYSSwordWasBetterUpgrade::UYSSwordWasBetterUpgrade()
+{
+	DisplayName = NSLOCTEXT("YS", "SwordWasBetterName", "The Sword was Better");
+	RequiredActionClass = UYSRollingShotAbility::StaticClass();
+	RequiredSlot = EYSActionSlot::Ability;
+	bShardSystem = true;
+	MaxBonusStacks = 5;
+	BonusSilverValue = 0.2f;
+	BonusGoldValue = 0.2f;
+	UnlockName = NSLOCTEXT("YS", "SwordWasBetterUnlockName", "The Sword was Better");
+	UnlockDescription = NSLOCTEXT("YS", "SwordWasBetterUnlockDesc", "Une Sword en main secondaire qui attaque toute seule ;\nRolling shot en CircleBullet level 3");
+	BonusName = NSLOCTEXT("YS", "SwordWasBetterBonusName", "The Sword was Better ++");
+	BonusDescription = NSLOCTEXT("YS", "SwordWasBetterBonusDesc", "+20 % de dégâts de base pour la Sword");
+	BonusStatLabel = NSLOCTEXT("YS", "SwordWasBetterBonusStat", "Dégâts de base de la Sword");
+	SuperName = NSLOCTEXT("YS", "SwordWasBetterSuperName", "Stylish Sequence");
+}
+
+float UYSSwordWasBetterUpgrade::GetBonusBaseValue(const AYSPlayerCharacter* Character) const
+{
+	// Damage de l'Auto swing qui lit le bonus (la Sword)
+	for (const AYSWeapon* Weapon : { Character ? Character->GetMainHandWeapon() : nullptr, Character ? Character->GetOffHandWeapon() : nullptr })
+	{
+		if (!Weapon)
+		{
+			continue;
+		}
+		TInlineComponentArray<UYSAutoSwingAbility*> Swings(Weapon);
+		for (const UYSAutoSwingAbility* Swing : Swings)
+		{
+			if (Swing->BaseDamageBonusStat == SwordDamageBonusStat)
+			{
+				return Swing->Damage;
+			}
+		}
+	}
+	return 0.0f;
+}
+
+void UYSSwordWasBetterUpgrade::ApplyWeaponGolden(AYSPlayerCharacter* Character, bool bUnlocked, float BonusTotal, int32 GoldenIndex) const
+{
+	Character->SetWeaponStat(SwordDamageBonusStat, bUnlocked ? BonusTotal : 0.0f);
+	Character->SetWeaponStat(StylishCircleStat, bUnlocked && GoldenIndex == 0 ? StylishCircleLevel : 0.0f);
+	// Mark for Delete : même propriété que celle de The Gun was better (lue par UYSMarkForDeleteAbility)
+	Character->SetWeaponStat(UYSGunWasBetterUpgrade::MarkForDeleteStat, bUnlocked && GoldenIndex == 1 ? 1.0f : 0.0f);
+	// Déblocage : Petoir + Sword (changement de set = nouveau personnage, qui réapplique ses upgrades : rien de plus alors)
+	if (bUnlocked && UnlockWeaponSet && Character->GetWeaponSet() != UnlockWeaponSet)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSWeaponUpgrade] %s : The Sword was Better -> set %s"), *Character->GetName(), *UnlockWeaponSet->GetName());
+		Character->ChangeWeaponSet(UnlockWeaponSet);
+	}
 }
 
 const FName UYSBladeThrowUpgrade::BladeThrowStat(TEXT("BladeThrow"));

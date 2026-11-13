@@ -72,7 +72,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Mark for Delete|Roll", meta=(Units="Centimeters"))
 	float RollAnimTuckHeight = 40.0f;
 
+	/**
+	 *  The Sword was Better (Sword en main secondaire) : pas de Dashing Slash sans la Golden, l'action est en sommeil (l'Ability
+	 *  reste le Rolling shot du Petoir) ; avec la Golden, elle devient l'Ability du clic
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Mark for Delete")
+	bool bOnlyAsMarkForDelete = false;
+
 	UYSMarkForDeleteAbility();
+
+	/** En sommeil sans la Golden si Only As Mark For Delete */
+	virtual bool IsActionAvailable() const override { return !bOnlyAsMarkForDelete || bMarkForDelete; }
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 

@@ -96,6 +96,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Auto swing", meta=(ClampMin="0"))
 	float Damage = 1.0f;
 
+	/**
+	 *  Propriété d'arme (posée par une upgrade d'arme) ajoutée aux dégâts de base : Damage x (1 + valeur), avant les multiplicateurs
+	 *  (ex. SwordWasBetterDamage : The Sword was Better ++ sur la Sword). Vide = aucune.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Auto swing")
+	FName BaseDamageBonusStat;
+
+	/** 1 + Base Damage Bonus Stat (propriété d'arme du porteur) */
+	float GetBaseDamageBonusMultiplier() const { return BaseDamageBonusStat.IsNone() ? 1.0f : 1.0f + GetWeaponStat(BaseDamageBonusStat, 0.0f); }
+
 	/** Délai avant que l'attaque puisse se redéclencher, compté à la fin de l'animation */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Auto swing", meta=(DisplayName="Auto Atk CD", ClampMin="0", Units="Seconds"))
 	float AutoAtkCooldown = 0.8f;
@@ -298,7 +308,7 @@ public:
 	/** Attaque auto : ralentit le PJ pendant la préparation et la coupe */
 	virtual bool GetAutoAttackSlowdown(float& OutMultiplier) const override;
 
-	virtual float GetBaseDamage() const override { return Damage; }
+	virtual float GetBaseDamage() const override { return Damage * GetBaseDamageBonusMultiplier(); }
 
 #if WITH_EDITOR
 	virtual void GetUnusedProperties(TArray<FName>& OutNames) const override;

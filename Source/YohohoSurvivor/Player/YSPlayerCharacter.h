@@ -28,6 +28,7 @@ class UInputMappingContext;
 class ULocalPlayer;
 class UChildActorComponent;
 class AYSWeapon;
+class AYSProjectile;
 class UYSWeaponSet;
 class UYSPassive;
 class AYSInteractiveObject;
@@ -546,6 +547,31 @@ protected:
 	/** Coup critique : dégâts x ce multiplicateur (Golden bloodlust, Atk critique), augmenté par les bonus critiques d'Atk speed / Shoot system ; un passif peut le remplacer (Marksman) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|Combat", meta=(ClampMin="1"))
 	float CriticalDamageMultiplier = 1.5f;
+
+	/**
+	 *  CircleBullet (upgrades d'arme du Gunslinger) : AMMO des LesserCircleBullets qui partent en cercle depuis le point de despawn
+	 *  d'une CircleBullet (couleur du joueur : Use Player Color de l'AMMO ; portée = vitesse x durée de vie de l'AMMO)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|CircleBullet")
+	TSoftClassPtr<AYSProjectile> LesserCircleBulletClass;
+
+	/** Dégâts d'une LesserCircleBullet, x Damage bonus de l'Auto atk x Damage bonus de l'Ability (shards et upgrades) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|CircleBullet", meta=(ClampMin="0"))
+	float LesserCircleBulletDamage = 15.0f;
+
+	/** LesserCircleBullets par level de CircleBullet (level 1 à Circle Bullet Max Level) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|CircleBullet", meta=(ClampMin="1"))
+	int32 LesserCircleBulletsPerLevel = 5;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|CircleBullet", meta=(ClampMin="1"))
+	int32 CircleBulletMaxLevel = 5;
+
+	/**
+	 *  NME touchés par une LesserCircleBullet : ceux de l'Auto atk de Gun du joueur si elle est en Pierce, sinon cette valeur
+	 *  + le bonus Shoot system de l'Auto atk (shards)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="3C|CircleBullet", meta=(ClampMin="1"))
+	int32 LesserCircleBulletPierceMaxHits = 1;
 
 	/** Attaque qui touche plusieurs NME (swing, balle qui traverse, explosion) : chaque NME au-delà du premier prend cette part
 	 *  de dégâts en moins (cumulé : 2e x 0.95, 3e x 0.9...), le plus proche en premier */
@@ -1335,6 +1361,13 @@ public:
 	 *  et une Spinning Sword (levels : propriété d'arme StylishSequence) apparaît sur le NME. Sans la Golden : rien.
 	 */
 	void RegisterStylishMark(AActor* Target, uint8 Mark);
+
+	/**
+	 *  Serveur, CircleBullet de Level (1 à Circle Bullet Max Level) à Location : Level x Lesser Circle Bullets Per Level
+	 *  LesserCircleBullets réparties à angles égaux, la première dans Direction (à plat) ; elles ne touchent pas IgnoredActor
+	 *  (NME qui a déclenché le cercle). Renvoie le nombre de balles tirées.
+	 */
+	int32 SpawnCircleBullet(const FVector& Location, const FVector& Direction, int32 Level, AActor* IgnoredActor);
 
 	/** Aiming (serveur, upgrade) : délai immobile avant les critiques (0 = pas débloqué), Golden aiming */
 	void SetAiming(float Delay, bool bGolden);

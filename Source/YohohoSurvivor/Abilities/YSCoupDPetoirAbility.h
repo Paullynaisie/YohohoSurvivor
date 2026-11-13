@@ -50,6 +50,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'Petoir")
 	FName BaseDamageBonusStat;
 
+	/**
+	 *  CircleBullet : chaque balle tirée est une CircleBullet de ce level (1 à 5) : quand elle disparaît (bout de course, dernier
+	 *  NME touché, mur), elle se sépare en un cercle de LesserCircleBullets (réglages : catégorie 3C|CircleBullet du personnage).
+	 *  0 = balle normale.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'Petoir|Circle Bullet", meta=(ClampMin="0", ClampMax="5"))
+	int32 CircleBulletLevel = 0;
+
 	/** Visée assistée : portée max (depuis le tireur) d'une cible pour être prise automatiquement (0 = désactivée) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Coup d'Petoir|Assist Aim", meta=(ClampMin="0", Units="Centimeters"))
 	float AssistAimDistance = 1000.0f;
@@ -248,6 +256,9 @@ public:
 
 	/** Rafale en cours d'après la dernière balle vue par cette machine (toutes les machines ; ralentissement de l'attaque auto) */
 	bool IsBurstInProgressLocally() const;
+
+	/** Serveur : recul et rechargement d'un tir sur toutes les machines, sans balle (Bullet Hell : l'autre pistolet de l'akimbo) */
+	void PlayFireAnimationOnly();
 
 protected:
 

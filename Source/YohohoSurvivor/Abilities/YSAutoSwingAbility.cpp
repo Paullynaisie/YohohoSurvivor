@@ -439,9 +439,11 @@ void UYSAutoSwingAbility::ApplySwingHits(float SwingElapsed, bool bMainHit)
 		// coupe critique, ou minion du Captain sur le NME marqué par la Captain Sword
 		const bool bCritical = bMainHit && Character && (bCriticalSwing || Character->HasForcedCriticalAgainst(Target));
 		const float MultiHitFactor = Character ? Character->GetMultiHitDamageMultiplier(MultiHitIndex) : 1.0f;
-		const float FinalDamage = Damage * DamageFactor * MultiHitFactor * GetDamageMultiplier() * (bCritical ? Character->GetCriticalDamageMultiplier() : 1.0f);
+		// (The Sword was Better ++ : dégâts de base x (1 + bonus))
+		const float BaseDamage = Damage * GetBaseDamageBonusMultiplier();
+		const float FinalDamage = BaseDamage * DamageFactor * MultiHitFactor * GetDamageMultiplier() * (bCritical ? Character->GetCriticalDamageMultiplier() : 1.0f);
 		UE_LOG(LogTemp, Verbose, TEXT("[YSAutoSwing] %s.%s touche %s : %.1f dégâts (base %.1f x %.2f x multi-cibles %.2f x %.3f%s%s)"), *GetOwner()->GetName(), *GetName(), *Target->GetName(),
-			FinalDamage, Damage, DamageFactor, MultiHitFactor, GetDamageMultiplier(), !bInAttack ? TEXT(", secondaires hors attaque") : DamageFactor < 1.0f ? TEXT(", secondaires") : TEXT(""), bCritical ? TEXT(", critique") : TEXT(""));
+			FinalDamage, BaseDamage, DamageFactor, MultiHitFactor, GetDamageMultiplier(), !bInAttack ? TEXT(", secondaires hors attaque") : DamageFactor < 1.0f ? TEXT(", secondaires") : TEXT(""), bCritical ? TEXT(", critique") : TEXT(""));
 		// pas de DamageCauser : le chiffre de dégâts s'affiche sur la cible ; critique : type de dégât qui grossit le chiffre ;
 		// direction du coup (pushback) = du porteur vers la cible : le NME recule, il n'est pas balayé sur le côté par la lame
 		const FVector ShotDirection = Holder ? (Target->GetActorLocation() - Holder->GetActorLocation()).GetSafeNormal2D() : FVector::ZeroVector;
