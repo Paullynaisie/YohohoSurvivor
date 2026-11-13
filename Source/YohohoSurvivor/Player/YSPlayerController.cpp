@@ -3136,11 +3136,11 @@ void AYSPlayerController::YSMoveState()
 		return;
 	}
 	const UYSAbilityComponent* MoveAbility = PlayerCharacter->GetMoveActionAbility();
-	UE_LOG(LogTemp, Log, TEXT("[YSMoveState] %s : vitesse %.0f, stamina %.1f / %.1f, MoveAction %s (++ %.2f, Golden %d, coût %.0f), camouflé %d, invulnérable %d, intangible %d, boost %d, dégâts x%.2f, PV %.0f, en (%.0f, %.0f)"),
+	UE_LOG(LogTemp, Log, TEXT("[YSMoveState] %s : vitesse %.0f, stamina %.1f / %.1f, MoveAction %s (++ %.2f, Golden %d, coût %.0f), camouflé %d, invulnérable %d, intangible %d, boost %d, dégâts x%.2f, PV %.0f, en (%.0f, %.0f), regard %.0f°"),
 		*PlayerCharacter->GetName(), PlayerCharacter->GetCharacterMovement()->MaxWalkSpeed, PlayerCharacter->GetStamina(), PlayerCharacter->GetMaxStamina(),
 		MoveAbility ? *MoveAbility->GetName() : TEXT("aucune"), MoveAbility ? MoveAbility->GetMoveActionBonus() : 0.0f, MoveAbility ? MoveAbility->GetMoveActionGolden() : -1,
 		MoveAbility ? MoveAbility->GetMoveActionStaminaCost() : 0.0f, PlayerCharacter->IsHiddenFromFoes(), PlayerCharacter->IsInvulnerable(), PlayerCharacter->IsPassingThroughPawns(),
-		PlayerCharacter->IsMoraleBoosted(), PlayerCharacter->GetMoraleBoostDamageMultiplier(), PlayerCharacter->GetHealth(), PlayerCharacter->GetActorLocation().X, PlayerCharacter->GetActorLocation().Y);
+		PlayerCharacter->IsMoraleBoosted(), PlayerCharacter->GetMoraleBoostDamageMultiplier(), PlayerCharacter->GetHealth(), PlayerCharacter->GetActorLocation().X, PlayerCharacter->GetActorLocation().Y, PlayerCharacter->GetActorRotation().Yaw);
 }
 
 void AYSPlayerController::YSSetStamina(float Value)

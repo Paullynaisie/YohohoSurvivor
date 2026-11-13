@@ -399,6 +399,13 @@ void AYSPlayerCharacter::ApplyPushback(float Damage, const FDamageEvent& DamageE
 	{
 		return;
 	}
+	// intangible (Shoulder bump, Free running, roulade...) : les coups blessent mais ne poussent pas
+	// (dans une foule, chaque pushback remplaçait la vitesse : le dash / la course étaient arrêtés net)
+	if (IsPassingThroughPawns())
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[YSPushback] %s frappé par %s : intangible, pas de pushback"), *GetName(), *Attacker->GetName());
+		return;
+	}
 	// encore en train de sortir du sol (minion) : sorti tout de suite, puis poussé
 	FinishRiseNow();
 	const FVector Direction = static_cast<const FPointDamageEvent&>(DamageEvent).ShotDirection.GetSafeNormal2D();
