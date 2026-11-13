@@ -8,6 +8,8 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Weapons/YSLesserSpinningBlade.h"
 #include "Weapons/YSSpinningSword.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 UYSSwordsmanAbility::UYSSwordsmanAbility()
 {
@@ -75,7 +77,9 @@ float UYSSwordsmanAbility::GetSwingElapsed() const
 
 bool UYSSwordsmanAbility::IsGrantingInvulnerability() const
 {
-	return Mode == EYSSwordsmanMode::Dash && Super::IsGrantingInvulnerability();
+	// Blade Throw : invulnérable pendant le pas en arrière
+	float Alpha;
+	return Mode == EYSSwordsmanMode::Dash ? Super::IsGrantingInvulnerability() : IsInThrowStepBack(Alpha);
 }
 
 float UYSSwordsmanAbility::GetMoveSpeedMultiplier() const
@@ -85,7 +89,7 @@ float UYSSwordsmanAbility::GetMoveSpeedMultiplier() const
 		return Super::GetMoveSpeedMultiplier();
 	}
 	float Alpha;
-	return IsInThrowStepBack(Alpha) ? FMath::Lerp(StepBackSpeedMultiplier, StepBackEndSpeedMultiplier, FMath::InterpEaseOut(0.0f, 1.0f, Alpha, StepBackDecayExponent)) : 1.0f;
+	return IsInThrowStepBack(Alpha) ? BladeThrowStepBackSpeedScale * FMath::Lerp(StepBackSpeedMultiplier, StepBackEndSpeedMultiplier, FMath::InterpEaseOut(0.0f, 1.0f, Alpha, StepBackDecayExponent)) : 1.0f;
 }
 
 bool UYSSwordsmanAbility::GetForcedMoveDirection(FVector& OutDirection) const
@@ -150,7 +154,7 @@ void UYSSwordsmanAbility::OnActivationPredicted(const FVector& TargetLocation)
 	{
 	case EYSSwordsmanMode::BladeThrow:
 		// pas en arrière prédit (direction figée par PrepareActivation) et prévisu du point de croisement
-		ApplyPhaseKick(0);
+		KickThrowStepBack();
 		ShowPreview(ComputeThrowTarget(TargetLocation));
 		break;
 	case EYSSwordsmanMode::BladeMastery:
@@ -170,7 +174,7 @@ void UYSSwordsmanAbility::ExecuteAbility(const FVector& TargetLocation)
 		LockDirection(TargetLocation);
 		ThrowTarget = ComputeThrowTarget(TargetLocation);
 		bThrowPending = true;
-		ApplyPhaseKick(0);
+		KickThrowStepBack();
 		const APawn* Holder = GetHolderPawn();
 		if (Holder && Holder->IsLocallyControlled())
 		{
@@ -222,6 +226,12 @@ void UYSSwordsmanAbility::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	}
 	UYSAbilityComponent::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+	// Blade Throw : pas en arrière intangible (traverse NME et joueurs), point de croisement qui suit le curseur jusqu'au lancer
+	float StepBackAlpha;
+	const APawn* AimHolder = GetHolderPawn();
+	SetPassThroughPawns(IsInThrowStepBack(StepBackAlpha) && AimHolder && (GetOwner()->HasAuthority() || AimHolder->IsLocallyControlled()));
+	UpdateThrowAim(DeltaTime);
+
 	// fin du pas en arrière : lancer (serveur), prévisu cachée (toutes les machines)
 	const float Elapsed = GetTimeSinceActivation();
 	if (Elapsed >= GetThrowStepBackDuration())
@@ -249,7 +259,7 @@ void UYSSwordsmanAbility::Throw()
 	Path.Start = Character->GetActorLocation();
 	Path.Target = ThrowTarget;
 	Path.Apex = BladeThrowApex;
-	Path.OutDuration = BladeThrowDuration * (bSwordsrang ? SwordsrangDurationMultiplier : 1.0f);
+	Path.OutDuration = bSwordsrang ? SwordsrangDuration : BladeThrowDuration;
 	Path.ReturnDuration = Path.OutDuration;
 	Path.bHomingReturn = bSwordsrang;
 	Path.CriticalRadius = CriticalZoneRadius;
@@ -336,5 +346,51 @@ void UYSSwordsmanAbility::HidePreview()
 	if (PreviewZone && PreviewZone->IsVisible())
 	{
 		PreviewZone->SetVisibility(false);
+	}
+}
+
+void UYSSwordsmanAbility::KickThrowStepBack()
+{
+	ACharacter* Character = Cast<ACharacter>(GetHolderPawn());
+	const AYSPlayerCharacter* Player = Cast<AYSPlayerCharacter>(Character);
+	if (!Player || !IsMovementDriver() || GetThrowStepBackDuration() <= 0.0f)
+	{
+		return;
+	}
+	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	const float Speed = Player->GetUnmodifiedWalkSpeed() * StepBackSpeedMultiplier * BladeThrowStepBackSpeedScale;
+	Movement->Velocity = -LockedDirection * Speed + FVector(0.0f, 0.0f, Movement->Velocity.Z);
+	Movement->MaxWalkSpeed = Speed;
+}
+
+void UYSSwordsmanAbility::UpdateThrowAim(float DeltaTime)
+{
+	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
+	float Alpha;
+	if (!Character || !Character->IsLocallyControlled() || !IsInThrowStepBack(Alpha))
+	{
+		return;
+	}
+	// joueur qui lance : le point de croisement suit le curseur jusqu'au lancer
+	const FVector Target = ComputeThrowTarget(Character->GetPublicAimLocation());
+	ShowPreview(Target);
+	if (GetOwner()->HasAuthority())
+	{
+		ThrowTarget = Target;
+		return;
+	}
+	ThrowAimSendTimer -= DeltaTime;
+	if (ThrowAimSendTimer <= 0.0f)
+	{
+		ThrowAimSendTimer = 0.05f;
+		ServerSetThrowTarget(Target);
+	}
+}
+
+void UYSSwordsmanAbility::ServerSetThrowTarget_Implementation(FVector_NetQuantize Target)
+{
+	if (Mode == EYSSwordsmanMode::BladeThrow && bThrowPending)
+	{
+		ThrowTarget = ComputeThrowTarget(Target);
 	}
 }

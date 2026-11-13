@@ -39,11 +39,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0", Units="Seconds"))
 	float BladeThrowCooldown = 12.0f;
 
-	/** Pas en arrière : durée de celui du Dashing Slash x ce multiplicateur */
+	/** Pas en arrière : durée de celui du Dashing Slash x ce multiplicateur (intangible et invulnérable) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0"))
-	float BladeThrowStepBackMultiplier = 2.0f;
+	float BladeThrowStepBackMultiplier = 4.0f;
 
-	/** Point de croisement : le curseur au clic, à cette distance au plus */
+	/**
+	 *  Pas en arrière : vitesses de celui du Dashing Slash x ce multiplicateur (0.5 avec une durée x4 = la distance d'avant,
+	 *  durée x2 et vitesse x1 : demande de Paul, durée doublée sans changer la distance)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0"))
+	float BladeThrowStepBackSpeedScale = 0.5f;
+
+	/** Point de croisement : le curseur (suivi jusqu'au lancer), à cette distance au plus du joueur */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="100", Units="Centimeters"))
 	float BladeThrowMaxRange = 2000.0f;
 
@@ -57,11 +64,11 @@ public:
 
 	/** Aller (jusqu'au croisement) et retour, chacun */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0.05", Units="Seconds"))
-	float BladeThrowDuration = 1.0f;
+	float BladeThrowDuration = 0.5f;
 
-	/** Swordsrang : durées x ce multiplicateur (2 = 2x moins vite) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0.1"))
-	float SwordsrangDurationMultiplier = 2.0f;
+	/** Swordsrang : durée de l'aller jusqu'au croisement (le retour vers le joueur se fait à la même vitesse moyenne) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0.05", Units="Seconds"))
+	float SwordsrangDuration = 2.0f;
 
 	/** Zone critique autour du point de croisement (et rayon de la prévisu) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Blade Throw", meta=(ClampMin="0", Units="Centimeters"))
@@ -144,6 +151,18 @@ private:
 	/** Prévisu locale (joueur qui lance) */
 	void ShowPreview(const FVector& Location);
 	void HidePreview();
+
+	/** Client qui lance : point visé envoyé au serveur pendant le pas en arrière */
+	UFUNCTION(Server, Unreliable)
+	void ServerSetThrowTarget(FVector_NetQuantize Target);
+
+	/** Machine du joueur qui lance : point de croisement d'après le curseur, prévisu et envoi au serveur */
+	void UpdateThrowAim(float DeltaTime);
+
+	/** Élan du pas en arrière de Blade Throw (vitesses du Dashing Slash x Blade Throw Step Back Speed Scale) */
+	void KickThrowStepBack();
+
+	float ThrowAimSendTimer = 0.0f;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UYSGroundZoneComponent> PreviewZone;

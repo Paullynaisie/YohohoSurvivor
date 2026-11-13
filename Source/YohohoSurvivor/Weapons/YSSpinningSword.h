@@ -73,6 +73,16 @@ protected:
 	UPROPERTY(Replicated)
 	double SpawnServerTime = 0.0;
 
+	/** Angle de départ et sens de rotation (+1 / -1), tirés au hasard à la création (serveur, répliqués) */
+	UPROPERTY(Replicated)
+	float StartAngleOffset = 0.0f;
+
+	UPROPERTY(Replicated)
+	int8 SpinDirection = 1;
+
+	/** Serveur, avant FinishSpawning : heure de création, angle de départ et sens au hasard */
+	void InitSpawn(const UWorld* World);
+
 	/** Classe Blueprint à charger (sinon cette classe C++) */
 	static UClass* LoadSpawnClass(const TCHAR* BlueprintPath, UClass* Fallback);
 
@@ -136,6 +146,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpinningSword", meta=(ClampMin="0", Units="Centimeters"))
 	float MergeRadius = 300.0f;
 
+	/** Bladékinésis : vitesse de la Self Spinning Sword = vitesse actuelle du joueur x ce multiplicateur */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpinningSword", meta=(ClampMin="0"))
+	float KinesisSpeedMultiplier = 1.5f;
+
 private:
 
 	UPROPERTY(VisibleAnywhere, Category="Components")
@@ -181,6 +195,9 @@ private:
 	void ApplyHits(float PreviousAngle, float CurrentAngle);
 
 	float GetCurrentRotationSpeed() const;
+
+	/** Rotation de l'épée à l'angle 0 : Sword Rotation, retournée sur l'axe de la lame quand le sens de rotation est inversé (tranchant devant) */
+	FQuat GetSwordLocalRotation() const;
 
 	struct FSword
 	{

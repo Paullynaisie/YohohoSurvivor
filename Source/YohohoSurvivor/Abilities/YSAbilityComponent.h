@@ -86,6 +86,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Ability|UI")
 	FLinearColor IconTint = FLinearColor::White;
 
+	/**
+	 *  Attaque auto qui part toute seule dès qu'une cible est là, sans le clic gauche maintenu du joueur (Pistolet de The Gun was
+	 *  better) ; sans cible, elle ne tire pas
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ability")
+	bool bAutoAttackWithoutClick = false;
+
 	/** Akimbo (la même arme dans les deux mains) : délai entre l'action de la main principale et celle de l'autre main */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Akimbo", meta=(ClampMin="0", Units="Seconds"))
 	float AkimboFireDelay = 0.5f;

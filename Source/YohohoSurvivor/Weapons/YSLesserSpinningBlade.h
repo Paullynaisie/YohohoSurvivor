@@ -53,7 +53,7 @@ struct FYSBladePath
 };
 
 /**
- *  « Lesser Spinning Blade » (2026-11-13) : Spinning Sword level 1 seulement, qui tourne 3x plus vite (Rotation Speed 1080),
+ *  « Lesser Spinning Blade » (2026-11-13) : Spinning Sword level 1 seulement, qui tourne 4.5x plus vite (Rotation Speed 1620),
  *  la poignée collée au centre (Sword Location -35, 0, 0), qui suit un trajet (FYSBladePath) puis disparaît (pas de perte de level).
  *  Trajet calculé sur chaque machine depuis l'heure serveur de création ; dégâts côté serveur (ceux de la Spinning Sword,
  *  critiques dans la zone de Target). Classe utilisée : /Game/Placeable/Weapons/Player/BP_LesserSpinningBlade, sinon celle-ci.
@@ -73,6 +73,18 @@ public:
 	/** Swordsrang : distance au joueur à laquelle la lame disparaît */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpinningSword|Lesser", meta=(ClampMin="0", Units="Centimeters"))
 	float HomingArriveDistance = 100.0f;
+
+	/** Swordsrang : écart d'angle max (bruit de Perlin propre à chaque lame) de la direction vers le joueur, atténué à l'approche */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpinningSword|Lesser", meta=(ClampMin="0", ClampMax="89", Units="Degrees"))
+	float HomingNoiseAngle = 45.0f;
+
+	/** Swordsrang : fréquence du bruit (changements de direction par seconde, environ) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpinningSword|Lesser", meta=(ClampMin="0"))
+	float HomingNoiseFrequency = 1.5f;
+
+	/** Swordsrang : le bruit s'efface en dessous de cette distance au joueur (pour l'atteindre) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpinningSword|Lesser", meta=(ClampMin="1", Units="Centimeters"))
+	float HomingNoiseFadeDistance = 400.0f;
 
 	virtual void Tick(float DeltaSeconds) override;
 

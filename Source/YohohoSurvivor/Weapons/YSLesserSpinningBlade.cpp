@@ -21,7 +21,7 @@ AYSLesserSpinningBlade::AYSLesserSpinningBlade()
 	SetReplicatingMovement(false);
 	bLevelDecay = false;
 	MaxLevel = 1;
-	RotationSpeed = 1080.0f;
+	RotationSpeed = 1620.0f;
 	SwordLocation = FVector(-35.0f, 0.0f, 0.0f);
 }
 
@@ -46,8 +46,7 @@ AYSLesserSpinningBlade* AYSLesserSpinningBlade::Launch(AYSPlayerCharacter* Chara
 		return nullptr;
 	}
 	Blade->Path = InPath;
-	const AGameStateBase* GameState = World->GetGameState();
-	Blade->SpawnServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+	Blade->InitSpawn(World);
 	Blade->FinishSpawning(Transform);
 	Blade->AddLevel(1);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSLesserBlade] %s : %s de (%.0f, %.0f) vers (%.0f, %.0f), côté %.0f, aller %.2f s%s"), *Character->GetName(),
@@ -110,7 +109,12 @@ void AYSLesserSpinningBlade::Tick(float DeltaSeconds)
 		FVector Delta = Goal - HomingLocation;
 		Delta.Z = 0.0f;
 		const float Step = HomingSpeed * DeltaSeconds;
-		HomingLocation += Delta.SizeSquared() <= FMath::Square(Step) ? Delta : Delta.GetSafeNormal() * Step;
+		// bruit de Perlin propre à chaque lame (graine : son angle de départ, répliqué) : les deux lames ne font pas le même trajet
+		const float Distance = Delta.Size();
+		const float Noise = FMath::PerlinNoise1D((Time - Path.OutDuration) * HomingNoiseFrequency + StartAngleOffset * 0.37f + Path.Side * 11.3f);
+		const float NoiseAngle = HomingNoiseAngle * FMath::Clamp(Noise * 2.0f, -1.0f, 1.0f) * FMath::Clamp(Distance / HomingNoiseFadeDistance, 0.0f, 1.0f);
+		const FVector Direction = Delta.GetSafeNormal().RotateAngleAxis(NoiseAngle, FVector::UpVector);
+		HomingLocation += Distance <= Step ? Delta : Direction * Step;
 		Location = HomingLocation;
 		bAlive = FVector::Dist2D(HomingLocation, Goal) > HomingArriveDistance;
 	}

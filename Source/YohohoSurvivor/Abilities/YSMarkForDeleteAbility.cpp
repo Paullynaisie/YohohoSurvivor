@@ -381,6 +381,14 @@ void UYSMarkForDeleteAbility::FireShot(int32 Index)
 	Projectile->SetDamage(ShotDamage * GetDamageMultiplier());
 	Projectile->SetMaxHits(1);
 	Projectile->OnFoeHit.AddUObject(this, &UYSMarkForDeleteAbility::OnShotHitFoe);
+	// les NME déjà dans la liste sont traversés (la balle cherche un autre NME)
+	for (const FTarget& Entry : Targets)
+	{
+		if (AActor* Listed = Entry.Actor.Get())
+		{
+			Projectile->IgnoreTarget(Listed);
+		}
+	}
 	Projectile->FinishSpawning(SpawnTransform);
 	UE_LOG(LogTemp, Verbose, TEXT("[YSMarkForDelete] %s : tir %d à %.2f, %.1f dégâts, vers (%.2f, %.2f)"), *GetOwner()->GetName(), Index + 1, World->GetTimeSeconds(),
 		ShotDamage * GetDamageMultiplier(), Direction.X, Direction.Y);

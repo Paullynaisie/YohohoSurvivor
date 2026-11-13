@@ -51,6 +51,8 @@ void AYSSpinningSword::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME_CONDITION(AYSSpinningSword, bSelf, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AYSSpinningSword, SpawnServerTime, COND_InitialOnly);
 	DOREPLIFETIME(AYSSpinningSword, bKinesis);
+	DOREPLIFETIME_CONDITION(AYSSpinningSword, StartAngleOffset, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AYSSpinningSword, SpinDirection, COND_InitialOnly);
 }
 
 AYSSpinningSword* AYSSpinningSword::GiveLevel(AYSPlayerCharacter* Character, bool bInSelf, const FVector& Location, int32 Levels, bool bAllowMerge)
@@ -102,8 +104,7 @@ AYSSpinningSword* AYSSpinningSword::GiveLevel(AYSPlayerCharacter* Character, boo
 		return nullptr;
 	}
 	Sword->bSelf = bInSelf;
-	const AGameStateBase* GameState = World->GetGameState();
-	Sword->SpawnServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+	Sword->InitSpawn(World);
 	Sword->FinishSpawning(FTransform(Ground));
 	// Bladékinésis : la Self Spinning Sword n'est pas accrochée (elle suit le curseur)
 	if (bInSelf && Character->GetCharacterWeaponStat(UYSBladeMasterUpgrade::BladekinesisStat) <= 0.0f)
@@ -233,7 +234,7 @@ void AYSSpinningSword::UpdateSelfMovement(float DeltaSeconds)
 		return;
 	}
 	const UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
-	const float Speed = Movement ? Movement->GetMaxSpeed() : 600.0f;
+	const float Speed = (Movement ? Movement->GetMaxSpeed() : 600.0f) * KinesisSpeedMultiplier;
 	const FVector Current = GetActorLocation();
 	FVector Delta = KinesisTarget - Current;
 	Delta.Z = 0.0f;
@@ -272,7 +273,7 @@ void AYSSpinningSword::BeginPlay()
 	Super::BeginPlay();
 
 	// même angle sur toutes les machines au départ (heure serveur depuis la création)
-	Angle = FMath::Fmod(static_cast<float>(FMath::Max(GetServerTime() - SpawnServerTime, 0.0)) * GetCurrentRotationSpeed(), 360.0f);
+	Angle = FMath::Fmod(StartAngleOffset + static_cast<float>(FMath::Max(GetServerTime() - SpawnServerTime, 0.0)) * GetCurrentRotationSpeed(), 360.0f);
 	Pivot->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, Height), FRotator(0.0f, Angle, 0.0f));
 	if (Level > 0)
 	{
@@ -340,7 +341,7 @@ void AYSSpinningSword::RebuildSwords()
 		Visual->SetActorEnableCollision(false);
 		Visual->AttachToComponent(Pivot, FAttachmentTransformRules::KeepRelativeTransform);
 		// épée à l'angle 0, tournée de Index / Count tour
-		const FTransform Local(SwordRotation.Quaternion(), SwordLocation, FVector(Scale));
+		const FTransform Local(GetSwordLocalRotation(), SwordLocation, FVector(Scale));
 		Visual->SetActorRelativeTransform(Local * FTransform(FRotator(0.0f, 360.0f * Index / Count, 0.0f)));
 
 		FSword& Sword = Swords.AddDefaulted_GetRef();
@@ -355,7 +356,7 @@ void AYSSpinningSword::RebuildSwords()
 	{
 		const FVector Radial = (First->GetActorLocation() - Pivot->GetComponentLocation()).GetSafeNormal2D();
 		BladeDot = FVector::DotProduct(First->GetActorUpVector(), Radial);
-		EdgeDot = FVector::DotProduct(First->GetActorForwardVector(), FVector::UpVector ^ Radial) * FMath::Sign(RotationSpeed);
+		EdgeDot = FVector::DotProduct(First->GetActorForwardVector(), FVector::UpVector ^ Radial) * FMath::Sign(GetCurrentRotationSpeed());
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSSpinningSword] %s : %d épée(s), échelle %.2f, %.0f°/s, lame vers l'extérieur %.2f, axe X / sens de rotation %.2f"), *GetName(), Swords.Num(), Scale, GetCurrentRotationSpeed(), BladeDot, EdgeDot);
 }
@@ -414,7 +415,7 @@ void AYSSpinningSword::Tick(float DeltaSeconds)
 		AYSWeapon* Visual = Swords[Index].Visual.Get();
 		if (Visual && !FMath::IsNearlyEqual(Visual->GetRootComponent()->GetRelativeScale3D().X, Scale, 0.001f))
 		{
-			const FTransform Local(SwordRotation.Quaternion(), SwordLocation, FVector(Scale));
+			const FTransform Local(GetSwordLocalRotation(), SwordLocation, FVector(Scale));
 			Visual->SetActorRelativeTransform(Local * FTransform(FRotator(0.0f, 360.0f * Index / Count, 0.0f)));
 		}
 	}
@@ -523,7 +524,7 @@ float AYSSpinningSword::GetCurrentRotationSpeed() const
 	// Atk speed : recharge de l'Auto atk x0.5 = 2x plus vite
 	const AYSPlayerCharacter* Character = GetOwnerCharacter();
 	const float CooldownMultiplier = Character ? Character->GetSlotCooldownMultiplier(EYSActionSlot::AutoAtk) : 1.0f;
-	return RotationSpeed / FMath::Max(CooldownMultiplier, 0.05f);
+	return SpinDirection * RotationSpeed / FMath::Max(CooldownMultiplier, 0.05f);
 }
 
 double AYSSpinningSword::GetServerTime() const
@@ -535,4 +536,20 @@ double AYSSpinningSword::GetServerTime() const
 	}
 	const AGameStateBase* GameState = World->GetGameState();
 	return GameState ? GameState->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+}
+
+void AYSSpinningSword::InitSpawn(const UWorld* World)
+{
+	const AGameStateBase* GameState = World ? World->GetGameState() : nullptr;
+	SpawnServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : (World ? World->GetTimeSeconds() : 0.0);
+	// angle de départ et sens de rotation au hasard (demande de Paul)
+	StartAngleOffset = FMath::FRandRange(0.0f, 360.0f);
+	SpinDirection = FMath::RandBool() ? 1 : -1;
+}
+
+FQuat AYSSpinningSword::GetSwordLocalRotation() const
+{
+	// sens inversé : demi-tour autour de l'axe de la lame (Z de l'arme), le tranchant reste dans le sens de la rotation
+	const FQuat Base = SwordRotation.Quaternion();
+	return SpinDirection < 0 ? Base * FQuat(FVector::UpVector, PI) : Base;
 }

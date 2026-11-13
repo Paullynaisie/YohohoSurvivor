@@ -352,6 +352,9 @@ public:
 	/** Stylish Sequence : marque (YSStylish) posée sur chaque NME touché, si le tireur a la Golden */
 	void SetStylishMark(uint8 Mark) { StylishMark = Mark; }
 
+	/** La balle traverse cet acteur sans le toucher (Mark for Delete : NME déjà dans la liste) ; avant FinishSpawning */
+	void IgnoreTarget(AActor* Target) { HitActors.AddUnique(Target); }
+
 	/** Serveur : appelé à chaque NME touché (Mark for Delete : NME touchés par ses tirs) */
 	FYSProjectileFoeHit OnFoeHit;
 

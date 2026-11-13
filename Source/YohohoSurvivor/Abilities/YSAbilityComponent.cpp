@@ -146,13 +146,14 @@ APawn* UYSAbilityComponent::GetHolderPawn() const
 bool UYSAbilityComponent::IsAutoAttackAllowedByHolder() const
 {
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	return !Character || Character->WantsAutoAttack();
+	return !Character || bAutoAttackWithoutClick || Character->WantsAutoAttack();
 }
 
 bool UYSAbilityComponent::IsAutoAttackTargetOptional() const
 {
+	// attaque auto sans clic : seulement sur une cible
 	const AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(GetHolderPawn());
-	return Character && Character->UsesHeldAutoAttack() && Character->WantsAutoAttack();
+	return Character && !bAutoAttackWithoutClick && Character->UsesHeldAutoAttack() && Character->WantsAutoAttack();
 }
 
 AActor* UYSAbilityComponent::FindTargetInCone(const UWorld* World, const FVector& Origin, const FVector& Direction, float MaxDistance, float MaxAngle, const FGameplayTagContainer& Tags, const AActor* IgnoredActor,
