@@ -130,6 +130,9 @@ try:
     rolling.set_editor_property("replaced_by_mark_for_delete", True)
     _, auto_shot = component(petoir, "AutoShot")
     auto_shot.set_editor_property("damage", 100.0)
+    # demande de Paul : une balle par salve, pas de rafale
+    auto_shot.set_editor_property("bullets_per_burst", 1)
+    auto_shot.set_editor_property("burst_duration", 0.0)
     unreal.get_default_object(petoir.generated_class()).set_editor_property("display_name", T("Petoir"))
     save_bp(petoir, SWB_PETOIR)
 
@@ -140,6 +143,8 @@ try:
         swing = ys.get_inherited_component_override(sword, "CoupDSabre")
     swing.set_editor_property("damage", 50.0)
     swing.set_editor_property("base_damage_bonus_stat", "SwordWasBetterDamage")
+    # demande de Paul : la Sword attaque toute seule, indépendamment du clic (comme le Pistolet de The Gun was better)
+    swing.set_editor_property("auto_attack_without_click", True)
     _, mark = component(sword, "DashingSlash")
     if mark is None:
         mark = add_component(sword, unreal.YSMarkForDeleteAbility, "DashingSlash")
@@ -228,7 +233,8 @@ try:
     log(f"relu BP_BattlePetoir.AutoShot (doit rester inchangé) : dégâts {comp.get_editor_property('damage')}")
     sword = assets.load_asset(SWB_SWORD)
     _, comp = component(sword, "CoupDSabre")
-    log(f"relu Sword.CoupDSabre : dégâts {comp.get_editor_property('damage')}, bonus {comp.get_editor_property('base_damage_bonus_stat')}")
+    log(f"relu Sword.CoupDSabre : dégâts {comp.get_editor_property('damage')}, bonus {comp.get_editor_property('base_damage_bonus_stat')}, "
+        f"sans clic {comp.get_editor_property('auto_attack_without_click')}")
     _, comp = component(sword, "DashingSlash")
     log(f"relu Sword.DashingSlash : {comp.get_class().get_name()}, dégâts {comp.get_editor_property('damage')}, sommeil {comp.get_editor_property('only_as_mark_for_delete')}, "
         f"tir {comp.get_editor_property('shot_projectile_class')}, roulade {comp.get_editor_property('roll_duration')} s")
