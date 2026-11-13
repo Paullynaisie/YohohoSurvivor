@@ -1405,8 +1405,8 @@ public:
 
 	/**
 	 *  Serveur, CircleBullet de Level (1 à Circle Bullet Max Level) à Location : Level x Lesser Circle Bullets Per Level
-	 *  LesserCircleBullets réparties à angles égaux, la première dans Direction (à plat) ; elles ne touchent pas IgnoredActor
-	 *  (NME qui a déclenché le cercle). Renvoie le nombre de balles tirées.
+	 *  LesserCircleBullets réparties à angles égaux, la première dans Direction (à plat) ; elles peuvent toucher IgnoredActor
+	 *  (NME qui a déclenché le cercle, nommé dans le log seulement). Renvoie le nombre de balles tirées.
 	 */
 	int32 SpawnCircleBullet(const FVector& Location, const FVector& Direction, int32 Level, AActor* IgnoredActor);
 

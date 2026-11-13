@@ -375,7 +375,7 @@ private:
 
 	uint8 StylishMark = 0;
 
-	/** CircleBullet : level du cercle à la disparition (serveur ; 0 = non), déjà déclenché ?, dernier NME touché (pas touché par le cercle) */
+	/** CircleBullet : level du cercle à la disparition (serveur ; 0 = non), déjà déclenché ?, dernier NME touché (donné au cercle pour le log) */
 	int32 CircleBulletLevel = 0;
 	bool bCircleBulletSpawned = false;
 	TWeakObjectPtr<AActor> LastHitFoe;
@@ -383,7 +383,7 @@ private:
 	/** Bullet Hell : level du cercle à chaque NME touché (serveur ; 0 = non) */
 	int32 CircleOnImpactLevel = 0;
 
-	/** Cercle de LesserCircleBullets de Level à Location, sans toucher IgnoredActor (serveur) */
+	/** Cercle de LesserCircleBullets de Level à Location (serveur) */
 	void SpawnCircle(int32 Level, AActor* IgnoredActor, const FVector& Location) const;
 
 	/** Bullet Eater : rendu au tireur qui touche cette balle (serveur ; 0 = la balle traverse son tireur) */

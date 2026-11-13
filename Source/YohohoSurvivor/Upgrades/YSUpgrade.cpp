@@ -1003,7 +1003,7 @@ UYSBeamShotUpgrade::UYSBeamShotUpgrade()
 	BonusSilverValue = 0.1f;
 	BonusGoldValue = 0.1f;
 	UnlockName = NSLOCTEXT("YS", "BeamShotUnlockName", "BeamShot");
-	UnlockDescription = NSLOCTEXT("YS", "BeamShotUnlockDesc", "L'Auto atk et l'Ability tirent un rayon de 5 m\nqui touche tous les NME (shoot system Explosif)");
+	UnlockDescription = NSLOCTEXT("YS", "BeamShotUnlockDesc", "L'Auto atk et l'Ability tirent un rayon de 8 m\nqui touche tous les NME (shoot system Explosif)");
 	BonusName = NSLOCTEXT("YS", "BeamShotBonusName", "BeamShot ++");
 	BonusDescription = NSLOCTEXT("YS", "BeamShotBonusDesc", "+10 % au minimum des dégâts\ndes attaques multi-cibles");
 	BonusStatLabel = NSLOCTEXT("YS", "BeamShotBonusStat", "Dégâts multi-cibles minimum (%)");

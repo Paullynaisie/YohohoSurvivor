@@ -1,5 +1,5 @@
 # Upgrades d'arme du Gunslinger, suite (2026-11-13, demande de Paul) :
-# - BeamShot : /Game/Placeable/AMMO/BeamAMMO (enfant de la classe C++ AYSBeamShot : rayon de 5 m, 35 cm d'épaisseur, 0.1 s),
+# - BeamShot : /Game/Placeable/AMMO/BeamAMMO (enfant de la classe C++ AYSBeamShot : rayon de 8 m, 65 cm d'épaisseur, 0.1 s),
 #   upgrade DA_Up_Weapon_BeamShot (++ = +10 % de dégâts multi-cibles minimum, Golden Solar Shot / Overheat) ;
 #   jauge de chaleur WBP_OverheatGauge (même dossier que WBP_BloodlustStacks) choisie par BP_YSPlayerController ;
 # - Pew Pew Pew : composant « PewPewPew » (UYSPewPewPewAbility, en sommeil) ajouté à BP_BattlePetoir et BP_SwordWasBetterPetoir,
@@ -108,8 +108,8 @@ try:
         beam = tools.create_asset("BeamAMMO", AMMO, unreal.Blueprint, factory)
         log(f"{BEAM_AMMO} : créé (enfant de YSBeamShot)")
     beam_cdo = unreal.get_default_object(beam.generated_class())
-    beam_cdo.set_editor_property("beam_length", 500.0)
-    beam_cdo.set_editor_property("beam_width", 35.0)
+    beam_cdo.set_editor_property("beam_length", 800.0)
+    beam_cdo.set_editor_property("beam_width", 65.0)
     beam_cdo.set_editor_property("life_time", 0.1)
     beam_cdo.set_editor_property("use_player_color", True)
     save_bp(beam, BEAM_AMMO)
@@ -132,7 +132,7 @@ try:
         pew.set_editor_property("cooldown", 20.0)
         pew.set_editor_property("free_cycles", 3)
         pew.set_editor_property("first_shot_interval", 0.35)
-        pew.set_editor_property("interval_reduction_per_cycle", 0.02)
+        pew.set_editor_property("interval_reduction_per_shot", 0.02)
         pew.set_editor_property("min_shot_interval", 0.05)
         pew.set_editor_property("extra_cycle_stamina_cost", 10.0)
         pew.set_editor_property("circle_bullet_on_impact", 1)
@@ -147,6 +147,7 @@ try:
     # --- Upgrade BeamShot ---
     upgrade = weapon_upgrade(BEAM_UPGRADE, unreal.YSBeamShotUpgrade, "DA_Up_Weapon_BeamShot", ricochet)
     upgrade.set_editor_property("required_weapon_classes", required)
+    upgrade.set_editor_property("unlock_description", T("L'Auto atk et l'Ability tirent un rayon de 8 m\nqui touche tous les NME (shoot system Explosif)"))
     upgrade.set_editor_property("bonus_silver_value", 0.1)
     upgrade.set_editor_property("bonus_gold_value", 0.1)
     upgrade.set_editor_property("max_bonus_stacks", 5)

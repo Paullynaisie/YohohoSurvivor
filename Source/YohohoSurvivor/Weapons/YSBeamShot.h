@@ -23,11 +23,11 @@ public:
 
 	/** Longueur du rayon depuis le canon (avant Size Multiplier) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Beam", meta=(ClampMin="1", Units="Centimeters"))
-	float BeamLength = 500.0f;
+	float BeamLength = 800.0f;
 
-	/** Épaisseur (diamètre) du rayon, avant Size Multiplier : 35 cm = échelle 0.35 du cylindre de base de 1 m */
+	/** Épaisseur (diamètre) du rayon, avant Size Multiplier : 65 cm = échelle 0.65 du cylindre de base de 1 m */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AMMO|Beam", meta=(ClampMin="1", Units="Centimeters"))
-	float BeamWidth = 35.0f;
+	float BeamWidth = 65.0f;
 
 	/** Avant FinishSpawning : longueur et épaisseur x Multiplier (shoot system Explosif de l'arme) */
 	void SetSizeMultiplier(float Multiplier) { SizeMultiplier = FMath::Max(0.01f, Multiplier); }

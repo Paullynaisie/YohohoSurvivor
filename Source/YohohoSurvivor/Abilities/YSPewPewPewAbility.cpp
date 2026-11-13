@@ -27,6 +27,7 @@ void UYSPewPewPewAbility::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 
 	DOREPLIFETIME(UYSPewPewPewAbility, bPewPewPewActive);
 	DOREPLIFETIME(UYSPewPewPewAbility, PewEndServerTime);
+	DOREPLIFETIME(UYSPewPewPewAbility, LastShotYaw);
 }
 
 void UYSPewPewPewAbility::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -53,9 +54,11 @@ int32 UYSPewPewPewAbility::GetFreeCycleCount() const
 float UYSPewPewPewAbility::GetCyclesDuration(int32 From, int32 To) const
 {
 	float Duration = 0.0f;
-	for (int32 Cycle = From; Cycle < To; ++Cycle)
+	// l'écart baisse à chaque tir : somme des écarts des tirs de ces cycles
+	const int32 ShotsPerCycle = UE_ARRAY_COUNT(YSPewPewPew::CardinalYaws);
+	for (int32 Shot = From * ShotsPerCycle; Shot < To * ShotsPerCycle; ++Shot)
 	{
-		Duration += UE_ARRAY_COUNT(YSPewPewPew::CardinalYaws) * GetShotInterval(Cycle);
+		Duration += GetShotInterval(Shot);
 	}
 	return Duration;
 }
@@ -73,6 +76,16 @@ bool UYSPewPewPewAbility::IsActionInProgress() const
 bool UYSPewPewPewAbility::IsBlockingLowerPriority() const
 {
 	return Super::IsBlockingLowerPriority() || IsPewing();
+}
+
+bool UYSPewPewPewAbility::GetLockedAimDirection(FVector& OutDirection) const
+{
+	if (!IsPewing())
+	{
+		return false;
+	}
+	OutDirection = FRotator(0.0f, LastShotYaw, 0.0f).Vector();
+	return true;
 }
 
 bool UYSPewPewPewAbility::GetMinMoveSpeedRatio(float& OutRatio) const
@@ -136,6 +149,9 @@ void UYSPewPewPewAbility::FireNextPewShot()
 		Direction = ToTarget.IsNearlyZero() ? Direction : ToTarget;
 	}
 	const int32 CircleLevel = bDeathBlossom ? FMath::Min(CycleIndex + 1, Character->GetCircleBulletMaxLevel()) : CircleBulletOnImpact;
+	// le personnage se tourne vers le tir
+	LastShotYaw = Direction.Rotation().Yaw;
+	GetOwner()->ForceNetUpdate();
 	if (UYSPewPewPewAbility* Shooter = GetPewShooter(ShotCount))
 	{
 		Shooter->FireInDirection(Direction, CircleLevel);
@@ -143,8 +159,8 @@ void UYSPewPewPewAbility::FireNextPewShot()
 	UE_LOG(LogTemp, Verbose, TEXT("[YSPewPewPew] %s : cycle %d, tir %d (yaw %.0f), CircleBullet %d à %.2f"), *GetOwner()->GetName(), CycleIndex + 1, ShotInCycle + 1,
 		Direction.Rotation().Yaw, CircleLevel, GetWorld()->GetTimeSeconds());
 
-	// tir suivant : écart du cycle de ce tir
-	const float Delay = GetShotInterval(CycleIndex);
+	// tir suivant : l'écart baisse à chaque tir
+	const float Delay = GetShotInterval(ShotCount);
 	++ShotCount;
 	if (++ShotInCycle >= UE_ARRAY_COUNT(YSPewPewPew::CardinalYaws))
 	{

@@ -3713,16 +3713,13 @@ int32 AYSPlayerCharacter::SpawnCircleBullet(const FVector& Location, const FVect
 		}
 		Lesser->SetDamage(LesserDamage);
 		Lesser->SetMaxHits(MaxHits);
-		if (IgnoredActor)
-		{
-			Lesser->IgnoreTarget(IgnoredActor);
-		}
+		// demande de Paul (2026-11-13) : les LesserCircleBullets peuvent toucher le NME sur lequel le cercle apparaît (IgnoredActor : log seulement)
 		// Bullet Eater (Golden du Pew pew pew) : le joueur peut les toucher pour récupérer PV et stamina
 		Lesser->SetShooterPickup(GetCharacterWeaponStat(UYSPewPewPewUpgrade::BulletEaterHealthStat), GetCharacterWeaponStat(UYSPewPewPewUpgrade::BulletEaterStaminaStat));
 		Lesser->FinishSpawning(SpawnTransform);
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSCircleBullet] %s : CircleBullet level %d en (%.0f, %.0f, %.0f) : %d LesserCircleBullets, %.1f dégâts, %d NME max%s"), *GetName(), ClampedLevel,
-		Location.X, Location.Y, Location.Z, Count, LesserDamage, MaxHits, IgnoredActor ? *FString::Printf(TEXT(", sans toucher %s"), *IgnoredActor->GetName()) : TEXT(""));
+		Location.X, Location.Y, Location.Z, Count, LesserDamage, MaxHits, IgnoredActor ? *FString::Printf(TEXT(", déclenché par %s"), *IgnoredActor->GetName()) : TEXT(""));
 	return Count;
 }
 

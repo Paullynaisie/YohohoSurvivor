@@ -8,7 +8,7 @@
  *  « Pew pew pew » (upgrade d'arme Pew Pew Pew du Gunslinger, 2026-11-13) : Ability des pistolets, en sommeil tant que l'upgrade
  *  n'est pas débloquée (le Rolling shot s'endort alors). Cycles de 4 balles : nord, sud, est, ouest (nord = haut de l'écran hors
  *  bateau), chacune avec une visée assistée de +/- Cardinal Assist Angle, qui font une CircleBullet de Circle Bullet On Impact à
- *  chaque NME touché. First Shot Interval entre deux tirs, moins Interval Reduction Per Cycle à chaque cycle passé (minimum
+ *  chaque NME touché. First Shot Interval entre deux tirs, moins Interval Reduction Per Shot après chaque tir (minimum
  *  Min Shot Interval). Free Cycles (+ ++) cycles, puis tant que la touche est maintenue, un cycle de plus par Extra Cycle Stamina
  *  Cost de stamina (pas avec Death Blossom, où le level des CircleBullets = numéro du cycle). En akimbo, les tirs alternent
  *  entre les deux pistolets. Pendant le Pew pew pew : caméra centrée, vitesse au moins Min Move Speed Ratio (bonus gardés).
@@ -29,9 +29,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Pew pew pew", meta=(ClampMin="0.01", Units="Seconds"))
 	float FirstShotInterval = 0.35f;
 
-	/** Écart en moins à chaque cycle passé */
+	/** Écart en moins après chaque tir (demande de Paul : à chaque tir, plus à chaque cycle) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Pew pew pew", meta=(ClampMin="0", Units="Seconds"))
-	float IntervalReductionPerCycle = 0.02f;
+	float IntervalReductionPerShot = 0.02f;
 
 	/** Écart minimal entre deux tirs */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Pew pew pew", meta=(ClampMin="0.01", Units="Seconds"))
@@ -68,8 +68,8 @@ public:
 
 	virtual bool IsActionAvailable() const override { return bPewPewPewActive; }
 
-	/** Écart entre les tirs du cycle Cycle (0 = le premier) */
-	float GetShotInterval(int32 Cycle) const { return FMath::Max(MinShotInterval, FirstShotInterval - IntervalReductionPerCycle * Cycle); }
+	/** Écart entre le tir ShotIndex (0 = le premier de la séquence) et le suivant */
+	float GetShotInterval(int32 ShotIndex) const { return FMath::Max(MinShotInterval, FirstShotInterval - IntervalReductionPerShot * ShotIndex); }
 
 	/** Durée des cycles From (inclus) à To (exclu) */
 	float GetCyclesDuration(int32 From, int32 To) const;
@@ -98,6 +98,9 @@ public:
 
 	virtual bool GetAutoAttackSlowdown(float& OutMultiplier) const override { return false; }
 
+	/** Pendant les tirs, le personnage regarde dans la direction du dernier tir (plus la souris) */
+	virtual bool GetLockedAimDirection(FVector& OutDirection) const override;
+
 protected:
 
 	virtual void ExecuteAbility(const FVector& TargetLocation) override;
@@ -115,6 +118,10 @@ private:
 	/** Fin des tirs (temps serveur, répliqué : caméra et vitesse chez les clients) */
 	UPROPERTY(Replicated)
 	double PewEndServerTime = 0.0;
+
+	/** Direction (yaw) du dernier tir, répliquée : regard du personnage */
+	UPROPERTY(Replicated)
+	float LastShotYaw = 0.0f;
 
 	/** Serveur : séquence en cours */
 	int32 TotalCycles = 0;
