@@ -359,7 +359,7 @@ private:
 	void TickConstantSpawn(float DeltaSeconds);
 
 	/** Le bord de l'île (hors plage) le plus loin des joueurs : Classes côte à côte, Spacing entre eux */
-	int32 SpawnFarSide(const TArray<UClass*>& Classes, float Spacing);
+	int32 SpawnFarSide(const TArray<UClass*>& Classes, float Spacing, int32 ForcedLevel = INDEX_NONE, int32 LevelBonus = 0);
 
 	/** Objectif « le plus au nord » : le point du plan, ou le point libre le plus au nord autour */
 	bool FindNorthSpot(FVector2f& OutSpot) const;

@@ -56,7 +56,7 @@ TArray<APawn*> UYSEnemySpawnRule::GetActivePlayers() const
 
 int32 UYSEnemySpawnRule::GetPlayersInMatchCount() const
 {
-	return GameMode ? GameMode->GetPlayersInMatchCount() : 0;
+	return GameMode ? GameMode->GetDifficultyPlayerCount() : 0;
 }
 
 float UYSEnemySpawnRule::GetMatchElapsedTime() const

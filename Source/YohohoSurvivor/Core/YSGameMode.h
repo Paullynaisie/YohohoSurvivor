@@ -238,6 +238,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Player Count")
 	TArray<FYSPlayerCountScaling> PlayerCountScaling;
 
+	/** Hired crew coché : le scaling (nombre et PV des NME) se cale au moins sur ce nombre de joueurs (les HiredMouss n'ont pas de PlayerState) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Player Count", meta=(ClampMin="1", ClampMax="4"))
+	int32 HiredCrewDifficultyPlayerCount = 4;
+
 	/** Gains de stats des NME par niveau (= par jour : PV, dégâts de contact, dégâts des attaques à distance) x ce multiplicateur ; valeurs de base inchangées (demande de Paul, 2026-11-08 : 1.5) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Foe Level", meta=(ClampMin="0"))
 	float FoeLevelGainMultiplier = 1.5f;
@@ -716,8 +720,11 @@ public:
 	/** Joueurs de la partie : ceux qui ont leur personnage + les morts */
 	int32 GetPlayersInMatchCount() const;
 
-	/** Ligne de PlayerCountScaling pour le nombre de joueurs de la partie */
+	/** Ligne de PlayerCountScaling pour le nombre de joueurs de la difficulté (GetDifficultyPlayerCount) */
 	FYSPlayerCountScaling GetPlayerCountScaling() const;
+
+	/** Joueurs comptés pour la difficulté : joueurs de la partie, au moins Hired Crew Difficulty Player Count quand Hired crew est coché */
+	int32 GetDifficultyPlayerCount() const;
 
 	/** Gains de stats des NME par niveau x ce multiplicateur (1 sans GameMode du jeu, ex. client) */
 	static float GetFoeLevelGainMultiplier(const UWorld* World);

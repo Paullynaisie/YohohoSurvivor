@@ -1699,7 +1699,14 @@ FYSPlayerCountScaling AYSGameMode::GetPlayerCountScaling() const
 	{
 		return FYSPlayerCountScaling();
 	}
-	return PlayerCountScaling[FMath::Clamp(GetPlayersInMatchCount() - 1, 0, PlayerCountScaling.Num() - 1)];
+	return PlayerCountScaling[FMath::Clamp(GetDifficultyPlayerCount() - 1, 0, PlayerCountScaling.Num() - 1)];
+}
+
+int32 AYSGameMode::GetDifficultyPlayerCount() const
+{
+	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
+	const int32 Players = GetPlayersInMatchCount();
+	return YSGameState && YSGameState->IsHiredCrew() ? FMath::Max(Players, HiredCrewDifficultyPlayerCount) : Players;
 }
 
 int32 AYSGameMode::ScaleEnemyCount(int32 BaseCount) const

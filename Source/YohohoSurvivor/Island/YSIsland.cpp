@@ -35,6 +35,7 @@ namespace YSIslandActor
 	constexpr float CircleSearchMax = 3000.0f;
 	constexpr int32 SpotAttempts = 400;
 	constexpr int32 OffScreenAttempts = 30;
+	constexpr float OffScreenFallbackSpacing = 200.0f;
 	/** Hauteur d'apparition d'un joueur au-dessus du sol */
 	constexpr float PlayerSpawnHeight = 120.0f;
 	/** Apparition au centre : anneaux de places essayées autour du point, et attente avant de réessayer */
@@ -1550,7 +1551,7 @@ void AYSIsland::TickConstantSpawn(float DeltaSeconds)
 	UE_LOG(LogTemp, Verbose, TEXT("[YSIsland] Spawn constant%s : %d / %d %s"), bOvertime ? TEXT(" (overtime)") : TEXT(""), Spawned, Classes.Num(), Classes.Num() > 0 ? *Classes[0]->GetName() : TEXT("-"));
 }
 
-int32 AYSIsland::SpawnFarSide(const TArray<UClass*>& Classes, float Spacing)
+int32 AYSIsland::SpawnFarSide(const TArray<UClass*>& Classes, float Spacing, int32 ForcedLevel, int32 LevelBonus)
 {
 	AYSGameMode* GameMode = GetWorld()->GetAuthGameMode<AYSGameMode>();
 	TArray<FVector> Players;
@@ -1601,7 +1602,7 @@ int32 AYSIsland::SpawnFarSide(const TArray<UClass*>& Classes, float Spacing)
 		FVector Ground;
 		if (FindCirclePoint(BestAngle + Offset, Ground))
 		{
-			Spawned += GameMode->SpawnFoeOnGround(Classes[Index], Ground, Facing, INDEX_NONE, 0) ? 1 : 0;
+			Spawned += GameMode->SpawnFoeOnGround(Classes[Index], Ground, Facing, ForcedLevel, LevelBonus) ? 1 : 0;
 		}
 	}
 	UE_LOG(LogTemp, Verbose, TEXT("[YSIsland] Côté le plus loin des joueurs : %.0f° (joueur le plus proche à %.0f m)"), FMath::RadiansToDegrees(BestAngle), FMath::Sqrt(BestScore) / 100.0);
@@ -1877,9 +1878,11 @@ int32 AYSIsland::SpawnOffScreen(const TArray<UClass*>& Classes, int32 ForcedLeve
 	}
 
 	int32 Spawned = 0;
+	TArray<UClass*> Failed;
 	for (UClass* Class : Classes)
 	{
-		for (int32 Attempt = 0; Attempt < YSIslandActor::OffScreenAttempts; ++Attempt)
+		bool bPlaced = false;
+		for (int32 Attempt = 0; Attempt < YSIslandActor::OffScreenAttempts && !bPlaced; ++Attempt)
 		{
 			const FVector Center = Players[ServerRng.RandRange(0, Players.Num() - 1)]->GetActorLocation();
 			const float Angle = ServerRng.FRandRange(0.0f, 2.0f * PI);
@@ -1895,9 +1898,21 @@ int32 AYSIsland::SpawnOffScreen(const TArray<UClass*>& Classes, int32 ForcedLeve
 			if (bFree && GameMode->FindIslandGround(World, Ground) && GameMode->SpawnFoeOnGround(Class, Ground, Center, ForcedLevel, LevelBonus))
 			{
 				++Spawned;
-				break;
+				bPlaced = true;
 			}
 		}
+		if (!bPlaced)
+		{
+			Failed.Add(Class);
+		}
+	}
+	// joueurs dispersés (souvent à 3-4) : plus aucune place à OffScreenRadius de TOUS les joueurs -> au bord de l'île le plus loin
+	// des joueurs plutôt que de perdre ces NME (ils étaient abandonnés : moins de NME à 4 joueurs qu'à 2-3)
+	if (Failed.Num() > 0)
+	{
+		const int32 Fallback = SpawnFarSide(Failed, YSIslandActor::OffScreenFallbackSpacing, ForcedLevel, LevelBonus);
+		Spawned += Fallback;
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] Hors écran : %d NME sans place loin de tous les joueurs -> %d au bord le plus loin"), Failed.Num(), Fallback);
 	}
 	return Spawned;
 }
