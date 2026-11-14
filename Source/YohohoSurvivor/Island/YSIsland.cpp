@@ -625,24 +625,28 @@ bool AYSIsland::UsesObjectiveMap(const FYSIslandObjectiveState& State) const
 	return !bStartIsland && FlowMode && FlowMode->ObjectiveTreasureMapClass && FlowMode->IsCompassClass(State.Def.ItemClass);
 }
 
-bool AYSIsland::FindObjectiveMapSpot(const FVector* AwayFrom, float MinDistance, float MaxDistanceFromCenter, FVector& OutWorld)
+bool AYSIsland::FindObjectiveMapSpot(const FVector2f* AwayVirtual, float MinDistance, float MaxDistanceFromCenter, float Scale, FVector& OutWorld, FVector2f& OutVirtual)
 {
 	const float Reach = Data->Generation.Radius;
-	const FVector2f AwayLocal = AwayFrom ? WorldToLocal(*AwayFrom) : FVector2f::ZeroVector;
+	const FVector2f AwayLocal = AwayVirtual ? *AwayVirtual : FVector2f::ZeroVector;
 	const FVector2f AwayDirection = AwayLocal.GetSafeNormal();
+	const float SpotScale = FMath::Clamp(Scale, 0.05f, 1.0f);
 	for (int32 Attempt = 0; Attempt < YSIslandActor::SpotAttempts * 4; ++Attempt)
 	{
+		// tirage sur l'île pleine taille (directions de la carte), sur l'île
 		const float Range = MaxDistanceFromCenter > 0.0f ? FMath::Min(MaxDistanceFromCenter, Reach) : Reach;
-		const FVector2f Spot(ServerRng.FRandRange(-Range, Range), ServerRng.FRandRange(-Range, Range));
-		if (MaxDistanceFromCenter > 0.0f && Spot.SizeSquared() > FMath::Square(MaxDistanceFromCenter))
+		const FVector2f Virtual(ServerRng.FRandRange(-Range, Range), ServerRng.FRandRange(-Range, Range));
+		if ((MaxDistanceFromCenter > 0.0f && Virtual.SizeSquared() > FMath::Square(MaxDistanceFromCenter)) || Terrain.Inland(Virtual.X, Virtual.Y) < 0.0f)
 		{
 			continue;
 		}
-		// moitié opposée : de l'autre côté du centre par rapport à AwayFrom, et assez loin de lui
-		if (AwayFrom && (FVector2f::DotProduct(Spot, AwayDirection) > 0.0f || (Spot - AwayLocal).Size() < MinDistance))
+		// moitié opposée : de l'autre côté du centre par rapport au point précédent, et assez loin de lui
+		if (AwayVirtual && (FVector2f::DotProduct(Virtual, AwayDirection) > 0.0f || (Virtual - AwayLocal).Size() < MinDistance))
 		{
 			continue;
 		}
+		// point réel : rapproché du centre (chemin raccourci, mêmes directions)
+		const FVector2f Spot = Virtual * SpotScale;
 		// sur le plateau : ni sur la plage ni au bord de la falaise, hors des massifs et des props
 		const float Theta = FMath::Atan2(Spot.Y, Spot.X);
 		if (Terrain.Inland(Spot.X, Spot.Y) < FMath::Max(300.0f, Terrain.BeachDepth(Theta) * Terrain.BeachWeight(Theta)) || !IsSpotFree(Spot, YSIslandActor::SpotMargin))
@@ -655,6 +659,7 @@ bool AYSIsland::FindObjectiveMapSpot(const FVector* AwayFrom, float MinDistance,
 			continue;
 		}
 		OutWorld = Ground;
+		OutVirtual = Virtual;
 		return true;
 	}
 	return false;
@@ -693,10 +698,13 @@ void AYSIsland::SpawnObjectiveMaps(const FVector& Landing, const TCHAR* Reason)
 		++MapRank;
 
 		// 3 tracés : moitié opposée au départ, moitié opposée à la fin du 1er, autour du centre
+		// (tirés sur l'île pleine taille puis rapprochés du centre x Path Scale : chemin raccourci, mêmes directions, fin au centre)
 		FVector End1, End2, End3;
-		const bool bFound1 = FindObjectiveMapSpot(&Start, Settings->GetMinLegLength(), 0.0f, End1);
-		const bool bFound2 = bFound1 && FindObjectiveMapSpot(&End1, Settings->GetMinLegLength(), 0.0f, End2);
-		const bool bFound3 = FindObjectiveMapSpot(nullptr, 0.0f, Settings->GetFinalCenterRadius(), End3);
+		FVector2f Virtual1, Virtual2, Virtual3;
+		const float PathScale = Settings->GetPathScale();
+		const bool bFound1 = FindObjectiveMapSpot(&StartLocal, Settings->GetMinLegLength(), 0.0f, PathScale, End1, Virtual1);
+		const bool bFound2 = bFound1 && FindObjectiveMapSpot(&Virtual1, Settings->GetMinLegLength(), 0.0f, PathScale, End2, Virtual2);
+		const bool bFound3 = FindObjectiveMapSpot(nullptr, 0.0f, Settings->GetFinalCenterRadius(), PathScale, End3, Virtual3);
 		if (!bFound1 || !bFound2 || !bFound3)
 		{
 			// sans place : la boussole est posée normalement (l'objectif ne doit jamais être perdu)
@@ -729,8 +737,13 @@ void AYSIsland::SpawnObjectiveMaps(const FVector& Landing, const TCHAR* Reason)
 		Map->InitObjectiveMap(Path, LegEnds, this, Index);
 		Map->FinishSpawning(Transform);
 		ObjectiveMaps.Add(Map);
-		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : carte au trésor d'objectif %s (%s) en %s pour « %s » : %d points, fins des tracés %s / %s / %s"), *Data->GetName(), *Map->GetName(), Reason,
-			*Start.ToCompactString(), *State.Def.DisplayName.ToString(), Path.Num(), *End1.ToCompactString(), *End2.ToCompactString(), *End3.ToCompactString());
+		float PathLength = 0.0f;
+		for (int32 Point = 1; Point < Path.Num(); ++Point)
+		{
+			PathLength += FVector::Dist2D(Path[Point - 1], Path[Point]);
+		}
+		UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : carte au trésor d'objectif %s (%s) en %s pour « %s » : %d points, %.0f m (échelle %.2f), fins des tracés %s / %s / %s"), *Data->GetName(), *Map->GetName(), Reason,
+			*Start.ToCompactString(), *State.Def.DisplayName.ToString(), Path.Num(), PathLength / 100.0f, PathScale, *End1.ToCompactString(), *End2.ToCompactString(), *End3.ToCompactString());
 	}
 }
 

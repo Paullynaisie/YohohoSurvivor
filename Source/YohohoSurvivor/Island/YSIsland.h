@@ -213,10 +213,11 @@ public:
 	bool HasSunk() const { return bSinkFinished; }
 
 	/**
-	 *  Point au hasard sur le plateau de l'île (serveur, monde, au sol, hors massifs) : avec AwayFrom, dans la moitié de l'île opposée à ce point
-	 *  et à au moins Min Distance de lui ; avec Max Distance From Center > 0, à moins de ça du centre de l'île. Faux si rien trouvé
+	 *  Point au hasard sur le plateau de l'île (serveur, monde, au sol, hors massifs). Tirage sur l'île « pleine taille » (OutVirtual, local) :
+	 *  avec AwayVirtual, dans la moitié de l'île opposée à ce point et à au moins Min Distance de lui ; avec Max Distance From Center > 0, à moins
+	 *  de ça du centre. Le point réel (OutWorld) = point tiré x Scale vers le centre (chemin raccourci, mêmes directions). Faux si rien trouvé
 	 */
-	bool FindObjectiveMapSpot(const FVector* AwayFrom, float MinDistance, float MaxDistanceFromCenter, FVector& OutWorld);
+	bool FindObjectiveMapSpot(const FVector2f* AwayVirtual, float MinDistance, float MaxDistanceFromCenter, float Scale, FVector& OutWorld, FVector2f& OutVirtual);
 
 	/** Fin des tracés d'une carte au trésor d'objectif (serveur) : l'objet de l'objectif (boussole) est posé à Location */
 	void OnObjectiveMapCompleted(AYSObjectiveTreasureMap* Map, int32 ObjectiveIndex, const FVector& Location);

@@ -43,6 +43,8 @@ public:
 	/** Distance minimale entre le début d'un tracé et sa fin (le point au hasard dans la moitié opposée) */
 	float GetMinLegLength() const { return MinLegLength; }
 
+	float GetPathScale() const { return PathScale; }
+
 	/** Tracé en cours (0 = premier) */
 	int32 GetCurrentLeg() const;
 
@@ -66,7 +68,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ObjectiveMap|Legs", meta=(ClampMin="0", Units="Centimeters"))
 	float MinLegLength = 3000.0f;
 
-	/** 3e tracé : fin à moins de cette distance du centre de l'île */
+	/**
+	 *  Longueur du chemin : les fins des tracés sont tirées comme sur l'île entière (moitiés opposées, Min Leg Length, Final Center Radius)
+	 *  puis rapprochées du centre de l'île par ce facteur (1 = chemin d'avant le 2026-11-14 ; 0.4 ≈ moitié moins à marcher, demande de Paul)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ObjectiveMap|Legs", meta=(ClampMin="0.05", ClampMax="1"))
+	float PathScale = 0.4f;
+
+	/** 3e tracé : fin à moins de cette distance du centre de l'île (avant Path Scale) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ObjectiveMap|Legs", meta=(ClampMin="0", Units="Centimeters"))
 	float FinalCenterRadius = 2500.0f;
 
