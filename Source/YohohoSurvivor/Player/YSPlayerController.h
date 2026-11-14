@@ -109,6 +109,17 @@ protected:
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<UYSStaminaBarWidget> StaminaBarClass;
 
+	/**
+	 *  Souris : on vise ce qui est SOUS le curseur (NME ou sol de l'île), ramené au plan horizontal du joueur ; décoché = rayon du
+	 *  curseur coupé par ce plan (un NME plus haut ou plus bas que le joueur était alors raté à cause de l'inclinaison de la caméra)
+	 */
+	UPROPERTY(EditAnywhere, Category="Aim")
+	bool bAimAtWhatIsUnderCursor = true;
+
+	/** Écart de hauteur max entre le joueur et ce qui est sous le curseur pour le viser ; au-delà, plan horizontal du joueur */
+	UPROPERTY(EditAnywhere, Category="Aim", meta=(ClampMin="0", Units="Centimeters", EditCondition="bAimAtWhatIsUnderCursor"))
+	float AimUnderCursorMaxHeightDelta = 600.0f;
+
 	/** Manette : zone morte du stick droit (visée) */
 	UPROPERTY(EditAnywhere, Category="Gamepad", meta=(ClampMin="0", ClampMax="1"))
 	float GamepadAimDeadZone = 0.25f;
@@ -1025,6 +1036,9 @@ protected:
 
 	/** Projette la souris sur le plan horizontal du pawn et tourne la rotation de contrôle vers ce point */
 	void UpdateAim();
+
+	/** Premier NME (pawn hors joueurs / minions) ou sol d'île hors de l'eau le long du rayon du curseur, à moins de AimUnderCursorMaxHeightDelta de ReferenceZ */
+	bool FindAimUnderCursor(const FVector& RayOrigin, const FVector& RayDirection, float ReferenceZ, FVector& OutLocation) const;
 
 	/**
 	 *  Stick droit : place le curseur de la souris sur le point visé (direction du stick depuis le personnage, distance selon

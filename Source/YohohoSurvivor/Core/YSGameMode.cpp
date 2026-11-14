@@ -138,14 +138,14 @@ void AYSGameMode::PlayerRequestedUpgradeResync(APlayerController* Player)
 {
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
 	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
-	const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
+	const AYSPlayerCharacter* Character = GetUpgradeCharacter(Player);
 	if (!YSGameState || !YSGameState->IsUpgradeSelectionActive() || !PlayerState || !PlayerState->IsChoosingUpgrade())
 	{
 		return;
 	}
 
 	// nouvelles propositions du même type (la réplication les renvoie : le client les affiche s'il a son personnage)
-	if (Character && Character->IsAlive())
+	if (Character)
 	{
 		EYSUpgradeSelectionKind PlayerKind = CurrentSelectionKind;
 		const TArray<FYSUpgradeOffer> Offers = PickOffersForKind(Character, CurrentSelectionKind, PlayerKind);
@@ -828,7 +828,8 @@ void AYSGameMode::StartUpgradeSelection()
 	YSGameState->SetUpgradeSelectionActive(true);
 	const bool bClassSelection = Kind == EYSUpgradeSelectionKind::Class;
 
-	// propositions propres à chaque joueur vivant (selon son personnage) ; les autres ne sont pas attendus
+	// propositions propres à chaque joueur (selon son personnage) ; mort : selon son corps gardé, upgrade appliquée à sa réanimation ;
+	// sans personnage ni corps : pas attendu
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		APlayerController* Player = It->Get();
@@ -843,9 +844,13 @@ void AYSGameMode::StartUpgradeSelection()
 			// type de la sélection (classe, upgrade d'arme...), avec repli si le personnage n'a rien de ce type à proposer
 			TArray<FYSUpgradeOffer> Offers;
 			EYSUpgradeSelectionKind PlayerKind = Kind;
-			if (Character && Character->IsAlive())
+			if (const AYSPlayerCharacter* UpgradeCharacter = GetUpgradeCharacter(Player))
 			{
-				Offers = PickOffersForKind(Character, Kind, PlayerKind);
+				Offers = PickOffersForKind(UpgradeCharacter, Kind, PlayerKind);
+				if (UpgradeCharacter != Character)
+				{
+					UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s est mort : propositions pour sa réanimation"), *PlayerState->GetPlayerName());
+				}
 			}
 			PlayerState->SetUpgradeOffers(Offers);
 			// SilverCoin upgrade (récompense de doublons) : jamais de relance
@@ -1042,11 +1047,26 @@ UYSUpShard* AYSGameMode::FindShardByName(const AYSPlayerCharacter* Character, co
 	return nullptr;
 }
 
+AYSPlayerCharacter* AYSGameMode::GetUpgradeCharacter(const AController* Player) const
+{
+	if (!Player)
+	{
+		return nullptr;
+	}
+	AYSPlayerCharacter* Character = Cast<AYSPlayerCharacter>(Player->GetPawn());
+	if (Character && Character->IsAlive())
+	{
+		return Character;
+	}
+	const AYSPlayerState* PlayerState = Player->GetPlayerState<AYSPlayerState>();
+	return PlayerState && PlayerState->IsDead() ? PlayerState->GetDeadBody() : nullptr;
+}
+
 void AYSGameMode::PlayerChoseUpgrade(APlayerController* Player, int32 OfferIndex)
 {
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
 	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
-	AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
+	const AYSPlayerCharacter* Character = GetUpgradeCharacter(Player);
 	if (!YSGameState || !YSGameState->IsUpgradeSelectionActive() || !PlayerState || !Character
 		|| !PlayerState->GetUpgradeOffers().IsValidIndex(OfferIndex) || PlayerState->GetChosenUpgradeOffer() == OfferIndex)
 	{
@@ -1064,8 +1084,8 @@ void AYSGameMode::PlayerRerolledUpgrades(APlayerController* Player)
 {
 	const AYSGameState* YSGameState = GetGameState<AYSGameState>();
 	AYSPlayerState* PlayerState = Player ? Player->GetPlayerState<AYSPlayerState>() : nullptr;
-	const AYSPlayerCharacter* Character = Player ? Cast<AYSPlayerCharacter>(Player->GetPawn()) : nullptr;
-	if (!bAllowUpgradeReroll || !YSGameState || !YSGameState->IsUpgradeSelectionActive() || !PlayerState || !Character || !Character->IsAlive()
+	const AYSPlayerCharacter* Character = GetUpgradeCharacter(Player);
+	if (!bAllowUpgradeReroll || !YSGameState || !YSGameState->IsUpgradeSelectionActive() || !PlayerState || !Character
 		|| !PlayerState->HasUpgradeOffers() || PlayerState->GetUpgradeRerollsLeft() == 0)
 	{
 		return;
@@ -1119,6 +1139,12 @@ void AYSGameMode::TryFinishUpgradeSelection()
 			{
 				Character->ApplyUpgrade(YSPlayer->GetUpgradeOffers()[YSPlayer->GetChosenUpgradeOffer()]);
 				UE_LOG(LogTemp, Log, TEXT("[YSGameMode] %s : upgrade %d appliquée"), *YSPlayer->GetPlayerName(), YSPlayer->GetChosenUpgradeOffer());
+			}
+			// mort : gardée sur son corps, appliquée à sa réanimation
+			else if (AYSPlayerCharacter* DeadBody = YSPlayer->IsDead() ? YSPlayer->GetDeadBody() : nullptr;
+				DeadBody && YSPlayer->GetUpgradeOffers().IsValidIndex(YSPlayer->GetChosenUpgradeOffer()))
+			{
+				DeadBody->RecordUpgradeWhileDead(YSPlayer->GetUpgradeOffers()[YSPlayer->GetChosenUpgradeOffer()]);
 			}
 			YSPlayer->SetUpgradeOffers(TArray<FYSUpgradeOffer>());
 		}

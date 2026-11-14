@@ -106,7 +106,25 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Crow's Nest|Naval Battles", meta=(Units="Centimeters"))
 	float NavalBattleIndicatorHeight = 500.0f;
 
-	/** Quitter le nid arrête le ping */
+	/**
+	 *  Le ping reste quand son joueur descend du nid, tant qu'il est à bord du bateau (demande de Paul, 2026-11-14) ; il disparaît quand ce
+	 *  joueur quitte le bateau (à l'eau, sur une île, mort, parti) depuis plus de Ping Off Ship Grace (sauts)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Crow's Nest|Ping")
+	bool bKeepPingWhileOnShip = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Crow's Nest|Ping", meta=(ClampMin="0", Units="s", EditCondition="bKeepPingWhileOnShip"))
+	float PingOffShipGrace = 1.0f;
+
+	/** Temps passé hors du bateau par le joueur du ping (serveur) */
+	float PingerOffShipTime = 0.0f;
+
+	/** Ping retiré (serveur) */
+	void ClearPing(const TCHAR* Reason);
+
+	virtual void Tick(float DeltaSeconds) override;
+
+	/** Quitter le nid arrête le ping (sauf Keep Ping While On Ship) */
 	virtual void OnOccupantChanged(AYSPlayerCharacter* Previous) override;
 
 	virtual const TCHAR* GetLogTag() const override { return TEXT("[YSCrowsNest]"); }

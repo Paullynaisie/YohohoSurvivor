@@ -38,13 +38,41 @@ void AYSCrowsNest::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AYSCrowsNest, Ping);
 }
 
-void AYSCrowsNest::OnOccupantChanged(AYSPlayerCharacter* Previous)
+void AYSCrowsNest::ClearPing(const TCHAR* Reason)
 {
 	if (HasAuthority() && Ping.bActive)
 	{
 		Ping = FYSShipPing();
-		UE_LOG(LogTemp, Log, TEXT("[YSCrowsNest] %s : ping arrêté (joueur parti)"), *GetName());
+		PingerOffShipTime = 0.0f;
+		UE_LOG(LogTemp, Log, TEXT("[YSCrowsNest] %s : ping arrêté (%s)"), *GetName(), Reason);
 		ForceNetUpdate();
+	}
+}
+
+void AYSCrowsNest::OnOccupantChanged(AYSPlayerCharacter* Previous)
+{
+	// descendre du nid garde le ping tant que son joueur reste à bord (Tick)
+	if (!bKeepPingWhileOnShip)
+	{
+		ClearPing(TEXT("joueur parti du nid"));
+	}
+}
+
+void AYSCrowsNest::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	if (!HasAuthority() || !Ping.bActive || !bKeepPingWhileOnShip)
+	{
+		return;
+	}
+	// le joueur du ping est-il encore à bord de ce bateau (au nid, sur le pont, à un autre poste) ?
+	const AYSPlayerCharacter* Pinger = Ping.Pinger ? Cast<AYSPlayerCharacter>(Ping.Pinger->GetPawn()) : nullptr;
+	const bool bOnShip = IsValid(Pinger) && Pinger->IsAlive() && GetShip() && Pinger->GetShipUnderFeet() == GetShip();
+	PingerOffShipTime = bOnShip ? 0.0f : PingerOffShipTime + DeltaSeconds;
+	if (PingerOffShipTime > PingOffShipGrace)
+	{
+		ClearPing(TEXT("son joueur a quitté le bateau"));
 	}
 }
 
@@ -71,6 +99,7 @@ void AYSCrowsNest::ServerHandleAction(AYSPlayerCharacter* Character, EYSStationA
 	Ping.bActive = true;
 	Ping.Location = AimLocation;
 	Ping.Pinger = Character->GetPlayerState();
+	PingerOffShipTime = 0.0f;
 	Ping.ServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
 	ForceNetUpdate();
 	UE_LOG(LogTemp, Log, TEXT("[YSCrowsNest] %s : ping de %s en %s"), *GetName(), *Character->GetName(), *AimLocation.ToCompactString());

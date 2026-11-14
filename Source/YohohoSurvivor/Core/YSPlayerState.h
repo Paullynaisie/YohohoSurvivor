@@ -26,7 +26,9 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Health")
 	bool bIsDead = false;
 
-	TWeakObjectPtr<AYSPlayerCharacter> DeadBody;
+	/** Personnage mort gardé (cadavre ou caché) : ses upgrades, repris par une réanimation ; répliqué pour le menu d'upgrade d'un joueur mort */
+	UPROPERTY(Replicated)
+	TObjectPtr<AYSPlayerCharacter> DeadBody;
 
 	/** Le joueur a cliqué sur « Prêt » (la partie démarre quand tout le monde est prêt) */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Character Select")
@@ -109,9 +111,9 @@ public:
 	/** Serveur uniquement : ressuscité (Medic, plume de phoenix) */
 	void SetAlive() { bIsDead = false; DeadBody = nullptr; ForceNetUpdate(); }
 
-	/** Serveur uniquement : personnage mort qui garde les upgrades du joueur, repris par une réanimation */
-	void SetDeadBody(AYSPlayerCharacter* Body) { DeadBody = Body; }
-	AYSPlayerCharacter* GetDeadBody() const { return DeadBody.Get(); }
+	/** Serveur pour Set : personnage mort qui garde les upgrades du joueur, repris par une réanimation (aussi connu des clients) */
+	void SetDeadBody(AYSPlayerCharacter* Body) { DeadBody = Body; ForceNetUpdate(); }
+	AYSPlayerCharacter* GetDeadBody() const;
 
 	const TArray<FYSUpgradeOffer>& GetUpgradeOffers() const { return UpgradeOffers; }
 

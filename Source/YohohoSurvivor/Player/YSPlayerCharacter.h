@@ -526,6 +526,9 @@ protected:
 	UPROPERTY(Replicated, Transient, VisibleInstanceOnly, BlueprintReadOnly, Category="3C|Upgrades")
 	TArray<FYSUpgradeProgress> UpgradeProgress;
 
+	/** Upgrades de classe choisies pendant la mort (serveur) : appliquées au personnage réanimé (RecordUpgradeWhileDead, Revive) */
+	TArray<FYSUpgradeOffer> PendingReviveClassUpgrades;
+
 	/**
 	 *  Multiplicateurs par type d'action, pour tout le set d'arme (index = GetSlotIndex : 0 Ability, 1 Auto atk) :
 	 *  dégâts (Damage bonus ; serveur) et recharge (CD reduction ; répliqués : le client prédit la recharge)
@@ -1285,7 +1288,13 @@ public:
 	void RestoreUpgrades(const TArray<TObjectPtr<UYSUpgrade>>& OldPool, const TArray<FYSUpgradeProgress>& OldProgress);
 
 	/** Ajoute le bonus proposé à la progression et applique l'upgrade (serveur) ; système de shards : +1 niveau par shard donnée */
-	void ApplyUpgrade(const FYSUpgradeOffer& Offer);
+	void ApplyUpgrade(const FYSUpgradeOffer& Offer, bool bApplyEffects = true);
+
+	/**
+	 *  Joueur mort (ce personnage = son corps gardé) : l'upgrade choisie est ajoutée à la progression SANS effet, la réanimation
+	 *  (Revive -> RestoreUpgrades / RestoreShards) applique tout au nouveau personnage ; une upgrade de classe attend la réanimation (serveur)
+	 */
+	void RecordUpgradeWhileDead(const FYSUpgradeOffer& Offer);
 
 	/** Niveau d'une shard (0 = jamais obtenue) */
 	int32 GetShardLevel(const UYSUpShard* Shard) const;
@@ -1296,7 +1305,7 @@ public:
 	const TArray<FYSUpgradeProgress>& GetAllUpgradeProgress() const { return UpgradeProgress; }
 
 	/** Ajoute des niveaux à une shard (au plus son maximum) et applique son effet (serveur) */
-	void AddShardLevels(UYSUpShard* Shard, int32 Levels);
+	void AddShardLevels(UYSUpShard* Shard, int32 Levels, bool bApplyEffects = true);
 
 	/** Reprend les shards d'un autre personnage (changement de classe ; jumelles converties) et applique leurs effets (serveur) */
 	void RestoreShards(const TArray<FYSShardLevel>& OldLevels);

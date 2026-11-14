@@ -110,13 +110,13 @@ struct FYSIslandGenerationRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="1 Shape")
 	TObjectPtr<UMaterialInterface> GroundMaterial;
 
-	/** Hauteur du plateau de jungle (350 avant le 2026-11-12 : relief divisé par deux) */
+	/** Hauteur du plateau de jungle (350 avant le 2026-11-12, 175 avant le 2026-11-14 : relief x0.6) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2 Relief", meta=(Units="Centimeters"))
-	float PlateauHeight = 175.0f;
+	float PlateauHeight = 105.0f;
 
-	/** Ondulation du plateau (amplitude de 2 ondulations ; (30, 25) avant le 2026-11-12) */
+	/** Ondulation du plateau (amplitude de 2 ondulations ; (30, 25) avant le 2026-11-12, (15, 12.5) avant le 2026-11-14) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2 Relief", meta=(Units="Centimeters"))
-	FVector2D PlateauNoise = FVector2D(15.0, 12.5);
+	FVector2D PlateauNoise = FVector2D(9.0, 7.5);
 
 	/** Largeur de la falaise, du haut jusqu'au fond */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2 Relief", meta=(ClampMin="10", Units="Centimeters"))
@@ -679,6 +679,10 @@ public:
 	/** Le bateau des joueurs n'est pas pilotable tant que l'île n'est pas évacuée (île de départ) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
 	bool bLockHelmUntilEvacuation = true;
+
+	/** Îles suivantes (pas l'île de départ) : les objectifs principaux livrés pendant le jour le finissent, la nuit tombe tout de suite */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Flow", meta=(EditCondition="bObjectiveFlow"))
+	bool bEndDayOnObjectiveDelivered = true;
 
 	/**
 	 *  Îles de la partie 2 : le bateau des joueurs qui touche le fond devant la plage est bloqué à quai (barre verrouillée, voiles carguées) jusqu'à

@@ -1,5 +1,6 @@
 #include "Player/YSPlayerController.h"
 #include "Map/YSOcean.h"
+#include "Core/YSCombat.h"
 #include "Engine/OverlapResult.h"
 #include "Island/YSIsland.h"
 #include "Island/YSIslandData.h"
@@ -724,7 +725,9 @@ void AYSPlayerController::UpdateCharacterSelectMenu()
 	const bool bDead = MyPlayerState && MyPlayerState->IsDead();
 	if (DeathScreen)
 	{
-		DeathScreen->SetVisibility(bDead && !IsScoreboardShown() ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+		// caché pendant le choix d'upgrade d'un joueur mort (le menu est par-dessus)
+		const bool bUpgradeMenuShown = UpgradeMenu && UpgradeMenu->IsVisible();
+		DeathScreen->SetVisibility(bDead && !IsScoreboardShown() && !bUpgradeMenuShown ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 	}
 
 	// le menu disparaît dès que le joueur a son personnage (et ne revient plus : entre deux personnages, réanimation ou
@@ -1236,7 +1239,12 @@ AYSPlayerCharacter* AYSPlayerController::GetUpgradeMenuCharacter() const
 	}
 	const AYSPlayerState* MyState = GetPlayerState<AYSPlayerState>();
 	AYSPlayerCharacter* StateCharacter = MyState ? Cast<AYSPlayerCharacter>(MyState->GetPawn()) : nullptr;
-	return IsValid(StateCharacter) && StateCharacter->IsAlive() ? StateCharacter : nullptr;
+	if (IsValid(StateCharacter) && StateCharacter->IsAlive())
+	{
+		return StateCharacter;
+	}
+	// joueur mort : son corps gardé (répliqué) ; il choisit pour sa réanimation
+	return MyState && MyState->IsDead() ? MyState->GetDeadBody() : nullptr;
 }
 
 void AYSPlayerController::Tick(float DeltaSeconds)
@@ -3036,6 +3044,17 @@ void AYSPlayerController::UpdateAim()
 
 	AimLocation = RayOrigin + RayDirection * Distance;
 
+	// ce qui est sous le curseur (NME, sol de l'île) donne le point visé, ramené à la hauteur du joueur : on tire à plat vers ce
+	// qu'on voit sous le curseur, quelle que soit sa hauteur (sinon la caméra inclinée décale le point visé d'un NME en hauteur)
+	if (bAimAtWhatIsUnderCursor && !bGamepadAiming)
+	{
+		FVector UnderCursor;
+		if (FindAimUnderCursor(RayOrigin, RayDirection, PawnLocation.Z, UnderCursor))
+		{
+			AimLocation = FVector(UnderCursor.X, UnderCursor.Y, PawnLocation.Z);
+		}
+	}
+
 	// regard figé par une action (Dashing Slash) : la souris n'est plus suivie jusqu'à la fin
 	FVector LockedDirection;
 	const AYSPlayerCharacter* YSCharacter = Cast<AYSPlayerCharacter>(ControlledPawn);
@@ -3050,6 +3069,52 @@ void AYSPlayerController::UpdateAim()
 	{
 		SetControlRotation(FRotator(0.0f, ToAim.Rotation().Yaw, 0.0f));
 	}
+}
+
+bool AYSPlayerController::FindAimUnderCursor(const FVector& RayOrigin, const FVector& RayDirection, float ReferenceZ, FVector& OutLocation) const
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+
+	// toutes les surfaces le long du rayon (trace par types d'objets : rien ne s'arrête au premier obstacle), de la plus proche
+	// à la plus lointaine ; feuillages, props, bateaux et joueurs sont traversés
+	FCollisionObjectQueryParams ObjectTypes;
+	ObjectTypes.AddObjectTypesToQuery(ECC_Pawn);
+	ObjectTypes.AddObjectTypesToQuery(ECC_WorldStatic);
+	ObjectTypes.AddObjectTypesToQuery(ECC_WorldDynamic);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(YSAimUnderCursor), false, GetPawn());
+	const FVector RayEnd = RayOrigin + RayDirection.GetSafeNormal() * 100000.0f;
+	TArray<FHitResult> Hits;
+	World->LineTraceMultiByObjectType(Hits, RayOrigin, RayEnd, ObjectTypes, Params);
+
+	for (const FHitResult& Hit : Hits)
+	{
+		const AActor* Actor = Hit.GetActor();
+		if (!Actor || FMath::Abs(Hit.ImpactPoint.Z - ReferenceZ) > AimUnderCursorMaxHeightDelta)
+		{
+			continue;
+		}
+		const APawn* HitPawn = Cast<APawn>(Actor);
+		if (HitPawn && !HitPawn->IsA<AYSPlayerCharacter>())
+		{
+			// NME : son centre, pour viser le pawn et pas le bord de sa capsule
+			OutLocation = Actor->GetActorLocation();
+			return true;
+		}
+		if (!HitPawn && YSCombat::IsIslandGroundActor(Actor))
+		{
+			if (AYSOcean::IsUnderwater(World, Hit.ImpactPoint))
+			{
+				return false;
+			}
+			OutLocation = Hit.ImpactPoint;
+			return true;
+		}
+	}
+	return false;
 }
 
 void AYSPlayerController::UpdateGamepadAim(const APawn* ControlledPawn)

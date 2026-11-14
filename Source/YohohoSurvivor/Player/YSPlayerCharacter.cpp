@@ -948,7 +948,7 @@ int32 AYSPlayerCharacter::GetShardLevel(const UYSUpShard* Shard) const
 	return Found ? Found->Level : 0;
 }
 
-void AYSPlayerCharacter::AddShardLevels(UYSUpShard* Shard, int32 Levels)
+void AYSPlayerCharacter::AddShardLevels(UYSUpShard* Shard, int32 Levels, bool bApplyEffects)
 {
 	if (!HasAuthority() || !Shard || Shard->IsSpecial() || Levels <= 0)
 	{
@@ -963,7 +963,10 @@ void AYSPlayerCharacter::AddShardLevels(UYSUpShard* Shard, int32 Levels)
 	Entry->Level = FMath::Min(Shard->MaxLevel, Entry->Level + Levels);
 	// la partie est en pause pendant les choix : sans ça, les niveaux ne sont pas renvoyés aux clients
 	ForceNetUpdate();
-	Shard->Apply(this, Entry->Level);
+	if (bApplyEffects)
+	{
+		Shard->Apply(this, Entry->Level);
+	}
 }
 
 void AYSPlayerCharacter::RestoreShards(const TArray<FYSShardLevel>& OldLevels)
@@ -1145,7 +1148,7 @@ float AYSPlayerCharacter::GetRarityChance(EYSUpgradeRarity Rarity) const
 	}
 }
 
-void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
+void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer, bool bApplyEffects)
 {
 	// système de shards : +1 niveau par shard donnée (déjà résolues au tirage)
 	if (Offer.UpStats)
@@ -1154,7 +1157,7 @@ void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 		{
 			for (const TObjectPtr<UYSUpShard>& Shard : Offer.Shards)
 			{
-				AddShardLevels(Shard, 1);
+				AddShardLevels(Shard, 1, bApplyEffects);
 			}
 			UE_LOG(LogTemp, Log, TEXT("[YSShard] %s : %s (rareté %d, %d shard(s))"), *GetName(), *Offer.UpStats->GetName(), (int32)Offer.Rarity, Offer.Shards.Num());
 		}
@@ -1185,13 +1188,36 @@ void AYSPlayerCharacter::ApplyUpgrade(const FYSUpgradeOffer& Offer)
 	Progress->BonusRarities.Add(Offer.Rarity);
 	// la partie est en pause pendant les choix : sans ça, la progression n'est pas renvoyée aux clients
 	ForceNetUpdate();
-	Upgrade->Apply(this, Offer.Variant, *Progress);
+	if (bApplyEffects)
+	{
+		Upgrade->Apply(this, Offer.Variant, *Progress);
+	}
 
 	// upgrade d'arme du système de shards : shards en plus (Gold / Mythique)
 	for (const TObjectPtr<UYSUpShard>& Shard : Offer.Shards)
 	{
-		AddShardLevels(Shard, 1);
+		AddShardLevels(Shard, 1, bApplyEffects);
 	}
+}
+
+void AYSPlayerCharacter::RecordUpgradeWhileDead(const FYSUpgradeOffer& Offer)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	const UYSUpgrade* Upgrade = !Offer.UpStats && UpgradePool.IsValidIndex(Offer.PoolIndex) ? UpgradePool[Offer.PoolIndex].Get() : nullptr;
+	// changement de classe : il remplacerait ce corps ; fait au personnage réanimé
+	if (Upgrade && Upgrade->GetUpgradeType() == EYSUpgradeType::Class)
+	{
+		PendingReviveClassUpgrades.Add(Offer);
+		UE_LOG(LogTemp, Log, TEXT("[YSUpgrade] %s (mort) : upgrade de classe %s gardée pour la réanimation"), *GetName(), *Upgrade->GetName());
+		return;
+	}
+	// progression (et shards) enregistrée sans effet : RestoreUpgrades / RestoreShards de la réanimation l'appliquent
+	ApplyUpgrade(Offer, false);
+	UE_LOG(LogTemp, Log, TEXT("[YSUpgrade] %s (mort) : upgrade %s gardée pour la réanimation"), *GetName(),
+		Offer.UpStats ? *Offer.UpStats->GetName() : Upgrade ? *Upgrade->GetName() : TEXT("?"));
 }
 
 float AYSPlayerCharacter::GetWeaponDamageMultiplier(const AYSWeapon* Weapon, EYSActionSlot Slot) const
@@ -3160,7 +3186,17 @@ AYSPlayerCharacter* AYSPlayerCharacter::Revive(AController* NewController, const
 		NewCharacter->WeaponSet ? *NewCharacter->WeaponSet->GetName() : TEXT("aucun"), NewCharacter->UpgradeProgress.Num(), NewCharacter->Health, NewCharacter->GetMaxHealth());
 
 	// l'ancien corps (et ses armes) disparaît
+	const TArray<FYSUpgradeOffer> ClassUpgrades = PendingReviveClassUpgrades;
+	PendingReviveClassUpgrades.Reset();
 	Destroy();
+
+	// upgrade de classe choisie pendant la mort : changement de classe du personnage réanimé (la première seulement : elle le remplace)
+	if (ClassUpgrades.Num() > 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[YSUpgrade] %s : upgrade de classe choisie pendant la mort appliquée%s"), *NewCharacter->GetName(),
+			ClassUpgrades.Num() > 1 ? *FString::Printf(TEXT(" (%d autres ignorées)"), ClassUpgrades.Num() - 1) : TEXT(""));
+		NewCharacter->ApplyUpgrade(ClassUpgrades[0]);
+	}
 	return NewCharacter;
 }
 
@@ -4080,6 +4116,13 @@ void AYSPlayerCharacter::InteractOnServer()
 	// en portant un objet : à côté de l'accès d'un bateau, E fait monter à bord avec l'objet ; sinon il est reposé
 	if (IsCarrying())
 	{
+		// dans la zone de dépôt qui attend cet objet (zone bleue des objectifs, Brooker) : déposer passe avant monter à bord (demande de Paul, 2026-11-14)
+		const AYSBrookerNPC* DropZone = AYSBrookerNPC::FindNearest(GetWorld(), GetActorLocation(), CarriedObject);
+		if (DropZone && FVector::Dist2D(GetActorLocation(), DropZone->GetActorLocation()) <= DropZone->GetAcceptRange())
+		{
+			DropCarriedObject(TEXT("touche E, zone de dépôt"));
+			return;
+		}
 		if (AYSInteractiveObject* Target = FindInteractTarget())
 		{
 			Target->Interact(this);

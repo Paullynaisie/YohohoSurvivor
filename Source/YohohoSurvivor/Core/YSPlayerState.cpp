@@ -26,6 +26,7 @@ void AYSPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 
 	DOREPLIFETIME(AYSPlayerState, SelectedCharacterIndex);
 	DOREPLIFETIME(AYSPlayerState, bIsDead);
+	DOREPLIFETIME(AYSPlayerState, DeadBody);
 	DOREPLIFETIME(AYSPlayerState, bReady);
 	DOREPLIFETIME(AYSPlayerState, BoatSeat);
 	DOREPLIFETIME(AYSPlayerState, UpgradeOffers);
@@ -67,4 +68,9 @@ void AYSPlayerState::OnRep_Customization()
 	{
 		PlayerCharacter->RefreshCustomization();
 	}
+}
+
+AYSPlayerCharacter* AYSPlayerState::GetDeadBody() const
+{
+	return IsValid(DeadBody) ? DeadBody.Get() : nullptr;
 }

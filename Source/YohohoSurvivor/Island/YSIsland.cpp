@@ -2105,6 +2105,12 @@ void AYSIsland::NotifyObjectDelivered(AYSInteractiveObject* Object)
 					});
 					UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : « %s » (phase %d gardée)%s"), *Data->GetName(), *Data->DefendText.ToString(),
 						static_cast<int32>(Phase), Delivered.IsValid() ? *FString::Printf(TEXT(", %s retiré"), *Object->GetName()) : TEXT(""));
+					// îles de la partie 2 : l'objectif ramené (boussole, CoreBoat) finit le jour, la nuit tombe tout de suite (demande de Paul, 2026-11-14)
+					if (Data->bEndDayOnObjectiveDelivered && !bStartIsland && Phase == EYSIslandPhase::Day)
+					{
+						UE_LOG(LogTemp, Log, TEXT("[YSIsland] %s : objectif livré pendant le jour : la nuit tombe"), *Data->GetName());
+						StartNightPhase();
+					}
 					UpdateFlowStatus();
 					return;
 				}

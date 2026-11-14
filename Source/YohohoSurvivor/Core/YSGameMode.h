@@ -429,7 +429,7 @@ protected:
 	int32 DoubloonGoal = 100;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Objective", meta=(ClampMin="0"))
-	int32 DoubloonGoalPerShipLevel = 50;
+	int32 DoubloonGoalPerShipLevel = 25;
 
 	/** Hardcore : jour des NME (leur niveau) = jour en cours x ceci (jour 1 -> 2, jour 3 -> 6) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Play Mode", meta=(ClampMin="1"))
@@ -588,6 +588,12 @@ public:
 	 *  Golden -> Déblocage -> mythique, classe -> mythique, mythique -> level up. OutKind = type réellement proposé
 	 */
 	TArray<FYSUpgradeOffer> PickOffersForKind(const AYSPlayerCharacter* Character, EYSUpgradeSelectionKind Kind, EYSUpgradeSelectionKind& OutKind) const;
+
+	/**
+	 *  Personnage qui reçoit les upgrades d un joueur : le sien vivant ; mort, son corps gardé (AYSPlayerState::GetDeadBody) : il choisit
+	 *  aussi pendant sa mort et l upgrade est appliquée à sa réanimation (RecordUpgradeWhileDead) ; nullptr = joueur pas attendu
+	 */
+	AYSPlayerCharacter* GetUpgradeCharacter(const AController* Player) const;
 
 	/** Shard d'un type parmi les upgrades disponibles pour ce personnage (cheats, debug) ; nullptr si aucune */
 	UYSUpShard* FindShard(const AYSPlayerCharacter* Character, uint8 Stat) const;
